@@ -149,7 +149,7 @@ def process_record(forward, reverse, tbp, cb):
     return r
 
 
-def merge_fastq(forward, reverse, exp_type, temp_dir, cb, n_low_complexity):
+def merge_fastq(forward, reverse, exp_type, temp_dir, cb, n_low_complexity=0):
     """direct threadless fastq processing"""
 
     # open the files
