@@ -60,7 +60,7 @@ def group_multialignments(alignments):
         if not next_alignment:
             yield multialignment
             break
-        if multialignment[0].split()[0] == next_alignment.split()[0]:
+        if multialignment[0].split('\t')[0] == next_alignment.split('\t')[0]:
             multialignment.append(next(iterator))
         else:
             yield multialignment
@@ -93,6 +93,7 @@ def process_multialignment(alignments, feature_positions, feature_table):
         features = []
         positions = []
         for alignment in alignments:
+            alignment = alignment.strip().split('\t')
             true_position = int(alignment[3])
             flag = int(alignment[1])
             strand = '-' if (flag & 16) else '+'

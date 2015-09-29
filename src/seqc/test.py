@@ -14,6 +14,10 @@ import random
 import gzip
 import ftplib
 
+# tests to add:
+# 1. test for processing of multi-aligned reads. Right now there is no test for lines
+#    92-102 of sam.py
+
 
 def generate_in_drop_fastq_data(n, prefix):
     data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
@@ -485,6 +489,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         self.assertEqual(tb.process_forward_sequence(no_poly_t), (cell, rmt, 0))
         self.assertEqual(tb.process_forward_sequence(truncated_rmt), (cell, 0, 0))
         self.assertEqual(tb.process_forward_sequence(no_data), (0, 0, 0))
+
 
 @unittest.skip('')
 class TestThreeBitCellBarcodes(unittest.TestCase):

@@ -174,6 +174,7 @@ def merge_fastq(forward, reverse, exp_type, temp_dir, cb, n_low_complexity=0):
                     merged_record = process_record(f, r, tbp, cb)
                     if merged_record == '':
                         n_low_complexity += 1
+                        continue
                     merged_file.write(merged_record)
             finally:
                 ffile.close()
