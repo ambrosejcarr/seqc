@@ -1,0 +1,21 @@
+#!/usr/local/bin/python3
+__author__ = 'ambrose'
+
+from sys import argv, exit
+from seqc.three_bit import CellBarcodes
+import pickle
+
+
+def main(fout, *barcodes):
+    cb = CellBarcodes(*barcodes)
+    if not fout.endswith('.p'):
+        fout += '.p'
+    with open(fout, 'wb') as f:
+        pickle.dump(cb, f)
+
+if __name__ == "__main__":
+    if not len(argv) > 3:
+        print('usage: process_barcodes <fout> <barcode_file1> [<barcode_file2> ...]')
+        exit(2)
+    else:
+        main(*argv[1:])

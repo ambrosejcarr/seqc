@@ -1,0 +1,231 @@
+#!/usr/local/bin/python3
+__author__ = 'Ambrose J. Carr'
+
+import argparse
+import pickle
+import os
+import shutil
+from glob import glob
+from seqc.fastq import merge_fastq, auto_detect_processor
+from seqc.sam import process_alignments
+from seqc.align import STAR, alignment_metadata
+from seqc.qc import disambiguate
+import numpy as np
+import numpy.lib.recfunctions as rf
+import sys
+import logging
+import json
+from datetime import datetime
+
+# todo | add user input warning if clobbering existing seqdb data with countdown
+# todo | change pytables rmt column to enumcol (should save space?)
+
+
+# user enters input files: forward and reverse fastq files
+def process_input():
+    p = argparse.ArgumentParser()
+
+    # required arguments
+    r = p.add_argument_group('Required Arguments')
+    r.add_argument('-i', '--index', help='star index', metavar='I')
+    r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
+                   type=int)
+    r.add_argument('-o', '--output-file', metavar=')',
+                   help='name of file in which to store output')
+    p.add_argument('-b', '--barcodes', metavar='B',
+                   help='location of serialized barcode object.')
+    p.add_argument('-p', '--processor', metavar='P',
+                   help='experiment-specific fastq pre-processing module. If none, '
+                        'SEQDB will attempt to auto-detect the processor from the '
+                        'experiment name')
+
+    # optional arguments
+    p.add_argument('-l', '--frag-len', metavar='L', type=int, default=1000,
+                   help='the number of bases from the 3 prime end to '
+                        'consider when determining trancript overlaps')
+
+    # input files
+    i = p.add_argument_group(
+        'Input Files',
+        'If neither sam (-s) or fastq (-f, -r, -m) are passed, SEQDB will assume a '
+        'complete h5 database has been passed and will proceed with post-processing.')
+    i.add_argument('-f', '--forward', help='forward fastq file(s)', metavar='F',
+                   nargs='+', default=None)
+    i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
+                   nargs='+', default=None)
+    i.add_argument('-s', '--sam', metavar='S', nargs='+', default=None,
+                   help='sam file(s) containing aligned, pre-processed reads')
+    i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
+                   help='fastq file containing merged, pre-processed records')
+
+    # alignment arguments
+    a = p.add_argument_group('Additional arguments for STAR aligner')
+    a.add_argument('--star-args', metavar='SA', nargs='+', default={},
+                   help='additional arguments for STAR. Pass as arg=value without '
+                        'leading "--". e.g. runMode=alignReads')
+    a.add_argument('--list-default-star-args', default=False, action='store_true',
+                   help='list SEQDB default args for the STAR aligner')
+
+    if len(sys.argv) == 1:
+        p.print_help()
+        sys.exit(2)
+
+    args = p.parse_args()
+
+    # list star args if requested, then exit
+    if args.list_default_star_args:
+        printable_args = json.dumps(
+            STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
+            separators=(',', ': '), indent=4)
+        print(printable_args)
+        sys.exit(2)
+
+    # check for required arguments
+    if not all(hasattr(args, a) for a in
+               ['index', 'n_threads', 'output_file', 'barcodes']):
+
+        print('SEQC: error: the following arguemnts are required: -i/--index, '
+              '-n/--n-threads, -o/--output-file, -b/--barcodes')
+        sys.exit(1)
+
+    return args
+
+
+def setup_logger():
+    """create a simple log file in the cwd to track progress and any errors"""
+    logging.basicConfig(filename='seqc.log', level=logging.DEBUG)
+
+
+def log_info(message):
+    """print a timestamped update for the user"""
+    logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
+
+
+def main(fout, forward, reverse, samfile, merged_fastq, processor, index,
+         n_threads, frag_len, star_args, barcodes):
+
+    #################################### SET-UP #########################################
+    # create temporary directory based on experiment name
+    temp_dir = '.' + fout
+    if not os.path.isdir(temp_dir):
+        os.makedirs(temp_dir)
+    if not temp_dir.endswith('/'):
+        temp_dir += '/'
+
+    # obtain gtf file from index argument
+    gtf = index + 'annotations.gtf'
+    if not os.path.isfile(gtf):
+        raise FileNotFoundError('no file named "annotations.gtf" found in index')
+
+    # get cell barcode files
+    with open(barcodes, 'rb') as f:
+        cb = pickle.load(f)
+
+    ##################################### FILTER ########################################
+    if (forward or reverse) and not (samfile or merged_fastq):
+
+        # pre-process reads
+        log_info('Merging fastq files.')
+        merged_fastq = merge_fastq(forward, reverse, processor, temp_dir, cb)
+
+
+    ###################################### ALIGN ########################################
+    if merged_fastq and not samfile:
+        # process any additional arguments for star passed from the command line
+        if star_args:
+            kwargs = {}
+            for arg in star_args:
+                k, v = arg.split('=')
+                kwargs['--' + k] = v
+
+        # align fastq files
+        log_info('Aligning merged fastq file')
+        star = STAR(temp_dir, n_threads, index)
+        star.align(merged_fastq, **star_args)
+        samfile = temp_dir + 'Aligned.out.sam'
+
+        # record summary statistics from alignment
+        # log_info('Recording alignment summary')
+        # log_final_out = temp_dir + 'Log.final.out'
+
+    ################################ PROCESS ALIGNMENTS #################################
+    arr = process_alignments(samfile, n_threads, gtf, frag_len)
+
+    ################################## CORRECT ERRORS ###################################
+    # try:
+    #     log_info('Correcting errors')
+    #     if not barcode_dir.endswith('/'):
+    #         barcode_dir += '/'
+    #     barcode_files = glob(barcode_dir + '*')
+    #     corrected, nerr, err_rate = correct_errors(
+    #         unambiguous, barcode_files, processor_name, meta, p_val=0.1)
+    #
+    #     # store metadata from these runs in post-processing summary
+    #     # post_processing_summary(h5db, exp_name, dis_meta, nerr)
+    #
+    #     # store error rates
+    #     # store_error_rate(h5db, exp_name, err_rate)
+    #
+    # except:  # fail gracefully on error_correction; not all methods can do this!
+    #     logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
+    #     corrected = unambiguous
+    #
+    # ################################### DISAMBIGUATE ####################################
+    # disambiguate
+    log_info('Resolving ambiguous alignments.')
+    expectations = index + 'p_coalignment.pckl'
+    disambiguation_res, arr = disambiguate(arr, expectations)
+    arr = rf.append_fields(arr, 'disambiguation_results', disambiguation_res)
+    arr = arr.filled()
+
+    # ################################ COLLAPSE MOLECULES #################################
+    # # generate a pandas SparseDataFrame and save it to disk
+    # log_info('Generating Gene x Cell SparseDataFrames for reads and molecules.')
+    # mols, mrow, mcol = corrected_to_sparse_matrix(
+    #     corrected, processor_name, collapse_molecules=True)
+    # reads, rrow, rcol = corrected_to_sparse_matrix(
+    #     corrected, processor_name, collapse_molecules=False)
+    #
+    # # get location for output files from filestem of h5db.
+    # location = '/'.join(h5db.split('/')[:-1])
+    #
+    # ################################### SELECT CELLS ####################################
+    # # filter cells with < threshold # reads. todo | add gc, length, maybe size biases here
+    # mols, meta = filter_cells_mols(mols, meta, 10)
+    # reads, meta = filter_cells_reads(reads, meta, 100)
+    #
+    # # store files
+    # if location:
+    #     location += '/'
+    # with open(location + exp_name + '_read_and_mol_frames.p', 'wb') as f:
+    #     pickle.dump(((reads, rrow, rcol), (mols, mrow, mcol)), f)
+    #
+    ################################# STORE RESULTS ###################################
+    if not fout.endswith('.npy'):
+        fout += '.npy'
+    np.save(fout, arr)
+
+    # ##################################### CLEAN UP ######################################
+    # log_info('Run succeeded. Cleaning up and terminating.')
+    # if os.path.isdir(temp_dir):
+    #     shutil.rmtree(temp_dir)
+    # if os.path.isdir('_STARtmp'):
+    #     shutil.rmtree('_STARtmp')
+
+
+def run_seqc():
+    args = process_input()
+    setup_logger()
+    try:
+        # log command line arguments for debugging
+        log_info('Passed command line arguments: %s' %
+                 json.dumps(vars(args), separators=(',', ': '), indent=4))
+        main(args.output_file, args.forward, args.reverse, args.sam, args.merged_fastq,
+             args.processor, args.index, args.n_threads, args.frag_len,
+             args.star_args, args.barcodes)
+    except:
+        logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
+        raise
+
+if __name__ == "__main__":
+    run_seqc()
