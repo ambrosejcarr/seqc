@@ -388,6 +388,38 @@ class TestThreeBitInDrop(unittest.TestCase):
             # check num_poly_t
             self.assertEqual(n_poly_t, 4)  # poly-t has a single 'A' contaminant
 
+    def test_process_forward_read_truncated_input(self):
+        full_len = 'TAAAAAAA' + 'GAGTGATTGCTTGTGACGCCTT' + 'GCCCCCCC' + 'ACGTAC' + 'TTTTT'
+        no_poly_t = 'TAAAAAAA' + 'GAGTGATTGCTTGTGACGCCTT' + 'GCCCCCCC' + 'ACGTAC'
+        short_rmt = 'TAAAAAAA' + 'GAGTGATTGCTTGTGACGCCTT' + 'GCCCCCCC' + 'ACG'
+        cell_only = 'TAAAAAAA' + 'GAGTGATTGCTTGTGACGCCTT' + 'GCCCCCCC'
+        no_data = 'TAAAAAAA' + 'GAGTGATTGCTTGTGACGCCTT' + 'GCCCCC'
+
+        cell, rmt, n_poly_t = self.tb.process_forward_sequence(full_len)
+        self.assertEqual(n_poly_t, 5)
+        self.assertEqual(rmt, self.tb.str2bin('ACGTAC'))
+        self.assertEqual(cell, self.tb.str2bin('TAAAAAAAGCCCCCCC'))
+
+        cell, rmt, n_poly_t = self.tb.process_forward_sequence(no_poly_t)
+        self.assertEqual(n_poly_t, 0)
+        self.assertEqual(rmt, self.tb.str2bin('ACGTAC'))
+        self.assertEqual(cell, self.tb.str2bin('TAAAAAAAGCCCCCCC'))
+
+        cell, rmt, n_poly_t = self.tb.process_forward_sequence(short_rmt)
+        self.assertEqual(n_poly_t, 0)
+        self.assertEqual(rmt, 0)
+        self.assertEqual(cell, self.tb.str2bin('TAAAAAAAGCCCCCCC'))
+
+        cell, rmt, n_poly_t = self.tb.process_forward_sequence(cell_only)
+        self.assertEqual(n_poly_t, 0)
+        self.assertEqual(rmt, 0)
+        self.assertEqual(cell, self.tb.str2bin('TAAAAAAAGCCCCCCC'))
+
+        cell, rmt, n_poly_t = self.tb.process_forward_sequence(no_data)
+        self.assertEqual(n_poly_t, 0)
+        self.assertEqual(rmt, 0)
+        self.assertEqual(cell, 0)
+
 
 @unittest.skip('')
 class TestThreeBitGeneral(unittest.TestCase):
@@ -436,6 +468,23 @@ class TestThreeBitGeneral(unittest.TestCase):
         self.assertEqual(rmt, str_rmt)
         self.assertEqual(poly_t.count('T'), num_poly_t)
 
+    def test_3bit_avo_seq_truncated_input(self):
+        full_length = 'ACGTACGT' + 'AACC' 'TAATTTNTTTT'
+        no_poly_t = 'ACGTACGT' + 'AACC'
+        truncated_rmt = 'ACGTACGT' + 'AAC'
+        no_data = 'ACGTAC'
+
+        tb = three_bit.ThreeBit.default_processors('avo-seq')
+
+        # results
+        cell = tb.str2bin('ACGTACGT')
+        rmt = tb.str2bin('AACC')
+        n_poly_t = 8
+
+        self.assertEqual(tb.process_forward_sequence(full_length), (cell, rmt, n_poly_t))
+        self.assertEqual(tb.process_forward_sequence(no_poly_t), (cell, rmt, 0))
+        self.assertEqual(tb.process_forward_sequence(truncated_rmt), (cell, 0, 0))
+        self.assertEqual(tb.process_forward_sequence(no_data), (0, 0, 0))
 
 @unittest.skip('')
 class TestThreeBitCellBarcodes(unittest.TestCase):

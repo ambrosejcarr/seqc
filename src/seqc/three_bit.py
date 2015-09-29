@@ -270,19 +270,26 @@ class ThreeBit:
         if bitlen % 3:
             bitlen += 1
 
-        # count T in poly-T tail
+        # get expected primer length
         primer_bitsize = 3 * (self._cell_len + self._rmt_len)
-        poly_t_mask = (1 << (bitlen - primer_bitsize)) - 1
-        n_poly_t = self._num_poly_t(s & poly_t_mask)
+        if 3 * self._cell_len <= bitlen < primer_bitsize:  # truncated read
+            cell = s >> (bitlen - (3 * self._cell_len))
+            return cell, 0, 0
+        elif bitlen < 3 * self._cell_len:
+            return 0, 0, 0
+        else:
+            # count T in poly-T tail
+            poly_t_mask = (1 << (bitlen - primer_bitsize)) - 1
+            n_poly_t = self._num_poly_t(s & poly_t_mask)
 
-        # get RMT
-        s >>= (bitlen - primer_bitsize)
-        rmt = s & self._rmt_mask
+            # get RMT
+            s >>= (bitlen - primer_bitsize)
+            rmt = s & self._rmt_mask
 
-        # get cell
-        cell = s >> (3 * self._rmt_len)
+            # get cell
+            cell = s >> (3 * self._rmt_len)
 
-        return cell, rmt, n_poly_t
+            return cell, rmt, n_poly_t
 
 
 class ThreeBitInDrop(ThreeBit):
@@ -323,6 +330,7 @@ class ThreeBitInDrop(ThreeBit):
         elif tetramer == 1894:  # TGAC
             cb1_length = 11 * 3
         else:
+            print('failure!')
             return 0, 0, 0
 
         # set some variables
@@ -330,23 +338,40 @@ class ThreeBitInDrop(ThreeBit):
         spacer_length = 22 * 3
         rmt_length = 6 * 3
 
-        # count T in poly-T tail
+        # set expected primer length
         primer_bitsize = cb1_length + spacer_length + cb2_length + rmt_length
-        poly_t_mask = (1 << (bitlen - primer_bitsize)) - 1
-        num_poly_t = self._num_poly_t(s & poly_t_mask)
 
-        # get RMT
-        s >>= (bitlen - primer_bitsize)
-        rmt = s & self._rmt_mask
+        # some reads are truncated, find the cell barcode then return
+        truncated_length = cb1_length + spacer_length + cb2_length
+        if truncated_length <= bitlen < primer_bitsize:
 
-        # get CB2
-        s >>= rmt_length
-        cb2 = s & self._cell_mask
+            # get CB2
+            s >>= (bitlen - truncated_length)
+            cb2 = s & self._cell_mask
 
-        # get CB1
-        cb1 = s >> cb2_length + spacer_length
+            # get CB1
+            cb1 = s >> cb2_length + spacer_length
 
-        return self.ints2int([cb1, cb2]), rmt, num_poly_t
+            return self.ints2int([cb1, cb2]), 0, 0
+        elif truncated_length > bitlen:
+            return 0, 0, 0  # can't resolve barcode
+        else:
+            # count T in poly-T tail
+            poly_t_mask = (1 << (bitlen - primer_bitsize)) - 1
+            num_poly_t = self._num_poly_t(s & poly_t_mask)
+
+            # get RMT
+            s >>= (bitlen - primer_bitsize)
+            rmt = s & self._rmt_mask
+
+            # get CB2
+            s >>= rmt_length
+            cb2 = s & self._cell_mask
+
+            # get CB1
+            cb1 = s >> cb2_length + spacer_length
+
+            return self.ints2int([cb1, cb2]), rmt, num_poly_t
 
 
 
