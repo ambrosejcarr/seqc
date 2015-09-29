@@ -141,13 +141,15 @@ def process_record(forward, reverse, tbp, cb):
     cell, rmt, n_poly_t = tbp.process_forward_sequence(forward[1][:-1])
     valid_cell = cb.close_match(cell)
     r, trimmed_bases = remove_homopolymer(reverse)
+    if len(r[1]) < 20:  # don't return short reads
+        return ''
     fwd_quality = average_quality(forward[3][:-1])
     r = annotate_fastq_record(
         r, cell, rmt, n_poly_t, valid_cell, trimmed_bases, fwd_quality)
     return r
 
 
-def merge_fastq(forward, reverse, exp_type, temp_dir, cb):
+def merge_fastq(forward, reverse, exp_type, temp_dir, cb, n_low_complexity):
     """direct threadless fastq processing"""
 
     # open the files
@@ -170,6 +172,8 @@ def merge_fastq(forward, reverse, exp_type, temp_dir, cb):
 
                 for f, r in paired_fastq_records(ffile, rfile):
                     merged_record = process_record(f, r, tbp, cb)
+                    if merged_record == '':
+                        n_low_complexity += 1
                     merged_file.write(merged_record)
             finally:
                 ffile.close()
@@ -177,7 +181,7 @@ def merge_fastq(forward, reverse, exp_type, temp_dir, cb):
     finally:
         merged_file.close()
 
-    return fout
+    return fout, n_low_complexity
 
 
 # todo not working right now

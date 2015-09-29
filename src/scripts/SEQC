@@ -126,8 +126,10 @@ def main(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
         # pre-process reads
         log_info('Merging fastq files.')
-        merged_fastq = merge_fastq(forward, reverse, processor, temp_dir, cb)
+        merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
 
+    with open(fout + '_metadata.txt', 'a') as f:
+        f.write('Low Complexity Reads: %d' % nlc)
 
     ###################################### ALIGN ########################################
     if merged_fastq and not samfile:
