@@ -132,19 +132,21 @@ def disambiguate(data, expectations, alpha=0.1):
     eps = 10e-10
 
     # create array to hold disambiguation results and a counter for total molecules
-    results = np.zeros(data.shape, dtype=np.int8)
-    # total_molecules = 0
+    indices = np.arange(data.shape[0])
+    results = np.zeros(data.shape[0], dtype=np.int8)
 
-    # merge cell & rmt
-    seq_data = np.vstack([data['cell'], data['rmt'].astype(np.int64)]).T
+    mask = ((data['cell'] != 0) & (data['rmt'] != 0) & (data['n_poly_t'] > 3) &
+            data['is_aligned'])
+
+    # filter, then merge cell & rmt
+    seq_data = np.vstack([data['cell'][mask], data['rmt'][mask].astype(np.int64)]).T
     seq = np.apply_along_axis(three_bit.ThreeBit.ints2int, axis=0,
                               arr=seq_data)
-
-    # todo mask filtered reads
+    indices = indices[mask]
 
     # get indices of reads associated with each putative molecule (rmt/cell pair)
     molecules = defaultdict(list)
-    for i, s in enumerate(seq):
+    for i, s in zip(indices, seq):
         molecules[s].append(i)
     for k, v in molecules.items():
         molecules[k] = np.array(v)  # covert all lists to arrays for indexing

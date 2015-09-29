@@ -103,9 +103,14 @@ def process_multialignment(alignments, feature_positions, feature_table):
             positions.append(true_position)
     positions = tuple(positions)
     features = tuple(features)
+    is_aligned = False
+    for feature in features:
+        if feature != 0:
+            is_aligned = True
+            break
 
     rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality, fwd_quality,
-           features, positions, alignment_score)
+           features, positions, is_aligned, alignment_score)
 
     return rec
 
@@ -126,6 +131,7 @@ def create_structured_array(n):
         ('fwd_quality', np.uint8),
         ('features', np.object),
         ('positions', np.object),
+        ('is_aligned', np.bool),
         ('alignment_score', np.uint8)
     ]
     return np.zeros((n,), dtype=dtype)

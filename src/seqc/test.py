@@ -17,6 +17,9 @@ import ftplib
 # tests to add:
 # 1. test for processing of multi-aligned reads. Right now there is no test for lines
 #    92-102 of sam.py
+# 2. add a test for masking of filtered reads in qc.py for disambiguate() and
+#    error_correction() At the moment, the data generation doesn't produce any reads that
+#    get filtered.
 
 
 def generate_in_drop_fastq_data(n, prefix):
@@ -57,6 +60,7 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
     fwd_quality = 40
     rev_quality = 40
     alignment_score = 50
+    is_aligned = True
 
     # get all the expectations that are not unique
     non_unique = {}
@@ -88,7 +92,8 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
         for f, c in zip(features, counts):
             for _ in range(c):
                 arr[i] = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
-                          fwd_quality, f, tuple([0] * len(f)), alignment_score)
+                          fwd_quality, f, tuple([0] * len(f)), is_aligned,
+                          alignment_score)
                 i += 1
         arrays.append(arr)
 
@@ -767,7 +772,7 @@ class TestDisambiguation(unittest.TestCase):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
         self.expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment.pckl'
 
-    @unittest.skip('only run this if new disambiguation input is needed')
+    # @unittest.skip('only run this if new disambiguation input is needed')
     def test_create_test_data(self):
         cell_barcodes = self.data_dir + 'in_drop/barcodes/cb_3bit.p'
         save = self.data_dir + 'in_drop/disambiguation_input.p'
