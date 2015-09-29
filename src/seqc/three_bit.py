@@ -322,6 +322,8 @@ class ThreeBitInDrop(ThreeBit):
             cb1_length = 10 * 3
         elif tetramer == 1894:  # TGAC
             cb1_length = 11 * 3
+        else:
+            return 0, 0, 0
 
         # set some variables
         cb2_length = 8 * 3
