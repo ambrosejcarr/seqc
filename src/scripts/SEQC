@@ -30,7 +30,7 @@ def process_input():
     r.add_argument('-i', '--index', help='star index', metavar='I')
     r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
                    type=int)
-    r.add_argument('-o', '--output-file', metavar=')',
+    r.add_argument('-o', '--output-file', metavar='O',
                    help='name of file in which to store output')
     p.add_argument('-b', '--barcodes', metavar='B',
                    help='location of serialized barcode object.')
