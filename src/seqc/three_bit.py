@@ -15,7 +15,7 @@ def revcomp(s):
 class CellBarcodes:
     """"""
 
-    def __init__(self, *barcode_files):
+    def __init__(self, *barcode_files, reverse_complement=False):
         """"""
 
         if not barcode_files:
@@ -32,6 +32,12 @@ class CellBarcodes:
             elif isinstance(blist, str):
                 with open(blist) as f:
                     lists.append([bc.strip() for bc in f.readlines()])
+
+        if reverse_complement:
+            rc_lists = []
+            for l in lists:
+                rc_lists.append([revcomp(bc) for bc in l])
+        lists = rc_lists
 
         # if only one list in lists, make a set
         if len(lists) == 1:

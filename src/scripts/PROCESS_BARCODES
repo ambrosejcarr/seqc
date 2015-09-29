@@ -3,19 +3,29 @@ __author__ = 'ambrose'
 
 from sys import argv, exit
 from seqc.three_bit import CellBarcodes
+import argparse
 import pickle
 
 
-def main(fout, *barcodes):
-    cb = CellBarcodes(*barcodes)
+def main(fout, barcodes, reverse_complement):
+    cb = CellBarcodes(*barcodes, reverse_complement=reverse_complement)
     if not fout.endswith('.p'):
         fout += '.p'
     with open(fout, 'wb') as f:
         pickle.dump(cb, f)
 
 if __name__ == "__main__":
-    if not len(argv) > 3:
-        print('usage: process_barcodes <fout> <barcode_file1> [<barcode_file2> ...]')
+    p = argparse.ArgumentParser()
+    p.add_argument('-o', '--output_stem', metavar='O',
+                   help='name and path for output file')
+    p.add_argument('-b', '--barcode_files', metavar='B', help='barcode files', nargs='+')
+    p.add_argument('--reverse-complement', action='store_true', default=False,
+                   help=('indicates that barcodes in fastq files are reverse complements'
+                         'of the barcodes found in barcode files'))
+
+    if len(argv) == 1:
+        p.print_help()
         exit(2)
-    else:
-        main(*argv[1:])
+
+    args = p.parse_args()
+    main(args.output_stem, args.barcode_files, args.reverse_complement)
