@@ -330,7 +330,6 @@ class ThreeBitInDrop(ThreeBit):
         elif tetramer == 1894:  # TGAC
             cb1_length = 11 * 3
         else:
-            print('failure!')
             return 0, 0, 0
 
         # set some variables
