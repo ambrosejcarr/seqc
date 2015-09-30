@@ -199,8 +199,16 @@ def disambiguate(data, expectations, alpha=0.1):
 
                 exp_features = np.array(list(expectations[m].keys()))
                 exp_probs = np.array(list(expectations[m].values()))
-                exp = np.core.records.fromarrays(
-                    [exp_features, exp_probs], dtype=exp_dtype)
+                try:
+                    exp = np.core.records.fromarrays(
+                        [exp_features, exp_probs], dtype=exp_dtype)
+                except ValueError:
+                    print(exp_features)
+                    print(exp_probs)
+                    print(len(exp_features))
+                    print(len(exp_probs))
+                    print(type(exp_features))
+                    print(type(exp_probs))
 
                 # join on features
                 ma = rf.join_by('features', obs, exp, jointype='outer')
