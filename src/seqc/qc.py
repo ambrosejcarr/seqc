@@ -125,8 +125,9 @@ def disambiguate(data, expectations, alpha=0.1):
     --------
     """
     # load the expectations
-    with open(expectations, 'rb') as f:
-        expectations = pickle.load(f)
+    if isinstance(expectations, str):
+        with open(expectations, 'rb') as f:
+            expectations = pickle.load(f)
 
     # determine some constants
     eps = 10e-10
