@@ -152,6 +152,11 @@ def main(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     ################################ PROCESS ALIGNMENTS #################################
     arr = process_alignments(samfile, n_threads, gtf, frag_len)
+    # for debugging # todo remove me
+    if not fout.endswith('.npy'):
+        fout += '.npy'
+    np.save(fout, arr)
+
 
     ################################## CORRECT ERRORS ###################################
     # try:
