@@ -114,9 +114,9 @@ def disambiguate(data, expectations, alpha=0.1):
     Need: groups of gene - (rmt / cell)
 
     results:
-    0: unambiguous, 1: disambiguated by disjoint separation,
-    2: partial disambiguation by model, 3: complete disambiguation by model
-    4: ambiguous, 5: no model, likely contaminant
+    1: unambiguous, 2: disambiguated by disjoint separation,
+    3: partial disambiguation by model, 4: complete disambiguation by model
+    5: ambiguous, 6: no model, likely contaminant
 
     args:
     -----
@@ -140,7 +140,7 @@ def disambiguate(data, expectations, alpha=0.1):
 
     # filter, then merge cell & rmt
     seq_data = np.vstack([data['cell'][mask], data['rmt'][mask].astype(np.int64)]).T
-    seq = np.apply_along_axis(three_bit.ThreeBit.ints2int, axis=0,
+    seq = np.apply_along_axis(three_bit.ThreeBit.ints2int, axis=1,
                               arr=seq_data)
     indices = indices[mask]
 
@@ -163,15 +163,22 @@ def disambiguate(data, expectations, alpha=0.1):
 
         # check if all reads have a single, identical feature
         check_trivial = np.unique(group['features'])
-        if check_trivial.shape[0] == 1 and len(check_trivial[0]) == 1:
-            continue  # no changes necessary, result == 0 (unambiguous)
+        if check_trivial.shape[0] == 1 and isinstance(check_trivial[0], np.int64):
+            results[read_indices] = 1  # trivial
+            continue
 
         # get disjoint set membership
         uf = UnionFind()
         uf.union_all(group['features'])
-        set_membership, sets = uf.find_all(group['features'])
+        try:
+            set_membership, sets = uf.find_all(group['features'])
+        except TypeError:
+            # todo this is another instance of the stupid tuple interaction with ndarray.
+            # it almost feels like I should create an object just to avoid all this
+            # stupidity. Think about this tomorrow.
+            print(group['features'], group['features'].shape, type(group['features']))
 
-        # loop over disjoint molecules
+        # Loop Over Disjoint molecules
         for s in sets:
 
             disjoint_group = group[set_membership == s]
@@ -182,7 +189,7 @@ def disambiguate(data, expectations, alpha=0.1):
 
             # check that creating disjoint sets haven't made this trivial
             if obs_features.shape[0] == 1 and len(obs_features[0]) == 1:
-                results[disjoint_group_idx] = 1
+                results[disjoint_group_idx] = 2
                 continue  # no need to calculate probabilities for single model
 
             # convert observed counts to a structured array
@@ -222,8 +229,8 @@ def disambiguate(data, expectations, alpha=0.1):
             for i in range(1, len(model_likelihoods)):
                 model = models[i]
                 lh = model_likelihoods[i]
-                df = df[i]
-                p = likelihood_ratio_test(lh, top_likelihood, df)
+                degrees_freedom = df[i]
+                p = likelihood_ratio_test(lh, top_likelihood, degrees_freedom)
                 if p < alpha:
                     passing_models.append(model)
                 else:
@@ -231,11 +238,11 @@ def disambiguate(data, expectations, alpha=0.1):
 
             # adjust models, record results
             if len(passing_models) == 1:
-                res = 3
-            elif 1 < len(passing_models) < len(models):
-                res = 2
-            else:  # len(passing_models == len(models); no improvement was made.
                 res = 4
+            elif 1 < len(passing_models) < len(models):
+                res = 3
+            else:  # len(passing_models == len(models); no improvement was made.
+                res = 5
 
             # set results
             results[disjoint_group_idx] = res
