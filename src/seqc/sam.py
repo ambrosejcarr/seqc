@@ -10,11 +10,11 @@ from itertools import islice, tee
 import numpy.lib.recfunctions as rfn
 
 
-def multi_delete(list_, *args):
-    indexes = sorted(list(args), reverse=True)
-    for index in indexes:
-        del list_[index]
-    return list_
+def multi_delete(sorted_deque, *lists):
+    while sorted_deque:
+        for l in lists:
+            del l[sorted_deque.pop()]
+    return lists
 
 
 class Peekable(collections.Iterator):
@@ -109,9 +109,12 @@ def process_multialignment(alignments, feature_positions, feature_table):
                                               feature_table, feature_positions))
             positions.append(true_position)
 
+    delete = collections.deque()
     for i in range(len(features)):
         if features[i] == 0:
-            del features[i], positions[i]
+            delete.append(i)
+
+    features, positions = multi_delete(delete, features, positions)
 
     positions = tuple(positions)
     features = tuple(features)
