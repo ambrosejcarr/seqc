@@ -10,6 +10,13 @@ from itertools import islice, tee
 import numpy.lib.recfunctions as rfn
 
 
+def multi_delete(list_, *args):
+    indexes = sorted(list(args), reverse=True)
+    for index in indexes:
+        del list_[index]
+    return list_
+
+
 class Peekable(collections.Iterator):
 
     def __init__(self, it):
@@ -101,13 +108,14 @@ def process_multialignment(alignments, feature_positions, feature_table):
             features.append(translate_feature(reference_name, strand, true_position,
                                               feature_table, feature_positions))
             positions.append(true_position)
+
+    for i in range(len(features)):
+        if features[i] == 0:
+            del features[i], positions[i]
+
     positions = tuple(positions)
     features = tuple(features)
-    is_aligned = False
-    for feature in features:
-        if feature != 0:
-            is_aligned = True
-            break
+    is_aligned = True if features else False
 
     rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality, fwd_quality,
            features, positions, is_aligned, alignment_score)

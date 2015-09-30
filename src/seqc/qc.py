@@ -196,6 +196,7 @@ def disambiguate(data, expectations, alpha=0.1):
             for i, m in enumerate(possible_models):
 
                 # get model probabilities todo this should be pre-created in pickled index
+
                 exp_features = np.array(list(expectations[m].keys()))
                 exp_probs = np.array(list(expectations[m].values()))
                 exp = np.core.records.fromarrays(
