@@ -158,11 +158,15 @@ def disambiguate(data, expectations, alpha=0.1):
     # loop over potential molecules
     for read_indices in molecules.values():
 
+        # when indices is a single molecule, numpy does very weird things when converting
+        # to arrays, so we need to keep track of this and structure array construction
+        # accordingly
+
         # get a view of the structarray
         group = data[read_indices]
 
         # check if all reads have a single, identical feature
-        check_trivial = np.unique(group['features'])
+        check_trivial = np.unique(group['features'])  # this responds properly
         if check_trivial.shape[0] == 1 and isinstance(check_trivial[0], np.int64):
             results[read_indices] = 1  # trivial
             continue
@@ -170,13 +174,15 @@ def disambiguate(data, expectations, alpha=0.1):
         # get disjoint set membership
         uf = UnionFind()
         uf.union_all(group['features'])
+        # todo this throws errors when entries in features are length 1
+        err_count = 0
         try:
             set_membership, sets = uf.find_all(group['features'])
-        except TypeError:
-            # todo this is another instance of the stupid tuple interaction with ndarray.
-            # it almost feels like I should create an object just to avoid all this
-            # stupidity. Think about this tomorrow.
-            print(group['features'], group['features'].shape, type(group['features']))
+        except:
+            print(group['features'])
+            err_count += 1
+            if err_count > 5:
+                raise
 
         # Loop Over Disjoint molecules
         for s in sets:
