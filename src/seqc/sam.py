@@ -12,8 +12,9 @@ import numpy.lib.recfunctions as rfn
 
 def multi_delete(sorted_deque, *lists):
     while sorted_deque:
+        i = sorted_deque.pop()
         for l in lists:
-            del l[sorted_deque.pop()]
+            del l[i]
     return lists
 
 
