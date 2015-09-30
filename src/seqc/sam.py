@@ -17,6 +17,91 @@ def multi_delete(sorted_deque, *lists):
             del l[i]
     return lists
 
+"""
+the sole purpose of the two classes below is to defeat the confounding way that numpy
+treats tuples with len == 1 when constructing arrays by obscuring the existence of tuple
+data by 1 level. Pass a tuple as a feature or it will break
+"""
+
+
+class FeatureGroup:
+
+    def __init__(self, features):
+        self.features = features
+
+    def __repr__(self):
+        return '<FeatureGroup: %s>' % self.features.__repr__()
+
+    def __lt__(self, other):
+        return self.features.__lt__(other)
+
+    def __gt__(self, other):
+        return self.features.__gt__(other)
+
+    def __eq__(self, other):
+        return self.features.__eq__(other)
+
+    def __ne__(self, other):
+        return self.features.__ne__(other)
+
+    def __le__(self, other):
+        return self.features.__le__(other)
+
+    def __ge__(self, other):
+        return self.features.__ge__(other)
+
+    def __len__(self):
+        return len(self.features)
+
+    def __contains__(self, item):
+        return self.features.__contains__(item)
+
+    def __iter__(self):
+        return iter(self.features)
+
+    def __hash__(self):
+        return hash(self.features)
+
+
+class PositionGroup:
+
+    def __init__(self, positions):
+        self.positions = positions
+
+    def __repr__(self):
+        return '<PositionGroup: %s>' % self.positions.__repr__()
+
+    def __lt__(self, other):
+        return self.positions.__lt__(other)
+
+    def __gt__(self, other):
+        return self.positions.__gt__(other)
+
+    def __eq__(self, other):
+        return self.positions.__eq__(other)
+
+    def __ne__(self, other):
+        return self.positions.__ne__(other)
+
+    def __le__(self, other):
+        return self.positions.__le__(other)
+
+    def __ge__(self, other):
+        return self.positions.__ge__(other)
+
+    def __len__(self):
+        return len(self.positions)
+
+    def __contains__(self, item):
+        return self.positions.__contains__(item)
+
+    def __iter__(self):
+        return iter(self.positions)
+
+    def __hash__(self):
+        return hash(self.positions)
+
+
 
 class Peekable(collections.Iterator):
 
