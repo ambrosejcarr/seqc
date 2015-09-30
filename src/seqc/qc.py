@@ -196,19 +196,11 @@ def disambiguate(data, expectations, alpha=0.1):
             for i, m in enumerate(possible_models):
 
                 # get model probabilities todo this should be pre-created in pickled index
+                # todo this does the wrong thing with several types of input:
+                # (1, 2): 1. --> array([1, 2]) instead of array([(1, 2)])
+                # (1,) : 1. --> array([[1]]) (shape (1, 1) instead of shape (1,))
 
-                exp_features = np.array(list(expectations[m].keys()))
-                exp_probs = np.array(list(expectations[m].values()))
-                try:
-                    exp = np.core.records.fromarrays(
-                        [exp_features, exp_probs], dtype=exp_dtype)
-                except ValueError:
-                    print(exp_features)
-                    print(exp_probs)
-                    print(len(exp_features))
-                    print(len(exp_probs))
-                    print(type(exp_features))
-                    print(type(exp_probs))
+                exp = np.array(list(expectations[m].items()), dtype=exp_dtype)
 
                 # join on features
                 ma = rf.join_by('features', obs, exp, jointype='outer')
