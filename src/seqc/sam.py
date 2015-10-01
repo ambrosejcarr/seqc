@@ -24,83 +24,48 @@ data by 1 level. Pass a tuple as a feature or it will break
 """
 
 
-class FeatureGroup:
+class ObfuscatedTuple:
 
-    def __init__(self, features):
-        self.features = features
-
-    def __repr__(self):
-        return '<FeatureGroup: %s>' % self.features.__repr__()
-
-    def __lt__(self, other):
-        return self.features.__lt__(other)
-
-    def __gt__(self, other):
-        return self.features.__gt__(other)
-
-    def __eq__(self, other):
-        return self.features.__eq__(other)
-
-    def __ne__(self, other):
-        return self.features.__ne__(other)
-
-    def __le__(self, other):
-        return self.features.__le__(other)
-
-    def __ge__(self, other):
-        return self.features.__ge__(other)
-
-    def __len__(self):
-        return len(self.features)
-
-    def __contains__(self, item):
-        return self.features.__contains__(item)
-
-    def __iter__(self):
-        return iter(self.features)
-
-    def __hash__(self):
-        return hash(self.features)
-
-
-class PositionGroup:
-
-    def __init__(self, positions):
-        self.positions = positions
+    def __init__(self, tuple_):
+        if not isinstance(tuple_, tuple):
+            tuple_ = tuple(tuple_)
+        self._tuple = tuple_
 
     def __repr__(self):
-        return '<PositionGroup: %s>' % self.positions.__repr__()
+        return '<ObfuscatedTuple: %s>' % self._tuple.__repr__()
 
     def __lt__(self, other):
-        return self.positions.__lt__(other)
+        return self._tuple.__lt__(other)
 
     def __gt__(self, other):
-        return self.positions.__gt__(other)
+        return self._tuple.__gt__(other)
 
     def __eq__(self, other):
-        return self.positions.__eq__(other)
+        return self._tuple.__eq__(other)
 
     def __ne__(self, other):
-        return self.positions.__ne__(other)
+        return self._tuple.__ne__(other)
 
     def __le__(self, other):
-        return self.positions.__le__(other)
+        return self._tuple.__le__(other)
 
     def __ge__(self, other):
-        return self.positions.__ge__(other)
+        return self._tuple.__ge__(other)
 
     def __len__(self):
-        return len(self.positions)
+        return len(self._tuple)
 
     def __contains__(self, item):
-        return self.positions.__contains__(item)
+        return self._tuple.__contains__(item)
 
     def __iter__(self):
-        return iter(self.positions)
+        return iter(self._tuple)
 
     def __hash__(self):
-        return hash(self.positions)
+        return hash(self._tuple)
 
+    def to_tuple(self):
+        return self._tuple
 
 
 class Peekable(collections.Iterator):
@@ -202,8 +167,8 @@ def process_multialignment(alignments, feature_positions, feature_table):
 
     features, positions = multi_delete(delete, features, positions)
 
-    positions = tuple(positions)
-    features = tuple(features)
+    positions = ObfuscatedTuple(positions)
+    features = ObfuscatedTuple(features)
     is_aligned = True if features else False
 
     rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality, fwd_quality,

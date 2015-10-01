@@ -176,15 +176,18 @@ class ThreeBit:
             res += num
         return res
 
-    # def _extract_cell(self, s):
-    #     cell = s & self._cell_mask
-    #     s >>= (self._cell_len * 3)
-    #     return cell, s
-    #
-    # def _extract_rmt(self, s):
-    #     rmt = s & self._rmt_mask
-    #     s >>= (self._rmt_len * 3)
-    #     return rmt, s
+    @staticmethod
+    def gc_content(s):
+        """calculate percentage of s that is G or C"""
+        gc = 0
+        length = 0
+        while s > 0:
+            len += 1
+            masked = s & 111
+            if masked == 0b100 or masked == 0b101:
+                gc += 1
+            s >>= 3
+        return gc / length
 
     @staticmethod
     def _num_poly_t(s):
@@ -213,15 +216,6 @@ class ThreeBit:
                 return cls(*p)
         except KeyError:
             raise ValueError('unknown processor')
-
-    # def rmt(self, s):
-    #     """extract and return the rmt from the bin_ sequence"""
-    #     return s & self._rmt_mask
-    #
-    # def cell(self, s):
-    #     # todo this should potentially return a list to be consistent with cells()
-    #     """return all cell barcodes present in the bin_ sequence, concatenated together"""
-    #     return s >> (3 * self._rmt_len)
 
     @staticmethod
     def split_cell(s):
@@ -291,6 +285,14 @@ class ThreeBit:
 
             return cell, rmt, n_poly_t
 
+    @staticmethod
+    def bitlength(s):
+        bitlen = s.bit_length()
+        # correct for leading T-nucleotide (011) whose leading 0 gets trimmed
+        if bitlen % 3:
+            bitlen += 1
+        return bitlen
+
 
 class ThreeBitInDrop(ThreeBit):
     """
@@ -311,11 +313,7 @@ class ThreeBitInDrop(ThreeBit):
         s = self.str2bin(s)
 
         # get bit length of sequence
-        bitlen = s.bit_length()
-
-        # correct for leading T-nucleotide (011) whose leading 0 gets trimmed
-        if bitlen % 3:
-            bitlen += 1
+        bitlen = self.bitlength(s)
 
         # use to check for spacer positioning
         tetramer = (s >> (bitlen - (3 * 28))) & 0o7777

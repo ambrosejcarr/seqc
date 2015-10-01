@@ -3,9 +3,10 @@ __author__ = 'ambrose'
 import numpy as np
 import numpy.lib.recfunctions as rf
 import pandas as pd
-from collections import defaultdict
+from collections import defaultdict, Counter
 import pickle
 from seqc import three_bit
+from seqc.sam import ObfuscatedTuple
 from scipy.special import gammaln, gammaincinv
 from scipy.stats import chi2
 from itertools import chain
@@ -83,13 +84,16 @@ class UnionFind:
                 self.parents[r] = heaviest
 
     def union_all(self, iterable):
-        self.union(i for i in iterable)
+        for i in iterable:
+            self.union(*i)
 
     def find_all(self, vals):
         vals = [self.find_component(v) for v in vals]
         unique = set(vals)
         reindex = dict(zip(unique, range(len(unique))))
-        return np.array([reindex[v] for v in vals]), np.array(list(reindex.values()))
+        set_membership = np.array([reindex[v] for v in vals])
+        sets = np.array(list(reindex.values()))
+        return set_membership, sets
 
     def find_component(self, iterable):
         """Return the set that obj belongs to
@@ -102,6 +106,27 @@ class UnionFind:
          incorrect results
         """
         return self[next(iter(iterable))]
+
+# determine some constants
+_eps = 10e-10
+
+
+def merge_observations_and_expectations(o, e):
+    """may need to modify some stuff to deal with the weird feature object"""
+    all_keys = set(o.keys()).union(e.keys())
+    n = len(all_keys)
+    obs = np.zeros(n, dtype=np.float)
+    exp = np.zeros(n, dtype=np.float)
+    for i, k in enumerate(all_keys):
+        try:
+            obs[i] = o[k]
+        except KeyError:
+            obs[i] = _eps
+        try:
+            exp[i] = e[k]
+        except KeyError:
+            exp[i] = _eps
+    return obs, exp
 
 
 def disambiguate(data, expectations, alpha=0.1):
@@ -129,9 +154,6 @@ def disambiguate(data, expectations, alpha=0.1):
         with open(expectations, 'rb') as f:
             expectations = pickle.load(f)
 
-    # determine some constants
-    eps = 10e-10
-
     # create array to hold disambiguation results and a counter for total molecules
     indices = np.arange(data.shape[0])
     results = np.zeros(data.shape[0], dtype=np.int8)
@@ -153,8 +175,8 @@ def disambiguate(data, expectations, alpha=0.1):
         molecules[k] = np.array(v)  # covert all lists to arrays for indexing
 
     # set structured array dtype for counting reads per molecule occurences
-    obs_dtype = [('features', np.object), ('nobs', np.int)]
-    exp_dtype = [('features', np.object), ('pexp', np.float)]
+    # obs_dtype = [('features', np.object), ('nobs', np.int)]
+    # exp_dtype = [('features', np.object), ('pexp', np.float)]
 
     # loop over potential molecules
     for read_indices in molecules.values():
@@ -164,46 +186,43 @@ def disambiguate(data, expectations, alpha=0.1):
         # accordingly
 
         # get a view of the structarray
-        group = data[read_indices]
+        putative_molecule = data[read_indices]
 
         # check if all reads have a single, identical feature
-        check_trivial = np.unique(group['features'])  # this responds properly
-        if check_trivial.shape[0] == 1 and isinstance(check_trivial[0], np.int64):
+        check_trivial = Counter(putative_molecule['features'])
+        if len(check_trivial) == 1 and len(next(iter(check_trivial))) == 1:
             results[read_indices] = 1  # trivial
             continue
 
         # get disjoint set membership
         uf = UnionFind()
-        uf.union_all(group['features'])
-        # todo this throws errors when entries in features are length 1
-        err_count = 0
-        try:
-            set_membership, sets = uf.find_all(group['features'])
-        except:
-            print(group['features'])
-            err_count += 1
-            if err_count > 5:
-                raise
+        uf.union_all(putative_molecule['features'])
+        set_membership, sets = uf.find_all(putative_molecule['features'])
 
         # Loop Over Disjoint molecules
         for s in sets:
 
-            disjoint_group = group[set_membership == s]
+            disjoint_group = putative_molecule[set_membership == s]
             disjoint_group_idx = read_indices[set_membership == s]  # track index
 
             # get observed counts
-            obs_features, obs_counts, = np.unique(group['features'], return_counts=True)
+            obs_counter = Counter(f.to_tuple() for f in putative_molecule['features'])
+            # obs_features = np.array(list(obs_counter.keys()))
+            # obs_counts = np.array(list(obs_counter.values()))
 
             # check that creating disjoint sets haven't made this trivial
-            if obs_features.shape[0] == 1 and len(obs_features[0]) == 1:
+            if len(obs_counter) == 1 and len(next(iter(obs_counter))) == 1:
                 results[disjoint_group_idx] = 2
                 continue  # no need to calculate probabilities for single model
 
             # convert observed counts to a structured array
-            obs = np.core.records.fromarrays([obs_features, obs_counts], dtype=obs_dtype)
+            # obs = np.core.records.fromarrays([obs_features, obs_counts], dtype=obs_dtype)
 
             # get all potential molecule identities, create container for likelihoods, df
-            possible_models = np.array(list(set(chain(*disjoint_group['features']))))
+            possible_models = np.array(
+                list(set(chain(*(f.to_tuple() for f in disjoint_group['features']))))
+            )
+
             model_likelihoods = np.empty_like(possible_models, dtype=np.float)
             df = np.empty_like(possible_models, dtype=np.int)
 
@@ -214,16 +233,12 @@ def disambiguate(data, expectations, alpha=0.1):
                 # (1, 2): 1. --> array([1, 2]) instead of array([(1, 2)])
                 # (1,) : 1. --> array([[1]]) (shape (1, 1) instead of shape (1,))
 
-                exp = np.array(list(expectations[m].items()), dtype=exp_dtype)
-
-                # join on features
-                ma = rf.join_by('features', obs, exp, jointype='outer')
-                ma.set_fill_value = ['?', 0, eps]
-                ma = ma.filled()
+                exp_dict = expectations[m]
+                obs, exp = merge_observations_and_expectations(obs_counter, exp_dict)
 
                 # calculate model probability
-                model_likelihoods[i] = multinomial_loglikelihood(ma['nobs'], ma['pexp'])
-                df[i] = ma.shape[0]
+                model_likelihoods[i] = multinomial_loglikelihood(obs, exp)
+                df[i] = len(obs) - 1
 
             likelihood_ordering = np.argsort(model_likelihoods)[::-1]
             models = possible_models[likelihood_ordering]
@@ -408,7 +423,7 @@ def disambiguate_old(data, expectations, alpha=0.1):
             results[indices] = res
 
             # change features
-            new_features = tuple(passing_models)
+            new_features = ObfuscatedTuple(passing_models)
 
             data.ix[indices, 'features'] = new_features
 

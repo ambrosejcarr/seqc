@@ -13,6 +13,7 @@ import pandas as pd
 import random
 import gzip
 import ftplib
+from collections import Counter
 
 # tests to add:
 # 1. test for processing of multi-aligned reads. Right now there is no test for lines
@@ -92,7 +93,8 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
         for f, c in zip(features, counts):
             for _ in range(c):
                 arr[i] = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
-                          fwd_quality, f, tuple([0] * len(f)), is_aligned,
+                          fwd_quality, sam.ObfuscatedTuple(f),
+                          sam.ObfuscatedTuple(tuple([0] * len(f))), is_aligned,
                           alignment_score)
                 i += 1
         arrays.append(arr)
@@ -430,7 +432,7 @@ class TestThreeBitInDrop(unittest.TestCase):
         self.assertEqual(cell, 0)
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestThreeBitGeneral(unittest.TestCase):
 
     def test_3bit_mars_seq(self):
@@ -494,6 +496,8 @@ class TestThreeBitGeneral(unittest.TestCase):
         self.assertEqual(tb.process_forward_sequence(no_poly_t), (cell, rmt, 0))
         self.assertEqual(tb.process_forward_sequence(truncated_rmt), (cell, 0, 0))
         self.assertEqual(tb.process_forward_sequence(no_data), (0, 0, 0))
+
+    def test_gc_content(self):
 
 
 @unittest.skip('')
@@ -766,26 +770,100 @@ class TestPeekable(unittest.TestCase):
 
 
 @unittest.skip('')
+class TestUnionFind(unittest.TestCase):
+
+    def setUp(self):
+        # get all combinations of single and multiple features with and without overlaps
+        self.f1 = sam.ObfuscatedTuple((1, 2, 3))  # multiple features, overlaps
+        self.f2 = sam.ObfuscatedTuple((1, 2))
+        self.f3 = sam.ObfuscatedTuple((1,))  # one feature, overlaps
+        self.f4 = sam.ObfuscatedTuple((3, 4))
+        self.f5 = sam.ObfuscatedTuple((4,))
+        self.f6 = sam.ObfuscatedTuple((6, 7))  # multiple features, no overlaps
+        self.f7 = sam.ObfuscatedTuple((11,))  # one feature, no overlaps
+
+    def test_union_find_on_single_feature_group(self):
+        """This works with the new object because of its __iter__() method"""
+        arr = np.array([self.f7], dtype=np.object)
+        uf = qc.UnionFind()
+        uf.union_all(arr)
+        set_membership, sets = uf.find_all(arr)
+        self.assertTrue(np.all(sets == np.array([0])))
+        self.assertTrue(np.all(set_membership == np.array([0])))
+
+    def test_union_find_on_multiple_feature_group(self):
+        arr = np.array([self.f6], dtype=np.object)
+        uf = qc.UnionFind()
+        uf.union_all(arr)
+        set_membership, sets = uf.find_all(arr)
+        self.assertTrue(np.all(sets == np.array([0])))
+        self.assertTrue(np.all(set_membership == np.array([0])))
+
+    def test_union_find_on_multiple_feature_group_no_repitition_with_overlaps(self):
+        arr = np.array([self.f1, self.f2, self.f3, self.f4, self.f5, self.f6, self.f7],
+                       dtype=np.object)
+        uf = qc.UnionFind()
+        uf.union_all(arr)
+        set_membership, sets = uf.find_all(arr)
+        self.assertEqual(sorted(sets), [0, 1, 2])
+        # there aren't guaranteed set associations -- all will have same number if they're
+        # in the same component, but that number could be any of the sets 0, 1, 2
+        s1 = set_membership[0]
+        s2 = set_membership[-2]
+        s3 = set_membership[-1]
+        prediction = np.array([s1, s1, s1, s1, s1, s2, s3])
+        # only 3 sets should be present, they should be 0, 1, and 2
+        self.assertEqual(sorted(np.unique(set_membership)), [0, 1, 2])
+
+        # they should find the right membership
+
+        self.assertTrue(np.all(set_membership == prediction),
+                        '%s != %s' % (repr(set_membership), repr(prediction)))
+
+    def test_union_find_on_multiple_feature_group_with_repitition_with_overlaps(self):
+        arr = np.array([self.f1, self.f2, self.f3, self.f3, self.f4, self.f4, self.f5,
+                        self.f6, self.f7, self.f7], dtype=np.object)
+        uf = qc.UnionFind()
+        uf.union_all(arr)
+        set_membership, sets = uf.find_all(arr)
+        self.assertEqual(sorted(sets), [0, 1, 2])
+        # there aren't guaranteed set associations -- all will have same number if they're
+        # in the same component, but that number could be any of the sets 0, 1, 2
+        s1 = set_membership[0]
+        s2 = set_membership[-3]
+        s3 = set_membership[-1]
+        prediction = np.array([s1, s1, s1, s1, s1, s1, s1, s2, s3, s3])
+        # only 3 sets should be present, they should be 0, 1, and 2
+        self.assertEqual(sorted(np.unique(set_membership)), [0, 1, 2])
+
+        # they should find the right membership
+
+        self.assertTrue(np.all(set_membership == prediction),
+                        '%s != %s' % (repr(set_membership), repr(prediction)))
+
+
+@unittest.skip('')
 class TestDisambiguation(unittest.TestCase):
+    """this may need more tests for more sophisticated input data."""
 
     def setUp(self):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
         self.expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment.pckl'
 
-    # @unittest.skip('only run this if new disambiguation input is needed')
+    @unittest.skip('only run this if new disambiguation input is needed')
     def test_create_test_data(self):
         cell_barcodes = self.data_dir + 'in_drop/barcodes/cb_3bit.p'
         save = self.data_dir + 'in_drop/disambiguation_input.p'
         self.data = generate_in_drop_disambiguation_data(
             self.expectations, cell_barcodes, 1000, 10, save=save)
 
-    # todo this has a weak test for success. Fix to check specific disambiguation results
+    # @unittest.skip('')
     def test_disambiguation(self):
         arr_pickle = self.data_dir + 'in_drop/disambiguation_input.p'
         with open(arr_pickle, 'rb') as f:
             arr = pickle.load(f)
         res, data = qc.disambiguate(arr, self.expectations)
-        self.assertTrue(~np.all(data == 0))
+        self.assertTrue(np.all(res == 4))  # 4 == complete disambiguation.
 
 
 @unittest.skip('')
