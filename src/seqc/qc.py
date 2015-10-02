@@ -270,7 +270,7 @@ def disambiguate(data, expectations, alpha=0.1):
             results[disjoint_group_idx] = res
 
             # change features
-            new_features = tuple(passing_models)
+            new_features = ObfuscatedTuple(passing_models)
 
             data['features'][disjoint_group_idx] = new_features
 

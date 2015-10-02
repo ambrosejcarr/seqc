@@ -129,7 +129,7 @@ def main(fout, forward, reverse, samfile, merged_fastq, processor, index,
         merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
 
     with open(fout + '_metadata.txt', 'a') as f:
-        f.write('Low Complexity Reads: %d' % nlc)
+        f.write('Low Complexity Reads: %d\n' % nlc)
 
     ###################################### ALIGN ########################################
     if merged_fastq and not samfile:

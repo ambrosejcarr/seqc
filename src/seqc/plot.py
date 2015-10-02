@@ -15,6 +15,36 @@ from collections import defaultdict
 sns.set_style('ticks')
 
 
+def deobfuscate(df):
+    """exchange ObfuscatedTuple classes for regular tuples"""
+    features = df['features'].apply(lambda x: x.to_tuple())
+    positions = df['positions'].apply(lambda x: x.to_tuple)
+    df['positions'] = positions
+    df['features'] = features
+    return df
+
+
+def mask_failing_cells(df_or_array):
+    return ((df_or_array['cell'] != 0) &
+            (df_or_array['rmt'] != 0) &
+            (df_or_array['n_poly_t'] > 3) &
+            (df_or_array['is_aligned'])
+            )
+
+def _load_array(arr):
+    # open the file
+    if isinstance(arr, str):
+        df = pd.DataFrame(np.load(arr))
+    elif isinstance(arr, np.ndarray):
+        df = pd.DataFrame(arr)
+    elif isinstance(arr, pd.DataFrame):
+        df = arr
+    else:
+        raise ValueError('parameter "arr" must be the filename of a serialized array,'
+                         'a structured array, a recarray or a pandas dataframe')
+    return df
+
+
 def _density_plot(data, x, y, ax, xlab, ylab, arcsinh=True):
     xd = data[x].copy()
     yd = data[y].copy()  # todo | these are a bit of a hack, want a copying slice
@@ -62,21 +92,9 @@ def _density_plot(data, x, y, ax, xlab, ylab, arcsinh=True):
 
 def barcode_summary(arr, aggregation_col_name, save):
 
-    # todo split homopolymer out into a/c/g/t
-
-    # open the file
-    if isinstance(arr, str):
-        df = pd.DataFrame(np.load(arr))
-    elif isinstance(arr, np.ndarray):
-        df = pd.DataFrame(arr)
-    elif isinstance(arr, pd.DataFrame):
-        pass
-    else:
-        raise ValueError('parameter "arr" must be the filename of a serialized array,'
-                         'a structured array, a recarray or a pandas dataframe')
+    df = _load_array(arr)
 
     # mask reads failing filters
-
 
     aggregation_functions = {
         ('cell', lambda a: np.unique(a).shape[0]),  # number of unique cells
@@ -281,16 +299,7 @@ def _horizontal_marginal(data, ax):
 def error_rate(arr, fname, experiment_name=None):
     """plot error rates with marginal distributions for each experiment type"""
 
-    # open the file
-    if isinstance(arr, str):
-        df = pd.DataFrame(np.load(arr))
-    elif isinstance(arr, np.ndarray):
-        df = pd.DataFrame(arr)
-    elif isinstance(arr, pd.DataFrame):
-        pass
-    else:
-        raise ValueError('parameter "arr" must be the filename of a serialized array,'
-                         'a structured array, a recarray or a pandas dataframe')
+    df = _load_array(arr)
 
     df[np.isnan(df)] = 0
     df[np.isinf(df)] = 0
@@ -381,17 +390,15 @@ def _pie(ax, sizes, explode, labels, colors=None):
     return ax
 
 
-def molecule_yeild(h5db, exp_name, save=False):
+def molecule_yeild(arr, metadata, fname, experiment_name=None):
     """get molecular yield information for exp_name"""
+
+    df = _load_array(arr)
 
     raise NotImplementedError
 
-    # get data
-    with tb.open_file(h5db) as f:
-        metadata = f.get_node('/sequence_data/', 'metadata').read()
-
-    # get experiment-specific data
-    data = metadata[metadata['experiment_name'] == exp_name.encode()]
+    with open(metadata, 'r') as f:
+        short_filtered_reads = int(f.read().strip().split('\t')[-1])
 
     # set up figure
     f = plt.figure()
@@ -399,9 +406,9 @@ def molecule_yeild(h5db, exp_name, save=False):
 
     ################################ INITIAL FILTERING ##################################
 
-    trimmed = data['trimmed']
-    too_short = data['too_short']
-    full_length = data['total_reads'] - data['trimmed']
+    trimmed = df['trimmed']
+    too_short = df['too_short']
+    full_length = df['total_reads'] - df['trimmed']
 
     ax1 = plt.subplot(gs[0, 0])
     colors = plt.cm.RdYlGn([0.1, 0.45, 0.9])
@@ -409,12 +416,12 @@ def molecule_yeild(h5db, exp_name, save=False):
          ['Trimmed', 'Too Short', 'Full Length'], colors)
 
     #################################### ALIGNMENT ######################################
-    not_aligned = data['unmapped_reads']
-    genomic = data['aligned_genomic']
-    no_cell = data['no_cell']  # todo | should filter this during error correction?
-    no_rmt = data['no_rmt']
-    multimapped = data['mmapped_reads']
-    useful_reads = data['total_reads']
+    not_aligned = df['unmapped_reads']
+    genomic = df['aligned_genomic']
+    no_cell = df['no_cell']  # todo | should filter this during error correction?
+    no_rmt = df['no_rmt']
+    multimapped = df['mmapped_reads']
+    useful_reads = df['total_reads']
 
     ax2 = plt.subplot(gs[0, 1])
     greens = plt.cm.Greens([0.5, 0.7])
@@ -426,12 +433,12 @@ def molecule_yeild(h5db, exp_name, save=False):
     _pie(ax2, values, [0, 0, 0, 0, 0.05, 0.05], labels, colors)
 
     ######################### DISAMBIGUATION & ERROR CORRECTION #########################
-    no_model = data['no_model']
-    errors_corrected = data['errors_corrected']
-    not_disambiguated = data['not_disambiguated']
-    partially_disambiguated = data['partially_disambiguated']
-    disambiguated = data['disambiguated']
-    unambiguous = data['total_molecules'] - data['disambiguated']
+    no_model = df['no_model']
+    errors_corrected = df['errors_corrected']
+    not_disambiguated = df['not_disambiguated']
+    partially_disambiguated = df['partially_disambiguated']
+    disambiguated = df['disambiguated']
+    unambiguous = df['total_molecules'] - df['disambiguated']
 
     ax3 = plt.subplot(gs[1, 0])
     greens = plt.cm.Greens([0.5, 0.7])
@@ -447,29 +454,27 @@ def molecule_yeild(h5db, exp_name, save=False):
     ################################## CELL SELECTION ###################################
     ax4 = plt.subplot(gs[1, 1])
     labels = ['molecules_in_subthreshold_cells', 'molecules_in_cells']
-    values = [data[k] for k in labels]
+    values = [df[k] for k in labels]
     explode = [0, 0.05]
     colors = ['r', 'b']
     _pie(ax4, values, explode, labels, colors)
 
     # mark the final graph with a yield percentage
-    fastq_filter_yeild = data['total_reads'] / (data['total_reads'] + data['trimmed'])
-    alignment_yield = (data['mmapped_reads'] + data['unique_reads']) / data['total_reads']
-    filter_yeild = (data['disambiguated'] + unambiguous) / (
-        data['partially_disambiguated'] + data['not_disambiguated'] + data['no_model'] +
-        data['errors_corrected'] + data['disambiguated'] + unambiguous)
-    cell_yield = data['molecules_in_cells'] / (data['molecules_in_subthreshold_cells'] +
-                                               data['molecules_in_cells'])
+    fastq_filter_yeild = df['total_reads'] / (df['total_reads'] + df['trimmed'])
+    alignment_yield = (df['mmapped_reads'] + df['unique_reads']) / df['total_reads']
+    filter_yeild = (df['disambiguated'] + unambiguous) / (
+        df['partially_disambiguated'] + df['not_disambiguated'] + df['no_model'] +
+        df['errors_corrected'] + df['disambiguated'] + unambiguous)
+    cell_yield = df['molecules_in_cells'] / (df['molecules_in_subthreshold_cells'] +
+                                               df['molecules_in_cells'])
     yeilds = [fastq_filter_yeild, alignment_yield, filter_yeild, cell_yield]
 
     gs.tight_layout(f)
 
-    if save:
-        if isinstance(save, str):
-            if save.endswith('.jpg') or save.endswith('.png'):
-                plt.savefig(save, dpi=450)
-            else:
-                plt.savefig(save)
+    if fname.endswith('.jpg') or fname.endswith('.png'):
+        plt.savefig(fname, dpi=450)
+    else:
+        plt.savefig(fname)
 
     return f, yeilds
 
