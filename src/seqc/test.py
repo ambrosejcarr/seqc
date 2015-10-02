@@ -498,6 +498,11 @@ class TestThreeBitGeneral(unittest.TestCase):
         self.assertEqual(tb.process_forward_sequence(no_data), (0, 0, 0))
 
     def test_gc_content(self):
+        test_string = 'TGCGCAAAAG'
+        expected_result = 0.5
+        bin_string = three_bit.ThreeBit.str2bin(test_string)
+        result = three_bit.ThreeBit.gc_content(bin_string)
+        self.assertEqual(result, expected_result)
 
 
 @unittest.skip('')

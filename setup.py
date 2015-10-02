@@ -8,7 +8,8 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      packages=['seqc'], requires=['numpy', 'pandas'],  # note: requires numpy > 1.10.0
+      # note: requires numpy > 1.10.0
+      packages=['seqc'], requires=['numpy', 'pandas', 'matplotlib', 'seaborn'],
       scripts=['src/scripts/SEQC', 'src/scripts/PROCESS_BARCODES'],
       )
 
