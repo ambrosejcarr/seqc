@@ -15,10 +15,19 @@ from collections import defaultdict
 sns.set_style('ticks')
 
 
+def _savefig(f, fname):
+    if fname.endswith('.jpg') or fname.endswith('.png'):
+        f.savefig(fname, dpi=450)
+    else:
+        f.savefig(fname)
+
+
 def deobfuscate(df):
     """exchange ObfuscatedTuple classes for regular tuples"""
+    if isinstance(df, np.ndarray):
+        df = pd.DataFrame(df)
     features = df['features'].apply(lambda x: x.to_tuple())
-    positions = df['positions'].apply(lambda x: x.to_tuple)
+    positions = df['positions'].apply(lambda x: x.to_tuple())
     df['positions'] = positions
     df['features'] = features
     return df
@@ -30,6 +39,38 @@ def mask_failing_cells(df_or_array):
             (df_or_array['n_poly_t'] > 3) &
             (df_or_array['is_aligned'])
             )
+
+
+def visualize_filter_correlation(arr, fname, experiment_name=None):
+
+    # df = _load_array(arr)
+    df = arr
+    corr_df = df.copy()
+    corr_df = corr_df.drop(['features', 'positions', 'cell'], axis=1)
+    corr_df['trimmed_bases'][corr_df['trimmed_bases'] > 0] = 1
+    corr_df['rmt'][corr_df['rmt'] > 0] = 1
+    corr_df['disambiguation_results'][corr_df['disambiguation_results'] < 5] = 1
+    corr_df['disambiguation_results'][corr_df['disambiguation_results'] == 5] = 0
+    corr_df['n_poly_t'] = [0 if n < 4 else 1 for n in corr_df['n_poly_t']]
+
+    corr = corr_df.corr()
+
+    corr.values[np.triu_indices_from(corr.values)] = 0
+    corr.values[np.diag_indices_from(corr.values)] = 0
+
+    labels = [l.replace('_', ' ') for l in corr_df.columns]
+    labels[-1] = 'is ambiguous'
+
+    f = plt.figure(figsize=(5, 4))
+    with sns.axes_style('whitegrid'):
+        sns.heatmap(corr, linewidths=0.5, xticklabels=labels, yticklabels=labels)
+        title = 'read characteristic correlation'
+        if experiment_name:
+            title = experiment_name + ' ' + title
+        plt.title(title)
+        plt.tight_layout()
+        _savefig(f, fname)
+
 
 def _load_array(arr):
     # open the file
