@@ -113,6 +113,17 @@ class CellBarcodes:
             return None
 
 
+class DropSeqCellBarcodes:
+
+    @staticmethod
+    def close_match():
+        return 1
+
+    @staticmethod
+    def perfect_match():
+        return 1
+
+
 class ThreeBit:
     """
     method to extract cell barcodes and rmts given variable lengths of barcodes
@@ -370,6 +381,9 @@ class ThreeBitInDrop(ThreeBit):
 
             return self.ints2int([cb1, cb2]), rmt, num_poly_t
 
+
+# todo need different expectations for n_poly t since there should be a different number
+# todo for each cell barcode length
 
 
     @staticmethod
