@@ -9,7 +9,7 @@ setup(name='seqc',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
       # note: requires numpy > 1.10.0
-      packages=['seqc'], requires=['numpy', 'pandas', 'matplotlib', 'seaborn'],
+      packages=['seqc'], requires=['numpy', 'pandas', 'matplotlib', 'seaborn', 'scipy'],
       scripts=['src/scripts/SEQC', 'src/scripts/PROCESS_BARCODES'],
       )
 

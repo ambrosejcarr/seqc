@@ -13,7 +13,6 @@ import pandas as pd
 import random
 import gzip
 import ftplib
-from collections import Counter
 
 # tests to add:
 # 1. test for processing of multi-aligned reads. Right now there is no test for lines
@@ -28,9 +27,10 @@ def generate_in_drop_fastq_data(n, prefix):
     gfq = GenerateFastq()
     fwd_len = 50
     rev_len = 100
-    barcodes = data_dir + 'in_drop/barcodes/in_drop_barcodes.p'
+    # barcodes = data_dir + 'in_drop/barcodes/in_drop_barcodes.p'
+    barcodes = data_dir + 'in_drop/barcodes/cb_3bit.p'
     umi_len = 6
-    forward = gfq.generate_forward_fastq(n, fwd_len, barcodes, umi_len)
+    forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes, umi_len)
     forward = forward.read()  # consume the StringIO object
     reverse = gfq.generate_reverse_fastq(n, rev_len)
     reverse = reverse.read()  # consume the StringIO object
@@ -134,7 +134,7 @@ class GenerateFastq(object):
         return reverse_fastq
 
     @staticmethod
-    def generate_forward_fastq(n, read_length, barcodes, umi_len):
+    def generate_forward_in_drop_fastq(n, read_length, barcodes, umi_len):
         with open(barcodes, 'rb') as f:
             barcodes = list(pickle.load(f))
         names = range(n)
@@ -147,6 +147,20 @@ class GenerateFastq(object):
             umi = ''.join(np.random.choice(alphabet, umi_len))
             poly_a = (read_length - len(cb) - len(umi)) * 'T'
             records.append('\n'.join(['@%d' % name, cb + umi + poly_a, name2, quality]))
+        forward_fastq = StringIO('\n'.join(records))
+        return forward_fastq
+
+    @staticmethod
+    def generate_forward_drop_seq_fastq(n):
+        names = range(n)
+        name2 = '+'
+        quality = 'I' * 20
+        records = []
+        alphabet = np.array(['A', 'C', 'G', 'T'])
+        for name in names:
+            cb = ''.join(np.random.choice(alphabet, 12))
+            umi = ''.join(np.random.choice(alphabet, 8))
+            records.append('\n'.join(['@%d' % name, cb + umi, name2, quality]))
         forward_fastq = StringIO('\n'.join(records))
         return forward_fastq
 
@@ -178,7 +192,6 @@ class GenerateFastq(object):
         # get cDNA file
         link = ('ftp://ftp.ensembl.org/pub/release-76/fasta/mus_musculus/cdna/'
                 'Mus_musculus.GRCm38.cdna.all.fa.gz')
-
 
         # create prefix directory if it does not exist
         if not os.path.isdir(prefix):
@@ -301,6 +314,13 @@ class TestGenerateFastq(unittest.TestCase):
 
     def setUp(self):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.in_drop_barcodes = (
+            self.data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p')
+        if not os.path.isfile(self.in_drop_barcodes):
+            cb1 = self.data_dir + 'in_drop/barcodes/cb1.txt'
+            cb2 = self.data_dir + 'in_drop/barcodes/cb2.txt'
+            GenerateFastq.prepare_barcodes(
+                self.in_drop_barcodes, [cb1, cb2], spacer='GAGTGATTGCTTGTGACGCCTT')
 
     def test_generate_seqs(self):
         gfq = GenerateFastq()
@@ -315,9 +335,8 @@ class TestGenerateFastq(unittest.TestCase):
 
     def test_generate_forward_fastq_stringio(self):
         gfq = GenerateFastq()
-        fq_records = gfq.generate_forward_fastq(5, 100, self.data_dir +
-                                                'in_drop/barcodes/in_drop_barcodes.p',
-                                                6)
+        fq_records = gfq.generate_forward_in_drop_fastq(
+            5, 100, self.in_drop_barcodes, 6)
         data = fq_records.readlines()
         self.assertTrue(len(data) == 20)
         self.assertTrue(all(l.startswith('@') for l in data[::4]))
@@ -432,7 +451,7 @@ class TestThreeBitInDrop(unittest.TestCase):
         self.assertEqual(cell, 0)
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestThreeBitGeneral(unittest.TestCase):
 
     def test_3bit_mars_seq(self):
@@ -513,7 +532,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
                             '/data/in_drop/barcodes/')
 
     @unittest.skip('creation of the cb_3bit.p object is slow')
-    def test_create_cb(self):
+    def test_create_in_drop_cb(self):
 
         # create barcode files
         barcode_files = [self.barcode_dir + 'cb1.txt', self.barcode_dir + 'cb2.txt']
@@ -521,7 +540,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         with open(self.barcode_dir + 'cb_3bit.p', 'wb') as f:
             pickle.dump(cb, f)
 
-    def test_created_cb(self):
+    def test_created_in_drop_cb(self):
         with open(self.barcode_dir + 'cb_3bit.p', 'rb') as f:
             cb = pickle.load(f)
 
@@ -551,7 +570,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         self.assertTrue(cb.perfect_match(cell))
         self.assertTrue(cb.close_match(cell))
 
-    def test_error_code_construction_and_recognition(self):
+    def test_in_drop_error_code_construction_and_recognition(self):
         cb1 = StringIO('AAA\nTTT\n')
         cb2 = StringIO('CCC\nGGG\n')
         cb = three_bit.CellBarcodes(cb1, cb2)
@@ -562,11 +581,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         self.assertTrue(cb.close_match(perfect_code))
         self.assertTrue(cb.close_match(error_code))
 
-    # def test_error_code_different_barcode_set(self):
-    #     cb1 = StringIO('AAA\nTTT\n')
-    #     cb = three_bit.CellBarcodes('in-drop', cb1, cb2)
-
-    def test_error_code_error_type_identification(self):
+    def test_in_drop_error_code_error_type_identification(self):
         cb1 = StringIO('AAA\nTTT\n')
         cb2 = StringIO('CCC\nGGG\n')
         cb = three_bit.CellBarcodes(cb1, cb2)
@@ -584,13 +599,18 @@ class TestFastq(unittest.TestCase):
         self.gfq = GenerateFastq()
         self.fwd_len = 50
         self.rev_len = 100
-        self.barcodes = data_dir + 'in_drop/barcodes/in_drop_barcodes.p'
+        self.in_drop_string_barcodes = (
+            data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p')
         self.umi_len = 6
-        self.temp_dir = data_dir + 'test_seqc_merge_fastq'
-        self.exp_type = 'in-drop'
-        if not os.path.isdir(self.temp_dir):
-            os.makedirs(self.temp_dir)
-        self.cell_barcode_pickle = data_dir + 'in_drop/barcodes/cb_3bit.p'
+        self.in_drop_temp_dir = data_dir + 'test_seqc_merge_in_drop_fastq'
+        self.drop_seq_temp_dir = data_dir + 'test_seqc_merge_drop_seq_fastq'
+        self.in_drop_processor = 'in-drop'
+        self.drop_seq_processor = 'drop-seq'
+        for d in [self.drop_seq_temp_dir, self.in_drop_temp_dir]:
+            if not os.path.isdir(d):
+                os.makedirs(d)
+        self.in_drop_cell_barcode_pickle = data_dir + 'in_drop/barcodes/cb_3bit.p'
+        self.drop_seq_cell_barcode_pickle = data_dir + 'drop_seq/barcodes/cb_3bit.p'
 
     def test_remove_homopolymer(self):
         non_polymer = 'CGTACGATCGATAGCTAG'
@@ -603,49 +623,65 @@ class TestFastq(unittest.TestCase):
 
     def test_process_record(self):
         n = 10000
-        _ = self.gfq.generate_forward_fastq(
-            n, self.fwd_len, self.barcodes, self.umi_len)
+        _ = self.gfq.generate_forward_in_drop_fastq(
+            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len)
         _ = self.gfq.generate_reverse_fastq(n, self.rev_len)
 
-    def test_merge_record(self):
-        tbp = three_bit.ThreeBit.default_processors(self.exp_type)
-        # cb = CellBarcodes(processor, *cell_barcode_files)
-        with open(self.cell_barcode_pickle, 'rb') as f:
+    def test_merge_in_drop_record(self):
+        tbp = three_bit.ThreeBit.default_processors(self.in_drop_processor)
+        with open(self.in_drop_cell_barcode_pickle, 'rb') as f:
             cb = pickle.load(f)
         n = 1
-        forward = self.gfq.generate_forward_fastq(
-            n, self.fwd_len, self.barcodes, self.umi_len).readlines()
+        forward = self.gfq.generate_forward_in_drop_fastq(
+            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len).readlines()
         reverse = self.gfq.generate_reverse_fastq(n, self.rev_len).readlines()
         fq = fastq.process_record(forward, reverse, tbp, cb)
         self.assertEqual(len(fq.split()), 4)
 
-    @unittest.skip('Takes a long time')
-    def test_merge_fastq(self):
+    def test_merge_drop_seq_record(self):
+        tbp = three_bit.ThreeBit.default_processors(self.drop_seq_processor)
+        with open(self.drop_seq_cell_barcode_pickle, 'rb') as f:
+            cb = pickle.load(f)
+        n = 1
+        forward = self.gfq.generate_forward_drop_seq_fastq(n).readlines()
+        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len).readlines()
+        fq = fastq.process_record(forward, reverse, tbp, cb)
+        self.assertEqual(len(fq.split()), 4)
+
+    # @unittest.skip('Takes a long time')
+    def test_merge_in_drop_fastq(self):
         # takes approximately 6.35 minutes per million reads, of which 37% is
         # accorded to the estimation of sequence quality
         n = 10000
-        self.forward = self.gfq.generate_forward_fastq(
-            n, self.fwd_len, self.barcodes, self.umi_len)
-        self.reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
+        forward = self.gfq.generate_forward_in_drop_fastq(
+            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len)
+        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
         _ = fastq.merge_fastq(
-            self.forward, self.reverse, self.exp_type, self.temp_dir,
-            self.cell_barcode_pickle)
+            [forward], [reverse], self.in_drop_processor, self.in_drop_temp_dir,
+            self.in_drop_cell_barcode_pickle)
+
+    # @unittest.skip('Takes a long time')
+    def test_merge_drop_seq_fastq(self):
+        # takes approximately 6.35 minutes per million reads, of which 37% is
+        # accorded to the estimation of sequence quality
+        n = 10000
+        forward = self.gfq.generate_forward_drop_seq_fastq(n)
+        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
+        _ = fastq.merge_fastq(
+            [forward], [reverse], self.drop_seq_processor, self.drop_seq_temp_dir,
+            self.drop_seq_cell_barcode_pickle)
 
     @unittest.skip('this is not currently working.')
-    def test_merge_fastq_threaded(self):
+    def test_merge_in_drop_fastq_threaded(self):
         n = 10000
         n_threads = 7
-        self.forward = self.gfq.generate_forward_fastq(
-            n, self.fwd_len, self.barcodes, self.umi_len)
-        self.reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
+        forward = self.gfq.generate_forward_in_drop_fastq(
+            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len)
+        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
 
         _ = fastq.merge_fastq_threaded(
-            self.forward, self.reverse, n_threads, self.exp_type, self.temp_dir,
-            self.cell_barcode_pickle)
-
-    def tearDown(self):
-        # eventually, should remove temp_dir
-        pass
+            forward, reverse, n_threads, self.in_drop_processor, self.in_drop_temp_dir,
+            self.in_drop_cell_barcode_pickle)
 
 
 @unittest.skip('')
@@ -718,13 +754,19 @@ class TestAlign(unittest.TestCase):
 
     def setUp(self):
         data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.temp_dir = data_dir + 'test_seqc_merge_fastq/'
-        self.fastq = data_dir + 'test_seqc_merge_fastq/merged_temp.fastq'
+        self.in_drop_temp_dir = data_dir + 'test_seqc_merge_in_drop_fastq/'
+        self.drop_seq_temp_dir = data_dir + 'test_seqc_merge_drop_seq_fastq/'
+        self.in_drop_fastq = self.in_drop_temp_dir + 'merged_temp.fastq'
+        self.drop_seq_fastq = self.drop_seq_temp_dir + 'merged_temp.fastq'
         self.index = data_dir + 'genome/mm38_chr19/'
 
-    def test_align(self):
-        star = align.STAR(self.temp_dir, 7, self.index, 'mm38')
-        star.align(self.fastq)
+    def test_align_in_drop(self):
+        star = align.STAR(self.in_drop_temp_dir, 7, self.index, 'mm38')
+        star.align(self.in_drop_fastq)
+
+    def test_align_drop_seq(self):
+        star = align.STAR(self.drop_seq_temp_dir, 7, self.index, 'mm38')
+        star.align(self.drop_seq_fastq)
 
 
 @unittest.skip('')
@@ -747,12 +789,21 @@ class TestSamProcessing(unittest.TestCase):
 
     def setUp(self):
         data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.samfile = data_dir + 'test_seqc_merge_fastq/Aligned.out.sam'
+        self.in_drop_samfile = data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
+        self.drop_seq_samfile = (
+            data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam')
         self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
 
-    def test_process_alignments(self):
+    def test_process_in_drop_alignments(self):
         n_threads = 4
-        arr = sam.process_alignments(self.samfile, n_threads, self.gtf, fragment_len=1000)
+        arr = sam.process_alignments(self.in_drop_samfile, n_threads, self.gtf,
+                                     fragment_len=1000)
+        # print(arr)
+
+    def test_process_drop_seq_alignments(self):
+        n_threads = 4
+        arr = sam.process_alignments(self.drop_seq_samfile, n_threads, self.gtf,
+                                     fragment_len=1000)
         print(arr)
 
 
@@ -899,4 +950,4 @@ class TestErrorCorrection(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(failfast=True)

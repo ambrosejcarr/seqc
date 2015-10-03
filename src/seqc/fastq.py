@@ -165,7 +165,6 @@ def merge_fastq(forward, reverse, exp_type, temp_dir, cb, n_low_complexity=0):
             try:
                 # initialize the processor
                 tbp = ThreeBit.default_processors(exp_type)
-                # cb = CellBarcodes(processor, *cell_barcode_files)
                 if not isinstance(cb, CellBarcodes):
                     with open(cb, 'rb') as f:
                         cb = pickle.load(f)

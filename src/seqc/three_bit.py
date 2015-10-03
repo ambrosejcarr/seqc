@@ -18,8 +18,8 @@ class CellBarcodes:
     def __init__(self, *barcode_files, reverse_complement=False):
         """"""
 
-        if not barcode_files:
-            raise ValueError('at least one barcode file must be passed')
+        # if not barcode_files:
+        #     raise ValueError('at least one barcode file must be passed')
 
         tbp = ThreeBit
 
@@ -37,7 +37,7 @@ class CellBarcodes:
             rc_lists = []
             for l in lists:
                 rc_lists.append([revcomp(bc) for bc in l])
-        lists = rc_lists
+            lists = rc_lists
 
         # if only one list in lists, make a set
         if len(lists) == 1:
@@ -113,14 +113,15 @@ class CellBarcodes:
             return None
 
 
-class DropSeqCellBarcodes:
+class DropSeqCellBarcodes(CellBarcodes):
 
-    @staticmethod
-    def close_match():
+    def __init__(self):
+        super().__init__([], reverse_complement=False)
+
+    def close_match(self, barcode):
         return 1
 
-    @staticmethod
-    def perfect_match():
+    def perfect_match(self, barcode):
         return 1
 
 
