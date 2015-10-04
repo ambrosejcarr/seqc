@@ -196,7 +196,7 @@ class ThreeBit:
         while s > 0:
             len += 1
             masked = s & 111
-            if masked == 0b100 or masked == 0b101:
+            if masked == 0b100 or masked == 0b100:
                 gc += 1
             s >>= 3
         return gc / length
@@ -205,7 +205,8 @@ class ThreeBit:
     def _num_poly_t(s):
         n = 0
         while s:
-            if (s & 0b111) == 0b011:
+            AT = (s & 0b111)
+            if AT == 0b011 or AT == 0b100:
                 n += 1
             s >>= 3
         return n

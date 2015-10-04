@@ -138,7 +138,7 @@ def average_quality(quality_string):
 def process_record(forward, reverse, tbp, cb):
     """process a forward and reverse read pair; eventually, will want to add checks for
     primer dimers"""
-    cell, rmt, n_poly_t = tbp.process_forward_sequence(forward[1][:-1])
+    cell, rmt, n_poly_t = tbp.process_forward_sequence(forward[1][:-1])  # exclude \n
     valid_cell = cb.close_match(cell)
     r, trimmed_bases = remove_homopolymer(reverse)
     if len(r[1]) < 20:  # don't return short reads

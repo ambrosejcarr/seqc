@@ -343,7 +343,7 @@ class TestGenerateFastq(unittest.TestCase):
         self.assertTrue(all(l == '+\n' for l in data[2::4]))
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestThreeBitInDrop(unittest.TestCase):
 
     def setUp(self):
