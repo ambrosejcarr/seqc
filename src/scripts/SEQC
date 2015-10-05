@@ -288,6 +288,8 @@ def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     arr = process_alignments(samfile, n_threads, gtf, frag_len)
 
+    arr = resolve_alignments(index, arr)
+
     store_results(fout, arr)
 
     # clean_up(temp_dir)
