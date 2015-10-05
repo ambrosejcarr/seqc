@@ -4,7 +4,7 @@ import unittest
 import os
 import pickle
 import seqc
-from seqc import three_bit, fastq, align, sam, qc, convert_features
+from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes
 from io import StringIO
 from itertools import product
 import re
@@ -28,7 +28,7 @@ def generate_in_drop_fastq_data(n, prefix):
     fwd_len = 50
     rev_len = 100
     # barcodes = data_dir + 'in_drop/barcodes/in_drop_barcodes.p'
-    barcodes = data_dir + 'in_drop/barcodes/cb_3bit.p'
+    barcodes = data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p'
     umi_len = 6
     forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes, umi_len)
     forward = forward.read()  # consume the StringIO object
@@ -343,7 +343,7 @@ class TestGenerateFastq(unittest.TestCase):
         self.assertTrue(all(l == '+\n' for l in data[2::4]))
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestThreeBitInDrop(unittest.TestCase):
 
     def setUp(self):
@@ -536,7 +536,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
 
         # create barcode files
         barcode_files = [self.barcode_dir + 'cb1.txt', self.barcode_dir + 'cb2.txt']
-        cb = three_bit.CellBarcodes(*barcode_files)
+        cb = barcodes.CellBarcodes(*barcode_files)
         with open(self.barcode_dir + 'cb_3bit.p', 'wb') as f:
             pickle.dump(cb, f)
 
@@ -573,7 +573,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
     def test_in_drop_error_code_construction_and_recognition(self):
         cb1 = StringIO('AAA\nTTT\n')
         cb2 = StringIO('CCC\nGGG\n')
-        cb = three_bit.CellBarcodes(cb1, cb2)
+        cb = barcodes.CellBarcodes(cb1, cb2)
         perfect_code = three_bit.ThreeBit.str2bin('AAACCC')
         error_code = three_bit.ThreeBit.str2bin('NTTCCC')
         self.assertTrue(cb.perfect_match(perfect_code))
@@ -584,7 +584,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
     def test_in_drop_error_code_error_type_identification(self):
         cb1 = StringIO('AAA\nTTT\n')
         cb2 = StringIO('CCC\nGGG\n')
-        cb = three_bit.CellBarcodes(cb1, cb2)
+        cb = barcodes.CellBarcodes(cb1, cb2)
         error_code = three_bit.ThreeBit.str2bin('NTTCCC')
 
         errors = cb.map_errors(error_code)

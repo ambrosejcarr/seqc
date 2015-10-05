@@ -2,7 +2,7 @@
 __author__ = 'ambrose'
 
 from sys import argv, exit
-from seqc.three_bit import CellBarcodes, DropSeqCellBarcodes
+from seqc.barcodes import CellBarcodes, DropSeqCellBarcodes
 import argparse
 import pickle
 
@@ -24,13 +24,13 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument('-o', '--output_stem', metavar='O',
                    help='name and path for output file')
-    p.add_argument('-b', '--barcode_files', metavar='B', help='barcode files', nargs='?',
+    p.add_argument('-b', '--barcode_files', metavar='B', help='barcode files', nargs='+',
                    default=[])
     p.add_argument('-p', '--processor', metavar='P',
                    help='type of experiment barcodes will be used in',
                    choices=['in-drop', 'drop-seq', 'mars-seq', 'cel-seq', 'avo-seq'])
     p.add_argument('--reverse-complement', action='store_true', default=False,
-                   help=('indicates that barcodes in fastq files are reverse complements'
+                   help=('indicates that barcodes in fastq files are reverse complements '
                          'of the barcodes found in barcode files'))
 
     if len(argv) == 1:

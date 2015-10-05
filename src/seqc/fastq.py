@@ -2,11 +2,14 @@ __author__ = 'Ambrose J. Carr'
 
 import gzip
 import bz2
+import numpy as np
 from threading import Thread
 from queue import Queue, Empty, Full
 from time import sleep, time
+from collections import Counter
 import re
-from seqc.three_bit import ThreeBit, CellBarcodes
+from seqc.three_bit import ThreeBit
+from seqc.barcodes import CellBarcodes
 import io
 import pickle
 
@@ -16,6 +19,42 @@ _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
 
 def revcomp(s):
     return ''.join(_revcomp[n] for n in s[::-1])
+
+
+def truncate_sequence_length(reverse_fastq, n, fname):
+    """
+    truncate the read length of a fastq file, often to equalize comparisons between
+    different sequencing experiments
+    """
+    if not fname.endswith('.fastq'):
+        fname += '.fastq'
+    fin = open_file(reverse_fastq)
+    try:
+        with open(fname, 'w') as fout:
+            for record in iter_records(fin):
+                seq = seq.strip()[:n] + '\n'
+                qual = qual.strip()[:n] + '\n'
+                new_record = ''.join((record[0], seq, record[2], qual))
+                fout.write(new_record)
+    finally:
+        fin.close()
+
+
+def sequence_length_description(fastq):
+    """get the sequence length of a fastq file"""
+    with open(fastq, 'r') as fin:
+        i = 0
+        records = iter_records(fin)
+        data = np.empty(2500, dtype=int)
+        while i < 2500:
+            try:
+                seq = next(records)[1]
+            except StopIteration:
+                data = data[:i]
+                break
+            data[i] = len(seq) - 1
+            i += 1
+    return np.mean(data), np.std(data), np.unique(data, return_counts=True)
 
 
 def paired_fastq_records(f, r):
