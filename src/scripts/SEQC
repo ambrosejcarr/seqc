@@ -10,6 +10,7 @@ from seqc.fastq import merge_fastq
 from seqc.sam import process_alignments
 from seqc.align import STAR, alignment_metadata
 from seqc.qc import disambiguate, counts_matrix
+from seqc.barcodes import DropSeqCellBarcodes
 import numpy as np
 import numpy.lib.recfunctions as rf
 import sys
@@ -141,8 +142,11 @@ def set_up(fout, index, barcodes):
         raise FileNotFoundError('no file named "annotations.gtf" found in index')
 
     # get cell barcode files
-    with open(barcodes, 'rb') as f:
-        cb = pickle.load(f)
+    if not barcodes:
+        cb = DropSeqCellBarcodes()
+    else:
+        with open(barcodes, 'rb') as f:
+            cb = pickle.load(f)
 
     return temp_dir, gtf, cb
 
