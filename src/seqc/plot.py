@@ -8,6 +8,7 @@ from scipy.stats import gaussian_kde
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
+from seqc.qc import deobfuscate
 import matplotlib.pyplot as plt
 import seaborn as sns
 from copy import copy
@@ -20,17 +21,6 @@ def _savefig(f, fname):
         f.savefig(fname, dpi=450)
     else:
         f.savefig(fname)
-
-
-def deobfuscate(df):
-    """exchange ObfuscatedTuple classes for regular tuples"""
-    if isinstance(df, np.ndarray):
-        df = pd.DataFrame(df)
-    features = df['features'].apply(lambda x: x.to_tuple())
-    positions = df['positions'].apply(lambda x: x.to_tuple())
-    df['positions'] = positions
-    df['features'] = features
-    return df
 
 
 def visualize_filter_correlation(arr, fname, experiment_name=None):

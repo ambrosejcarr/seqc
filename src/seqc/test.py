@@ -949,5 +949,19 @@ class TestErrorCorrection(unittest.TestCase):
         pass
 
 
+# @unittest.skip('')
+class TestSaveCountsMatrices(unittest.TestCase):
+
+    def setUp(self):
+        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+
+    def test_save_counts_matrices(self):
+
+        with open(self.data_dir + 'in_drop/disambiguation_input.p', 'rb') as f:
+            arr = pickle.load(f)
+        mols, mr, mc = qc.counts_matrix(arr, True)
+        reads, rr, rc = qc.counts_matrix(arr, False)
+
+
 if __name__ == '__main__':
     unittest.main(failfast=True)

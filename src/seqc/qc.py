@@ -15,6 +15,17 @@ import sys
 from itertools import permutations
 
 
+def deobfuscate(df):
+    """exchange ObfuscatedTuple classes for regular tuples"""
+    if isinstance(df, np.ndarray):
+        df = pd.DataFrame(df)
+    features = df['features'].apply(lambda x: x.to_tuple())
+    positions = df['positions'].apply(lambda x: x.to_tuple())
+    df['positions'] = positions
+    df['features'] = features
+    return df
+
+
 def mask_failing_cells(df_or_array):
     return ((df_or_array['cell'] != 0) &
             (df_or_array['rmt'] != 0) &
@@ -684,21 +695,22 @@ def counts_matrix(arr, collapse_molecules):
     # mask array for failed molecules
     arr = arr[mask_failing_cells(arr)]
 
-    # process data into d[feature][cell] : molecule count
-    data = defaultdict(dict)
+    # deobfuscate the array
+    df = deobfuscate(arr)
 
     # group data by cell, rmt, feature to get molecules/counts
-    df = pd.DataFrame(arr)
     counts = df.groupby(['cell', 'features', 'rmt']).size()
 
+    # process data into d[feature][cell] : molecule count
+    data = defaultdict(dict)
     if collapse_molecules:
-        for (cell, features, _), _ in counts:
+        for (cell, features, _), _ in counts.iteritems():
                 try:
                     data[features][cell] += 1
                 except KeyError:
                     data[features][cell] = 1
     else:
-        for (cell, features, _), count in counts:
+        for (cell, features, _), count in counts.iteritems():
                 try:
                     data[features][cell] += count
                 except KeyError:
