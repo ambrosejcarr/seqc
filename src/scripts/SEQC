@@ -94,20 +94,20 @@ def process_input():
 
     arguments = parser.parse_args()
 
-    # check that at least one input argument was passed:
-    check = [arguments.forward, arguments.reverse, arguments.sam, arguments.merged_fastq]
-    if not any(check):
-        print('SEQC %s: error: one or more of the following arguments must be provided: '
-              '-f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
-              arguments.subparser_name)
-        sys.exit(2)
-
     # list star args if requested, then exit
     if arguments.list_default_star_args:
         printable_args = json.dumps(
             STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
             separators=(',', ': '), indent=4)
         print(printable_args)
+        sys.exit(2)
+
+    # check that at least one input argument was passed:
+    check = [arguments.forward, arguments.reverse, arguments.sam, arguments.merged_fastq]
+    if not any(check):
+        print('SEQC %s: error: one or more of the following arguments must be provided: '
+              '-f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
+              arguments.subparser_name)
         sys.exit(2)
 
     return arguments
@@ -224,8 +224,10 @@ def save_counts_matrices(fout, arr, n):
     log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     mols, mrow, mcol = counts_matrix(arr, collapse_molecules=True, n_poly_t_required=n)
     reads, rrow, rcol = counts_matrix(arr, collapse_molecules=False, n_poly_t_required=n)
+    matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
+                'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
     with open(fout + '_read_and_mol_matrices.p', 'wb') as f:
-        pickle.dump(((reads, rrow, rcol), (mols, mrow, mcol)), f)
+        pickle.dump(matrices, f)
 
 
 def select_cells():
