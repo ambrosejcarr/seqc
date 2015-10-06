@@ -33,14 +33,6 @@ def deobfuscate(df):
     return df
 
 
-def mask_failing_cells(df_or_array):
-    return ((df_or_array['cell'] != 0) &
-            (df_or_array['rmt'] != 0) &
-            (df_or_array['n_poly_t'] > 3) &
-            (df_or_array['is_aligned'])
-            )
-
-
 def visualize_filter_correlation(arr, fname, experiment_name=None):
 
     # df = _load_array(arr)

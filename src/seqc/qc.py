@@ -9,9 +9,18 @@ from seqc import three_bit
 from seqc.sam import ObfuscatedTuple
 from scipy.special import gammaln, gammaincinv
 from scipy.stats import chi2
+from scipy.sparse import coo_matrix
 from itertools import chain
 import sys
 from itertools import permutations
+
+
+def mask_failing_cells(df_or_array):
+    return ((df_or_array['cell'] != 0) &
+            (df_or_array['rmt'] != 0) &
+            (df_or_array['n_poly_t'] > 3) &
+            (df_or_array['is_aligned'])
+            )
 
 
 def multinomial_loglikelihood(x, probs):
@@ -663,3 +672,85 @@ def correct_errors(data, cell_barcodes, donor_cutoff=1, p_val=0.1):
                     break
 
     return is_error, err_rate
+
+
+def length_bias(arr, gtf):
+    """calculate what, if any, length bias exists in the experiment found in arr"""
+    raise NotImplementedError
+
+
+def to_counts_matrix(arr, collapse_molecules):
+
+    # mask array for failed molecules
+    arr = arr[mask_failing_cells(arr)]
+
+    # process data into d[feature][cell] : molecule count
+    data = defaultdict(dict)
+
+    # group data by cell, rmt, feature to get molecules/counts
+    df = pd.DataFrame(arr)
+    counts = df.groupby(['cell', 'features', 'rmt']).size()
+
+    if collapse_molecules:
+        for (cell, features, _), _ in counts:
+                try:
+                    data[features][cell] += 1
+                except KeyError:
+                    data[features][cell] = 1
+    else:
+        for (cell, features, _), count in counts:
+                try:
+                    data[features][cell] += count
+                except KeyError:
+                    data[features][cell] = count
+
+    # convert to values, row, col form for scipy.coo
+    # pre-allocate arrays
+    size = sum(len(c) for c in data.values())
+    values = np.empty(size, dtype=int)
+    row = np.empty(size, dtype=int)
+    col = np.empty(size, dtype=int)
+    i = 0
+    for gene in data:
+        for cell, count in data[gene].items():
+            values[i] = count
+            row[i] = cell
+            col[i] = gene[0]  # todo this is super arbitrary, I'm selecting the first gene of the multi-alignment.
+            i += 1
+
+    # get max count to shrink dtype if possible
+    maxcount = np.max(values)
+
+    # set dtype
+    if 0 < maxcount < 2 ** 8:
+        dtype = np.uint8
+    elif maxcount < 2 ** 16:
+        dtype = np.uint16
+    elif maxcount < 2 ** 32:
+        dtype = np.uint32
+    elif maxcount < 2 ** 64:
+        dtype = np.uint64
+    elif maxcount < 0:
+        raise ValueError('Negative count value encountered. These values are not'
+                         'defined and indicate a probable upstream bug')
+    else:
+        raise ValueError('Count values too large to fit in int64. This is very '
+                         'unlikely, and will often cause Memory errors. Please check '
+                         'input data.')
+
+    # map row and cell to integer values for indexing
+    unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
+    unq_col = np.unique(col)
+    row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
+    col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
+    row_ind = np.array([row_map[i] for i in row])
+    col_ind = np.array([col_map[i] for i in col])
+
+    # change dtype, set shape
+    values = values.astype(dtype)
+    shape = (unq_row.shape[0], unq_col.shape[0])
+
+    # return a sparse array
+    coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
+    return coo, unq_row, unq_col
+
