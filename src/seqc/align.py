@@ -5,10 +5,9 @@ import os
 from shutil import rmtree, copyfileobj
 from collections import defaultdict
 # todo eliminate these dependencies
-from scseq.sa_preprocess import prepare_fasta
-from scseq.sa_postprocess import ordering_out_stacks, create_gtf_reduced
+from seqc.sa_preprocess import prepare_fasta
+from seqc.sa_postprocess import ordering_out_stacks, create_gtf_reduced
 import seqc
-
 import ftplib
 import gzip
 import bz2
