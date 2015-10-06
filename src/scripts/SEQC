@@ -49,15 +49,15 @@ def process_input():
         r = p.add_argument_group('Required Arguments')
         # todo needs to take input from user on what organism it should be
         r.add_argument('-i', '--index', metavar='I', help='star alignment index folder. '
-                       'This folder will be created if it does not exist', required=True)
+                       'This folder will be created if it does not exist', default=None)
         r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
-                       type=int, required=True)
-        r.add_argument('-o', '--output-file', metavar='O', required=True,
+                       type=int, default=None)
+        r.add_argument('-o', '--output-file', metavar='O', default=None,
                        help='stem of filename in which to store output')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
-            r.add_argument('-b', '--barcodes', metavar='B', required=True,
+            r.add_argument('-b', '--barcodes', metavar='B', default=None,
                            help='location of serialized barcode object.')
 
         i = p.add_argument_group(
@@ -109,6 +109,18 @@ def process_input():
               '-f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
               arguments.subparser_name)
         sys.exit(2)
+    required = [arguments.output_file, arguments.index, arguments.n_threads]
+    if not arguments.subparser_name == 'drop-seq':
+        if not all(required + arguments.barcodes):
+            print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
+                  '--n-threads, -o/--output-file, -b/--barcodes')
+        sys.exit(2)
+    else:
+        if not all(required):
+            print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
+                  '--n-threads, -o/--output-file')
+
+
 
     return arguments
 
