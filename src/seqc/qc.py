@@ -679,7 +679,7 @@ def length_bias(arr, gtf):
     raise NotImplementedError
 
 
-def to_counts_matrix(arr, collapse_molecules):
+def counts_matrix(arr, collapse_molecules):
 
     # mask array for failed molecules
     arr = arr[mask_failing_cells(arr)]

@@ -9,7 +9,7 @@ from copy import copy
 from seqc.fastq import merge_fastq
 from seqc.sam import process_alignments
 from seqc.align import STAR, alignment_metadata
-from seqc.qc import disambiguate
+from seqc.qc import disambiguate, counts_matrix
 import numpy as np
 import numpy.lib.recfunctions as rf
 import sys
@@ -216,18 +216,12 @@ def resolve_alignments(index, arr):
     return arr
 
 
-def collapse_molecules():
-    # ################################ COLLAPSE MOLECULES #################################
-    # # generate a pandas SparseDataFrame and save it to disk
-    # log_info('Generating Gene x Cell SparseDataFrames for reads and molecules.')
-    # mols, mrow, mcol = corrected_to_sparse_matrix(
-    #     corrected, processor_name, collapse_molecules=True)
-    # reads, rrow, rcol = corrected_to_sparse_matrix(
-    #     corrected, processor_name, collapse_molecules=False)
-    #
-    # # get location for output files from filestem of h5db.
-    # location = '/'.join(h5db.split('/')[:-1])
-    raise NotImplementedError
+def save_counts_matrices(fout, arr):
+    log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
+    mols, mrow, mcol = counts_matrix(arr, collapse_molecules=True)
+    reads, rrow, rcol = counts_matrix(arr, collapse_molecules=False)
+    with open(fout + '_read_and_mol_matrices.p', 'wb') as f:
+        pickle.dump(((reads, rrow, rcol), (mols, mrow, mcol)), f)
 
 
 def select_cells():
@@ -274,6 +268,8 @@ def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     store_results(fout, arr)
 
+    save_counts_matrices(fout, arr)
+
     # clean_up(temp_dir)
 
 
@@ -291,6 +287,8 @@ def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
     arr = resolve_alignments(index, arr)
 
     store_results(fout, arr)
+
+    save_counts_matrices(fout, arr)
 
     # clean_up(temp_dir)
 
