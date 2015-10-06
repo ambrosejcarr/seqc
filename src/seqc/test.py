@@ -27,10 +27,22 @@ def generate_in_drop_fastq_data(n, prefix):
     gfq = GenerateFastq()
     fwd_len = 50
     rev_len = 100
-    # barcodes = data_dir + 'in_drop/barcodes/in_drop_barcodes.p'
     barcodes = data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p'
     umi_len = 6
     forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes, umi_len)
+    forward = forward.read()  # consume the StringIO object
+    reverse = gfq.generate_reverse_fastq(n, rev_len)
+    reverse = reverse.read()  # consume the StringIO object
+    with open(prefix + '_r1.fastq', 'w') as f:
+        f.write(forward)
+    with open(prefix + '_r2.fastq', 'w') as r:
+        r.write(reverse)
+
+
+def generate_drop_seq_fastq_data(n, prefix):
+    gfq = GenerateFastq()
+    rev_len = 100
+    forward = gfq.generate_forward_drop_seq_fastq(n)
     forward = forward.read()  # consume the StringIO object
     reverse = gfq.generate_reverse_fastq(n, rev_len)
     reverse = reverse.read()  # consume the StringIO object

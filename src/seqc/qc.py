@@ -26,10 +26,10 @@ def deobfuscate(df):
     return df
 
 
-def mask_failing_cells(df_or_array):
+def mask_failing_cells(df_or_array, n_poly_t_required):
     return ((df_or_array['cell'] != 0) &
             (df_or_array['rmt'] != 0) &
-            (df_or_array['n_poly_t'] > 3) &
+            (df_or_array['n_poly_t'] >= n_poly_t_required) &
             (df_or_array['is_aligned'])
             )
 
@@ -149,7 +149,7 @@ def merge_observations_and_expectations(o, e):
     return obs, exp
 
 
-def disambiguate(data, expectations, alpha=0.1):
+def disambiguate(data, expectations, n_poly_t_required=0, alpha=0.1):
     """Resolve molecules that are ambiguously aligned. Input is an ndarray
 
     Need a way of grouping the ndarray such that I can assign the original positions
@@ -178,8 +178,10 @@ def disambiguate(data, expectations, alpha=0.1):
     indices = np.arange(data.shape[0])
     results = np.zeros(data.shape[0], dtype=np.int8)
 
-    mask = ((data['cell'] != 0) & (data['rmt'] != 0) & (data['n_poly_t'] > 3) &
-            data['is_aligned'])
+    # mask = ((data['cell'] != 0) & (data['rmt'] != 0) &
+    #         (data['n_poly_t'] >= n_poly_t_required) & data['is_aligned'])
+
+    mask = mask_failing_cells(data, n_poly_t_required=n_poly_t_required)
 
     # filter, then merge cell & rmt
     seq_data = np.vstack([data['cell'][mask], data['rmt'][mask].astype(np.int64)]).T
@@ -690,10 +692,10 @@ def length_bias(arr, gtf):
     raise NotImplementedError
 
 
-def counts_matrix(arr, collapse_molecules):
+def counts_matrix(arr, collapse_molecules, n_poly_t_required):
 
     # mask array for failed molecules
-    arr = arr[mask_failing_cells(arr)]
+    arr = arr[mask_failing_cells(arr, n_poly_t_required)]
 
     # deobfuscate the array
     df = deobfuscate(arr)

@@ -211,19 +211,19 @@ def correct_errors():
     raise NotImplementedError
 
 
-def resolve_alignments(index, arr):
+def resolve_alignments(index, arr, n):
     log_info('Resolving ambiguous alignments.')
     expectations = index + 'p_coalignment.pckl'
-    disambiguation_res, arr = disambiguate(arr, expectations)
+    disambiguation_res, arr = disambiguate(arr, expectations, n_poly_t_required=n)
     arr = rf.append_fields(arr, 'disambiguation_results', disambiguation_res)
     arr = arr.filled()
     return arr
 
 
-def save_counts_matrices(fout, arr):
+def save_counts_matrices(fout, arr, n):
     log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-    mols, mrow, mcol = counts_matrix(arr, collapse_molecules=True)
-    reads, rrow, rcol = counts_matrix(arr, collapse_molecules=False)
+    mols, mrow, mcol = counts_matrix(arr, collapse_molecules=True, n_poly_t_required=n)
+    reads, rrow, rcol = counts_matrix(arr, collapse_molecules=False, n_poly_t_required=n)
     with open(fout + '_read_and_mol_matrices.p', 'wb') as f:
         pickle.dump(((reads, rrow, rcol), (mols, mrow, mcol)), f)
 
@@ -269,14 +269,14 @@ def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
     arr = process_alignments(samfile, n_threads, gtf, frag_len)
 
     try:  # might throw errors, if so, make sure to save
-        arr = resolve_alignments(index, arr)
+        arr = resolve_alignments(index, arr, n=3)
     except:
         store_results(fout, arr)
         raise
 
     store_results(fout, arr)
 
-    save_counts_matrices(fout, arr)
+    save_counts_matrices(fout, arr, n=3)
 
     # clean_up(temp_dir)
 
@@ -293,14 +293,14 @@ def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
     arr = process_alignments(samfile, n_threads, gtf, frag_len)
 
     try:  # might throw errors, if so, make sure to save
-        arr = resolve_alignments(index, arr)
+        arr = resolve_alignments(index, arr, n=0)
     except:
         store_results(fout, arr)
         raise
 
     store_results(fout, arr)
 
-    save_counts_matrices(fout, arr)
+    save_counts_matrices(fout, arr, n=0)
 
     # clean_up(temp_dir)
 
