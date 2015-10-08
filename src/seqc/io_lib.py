@@ -113,7 +113,7 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
 
     # parse the download link
     ip, *path = srp.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
-    path = '/'.join(path)
+    path = '/'.join(path) + '/'
 
     # get all SRA files from the SRP experiment
     ftp = ftplib.FTP(ip)
