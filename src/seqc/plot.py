@@ -3,12 +3,16 @@ __author__ = 'ambrose'
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
-mpl.use('AGG')
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    mpl.use('AGG')
 from scipy.stats import gaussian_kde
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from seqc.qc import deobfuscate
+from seqc.three_bit import ThreeBit
 import matplotlib.pyplot as plt
 import seaborn as sns
 from copy import copy
@@ -559,3 +563,142 @@ def comparative_alignment(data, experiment_labels, fname):
     gs.tight_layout(f, rect=[0, 0, 0.85, 0.95])
     plt.savefig(fname, dpi=300)
     return f
+
+
+def characterize_cells(arr_or_df, fname, experiment_name):
+    if isinstance(arr_or_df, np.ndarray):
+        df = pd.DataFrame(arr_or_df)
+    else:
+        df = arr_or_df
+
+    df = deobfuscate(df)
+
+    # get rid of records with no cell todo | look at these later
+    df = df[df['cell'] != 0]
+
+    count_molecules = lambda x: len(x.groupby(['rmt', 'features']))
+    average_reads_per_molecule = lambda x: x.groupby(['rmt', 'features']).size().mean()
+    gc_content = lambda x: [ThreeBit.gc_content(c) for c, _ in x]
+
+    # ideally this comes after error correction
+    cells = df.groupby('cell')
+
+    # vector data
+    data = {
+        'rpc': cells.size(),
+        'mpc': cells.apply(count_molecules),
+        'arpm': cells.apply(average_reads_per_molecule),
+        'gc': pd.Series({c: ThreeBit.gc_content(c) for c, _ in cells}),
+        'atb': cells['trimmed_bases'].apply(np.mean),
+        'align_failure': cells.apply(lambda x: ~x['is_aligned'].sum() / x.shape[0]),
+        'align_score': cells.apply(lambda x: x['alignment_score'].mean()),
+        'fwd_qual': cells.apply(lambda x: x['fwd_quality'].mean()),
+        'rev_qual': cells.apply(lambda x: x['rev_quality'].mean())
+        # todo figure out ambiguous alignment data usage
+        # 'pct_ambig': cells['features'].apply(lambda x: 1 if len(x[]))
+    }
+
+    # scalar data
+    ncells = len(cells)
+
+    # put it together in a dataframe
+    data = pd.DataFrame(data)
+
+    # submit this to cross-correlations
+    corr = data.corr()
+
+    corr.values[np.triu_indices_from(corr.values)] = 0
+    corr.values[np.diag_indices_from(corr.values)] = 0
+
+    labels = [l.replace('_', ' ') for l in data.columns]
+    # labels[-1] = 'is ambiguous'
+
+    f = plt.figure(figsize=(5, 6))
+    gs = plt.GridSpec(ncols=5, nrows=7)
+    with sns.axes_style('whitegrid'):
+        ax_hm = plt.subplot(gs[:5, :])
+        sns.heatmap(corr, linewidths=0.5, xticklabels=labels, yticklabels=labels)
+        title = 'read characteristic correlation'
+        if experiment_name:
+            title = experiment_name + ' ' + title
+        plt.title(title)
+
+        # plot a table summarizing the data
+        ax_tb = plt.subplot(gs[5:, :])
+        means = df.mean()
+        cell_text = [['%.1e' % m for m in means]]
+        row_labels = ['category averages']
+        col_labels = list(means.index)
+        loc = 'center'
+        ax_tb.axis('off')
+        plt.table(cellText=cell_text, rowLabels=row_labels, colLabels=col_labels, loc=loc,
+                  fontsize=10.)
+
+
+        gs.tight_layout(f)
+        _savefig(f, fname)
+
+
+def characterize_cells_no_table(arr_or_df, fname, experiment_name):
+    if isinstance(arr_or_df, np.ndarray):
+        df = pd.DataFrame(arr_or_df)
+    else:
+        df = arr_or_df
+
+    df = deobfuscate(df)
+
+    # get rid of records with no cell todo | look at these later
+    df = df[df['cell'] != 0]
+
+    count_molecules = lambda x: len(x.groupby(['rmt', 'features']))
+    average_reads_per_molecule = lambda x: x.groupby(['rmt', 'features']).size().mean()
+    gc_content = lambda x: [ThreeBit.gc_content(c) for c, _ in x]
+
+    # ideally this comes after error correction
+    cells = df.groupby('cell')
+
+    # vector data
+    data = {
+        'rpc': cells.size(),
+        'mpc': cells.apply(count_molecules),
+        'arpm': cells.apply(average_reads_per_molecule),
+        'gc': pd.Series({c: ThreeBit.gc_content(c) for c, _ in cells}),
+        'atb': cells['trimmed_bases'].apply(np.mean),
+        'align_failure': cells.apply(lambda x: ~x['is_aligned'].sum() / x.shape[0]),
+        'align_score': cells.apply(lambda x: x['alignment_score'].mean()),
+        'fwd_qual': cells.apply(lambda x: x['fwd_quality'].mean()),
+        'rev_qual': cells.apply(lambda x: x['rev_quality'].mean())
+        # todo figure out ambiguous alignment data usage
+        # 'pct_ambig': cells['features'].apply(lambda x: 1 if len(x[]))
+    }
+
+    # scalar data
+    ncells = len(cells)
+
+    # put it together in a dataframe
+    data = pd.DataFrame(data)
+
+    # submit this to cross-correlations
+    corr = data.corr()
+
+    corr.values[np.triu_indices_from(corr.values)] = 0
+    corr.values[np.diag_indices_from(corr.values)] = 0
+
+    labels = [l.replace('_', ' ') for l in data.columns]
+    # labels[-1] = 'is ambiguous'
+
+    means = data.mean()
+    cell_text = ['(%.2e)' % m for m in means]
+    xlabels = [l + t for (l, t) in zip(labels, cell_text)]
+
+    f, ax = plt.subplots(figsize=(5, 6))
+    with sns.axes_style('whitegrid'):
+        sns.heatmap(corr, linewidths=0.5, xticklabels=xlabels, yticklabels=labels)
+        title = 'read characteristic correlation (%d cells)' % ncells
+        if experiment_name:
+            title = experiment_name + ' ' + title
+        plt.title(title)
+
+        # plot a table summarizing the data
+        plt.tight_layout()
+        _savefig(f, fname)
