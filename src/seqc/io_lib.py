@@ -124,9 +124,7 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
         dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
         for d in dirs:
             ftp.cwd(path + d)
-            new_files = [path + d + '/' + f for f in ftp.nlst()]
-            print('adding files to download list: %s' % new_files)
-            files.extend(new_files)
+            files.extend([path + d + '/' + f for f in ftp.nlst()])
     finally:
         ftp.close()
 
