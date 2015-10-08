@@ -18,9 +18,13 @@ import logging
 import json
 from datetime import datetime
 
+
 # todo | add ability to fetch genome from amazon (provide s3 link OR file path)
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
 # todo | test index generation (pull from seqdb)
+# todo | merge all of the metadata into a dictionary that is written at the end of the
+# todo |   pipeline or when any errors occur
+# todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
 
 # todo | add sub-commands to allow running drop-seq only, etc. This is done through sub-
 # todo |   parsers, whose names can be identified in the namespace as subparser_name
