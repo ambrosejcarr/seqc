@@ -132,6 +132,7 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
 
     if not files:
         raise ValueError('no files found in ftp directory: "%s"' % path)
+    print(files)
 
     # create set of links
     if not srp.endswith('/'):
