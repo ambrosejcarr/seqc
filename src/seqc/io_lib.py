@@ -111,9 +111,12 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
     if not prefix.endswith('/'):
         prefix += '/'
 
+    if not srp.endswith('/'):
+        srp += '/'
+
     # parse the download link
     ip, *path = srp.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
-    path = '/' + '/'.join(path) + '/'
+    path = '/' + '/'.join(path)
 
     # get all SRA files from the SRP experiment
     ftp = ftplib.FTP(ip)
@@ -123,8 +126,7 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
         ftp.cwd(path)
         dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
         for d in dirs:
-            ftp.cwd(path + d)
-            files.extend([path + d + '/' + f for f in ftp.nlst()])
+            files.append('%s%s/%s.sra' % (path, d, d))
     finally:
         ftp.close()
 
