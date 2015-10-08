@@ -117,10 +117,14 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
 
     # get all SRA files from the SRP experiment
     ftp = ftplib.FTP(ip)
+    files = []
     try:
         ftp.login()
         ftp.cwd(path)
-        files = ftp.nlst()
+        dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
+        for d in dirs:
+            ftp.cwd(path + d)
+            files.extend([path + d + '/' + f for f in ftp.nlst()])
     finally:
         ftp.close()
 
