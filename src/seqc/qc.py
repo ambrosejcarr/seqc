@@ -17,6 +17,9 @@ from itertools import permutations
 
 def deobfuscate(df):
     """exchange ObfuscatedTuple classes for regular tuples"""
+    if (isinstance(df.iloc[0, :]['features'], tuple) and
+            isinstance(df.iloc[0, :]['positions'], tuple)):
+        return df
     if isinstance(df, np.ndarray):
         df = pd.DataFrame(df)
     features = df['features'].apply(lambda x: x.to_tuple())
@@ -768,3 +771,27 @@ def counts_matrix(arr, collapse_molecules, n_poly_t_required):
     coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
     return coo, unq_row, unq_col
 
+
+def set_filter_thresholds():
+    """identify intelligent thresholds for each filter
+
+    for each filter, determine a good threshold for eliminating a read based on its
+    probability of contributing to a valid alignment
+
+    which leads to the question: what is a valid alignment? Intuitively, it is one with
+    (1) good sequence quality
+    (2) good alignment score
+    (3) minimal homopolymer trimming
+    (4) associated with a cell that has enough reads
+    (5) has a cell barcode and an RMT
+    (6) is a part of an RMT that we are confident is real
+
+    so I guess we could regress each of these predictors against a final gold standard
+    if we could find one.
+
+    What would that gold standard be? We could start with "is in a good cell" but most
+    reads probably are in good cells, so we would want to correct for this.
+
+    Perhaps we go back to the correlation plot? Could we add some additional columns?
+    """
+    raise NotImplementedError
