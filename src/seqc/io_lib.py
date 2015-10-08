@@ -126,13 +126,12 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
         ftp.cwd(path)
         dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
         for d in dirs:
-            files.append('%s%s/%s.sra' % (path, d, d))
+            files.append('%s/%s.sra' % (d, d))
     finally:
         ftp.close()
 
     if not files:
         raise ValueError('no files found in ftp directory: "%s"' % path)
-    print(files)
 
     # create set of links
     if not srp.endswith('/'):
