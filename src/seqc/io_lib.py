@@ -64,7 +64,7 @@ def _download_sra_file(link_queue, prefix, clobber=False, verbose=True):
 
     while True:
         try:
-            link = link_queue.get()
+            link = link_queue.get_nowait()
         except Empty:
             break
 
