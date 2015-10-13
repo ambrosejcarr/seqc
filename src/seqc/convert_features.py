@@ -1,6 +1,7 @@
 __author__ = "Ambrose J. Carr"
 
 from collections import defaultdict
+from intervaltree import IntervalTree
 import re
 from sys import argv, exit
 
@@ -137,6 +138,72 @@ def construct_feature_table(gtf, fragment_len=1000):
         _process_transcript(transcript, fragment_len, feature_table, feature_positions)
 
     return dict(feature_table), dict(feature_positions)  # get rid of defaultdict
+
+
+class GeneTable:
+
+    def __init__(self, gtf):
+        self.interval_table = defaultdict(dict)
+        self._all_genes = set()
+        pattern = re.compile(r'(^.*?gene_name ")(.*?)(";.*?$)')
+        with open(gtf, 'r') as f:
+            for record in f:
+                # get rid of comments
+                if record.startswith('#'):
+                    continue
+                record = record.split('\t')
+                if record[2] == 'gene':
+                    chromosome = record[0]
+                    start = int(record[3])
+                    end = int(record[4])
+                    strand = record[6]
+                    gene_id = re.match(pattern, record[-1]).group(2)
+                    self._all_genes.add(gene_id)
+                    try:
+                        self.interval_table[chromosome][strand].addi(start, end, gene_id)
+                    except KeyError:  # interval does not exist for this strand
+                        self.interval_table[chromosome][strand] = IntervalTree()
+                        self.interval_table[chromosome][strand].addi(start, end, gene_id)
+
+        self.interval_table = dict(self.interval_table)  # get rid of defaultdict
+
+    def coordinates_to_gene_ids(self, chromosome, start, end, strand):
+        intervals = self.interval_table[chromosome][strand].search(start, end)
+        return [i.data for i in intervals]
+
+    def all_genes(self):
+        return self._all_genes
+
+
+def construct_gene_table(gtf):
+    """
+    construct a feature table for n(3) conversions of genomic coordinates to genes
+    features
+    """
+
+    # define two helper functions to round to the nearest hundred
+
+    interval_table = defaultdict(dict)
+    pattern = re.compile(r'(^.*?gene_name ")(.*?)(";.*?$)')
+    with open(gtf, 'r') as f:
+        for record in f:
+            # get rid of comments
+            if record.startswith('#'):
+                continue
+            record = record.split('\t')
+            if record[2] == 'gene':
+                chromosome = record[0]
+                start = int(record[3])
+                end = int(record[4])
+                strand = record[6]
+                gene_id = int(re.match(pattern, record[-1]).group(2))
+                try:
+                    interval_table[chromosome][strand].addi(start, end, gene_id)
+                except KeyError:  # interval does not exist for this strand
+                    interval_table[chromosome][strand] = IntervalTree()
+                    interval_table[chromosome][strand].addi(start, end, gene_id)
+    return interval_table
+
 
 
 if __name__ == "__main__":
