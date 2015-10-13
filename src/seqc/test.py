@@ -774,11 +774,19 @@ class TestAlign(unittest.TestCase):
 
     def test_align_in_drop(self):
         star = align.STAR(self.in_drop_temp_dir, 7, self.index, 'mm38')
-        star.align(self.in_drop_fastq)
+        samfile = star.align(self.in_drop_fastq)
+        self.assertEqual(samfile, self.in_drop_temp_dir + 'Aligned.out.sam')
 
     def test_align_drop_seq(self):
         star = align.STAR(self.drop_seq_temp_dir, 7, self.index, 'mm38')
-        star.align(self.drop_seq_fastq)
+        samfile = star.align(self.drop_seq_fastq)
+        self.assertEqual(samfile, self.drop_seq_temp_dir + 'Aligned.out.sam')
+
+    def test_align_drop_seq_multiple_files(self):
+        star = align.STAR(self.drop_seq_temp_dir, 7, self.index, 'mm38')
+        samfiles = star.align_multiple_files([self.drop_seq_fastq, self.drop_seq_fastq,
+                                              self.drop_seq_fastq])
+        print(samfiles)
 
 
 @unittest.skip('')
@@ -961,7 +969,7 @@ class TestErrorCorrection(unittest.TestCase):
         pass
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestSaveCountsMatrices(unittest.TestCase):
 
     def setUp(self):
@@ -975,5 +983,70 @@ class TestSaveCountsMatrices(unittest.TestCase):
         reads, rr, rc = qc.counts_matrix(arr, False)
 
 
+# @unittest.skip('')
+class TestGeneTable(unittest.TestCase):
+
+    def setUp(self):
+        self.genome_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/genome/'
+
+    def test_gene_table(self):
+        gt = convert_features.GeneTable(self.genome_dir + 'mm38_chr19/annotations.gtf')
+        chromosome = 'chr19'
+        start = 4007800
+        end = 4007900
+        strand = '-'
+        genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+        print(genes)
+
+
+class TestSamToCount(unittest.TestCase):
+
+    def setUp(self):
+        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+
+    def test_sam_to_count_single_file(self):
+        samfile = self.data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam'
+        gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
+        coo, gene_index, ci = qc.sam_to_count_single_file(samfile, gtf, 100)
+        print(repr(coo))
+        print(len(gene_index))
+
+        samfile = self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
+        gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
+        coo, gene_index, ci = qc.sam_to_count_single_file(samfile, gtf, 100)
+        print(repr(coo))
+        print(len(gene_index))
+
+    def test_sam_to_count_multiple_files(self):
+        samfile = self.data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam'
+        gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
+        coo, gene_index, ci = qc.sam_to_count_multiple_files([samfile, samfile], gtf, 100)
+        print(repr(coo))
+        print(len(gene_index))
+
+        samfile = self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
+        gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
+        coo, gene_index, ci = qc.sam_to_count_multiple_files([samfile, samfile], gtf, 100)
+        print(repr(coo))
+        print(len(gene_index))
+
+
 if __name__ == '__main__':
     unittest.main(failfast=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
