@@ -7,12 +7,14 @@ from collections import defaultdict, Counter
 import pickle
 from seqc import three_bit
 from seqc.sam import ObfuscatedTuple
+from seqc.convert_features import GeneTable
 from scipy.special import gammaln, gammaincinv
 from scipy.stats import chi2
 from scipy.sparse import coo_matrix
 from itertools import chain
 import sys
 from itertools import permutations
+import subprocess
 
 
 def deobfuscate(df):
@@ -795,3 +797,164 @@ def set_filter_thresholds():
     Perhaps we go back to the correlation plot? Could we add some additional columns?
     """
     raise NotImplementedError
+
+
+def sam_to_count_multiple_files(sam_files, gtf_file, read_length):
+    """count genes in each cell"""
+    gt = GeneTable(gtf_file)
+    all_genes = gt.all_genes()
+
+    # map genes to ids
+    n_genes = len(all_genes)
+    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
+    cell_number = 1
+    read_count = defaultdict(int)
+
+    # add metadata fields to mimic htseq output; remember to remove these in the final
+    # analysis
+    gene_to_int_id['ambiguous'] = n_genes
+    gene_to_int_id['no_feature'] = n_genes + 1
+    gene_to_int_id['not_aligned'] = n_genes + 2
+
+    for sam_file in sam_files:
+    # pile up counts
+        with open(sam_file) as f:
+            for record in f:
+
+                # discard headers
+                if record.startswith('@'):
+                    continue
+                record = record.strip().split('\t')
+
+                # get start, end, chrom, strand
+                flag = int(record[1])
+                if flag & 4:
+                    int_gene_id = n_genes + 2  # not aligned
+                else:
+                    chromosome = record[2]
+                    if flag & 16:
+                        strand = '-'
+                        end = int(record[3])
+                        start = end - read_length
+                    else:
+                        strand = '+'
+                        start = int(record[3])
+                        end = start + read_length
+
+                    genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                    if len(genes) == 1:
+                        int_gene_id = gene_to_int_id[genes[0]]
+                    if len(genes) == 0:
+                        int_gene_id = n_genes + 1
+                    if len(genes) > 1:
+                        int_gene_id = n_genes
+                read_count[(cell_number, int_gene_id)] += 1
+        cell_number += 1
+
+    # create sparse matrix
+    cell_row, gene_col = zip(*read_count.keys())
+    data = list(read_count.values())
+    m = cell_number
+    n = n_genes + 3
+
+    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
+    gene_index = sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned']
+    cell_index = ['no_cell'] + list(range(1, cell_number))
+
+    return coo, gene_index, cell_index
+
+    # out = subprocess.check_output(['which', 'htseq-count'])
+    # if not out:
+    #     raise RuntimeError('htseq-count not found in PATH')
+    #
+    # for sam_file in sam_files:
+    #     htseq_cmd = ['htseq-count', sam_file, gtf_file]
+    #
+    #     p = subprocess.Popen(htseq_cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    #     out, err = p.communicate()
+    #     if err:
+    #         raise ChildProcessError('htseq error: %s' % err.decode())
+    #
+    #     # process the count file
+    #
+    # return fout
+
+
+def sam_to_count_single_file(sam_file, gtf_file, read_length):
+    """cannot separate file due to operating system limitations. Instead, implement
+    a mimic of htseq-count that uses the default 'union' approach to counting, given the
+    same gtf file"""
+
+    # get conversion table, all possible genes for the count matrix
+    gt = GeneTable(gtf_file)
+    all_genes = gt.all_genes()
+
+    # map genes to ids
+    n_genes = len(all_genes)
+    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
+    cell_to_int_id = {'no_cell': 0}
+    cell_number = 1
+    read_count = defaultdict(int)
+
+    # add metadata fields to mimic htseq output; remember to remove these in the final
+    # analysis
+    gene_to_int_id['ambiguous'] = n_genes
+    gene_to_int_id['no_feature'] = n_genes + 1
+    gene_to_int_id['not_aligned'] = n_genes + 2
+
+    # pile up counts
+    with open(sam_file) as f:
+        for record in f:
+
+            # discard headers
+            if record.startswith('@'):
+                continue
+            record = record.strip().split('\t')
+
+            # get cell id, discard if no cell, add new cell if not found.
+            cell = record[0].split(':')[0]
+            if cell == 0:
+                int_cell_id = 0
+            else:
+                try:
+                    int_cell_id = cell_to_int_id[cell]
+                except KeyError:
+                    cell_to_int_id[cell] = cell_number
+                    int_cell_id = cell_number
+                    cell_number += 1
+
+            # get start, end, chrom, strand
+            flag = int(record[1])
+            if flag & 4:
+                int_gene_id = n_genes + 2  # not aligned
+            else:
+                chromosome = record[2]
+                if flag & 16:
+                    strand = '-'
+                    end = int(record[3])
+                    start = end - read_length
+                else:
+                    strand = '+'
+                    start = int(record[3])
+                    end = start + read_length
+
+                genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                if len(genes) == 1:
+                    int_gene_id = gene_to_int_id[genes[0]]
+                if len(genes) == 0:
+                    int_gene_id = n_genes + 1
+                if len(genes) > 1:
+                    int_gene_id = n_genes
+            read_count[(int_cell_id, int_gene_id)] += 1
+
+    # create sparse matrix
+    cell_row, gene_col = zip(*read_count.keys())
+    data = list(read_count.values())
+    m = cell_number
+    n = n_genes + 3
+
+    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
+    gene_index = sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned']
+    cell_index = ['no_cell'] + list(range(1, cell_number))
+
+    return coo, gene_index, cell_index
