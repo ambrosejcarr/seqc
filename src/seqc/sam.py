@@ -320,3 +320,23 @@ def process_alignments(samfile, n_threads, gtf, fragment_len):
                 sleep(0.1)
                 continue
     return arr
+
+
+def process_fluidigm_data():
+    """best we can do with this data is reads per gene
+
+    process each gene with htseq-count
+    """
+
+
+
+def assess_outliers(samfile):
+    """
+    parse samfile, generate reads per cell, & molecules per cell lists and total
+    alignments.
+
+    Normalize two ways:
+     1: total input reads
+     2: aligned reads
+    """
+    raise NotImplementedError
