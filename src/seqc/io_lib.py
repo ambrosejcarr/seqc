@@ -7,10 +7,12 @@ import os
 import ftplib
 from threading import Thread
 from queue import Queue, Empty
+from subprocess import Popen, check_output
+
 
 # these may be broken by os.makedirs, if that function throws any errors when directories
 #exist
-def download_file(bucket, key, fout=None, overwrite=False):
+def s3_download_file(bucket, key, fout=None, overwrite=False):
     """download the file key located in bucket, sending output to filename fout"""
     if not overwrite:
         if os.path.isfile(fout):
@@ -31,8 +33,8 @@ def download_file(bucket, key, fout=None, overwrite=False):
     s3_client.download_file(bucket, key, fout)
 
 
-def recursive_download(bucket_name, key_prefix, output_prefix='./', cut_dirs=0,
-                       overwrite=False):
+def s3_recursive_download(bucket_name, key_prefix, output_prefix='./', cut_dirs=0,
+                          overwrite=False):
     """recursively download objects from amazon s3
 
     recursively downloads objects from bucket_name starting with key_prefix. If desired,
@@ -96,7 +98,7 @@ def _download_sra_file(link_queue, prefix, clobber=False, verbose=True):
             ftp.close()
 
 
-def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
+def parallel_download_srp(srp, prefix, max_concurrent_dl, verbose=True, clobber=False):
     """in-parallel download of an srp experiment"""
 
     if not srp.startswith('ftp://'):
@@ -144,9 +146,67 @@ def download_srp(srp, prefix, max_concurrent_dl, clobber=False):
     threads = []
     for i in range(max_concurrent_dl):
         threads.append(Thread(target=_download_sra_file,
-                              args=([for_download, prefix, clobber])))
+                              args=([for_download, prefix, clobber, verbose])))
 
         threads[i].start()
 
     for t in threads:
         t.join()
+
+    # get output files
+    output_files = []
+    for f in files:
+        output_files.append(prefix + f.split('/')[-1])
+
+    return files
+
+
+def _extract_fastq(sra_queue, verbose=True):
+
+    while True:
+        try:
+            file_ = sra_queue.get_nowait()
+        except Empty:
+            break
+
+        *dir, file = file_.split('/')
+        dir = '/'.join(dir)
+        os.chdir(dir)  # set working directory as files are output in cwd
+
+        # extract file
+        if verbose:
+            print('beginning extraction of file: "%s"' % file_)
+        Popen(['fastq-dump', '--split-3', file_])
+        if verbose:
+            print('extraction of file complete: "%s"' % file_)
+
+
+def parallel_extract_fastq(sra_files, max_concurrent, verbose):
+    """requires fastq-dump from sra-tools"""
+
+    # check that fastq-dump exists
+    if not check_output(['which', 'fastq-dump']):
+        raise EnvironmentError('fastq-dump not found. Please verify that fastq-dump is '
+                               'installed and retry.')
+
+    to_extract = Queue()
+    for f in sra_files:
+        to_extract.put(f)
+
+    threads = []
+    for i in range(max_concurrent):
+        threads.append(Thread(target=_extract_fastq,
+                              args=([to_extract, verbose])))
+        threads[i].start()
+
+    for t in threads:
+        t.join()
+
+    # get output files
+    forward = []
+    reverse = []
+    for f in sra_files:
+        forward.append(f.replace('.sra', '_1.fastq'))
+        reverse.append(f.reaplce('.sra', '_2.fastq'))
+
+    return forward, reverse
