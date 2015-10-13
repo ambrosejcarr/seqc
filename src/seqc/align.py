@@ -1,10 +1,9 @@
 __author__ = 'ambrose'
 
-from subprocess import Popen, PIPE, call
+from subprocess import Popen, PIPE, call, check_output
 import os
 from shutil import rmtree, copyfileobj
 from collections import defaultdict
-# todo eliminate these dependencies
 from seqc.sa_preprocess import prepare_fasta
 from seqc.sa_postprocess import ordering_out_stacks, create_gtf_reduced
 import seqc
@@ -13,35 +12,34 @@ import gzip
 import bz2
 
 
-def star(index, n_threads, temp_dir):
-    cmd = [
-        'STAR', '--runMode', 'alignReads',
-        '--runThreadN', str(n_threads),
-        '--genomeDir', index,
-        '--outFilterType', 'BySJout',
-        '--outFilterMultimapNmax', '50',  # require <= 50 matches
-        '--alignSJDBoverhangMin', '8',
-        '--outFilterMismatchNoverLmax', '0.04',
-        '--alignIntronMin', '20',
-        '--alignIntronMax', '1000000',
-        '--readFilesIn', '%smerged_temp.fastq' % temp_dir,
-        '--outSAMunmapped', 'Within',
-        '--outSAMprimaryFlag', 'AllBestScore',  # all equal-scoring reads are primary
-        '--outFileNamePrefix', temp_dir,
-        # '--outSAMreadID', 'Number'  # test if this is output in order
-    ]
-    aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
-    out, err = aln.communicate()
-    if err:
-        raise ChildProcessError(err)
-
-    # get the number of aligned reads
-    with open(temp_dir + 'Log.final.out', 'r') as f:
-        data = f.readlines()
-    # * 2 heuristic for multiple alignments, in practice we get about x2 reads
-    n_alignments = int(data[5].strip().split('\t')[-1]) * 2
-    return n_alignments
-
+# def star(index, n_threads, temp_dir):
+#     cmd = [
+#         'STAR', '--runMode', 'alignReads',
+#         '--runThreadN', str(n_threads),
+#         '--genomeDir', index,
+#         '--outFilterType', 'BySJout',
+#         '--outFilterMultimapNmax', '50',  # require <= 50 matches
+#         '--alignSJDBoverhangMin', '8',
+#         '--outFilterMismatchNoverLmax', '0.04',
+#         '--alignIntronMin', '20',
+#         '--alignIntronMax', '1000000',
+#         '--readFilesIn', '%smerged_temp.fastq' % temp_dir,
+#         '--outSAMunmapped', 'Within',
+#         '--outSAMprimaryFlag', 'AllBestScore',  # all equal-scoring reads are primary
+#         '--outFileNamePrefix', temp_dir,
+#         # '--outSAMreadID', 'Number'  # test if this is output in order
+#     ]
+#     aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
+#     out, err = aln.communicate()
+#     if err:
+#         raise ChildProcessError(err)
+#
+#     # get the number of aligned reads
+#     with open(temp_dir + 'Log.final.out', 'r') as f:
+#         data = f.readlines()
+#     # * 2 heuristic for multiple alignments, in practice we get about x2 reads
+#     n_alignments = int(data[5].strip().split('\t')[-1]) * 2
+#     return n_alignments
 
 # todo | make sure organism is provided as a "choice" in the argparser
 # define download locations for mouse and human genome files and annotations
@@ -439,6 +437,87 @@ class STAR:
         out, err = aln.communicate()
         if err:
             raise ChildProcessError(err)
+
+        return self.temp_dir + 'Aligned.out.sam'
+
+    def align_multiple_files(self, fastq_files, **kwargs):
+
+        # use shared memory to map each of the individual cells
+        kwargs['--genomeLoad'] = 'LoadAndKeep'
+
+        runs = []
+        samfiles = []
+        for fastq_file in fastq_files:
+            alignment_dir = (self.temp_dir +
+                             fastq_file.split('/')[-1].replace('.fastq', '/'))
+            try:
+                os.mkdir(fastq_file.replace('.fastq', '/'))
+            except FileExistsError:
+                pass
+            runs.append(self.default_alignment_args(
+                fastq_file, self.n_threads, self.index, alignment_dir)
+            )
+            samfiles.append(alignment_dir + 'Aligned.out.sam')
+
+        # get output filenames
+
+        for runtime_args in runs:
+            for k, v in kwargs.items():  # overwrite or add any arguments from cmdline
+                if not isinstance(k, str):
+                    try:
+                        k = str(k)
+                    except ValueError:
+                        raise ValueError('arguments passed to STAR must be strings')
+                if not isinstance(v, str):
+                    try:
+                        v = str(v)
+                    except ValueError:
+                        raise ValueError('arguments passed to STAR must be strings')
+                runtime_args[k] = v
+
+        # construct command line arguments for STAR runs
+        cmds = []
+        for runtime_args in runs:
+            cmd = ['STAR']
+            for pair in runtime_args.items():
+                cmd.extend(pair)
+            cmds.append(cmd)
+
+        # load shared memory
+        self.load_index()
+        try:
+            for cmd in cmds:
+                aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
+                out, err = aln.communicate()
+                if err:
+                    raise ChildProcessError(err)
+        finally:
+            self.remove_index()
+
+        return samfiles
+
+    def load_index(self):
+        # set shared memory; todo | this may bug out with larger indices; test!
+        _ = check_output(['sysctl', '-w', 'kernel.shmmax=36301783210'])
+        _ = check_output(['sysctl', '-w', 'kernel.shmall=36301783210'])
+        star_args = ['STAR', '--genomeDir', self.index, '--genomeLoad',
+                     'LoadAndExit']
+        star = Popen(star_args, stderr=PIPE, stdout=PIPE)
+        return star.communicate()
+
+    def remove_index(self):
+        # remove index
+        star_args = ['STAR', '--genomeDir', self.index, '--genomeLoad',
+                     'Remove']
+        star = Popen(star_args, stderr=PIPE, stdout=PIPE)
+        out, err = star.communicate()
+        if err:  # don't remove temp files, they have logging info
+            return err
+
+        # remove temporary files
+        call(['rm', '-r', '_STARtmp/'])
+        call(['rm', './Aligned.out.sam', './Log.out', './Log.progress.out'])
+        return
 
     def clean_up(self):
         rmtree(self.temp_dir)
