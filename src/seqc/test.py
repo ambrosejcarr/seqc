@@ -1033,7 +1033,7 @@ class TestSamToCount(unittest.TestCase):
         print(len(gene_index))
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestS3Client(unittest.TestCase):
 
     def setUp(self):
