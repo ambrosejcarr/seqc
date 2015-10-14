@@ -188,6 +188,7 @@ def process_record(forward, reverse, tbp, cb):
     return r
 
 
+# todo this n_low_complexity argument is very dubious
 def merge_fastq(forward, reverse, exp_type, temp_dir, cb, n_low_complexity=0):
     """direct threadless fastq processing"""
 
