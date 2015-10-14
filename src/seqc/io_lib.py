@@ -43,7 +43,7 @@ class S3:
 
         return fout
 
-    # todo return all downloaded files
+    # todo return all downloaded filenames
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
                        overwrite=False):
@@ -184,152 +184,156 @@ class S3:
             _ = client.delete_object(Bucket=bucket, Key=k)
 
 
-def _download_sra_file(link_queue, prefix, clobber=False, verbose=True):
-    """downloads ftp_file available at 'link' into the 'prefix' directory"""
+class GEO:
 
-    while True:
-        try:
-            link = link_queue.get_nowait()
-        except Empty:
-            break
+    @staticmethod
+    def _download_sra_file(link_queue, prefix, clobber=False, verbose=True):
+        """downloads ftp_file available at 'link' into the 'prefix' directory"""
 
-        # check link validity
-        if not link.startswith('ftp://'):
+        while True:
+            try:
+                link = link_queue.get_nowait()
+            except Empty:
+                break
+
+            # check link validity
+            if not link.startswith('ftp://'):
+                raise ValueError(
+                    'link must start with "ftp://". Provided link is not valid: %s'
+                    % link)
+
+            ip, *path, file_name = link.split('/')[2:]  # [2:] -- eliminate 'ftp://'
+            path = '/'.join(path)
+
+            # check if file already exists
+            if os.path.isfile(prefix + file_name):
+                if not clobber:
+                    continue  # try to download next file
+
+            ftp = ftplib.FTP(ip)
+            try:
+                ftp.login()
+                ftp.cwd(path)
+                with open(prefix + file_name, 'wb') as fout:
+                    if verbose:
+                        print('beginning download of file: "%s"' % link.split('/')[-1])
+                    ftp.retrbinary('RETR %s' % file_name, fout.write)
+                    if verbose:
+                        print('download of file complete: "%s"' % link.split('/')[-1])
+            finally:
+                ftp.close()
+
+    @classmethod
+    def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False):
+        """download all files in an SRP experiment into directory 'prefix'."""
+
+        if not srp.startswith('ftp://'):
             raise ValueError(
-                'link must start with "ftp://". Provided link is not valid: %s'
-                % link)
+                'link must start with "ftp://". Provided link is not valid: %s' % srp)
 
-        ip, *path, file_name = link.split('/')[2:]  # [2:] -- eliminate 'ftp://'
-        path = '/'.join(path)
+        # create prefix directory if it does not exist
+        if not os.path.isdir(prefix):
+            os.makedirs(prefix)
 
-        # check if file already exists
-        if os.path.isfile(prefix + file_name):
-            if not clobber:
-                continue  # try to download next file
+        # make sure prefix has a trailing '/':
+        if not prefix.endswith('/'):
+            prefix += '/'
 
+        if not srp.endswith('/'):
+            srp += '/'
+
+        # parse the download link
+        ip, *path = srp.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
+        path = '/' + '/'.join(path)
+
+        # get all SRA files from the SRP experiment
         ftp = ftplib.FTP(ip)
+        files = []
         try:
             ftp.login()
             ftp.cwd(path)
-            with open(prefix + file_name, 'wb') as fout:
-                if verbose:
-                    print('beginning download of file: "%s"' % link.split('/')[-1])
-                ftp.retrbinary('RETR %s' % file_name, fout.write)
-                if verbose:
-                    print('download of file complete: "%s"' % link.split('/')[-1])
+            dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
+            for d in dirs:
+                files.append('%s/%s.sra' % (d, d))
         finally:
             ftp.close()
 
+        if not files:
+            raise ValueError('no files found in ftp directory: "%s"' % path)
 
-def parallel_download_srp(srp, prefix, max_concurrent_dl, verbose=True, clobber=False):
-    """in-parallel download of an srp experiment"""
+        # create set of links
+        if not srp.endswith('/'):
+            srp += '/'
 
-    if not srp.startswith('ftp://'):
-        raise ValueError(
-            'link must start with "ftp://". Provided link is not valid: %s' % srp)
+        for_download = Queue()
+        for f in files:
+            for_download.put(srp + f)
 
-    # create prefix directory if it does not exist
-    if not os.path.isdir(prefix):
-        os.makedirs(prefix)
+        threads = []
+        for i in range(max_concurrent_dl):
+            threads.append(Thread(target=cls._download_sra_file,
+                                  args=([for_download, prefix, clobber, verbose])))
 
-    # make sure prefix has a trailing '/':
-    if not prefix.endswith('/'):
-        prefix += '/'
+            threads[i].start()
 
-    if not srp.endswith('/'):
-        srp += '/'
+        for t in threads:
+            t.join()
 
-    # parse the download link
-    ip, *path = srp.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
-    path = '/' + '/'.join(path)
+        # get output files
+        output_files = []
+        for f in files:
+            output_files.append(prefix + f.split('/')[-1])
 
-    # get all SRA files from the SRP experiment
-    ftp = ftplib.FTP(ip)
-    files = []
-    try:
-        ftp.login()
-        ftp.cwd(path)
-        dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
-        for d in dirs:
-            files.append('%s/%s.sra' % (d, d))
-    finally:
-        ftp.close()
+        return files
 
-    if not files:
-        raise ValueError('no files found in ftp directory: "%s"' % path)
+    @staticmethod
+    def _extract_fastq(sra_queue, verbose=True):
 
-    # create set of links
-    if not srp.endswith('/'):
-        srp += '/'
+        while True:
+            try:
+                file_ = sra_queue.get_nowait()
+            except Empty:
+                break
 
-    for_download = Queue()
-    for f in files:
-        for_download.put(srp + f)
+            *dir, file = file_.split('/')
+            dir = '/'.join(dir)
+            os.chdir(dir)  # set working directory as files are output in cwd
 
-    threads = []
-    for i in range(max_concurrent_dl):
-        threads.append(Thread(target=_download_sra_file,
-                              args=([for_download, prefix, clobber, verbose])))
+            # extract file
+            if verbose:
+                print('beginning extraction of file: "%s"' % file_)
+            Popen(['fastq-dump', '--split-3', file_])
+            if verbose:
+                print('extraction of file complete: "%s"' % file_)
 
-        threads[i].start()
+    @classmethod
+    def extract_fastq(cls, sra_files, max_concurrent, verbose):
+        """requires fastq-dump from sra-tools"""
 
-    for t in threads:
-        t.join()
+        # check that fastq-dump exists
+        if not check_output(['which', 'fastq-dump']):
+            raise EnvironmentError(
+                'fastq-dump not found. Please verify that fastq-dump is installed.')
 
-    # get output files
-    output_files = []
-    for f in files:
-        output_files.append(prefix + f.split('/')[-1])
+        to_extract = Queue()
+        for f in sra_files:
+            to_extract.put(f)
 
-    return files
+        threads = []
+        for i in range(max_concurrent):
+            threads.append(Thread(target=cls._extract_fastq,
+                                  args=([to_extract, verbose])))
+            threads[i].start()
 
+        for t in threads:
+            t.join()
 
-def _extract_fastq(sra_queue, verbose=True):
-
-    while True:
-        try:
-            file_ = sra_queue.get_nowait()
-        except Empty:
-            break
-
-        *dir, file = file_.split('/')
-        dir = '/'.join(dir)
-        os.chdir(dir)  # set working directory as files are output in cwd
-
-        # extract file
-        if verbose:
-            print('beginning extraction of file: "%s"' % file_)
-        Popen(['fastq-dump', '--split-3', file_])
-        if verbose:
-            print('extraction of file complete: "%s"' % file_)
+        # get output files
+        forward = []
+        reverse = []
+        for f in sra_files:
+            forward.append(f.replace('.sra', '_1.fastq'))
+            reverse.append(f.reaplce('.sra', '_2.fastq'))
 
 
-def parallel_extract_fastq(sra_files, max_concurrent, verbose):
-    """requires fastq-dump from sra-tools"""
-
-    # check that fastq-dump exists
-    if not check_output(['which', 'fastq-dump']):
-        raise EnvironmentError('fastq-dump not found. Please verify that fastq-dump is '
-                               'installed and retry.')
-
-    to_extract = Queue()
-    for f in sra_files:
-        to_extract.put(f)
-
-    threads = []
-    for i in range(max_concurrent):
-        threads.append(Thread(target=_extract_fastq,
-                              args=([to_extract, verbose])))
-        threads[i].start()
-
-    for t in threads:
-        t.join()
-
-    # get output files
-    forward = []
-    reverse = []
-    for f in sra_files:
-        forward.append(f.replace('.sra', '_1.fastq'))
-        reverse.append(f.reaplce('.sra', '_2.fastq'))
-
-    return forward, reverse
+        return forward, reverse
