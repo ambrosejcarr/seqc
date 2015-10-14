@@ -858,8 +858,9 @@ def sam_to_count_multiple_files(sam_files, gtf_file, read_length):
     n = n_genes + 3
 
     coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
-    gene_index = sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned']
-    cell_index = ['no_cell'] + list(range(1, cell_number))
+    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
+                          dtype=object)
+    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
 
     return coo, gene_index, cell_index
 
@@ -954,7 +955,8 @@ def sam_to_count_single_file(sam_file, gtf_file, read_length):
     n = n_genes + 3
 
     coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
-    gene_index = sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned']
-    cell_index = ['no_cell'] + list(range(1, cell_number))
+    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
+                          dtype=object)
+    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
 
     return coo, gene_index, cell_index
