@@ -15,20 +15,21 @@ def parse_args():
 
     p = argparse.ArgumentParser()
     p.add_argument('-s', '--srp', help='FTP link to SRP experiment to download from GEO',
-                   metavar='S', required=True)
+                   metavar='S', required=True, type=str)
     p.add_argument('-n', '--n-threads', help='number of threads to use', metavar='N',
-                   required=True)
+                   required=True, type=int)
     p.add_argument('--s3-bucket', help='s3 bucket to upload data matrix', metavar='B',
-                   required=True)
+                   required=True, type=str)
     p.add_argument('--s3-key', help='s3 key to upload data matrix', metavar='K',
-                   required=True)
+                   required=True, type=str)
     p.add_argument('-e', '--experiment-name', help='stem for output data matrix',
-                   metavar='E', required=True)
+                   metavar='E', required=True, type=str)
     p.add_argument('-i', '--index', help='location of directory containing star index',
-                   metavar='I')
-    p.add_argument('--index-bucket', help='s3 bucket for star index', metavar='IB')
-    p.add_argument('--index-key', help='s3 key for star index', metavar='IK')
-    p.add_argument('-w', '--working-directory', metavar='W',
+                   metavar='I', type=str)
+    p.add_argument('--index-bucket', help='s3 bucket for star index', metavar='IB',
+                   type=str)
+    p.add_argument('--index-key', help='s3 key for star index', metavar='IK', type=str)
+    p.add_argument('-w', '--working-directory', metavar='W', type=str,
                    help='temporary working directory for script', required=True)
     args = vars(p.parse_args())
     return args
@@ -36,13 +37,13 @@ def parse_args():
 
 def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
          experiment_type, experiment_name, index=None, index_bucket=None, index_key=None,
-         working_directory=''):
+         working_directory='./'):
 
     # set the index
     if not index:  # download the index
         index_dir = working_directory + 'index/'
         S3.download_files(bucket=index_bucket, key_prefix=index_key,
-                          output_prefix=index_dir, no_cut_dirs=True)
+                          output_prefix=index_dir, cut_dirs=False)
         index = index_dir + index_key.lstrip('/')
     if not os.path.isdir(index):
         raise FileNotFoundError('Index does not lead to a directory')
