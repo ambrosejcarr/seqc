@@ -1,9 +1,9 @@
 #This is the main program, combining work from basic_suffix_array.py and lcp.py into a single object. For sc_seq, shouldn't have to run anything else.
 
-from scseq.sa_process.lcp import get_lcp
-import scseq.sa_process.basic_suffix_array as msaw
+from seqc.sa_process.lcp import get_lcp
+import seqc.sa_process.basic_suffix_array as msaw
 #import child_tab as ct
-import scseq.sa_process.load_fasta as lf
+import seqc.sa_process.load_fasta as lf
 #import new_finish as nf
 import random
 import time

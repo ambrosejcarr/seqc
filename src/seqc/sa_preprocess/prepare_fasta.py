@@ -1,7 +1,8 @@
-# A single file, called prepare_fasta, is needed to produce some files that will be used in downstream steps of suffix array construction.
+# A single file, called prepare_fasta, is needed to produce some files that will be used
+# in downstream steps of suffix array construction.
 
-from scseq.sa_preprocess import load_fasta as lf
-from scseq.sa_preprocess import buffered_printer as bf
+from seqc.sa_preprocess import load_fasta as lf
+from seqc.sa_preprocess import buffered_printer as bf
 import random
 import gzip
 import pickle
