@@ -18,7 +18,10 @@ setup(name='seqc',
           'scipy>=0.14.0',
           'boto3',
           'pyftpdlib'],
-      scripts=['src/scripts/SEQC', 'src/scripts/PROCESS_BARCODES',
-               'src/scripts/TEST_BARCODES'],
+      scripts=['src/scripts/SEQC',
+               'src/scripts/PROCESS_BARCODES',
+               'src/scripts/TEST_BARCODES',
+               'src/scripts/process_multi_file_scseq_experiment.py',
+               'src/scripts/process_single_file_scseq_experiment.py'],
       )
 
