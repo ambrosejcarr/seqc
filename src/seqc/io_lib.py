@@ -310,7 +310,7 @@ class GEO:
                 print('extraction of file complete: "%s"' % file_)
 
     @classmethod
-    def extract_fastq(cls, sra_files, max_concurrent, verbose):
+    def extract_fastq(cls, sra_files, max_concurrent, verbose=True):
         """requires fastq-dump from sra-tools"""
 
         # check that fastq-dump exists

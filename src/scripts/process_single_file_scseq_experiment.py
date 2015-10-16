@@ -73,7 +73,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
-    forward, reverse = GEO.extract_fastq(files, n_threads)
+    forward, reverse = GEO.extract_fastq(files, n_threads, verbose=False)
 
     # merge fastq files
     log_info('Extracting cell information and merging fastq files')

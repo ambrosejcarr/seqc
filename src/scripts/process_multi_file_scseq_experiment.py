@@ -68,7 +68,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
 
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
-    forward, reverse = GEO.extract_fastq(files, n_threads)
+    forward, reverse = GEO.extract_fastq(files, n_threads, verbose=False)
 
     # align the data
     log_info('Aligning fastq records')
