@@ -1,7 +1,7 @@
 from seqc.sa_postprocess import load_fasta as lf
 import time
 import pickle as pickle
-from scseq.sa_postprocess import set_classes as sc
+from seqc.sa_postprocess import set_classes as sc
 
 from scipy.stats import poisson
 
