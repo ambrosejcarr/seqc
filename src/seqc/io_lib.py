@@ -187,7 +187,14 @@ class S3:
 class GEO:
 
     @staticmethod
-    def _download_sra_file(link_queue, prefix, clobber=False, verbose=True):
+    def _ftp_login(ip, port=0, username='anonymous', password=''):
+        ftp = ftplib.FTP()
+        ftp.connect(ip, port)
+        ftp.login(user=username, passwd=password)
+        return ftp
+
+    @classmethod
+    def _download_sra_file(cls, link_queue, prefix, clobber=False, verbose=True, port=0):
         """downloads ftp_file available at 'link' into the 'prefix' directory"""
 
         while True:
@@ -210,21 +217,19 @@ class GEO:
                 if not clobber:
                     continue  # try to download next file
 
-            ftp = ftplib.FTP(ip)
-            try:
-                ftp.login()
-                ftp.cwd(path)
-                with open(prefix + file_name, 'wb') as fout:
-                    if verbose:
-                        print('beginning download of file: "%s"' % link.split('/')[-1])
-                    ftp.retrbinary('RETR %s' % file_name, fout.write)
-                    if verbose:
-                        print('download of file complete: "%s"' % link.split('/')[-1])
-            finally:
-                ftp.close()
+            ftp = cls._ftp_login(ip, port)
+            ftp.cwd(path)
+            with open(prefix + file_name, 'wb') as fout:
+                if verbose:
+                    print('beginning download of file: "%s"' % link.split('/')[-1])
+                ftp.retrbinary('RETR %s' % file_name, fout.write)
+                if verbose:
+                    print('download of file complete: "%s"' % link.split('/')[-1])
+            ftp.close()
 
     @classmethod
-    def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False):
+    def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False,
+                     port=0):
         """download all files in an SRP experiment into directory 'prefix'."""
 
         if not srp.startswith('ftp://'):
@@ -247,16 +252,14 @@ class GEO:
         path = '/' + '/'.join(path)
 
         # get all SRA files from the SRP experiment
-        ftp = ftplib.FTP(ip)
+
+        ftp = cls._ftp_login(ip, port)
         files = []
-        try:
-            ftp.login()
-            ftp.cwd(path)
-            dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
-            for d in dirs:
-                files.append('%s/%s.sra' % (d, d))
-        finally:
-            ftp.close()
+        ftp.cwd(path)
+        dirs = ftp.nlst()  # all SRA experiments are nested in directories of the SRP
+        for d in dirs:
+            files.append('%s/%s.sra' % (d, d))
+        ftp.close()
 
         if not files:
             raise ValueError('no files found in ftp directory: "%s"' % path)
@@ -284,7 +287,7 @@ class GEO:
         for f in files:
             output_files.append(prefix + f.split('/')[-1])
 
-        return files
+        return output_files
 
     @staticmethod
     def _extract_fastq(sra_queue, verbose=True):
@@ -333,7 +336,6 @@ class GEO:
         reverse = []
         for f in sra_files:
             forward.append(f.replace('.sra', '_1.fastq'))
-            reverse.append(f.reaplce('.sra', '_2.fastq'))
-
+            reverse.append(f.replace('.sra', '_2.fastq'))
 
         return forward, reverse

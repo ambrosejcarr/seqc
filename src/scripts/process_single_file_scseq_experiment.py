@@ -6,54 +6,65 @@ from seqc.io_lib import S3, GEO
 from seqc.align import STAR
 from seqc.qc import sam_to_count_single_file
 from seqc.fastq import merge_fastq
-from glob import glob
 import os
 import numpy as np
+import argparse
 
 
-def main(srp, n_threads, output_directory, index_key, index_bucket, s3_bucket, s3_key,
-         cell_barcodes, experiment_type, experiment_name):
-    # download the index
-    index_dir = output_directory + 'index/'
-    S3.download_files(bucket=index_bucket, key_prefix=index_key, output_prefix=index_dir)
+def parse_args():
 
-    # todo index_dir will not be correct unless we cut the proper number of directories
-    # are these cut by default based on how I wrote the program?
+    p = argparse.ArgumentParser()
+    p.add_argument('-s', '--srp', help='FTP link to SRP experiment to download from GEO',
+                   metavar='S', required=True)
+    p.add_argument('-n', '--n-threads', help='number of threads to use', metavar='N',
+                   required=True)
+    p.add_argument('--s3-bucket', help='s3 bucket to upload data matrix', metavar='B',
+                   required=True)
+    p.add_argument('--s3-key', help='s3 key to upload data matrix', metavar='K',
+                   required=True)
+    p.add_argument('-e', '--experiment-name', help='stem for output data matrix',
+                   metavar='E', required=True)
+    p.add_argument('-i', '--index', help='location of directory containing star index',
+                   metavar='I')
+    p.add_argument('--index-bucket', help='s3 bucket for star index', metavar='IB')
+    p.add_argument('--index-key', help='s3 key for star index', metavar='IK')
+    p.add_argument('-w', '--working-directory', metavar='W',
+                   help='temporary working directory for script', required=True)
+    args = vars(p.parse_args())
+    return args
+
+
+def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
+         experiment_type, experiment_name, index=None, index_bucket=None, index_key=None,
+         working_directory=''):
+
+    # set the index
+    if not index:  # download the index
+        index_dir = working_directory + 'index/'
+        S3.download_files(bucket=index_bucket, key_prefix=index_key,
+                          output_prefix=index_dir, no_cut_dirs=True)
+        index = index_dir + index_key.lstrip('/')
+    if not os.path.isdir(index):
+        raise FileNotFoundError('Index does not lead to a directory')
 
     # download the data
-    GEO.download_srp(srp, output_directory, min(n_threads, 10), verbose=False,
-                     clobber=False)
-    # get the downloaded .sra files
-    files = [f for f in os.listdir(output_directory) if os.path.isfile(f) and
-             f.endswith('.sra')]
+    files = GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
+                             clobber=False)
 
     # unpack the .sra files into forward and reverse fastq files
-    # todo this needs an output prefix!
-    GEO.extract_fastq(files, n_threads)
-
-    # get the fastq files
-    forward = glob('*_1.fastq')
-    assert(len(forward) == 1)
-    reverse = glob('*_2.fastq')
-    assert(len(reverse) == 1)
+    forward, reverse = GEO.extract_fastq(files, n_threads)
 
     # merge fastq files
-    merged_fastq = merge_fastq(forward, reverse, experiment_type, output_directory,
-                               cell_barcodes)
+    merged_fastq, _ = merge_fastq(
+        forward, reverse, experiment_type, working_directory, cell_barcodes)
 
     # align the data
-    # todo make STAR arguments into static/class methods where appropriate.
-    star = STAR(output_directory, n_threads, index_dir)
-    # todo aligner needs to support paired-end reads! create new functions for this
-    # todo these functions should output .sam filenames
-    sam_file = star.align(merged_fastq)
-
-    # todo estimate read length
-    read_length = 100
+    sam_file = STAR.align(merged_fastq, index, n_threads, working_directory,
+                          paired_end=False)
 
     # create the matrix
     gtf_file = index_dir + 'annotations.gtf'
-    coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file, read_length)
+    coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
 
     numpy_archive = experiment_name + '.npz'
     with open(numpy_archive, 'wb') as f:
@@ -63,4 +74,5 @@ def main(srp, n_threads, output_directory, index_key, index_bucket, s3_bucket, s
     S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
 if __name__ == "__main__":
-    main()
+    kwargs = parse_args()
+    main(**kwargs)

@@ -799,7 +799,7 @@ def set_filter_thresholds():
     raise NotImplementedError
 
 
-def sam_to_count_multiple_files(sam_files, gtf_file, read_length):
+def sam_to_count_multiple_files(sam_files, gtf_file):
     """count genes in each cell"""
     gt = GeneTable(gtf_file)
     all_genes = gt.all_genes()
@@ -818,6 +818,17 @@ def sam_to_count_multiple_files(sam_files, gtf_file, read_length):
 
     for sam_file in sam_files:
     # pile up counts
+
+        # estimate the average read length
+        with open(sam_file, 'r') as f:
+            sequences = []
+            line = f.readline()
+            while line.startswith('@'):
+                line = f.readline()
+            while len(sequences) < 100:
+                sequences.append(f.readline().strip().split('\t')[9])
+            read_length = round(np.mean([len(s) for s in sequences]))
+
         with open(sam_file) as f:
             for record in f:
 
@@ -864,24 +875,8 @@ def sam_to_count_multiple_files(sam_files, gtf_file, read_length):
 
     return coo, gene_index, cell_index
 
-    # out = subprocess.check_output(['which', 'htseq-count'])
-    # if not out:
-    #     raise RuntimeError('htseq-count not found in PATH')
-    #
-    # for sam_file in sam_files:
-    #     htseq_cmd = ['htseq-count', sam_file, gtf_file]
-    #
-    #     p = subprocess.Popen(htseq_cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    #     out, err = p.communicate()
-    #     if err:
-    #         raise ChildProcessError('htseq error: %s' % err.decode())
-    #
-    #     # process the count file
-    #
-    # return fout
 
-
-def sam_to_count_single_file(sam_file, gtf_file, read_length):
+def sam_to_count_single_file(sam_file, gtf_file):
     """cannot separate file due to operating system limitations. Instead, implement
     a mimic of htseq-count that uses the default 'union' approach to counting, given the
     same gtf file"""
@@ -902,6 +897,16 @@ def sam_to_count_single_file(sam_file, gtf_file, read_length):
     gene_to_int_id['ambiguous'] = n_genes
     gene_to_int_id['no_feature'] = n_genes + 1
     gene_to_int_id['not_aligned'] = n_genes + 2
+
+    # estimate the average read length
+    with open(sam_file, 'r') as f:
+        sequences = []
+        line = f.readline()
+        while line.startswith('@'):
+            line = f.readline()
+        while len(sequences) < 100:
+            sequences.append(f.readline().strip().split('\t')[9])
+        read_length = round(np.mean([len(s) for s in sequences]))
 
     # pile up counts
     with open(sam_file) as f:

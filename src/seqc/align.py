@@ -1,6 +1,6 @@
 __author__ = 'ambrose'
 
-from subprocess import Popen, PIPE, call, check_output
+from subprocess import Popen, PIPE, call, check_output, CalledProcessError
 import os
 from shutil import rmtree, copyfileobj
 from collections import defaultdict
@@ -11,35 +11,6 @@ import ftplib
 import gzip
 import bz2
 
-
-# def star(index, n_threads, temp_dir):
-#     cmd = [
-#         'STAR', '--runMode', 'alignReads',
-#         '--runThreadN', str(n_threads),
-#         '--genomeDir', index,
-#         '--outFilterType', 'BySJout',
-#         '--outFilterMultimapNmax', '50',  # require <= 50 matches
-#         '--alignSJDBoverhangMin', '8',
-#         '--outFilterMismatchNoverLmax', '0.04',
-#         '--alignIntronMin', '20',
-#         '--alignIntronMax', '1000000',
-#         '--readFilesIn', '%smerged_temp.fastq' % temp_dir,
-#         '--outSAMunmapped', 'Within',
-#         '--outSAMprimaryFlag', 'AllBestScore',  # all equal-scoring reads are primary
-#         '--outFileNamePrefix', temp_dir,
-#         # '--outSAMreadID', 'Number'  # test if this is output in order
-#     ]
-#     aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
-#     out, err = aln.communicate()
-#     if err:
-#         raise ChildProcessError(err)
-#
-#     # get the number of aligned reads
-#     with open(temp_dir + 'Log.final.out', 'r') as f:
-#         data = f.readlines()
-#     # * 2 heuristic for multiple alignments, in practice we get about x2 reads
-#     n_alignments = int(data[5].strip().split('\t')[-1]) * 2
-#     return n_alignments
 
 # todo | make sure organism is provided as a "choice" in the argparser
 # define download locations for mouse and human genome files and annotations
@@ -110,42 +81,58 @@ def _check_type(obj, type_):
 
 class STAR:
 
-    def __init__(self, temp_dir, n_threads, index, *organism):
-        """
-        classdocs
-        """
+    # def __init__(self, temp_dir, n_threads, index, *organism):
+    #     """
+    #     classdocs
+    #     """
+    #
+    #     # type-check arguments
+    #     _check_type(temp_dir, str)
+    #     _check_type(n_threads, int)
+    #     _check_type(index, str)
+    #
+    #     # create temp_dir if it does not exist
+    #     if not os.path.isdir(temp_dir):
+    #         os.makedirs(temp_dir)
+    #     if not temp_dir.endswith('/'):
+    #         temp_dir += '/'
+    #     self.temp_dir = temp_dir
+    #
+    #     # create index if it does not exist
+    #     if not os.path.isdir(index):
+    #         os.makedirs(index)
+    #     if not index.endswith('/'):
+    #         index += '/'
+    #     self.index = index
+    #
+    #     # check that organism is a valid argument
+    #     valid_organisms = ['mm38', 'hg38', 'mmhg38', 'cs2', 'ci2']
+    #     if organism:
+    #         if not all(org in valid_organisms for org in organism):
+    #             raise ValueError('Invalid organism value. Supported organisms: %r' %
+    #                              valid_organisms)
+    #     self.organism = organism
+    #
+    #     self.n_threads = n_threads
 
-        # type-check arguments
-        _check_type(temp_dir, str)
-        _check_type(n_threads, int)
-        _check_type(index, str)
-
-        # create temp_dir if it does not exist
-        if not os.path.isdir(temp_dir):
-            os.makedirs(temp_dir)
-        if not temp_dir.endswith('/'):
-            temp_dir += '/'
-        self.temp_dir = temp_dir
-
-        # create index if it does not exist
-        if not os.path.isdir(index):
-            os.makedirs(index)
-        if not index.endswith('/'):
-            index += '/'
-        self.index = index
-
-        # check that organism is a valid argument
+    @staticmethod
+    def verify_organism(organism):
         valid_organisms = ['mm38', 'hg38', 'mmhg38', 'cs2', 'ci2']
         if organism:
             if not all(org in valid_organisms for org in organism):
                 raise ValueError('Invalid organism value. Supported organisms: %r' %
                                  valid_organisms)
-        self.organism = organism
 
-        self.n_threads = n_threads
+    @staticmethod
+    def verify_temp_dir(directory):
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        if not directory.endswith('/'):
+            directory += '/'
+        return directory
 
-    @classmethod
-    def default_alignment_args(cls, fastq_records, n_threads, index, temp_dir):
+    @staticmethod
+    def default_alignment_args(fastq_records, n_threads, index, temp_dir):
         default_align_args = {
             '--runMode': 'alignReads',
             '--runThreadN': str(n_threads),
@@ -199,7 +186,7 @@ class STAR:
 
     @staticmethod
     def _gunzip_file(gzipped_file):
-        # todo replace with gzip module
+        # todo want to replace with gzip module, but it is too slow!
         # python is too damn slow.
         # with gzip.open(gzipped_file, 'rb') as f:
         #     fout = gzipped_file.replace('.gz', '')
@@ -227,38 +214,39 @@ class STAR:
                     fd = open(f, 'rb')
                 copyfileobj(fd, wfd, 1024**2 * 128)
 
-    def _generate_multiorganism_coalignment(self):
+    @classmethod
+    def _generate_multiorganism_coalignment(cls, index, organism):
 
         # keys for coalignment relevant files
         keys = ['cdna', 'gtf']
 
         # set names for merged files
         names = {
-            'cdna': self.index + '%s_cdna_all.fa' % '_'.join(self.organism),
-            'gtf': self.index + '%s.gtf' % '_'.join(self.organism)
+            'cdna': index + '%s_cdna_all.fa' % '_'.join(organism),
+            'gtf': index + '%s.gtf' % '_'.join(organism)
         }
 
         # merge gtf files
         files = []
-        for organism in self.organism:
+        for organism in organism:
             try:
-                files.append(self.index + _file_names[organism]['gtf'])
+                files.append(index + _file_names[organism]['gtf'])
             except KeyError:
                 pass  # no gtf file for this organism
         if not len(files) > 0:
             raise ValueError('user must supply at least one organism with a gtf '
                              'annotation file')
-        self._merge_files(names['gtf'], *files)
+        cls._merge_files(names['gtf'], *files)
 
         # merge cdna files
         cdna_files = []
-        for org in self.organism:
+        for org in organism:
             for file_ in _file_names[org]['cdna']:
-                cdna_files.append(self.index + file_)
-        self._merge_files(names['cdna'], *cdna_files)
+                cdna_files.append(index + file_)
+        cls._merge_files(names['cdna'], *cdna_files)
 
         # label the fasta file
-        labeled_fasta = self.index + '%s_cdna_all_labeled.fa' % '_'.join(self.organism)
+        labeled_fasta = index + '%s_cdna_all_labeled.fa' % '_'.join(organism)
         prepare_fasta.standard_run(names['gtf'], names['cdna'], labeled_fasta)
 
         # locate and execute the julia script
@@ -266,36 +254,37 @@ class STAR:
                         '/scripts/complete_sa.jl')
 
         # process with julia script
-        call(['julia', julia_script, labeled_fasta, self.index, '50'])
+        call(['julia', julia_script, labeled_fasta, index, '50'])
 
         # complete processing
-        scid_to_tx = self.index + 'scid_to_feature.txt'
+        scid_to_tx = index + 'scid_to_feature.txt'
         ordering_out_stacks.standard_run(
-            self.index + 'jelly_output_stack_50.txt', scid_to_tx, labeled_fasta,
-            self.index + 'p_coalignment.pckl')
-        create_gtf_reduced.create_gtf(names['gtf'], scid_to_tx, self.index +
+            index + 'jelly_output_stack_50.txt', scid_to_tx, labeled_fasta,
+            index + 'p_coalignment.pckl')
+        create_gtf_reduced.create_gtf(names['gtf'], scid_to_tx, index +
                                       'annotations.gtf')
 
-    def _generate_coalignment(self):
+    @classmethod
+    def _generate_coalignment(cls, index, organism):
         # todo | some files will need to be ungzipped
 
         # organism was of length 1, convert to string
-        organism = self.organism[0]
+        organism = organism[0]
 
         # merge cDNA files
-        cdna_files = [self.index + f for f in _file_names[organism]['cdna']]
-        merged_cdna = self.index + organism + '_cdna_all.fa'
-        self._merge_files(merged_cdna, *cdna_files)
+        cdna_files = [index + f for f in _file_names[organism]['cdna']]
+        merged_cdna = index + organism + '_cdna_all.fa'
+        cls._merge_files(merged_cdna, *cdna_files)
 
         # # merge ncrna and transcriptome files
-        # ncrna = self.index + _file_names[organism]['ncrna']
-        # tx = self.index + _file_names[organism]['tx']
-        # merged_tx = self.index + organism + '_cdna_all.fa'
-        # self._merge_files(merged_tx, ncrna, tx)
+        # ncrna = index + _file_names[organism]['ncrna']
+        # tx = index + _file_names[organism]['tx']
+        # merged_tx = index + organism + '_cdna_all.fa'
+        # cls._merge_files(merged_tx, ncrna, tx)
 
         # label the fasta file
-        gtf = self.index + _file_names[organism]['gtf']
-        labeled_fasta = self.index + organism + '_cnda_all_labeled.fa'
+        gtf = index + _file_names[organism]['gtf']
+        labeled_fasta = index + organism + '_cnda_all_labeled.fa'
         prepare_fasta.standard_run(gtf, merged_cdna, labeled_fasta)
 
         # find julia script
@@ -303,117 +292,122 @@ class STAR:
                         '/scripts/complete_sa.jl')
 
         # process with julia script
-        call(['julia', julia_script, labeled_fasta, self.index, '50'])
+        call(['julia', julia_script, labeled_fasta, index, '50'])
 
         # complete processing
-        scid_to_tx = self.index + 'scid_to_feature.txt'
+        scid_to_tx = index + 'scid_to_feature.txt'
         ordering_out_stacks.standard_run(
-            self.index + 'jelly_output_stack_50.txt', scid_to_tx, labeled_fasta,
-            self.index + 'p_coalignment.pckl')
-        create_gtf_reduced.create_gtf(gtf, scid_to_tx, self.index + 'annotations.gtf')
+            index + 'jelly_output_stack_50.txt', scid_to_tx, labeled_fasta,
+            index + 'p_coalignment.pckl')
+        create_gtf_reduced.create_gtf(gtf, scid_to_tx, index + 'annotations.gtf')
 
-    def _build_multiorganism_index(self):
+    @classmethod
+    def _build_multiorganism_index(cls, index, organism, n_threads):
         """"""
         # check that genome has been unzipped
-        genome_files = [self.index + _file_names[org]['genome'] for org in self.organism]
+        genome_files = [index + _file_names[org]['genome'] for org in organism]
         unzipped_files = [f.replace('.gz', '') for f in genome_files]
         for i, f in enumerate(unzipped_files):
             if not os.path.isfile(f):
-                self._gunzip_file(genome_files[i])
+                cls._gunzip_file(genome_files[i])
 
         # merge genome files
-        merged_genome = self.index + '%s_genome.fa' % '_'.join(self.organism)
-        self._merge_files(merged_genome, *unzipped_files)
+        merged_genome = index + '%s_genome.fa' % '_'.join(organism)
+        cls._merge_files(merged_genome, *unzipped_files)
 
         # check that coalignment files have been generated
-        gtf = self.index + 'annotations.gtf'
+        gtf = index + 'annotations.gtf'
         if not os.path.isfile(gtf):
-            self._generate_coalignment()
+            cls._generate_coalignment(index, organism)
 
         # make index
         star_args = [
             'STAR',
-            '--genomeDir', self.index,
+            '--genomeDir', index,
             '--runMode', 'genomeGenerate',
-            '--runThreadN', str(self.n_threads),
+            '--runThreadN', str(n_threads),
             '--genomeFastaFiles', merged_genome,
-            '--sjdbGTFfile', self.index + 'annotations.gtf',
+            '--sjdbGTFfile', index + 'annotations.gtf',
             '--sjdbOverhang', '75']
         star = Popen(star_args, stderr=PIPE)
         _, err = star.communicate()
         if err:
             raise ChildProcessError(err)
 
-    def _build_index(self):
+    @classmethod
+    def _build_index(cls, index, organism, n_threads):
         """"""
         # organism was singular, convert to string
-        organism = self.organism[0]
+        organism = organism[0]
 
         # check that genome has been unzipped
-        genome = self.index + _file_names[organism]['genome']
+        genome = index + _file_names[organism]['genome']
         unzipped = genome.replace('.gz', '')
         if not os.path.isfile(unzipped):
-            self._gunzip_file(genome)
+            cls._gunzip_file(genome)
 
         # check that coalignment files have been generated
-        gtf = self.index + 'annotations.gtf'
+        gtf = index + 'annotations.gtf'
         if not os.path.isfile(gtf):
-            self._generate_coalignment()
+            cls._generate_coalignment(index, organism)
 
         # make index
         star_args = [
             'STAR',
-            '--genomeDir', self.index,
+            '--genomeDir', index,
             '--runMode', 'genomeGenerate',
-            '--runThreadN', str(self.n_threads),
+            '--runThreadN', str(n_threads),
             '--genomeFastaFiles', unzipped,
-            '--sjdbGTFfile', self.index + 'annotations.gtf',
+            '--sjdbGTFfile', index + 'annotations.gtf',
             '--sjdbOverhang', '75']
         star = Popen(star_args, stderr=PIPE)
         _, err = star.communicate()
         if err:
             raise ChildProcessError(err)
 
-    def verify_index(self):
+    @classmethod
+    def verify_index(cls, index, organism, n_threads):
 
         # check for expected index files. This list is not comprehensive
         all_files = ['annotations.gtf', 'p_coalignment.pckl', 'SA', 'SAIndex', 'Genome',
                      'scid_to_feature.txt']
         # check that we have all the files we need to generate the index
-        if not all(os.path.isfile(self.index + f) for f in all_files):
-            for organism in self.organism:
+        if not all(os.path.isfile(index + f) for f in all_files):
+            for organism in organism:
                 for file_type, name in _file_names[organism].items():
                     if isinstance(name, list):
                         for i, n in enumerate(name):
-                            if not os.path.isfile(self.index + n):
+                            if not os.path.isfile(index + n):
                                 link = _download_links[organism][file_type][i]
-                                self._download_ftp_file(link, self.index)
+                                cls._download_ftp_file(link, index)
                     else:
-                        if not os.path.isfile(self.index + name):
+                        if not os.path.isfile(index + name):
                             link = _download_links[organism][file_type]
-                            self._download_ftp_file(link, self.index)
+                            cls._download_ftp_file(link, index)
 
             # generate coalignment if necessary
             coalignment_files = ['annotations.gtf', 'p_coalignment.pckl',
                                  'scid_to_feature.txt']
-            if not all(os.path.isfile(self.index + f) for f in coalignment_files):
-                if len(self.organism) > 1:
-                    self._generate_multiorganism_coalignment()
+            if not all(os.path.isfile(index + f) for f in coalignment_files):
+                if len(organism) > 1:
+                    cls._generate_multiorganism_coalignment(index, organism)
                 else:
-                    self._generate_coalignment()
+                    cls._generate_coalignment(index, organism)
 
             # build index if necessary
             index_files = ['SA', 'SAIndex', 'Genome']
-            if not all(os.path.isfile(self.index + f) for f in index_files):
-                if len(self.organism) > 1:
-                    self._build_multiorganism_index()
+            if not all(os.path.isfile(index + f) for f in index_files):
+                if len(organism) > 1:
+                    cls._build_multiorganism_index(index, organism, n_threads)
                 else:
-                    self._build_index()
+                    cls._build_index(index, organism, n_threads)
 
-    def align(self, fastq_records, **kwargs):
+    @classmethod
+    def align(cls, fastq_file, index, n_threads, temp_dir, reverse_fastq_file=None,
+              **kwargs):
 
-        runtime_args = self.default_alignment_args(
-            fastq_records, self.n_threads, self.index, self.temp_dir)
+        runtime_args = cls.default_alignment_args(
+            fastq_file, n_threads, index, temp_dir)
 
         for k, v in kwargs.items():  # overwrite or add any arguments passed from cmdline
             if not isinstance(k, str):
@@ -430,32 +424,49 @@ class STAR:
 
         # construct command line arguments for STAR
         cmd = ['STAR']
-        for pair in runtime_args.items():
-            cmd.extend(pair)
+        if reverse_fastq_file:
+            for key, value in runtime_args.items():
+                if key == '--readFilesIn':
+                    cmd.extend((key, value))
+                    cmd.append(reverse_fastq_file)
+                else:
+                    cmd.extend((key, value))
+        else:
+            for pair in runtime_args.items():
+                cmd.extend(pair)
 
         aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
         out, err = aln.communicate()
         if err:
             raise ChildProcessError(err)
 
-        return self.temp_dir + 'Aligned.out.sam'
+        return temp_dir + 'Aligned.out.sam'
 
-    def align_multiple_files(self, fastq_files, **kwargs):
+    @classmethod
+    def align_multiple_files(cls, fastq_files, index, n_threads, temp_dir,
+                             reverse_fastq_files=None, **kwargs):
 
         # use shared memory to map each of the individual cells
         kwargs['--genomeLoad'] = 'LoadAndKeep'
 
+        # make sure forward and reverse fastq file lists match in length
+        if reverse_fastq_files:
+            if not len(fastq_files) == len(reverse_fastq_files):
+                raise ValueError('unequal number of forward and reverse fastq files '
+                                 'provided.')
+
+        # make temporary directories for each file
         runs = []
         samfiles = []
         for fastq_file in fastq_files:
-            alignment_dir = (self.temp_dir +
+            alignment_dir = (temp_dir +
                              fastq_file.split('/')[-1].replace('.fastq', '/'))
             try:
-                os.mkdir(fastq_file.replace('.fastq', '/'))
+                os.mkdir(temp_dir + fastq_file.split('/')[-1].replace('.fastq', '/'))
             except FileExistsError:
                 pass
-            runs.append(self.default_alignment_args(
-                fastq_file, self.n_threads, self.index, alignment_dir)
+            runs.append(cls.default_alignment_args(
+                fastq_file, n_threads, index, alignment_dir)
             )
             samfiles.append(alignment_dir + 'Aligned.out.sam')
 
@@ -477,37 +488,50 @@ class STAR:
 
         # construct command line arguments for STAR runs
         cmds = []
-        for runtime_args in runs:
+        for i, runtime_args in enumerate(runs):
             cmd = ['STAR']
-            for pair in runtime_args.items():
-                cmd.extend(pair)
+            if reverse_fastq_files:
+                for key, value in runtime_args.items():
+                    if key == '--readFilesIn':
+                        cmd.extend((key, value))
+                        cmd.append(reverse_fastq_files[i])
+                    else:
+                        cmd.extend((key, value))
+            else:
+                for pair in runtime_args.items():
+                    cmd.extend(pair)
             cmds.append(cmd)
 
         # load shared memory
-        self.load_index()
+        cls.load_index(index)
         try:
             for cmd in cmds:
                 aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
                 out, err = aln.communicate()
                 if err:
-                    raise ChildProcessError(err)
+                    raise ChildProcessError(err.decode())
         finally:
-            self.remove_index()
+            cls.remove_index(index)
 
         return samfiles
 
-    def load_index(self):
+    @staticmethod
+    def load_index(index):
         # set shared memory; todo | this may bug out with larger indices; test!
-        _ = check_output(['sysctl', '-w', 'kernel.shmmax=36301783210'])
-        _ = check_output(['sysctl', '-w', 'kernel.shmall=36301783210'])
-        star_args = ['STAR', '--genomeDir', self.index, '--genomeLoad',
+        try:
+            _ = check_output(['sysctl', '-w', 'kernel.shmmax=36301783210'])
+            _ = check_output(['sysctl', '-w', 'kernel.shmall=36301783210'])
+        except CalledProcessError:
+            pass  # not available on OS X
+        star_args = ['STAR', '--genomeDir', index, '--genomeLoad',
                      'LoadAndExit']
         star = Popen(star_args, stderr=PIPE, stdout=PIPE)
         return star.communicate()
 
-    def remove_index(self):
+    @staticmethod
+    def remove_index(index):
         # remove index
-        star_args = ['STAR', '--genomeDir', self.index, '--genomeLoad',
+        star_args = ['STAR', '--genomeDir', index, '--genomeLoad',
                      'Remove']
         star = Popen(star_args, stderr=PIPE, stdout=PIPE)
         out, err = star.communicate()
@@ -519,8 +543,9 @@ class STAR:
         call(['rm', './Aligned.out.sam', './Log.out', './Log.progress.out'])
         return
 
-    def clean_up(self):
-        rmtree(self.temp_dir)
+    @staticmethod
+    def clean_up(directory):
+        rmtree(directory)
 
 
 def alignment_metadata(log_final_out, meta):
@@ -556,15 +581,15 @@ def alignment_metadata(log_final_out, meta):
     return meta
 
 
-if __name__ == "__main__":
-    import sys
-    if not len(sys.argv) >= 5:
-        print('usage: python3 align.py <temp_dir> <n_threads> <index> <organism1> '
-              '<organism2> ... <organismN>')
-        sys.exit(2)
-    temp_dir = sys.argv[1]
-    n_threads = int(sys.argv[2])
-    index = sys.argv[3]
-    organisms = sys.argv[4:]
-    s = STAR(temp_dir, n_threads, index, *organisms)
-    s.verify_index()
+# if __name__ == "__main__":
+#     import sys
+#     if not len(sys.argv) >= 5:
+#         print('usage: python3 align.py <temp_dir> <n_threads> <index> <organism1> '
+#               '<organism2> ... <organismN>')
+#         sys.exit(2)
+#     temp_dir = sys.argv[1]
+#     n_threads = int(sys.argv[2])
+#     index = sys.argv[3]
+#     organisms = sys.argv[4:]
+#     s = STAR(temp_dir, n_threads, index, *organisms)
+#     s.verify_index()

@@ -7,6 +7,8 @@ import seqc
 from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
 from io import StringIO
 from itertools import product
+import logging
+import socket
 import re
 import numpy as np
 import pandas as pd
@@ -14,6 +16,10 @@ import random
 import gzip
 import ftplib
 import shutil
+import threading
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+from pyftpdlib.authorizers import DummyAuthorizer
 
 # tests to add:
 # 1. test for processing of multi-aligned reads. Right now there is no test for lines
@@ -21,6 +27,10 @@ import shutil
 # 2. add a test for masking of filtered reads in qc.py for disambiguate() and
 #    error_correction() At the moment, the data generation doesn't produce any reads that
 #    get filtered.
+
+def generate_dummy_xml_files_for_sra_upload(
+        filename, forward_fastq_list, reverse_fastq_list):
+    raise NotImplementedError
 
 
 def generate_in_drop_fastq_data(n, prefix):
@@ -143,7 +153,7 @@ class GenerateFastq(object):
         records = []
         for name, seq in zip(names, seqs):
             records.append('\n'.join(['@%d' % name, seq, name2, quality]))
-        reverse_fastq = StringIO('\n'.join(records))
+        reverse_fastq = StringIO('\n'.join(records) + '\n')
         return reverse_fastq
 
     @staticmethod
@@ -160,7 +170,7 @@ class GenerateFastq(object):
             umi = ''.join(np.random.choice(alphabet, umi_len))
             poly_a = (read_length - len(cb) - len(umi)) * 'T'
             records.append('\n'.join(['@%d' % name, cb + umi + poly_a, name2, quality]))
-        forward_fastq = StringIO('\n'.join(records))
+        forward_fastq = StringIO('\n'.join(records) + '\n')
         return forward_fastq
 
     @staticmethod
@@ -174,7 +184,7 @@ class GenerateFastq(object):
             cb = ''.join(np.random.choice(alphabet, 12))
             umi = ''.join(np.random.choice(alphabet, 8))
             records.append('\n'.join(['@%d' % name, cb + umi, name2, quality]))
-        forward_fastq = StringIO('\n'.join(records))
+        forward_fastq = StringIO('\n'.join(records) + '\n')
         return forward_fastq
 
     def generate_sequence_records(self, n, read_length):
@@ -320,6 +330,106 @@ class GenerateFastq(object):
                                  'barcodes')
             with open(fout, 'wb') as f:
                 pickle.dump(barcodes, f)
+
+
+class DummyFTPClient(threading.Thread):
+    """A threaded FTP server used for running tests.
+
+    This is basically a modified version of the FTPServer class which
+    wraps the polling loop into a thread.
+
+    The instance returned can be used to start(), stop() and
+    eventually re-start() the server.
+
+    The instance can also launch a client using ftplib to navigate and download files.
+    it will serve files from home.
+    """
+    handler = FTPHandler
+    server_class = FTPServer
+
+    def __init__(self, addr=None, home=None):
+
+        try:
+            host = socket.gethostbyname('localhost')
+        except socket.error:
+            host = 'localhost'
+
+        threading.Thread.__init__(self)
+        self.__serving = False
+        self.__stopped = False
+        self.__lock = threading.Lock()
+        self.__flag = threading.Event()
+        if addr is None:
+            addr = (host, 0)
+
+        if not home:
+            home = os.getcwd()
+
+        authorizer = DummyAuthorizer()
+        authorizer.add_anonymous(home, perm='erl')
+        # authorizer.add_anonymous(home, perm='elr')
+        self.handler.authorizer = authorizer
+        # lower buffer sizes = more "loops" while transfering data
+        # = less false positives
+        self.handler.dtp_handler.ac_in_buffer_size = 4096
+        self.handler.dtp_handler.ac_out_buffer_size = 4096
+        self.server = self.server_class(addr, self.handler)
+        self.host, self.port = self.server.socket.getsockname()[:2]
+        self.client = None
+
+    def __repr__(self):
+        status = [self.__class__.__module__ + "." + self.__class__.__name__]
+        if self.__serving:
+            status.append('active')
+        else:
+            status.append('inactive')
+        status.append('%s:%s' % self.server.socket.getsockname()[:2])
+        return '<%s at %#x>' % (' '.join(status), id(self))
+
+    def generate_local_client(self):
+        self.client = ftplib.FTP()
+        self.client.connect(self.host, self.port)
+        self.client.login()
+        return self.client
+
+    @property
+    def running(self):
+        return self.__serving
+
+    def start(self, timeout=0.001):
+        """Start serving until an explicit stop() request.
+        Polls for shutdown every 'timeout' seconds.
+        """
+        if self.__serving:
+            raise RuntimeError("Server already started")
+        if self.__stopped:
+            # ensure the server can be started again
+            FTPd.__init__(self, self.server.socket.getsockname(), self.handler)
+        self.__timeout = timeout
+        threading.Thread.start(self)
+        self.__flag.wait()
+
+    def run(self):
+        logging.basicConfig(filename='testing.log', level=logging.DEBUG)
+        self.__serving = True
+        self.__flag.set()
+        while self.__serving:
+            self.__lock.acquire()
+            self.server.serve_forever(timeout=self.__timeout, blocking=False)
+            self.__lock.release()
+        self.server.close_all()
+
+    def stop(self):
+        """Stop serving (also disconnecting all currently connected
+        clients) by telling the serve_forever() loop to stop and
+        waits until it does.
+        """
+        if not self.__serving:
+            raise RuntimeError("Server not started yet")
+        self.__serving = False
+        self.__stopped = True
+        self.join()
+        self.client.close()
 
 
 @unittest.skip('')
@@ -790,6 +900,12 @@ class TestAlign(unittest.TestCase):
         print(samfiles)
 
 
+# todo import these tests from scseq/seqdb
+@unittest.skip('')
+class TestIndexGeneration(unittest.TestCase):
+    pass
+
+
 @unittest.skip('')
 class TestSEQC(unittest.TestCase):
 
@@ -1100,6 +1216,130 @@ class TestS3Client(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree('.test_aws_s3/')
 
+
+class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
+    """This is a longer, functional test which will run on 10,000 fastq records"""
+
+    def setUp(self):
+        # dummy up some fastq data
+        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.working_directory = data_dir + '.test_process_single_seqc_exp/'
+        if not os.path.isdir(self.working_directory):
+            os.mkdir(self.working_directory)
+        # generate_in_drop_fastq_data(10000, self.cwd + 'testdata')
+
+        # create an SRA file
+        # todo this is a nightmare, so I'm skipping this step for now
+
+        # unpack SRA file; will do when create SRA doesn't fail.
+
+        # expect unpacked fastq files to be SRRxxxx_1.fastq and SRRxxxx_2.fastq if
+        # paired-end or SRRxxxx.fastq if single-ended
+
+        fastq_stem = '/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/'
+        self.forward = [fastq_stem + 'sample_data_r1.fastq']
+        self.reverse = [fastq_stem + 'sample_data_r2.fastq']
+
+        self.index = data_dir + 'genome/mm38_chr19/'
+
+        self.s3_bucket = 'dplab-home'
+        self.s3_key = 'ajc2205/test_in_drop.npz'
+
+    @unittest.skip('')
+    def test_process_single_file_no_sra_download(self):
+
+        # set some variables
+        index = self.index
+        working_directory = self.working_directory
+        index_bucket = None
+        index_key = None
+        S3 = io_lib.S3
+        STAR = align.STAR
+        n_threads = 7
+        sam_to_count_single_file = qc.sam_to_count_single_file
+        experiment_name = 'test_in_drop'
+        s3_bucket = self.s3_bucket
+        s3_key = self.s3_key
+        cell_barcodes = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
+                         'in_drop_barcodes.p')
+
+        # set the index
+        if not index:  # download the index
+            index_dir = working_directory + 'index/'
+            S3.download_files(bucket=index_bucket, key_prefix=index_key,
+                              output_prefix=index_dir, no_cut_dirs=True)
+            index = index_dir + index_key.lstrip('/')
+        if not os.path.isdir(index):
+            raise FileNotFoundError('Index does not lead to a directory')
+
+        # merge fastq files
+        merged_fastq, _ = fastq.merge_fastq(
+            self.forward, self.reverse, 'in-drop', self.working_directory, cell_barcodes)
+
+        # align the data
+        sam_file = STAR.align(
+            merged_fastq, index, n_threads, working_directory, reverse_fastq_file=None)
+
+        # create the matrix
+        gtf_file = index + 'annotations.gtf'
+        coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
+
+        numpy_archive = experiment_name + '.npz'
+        with open(numpy_archive, 'wb') as f:
+            np.savez(f, mat=coo, row=rowind, col=colind)
+
+        # upload the matrix to amazon s3
+        S3.upload_file(numpy_archive, s3_bucket, s3_key)
+
+    # @unittest.skip('')
+    def test_process_multiple_file_no_sra_download(self):
+        # set some variables
+        index = self.index
+        working_directory = self.working_directory
+        index_bucket = None
+        index_key = None
+        S3 = io_lib.S3
+        STAR = align.STAR
+        n_threads = 7
+        sam_to_count_multiple_files = qc.sam_to_count_multiple_files
+        experiment_name = 'test_in_drop'
+        s3_bucket = self.s3_bucket
+        s3_key = self.s3_key
+        cell_barcodes = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
+                         'in_drop_barcodes.p')
+
+        # potential issue: reverse should never map..
+        forward = [self.forward[0]] * 3
+        reverse = [self.reverse[0]] * 3
+
+        # set the index
+        if not index:  # download the index
+            index_dir = working_directory + 'index/'
+            S3.download_files(bucket=index_bucket, key_prefix=index_key,
+                              output_prefix=index_dir, no_cut_dirs=True)
+            index = index_dir + index_key.lstrip('/')
+        if not os.path.isdir(index):
+            raise FileNotFoundError('Index does not lead to a directory')
+
+        # align the data
+        sam_files = STAR.align_multiple_files(
+            forward, index, n_threads, working_directory, reverse_fastq_files=reverse)
+
+        # create the matrix
+        gtf_file = index + 'annotations.gtf'
+        coo, rowind, colind = sam_to_count_multiple_files(sam_files, gtf_file)
+
+        numpy_archive = experiment_name + '.npz'
+        with open(numpy_archive, 'wb') as f:
+            np.savez(f, mat=coo, row=rowind, col=colind)
+
+        # upload the matrix to amazon s3
+        S3.upload_file(numpy_archive, s3_bucket, s3_key)
+
+    def tearDown(self):
+        shutil.rmtree(self.working_directory)
+        io_lib.S3.remove_file(self.s3_bucket, self.s3_key)
+        os.remove('test_in_drop.npz')
 
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')
