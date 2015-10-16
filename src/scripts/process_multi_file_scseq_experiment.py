@@ -50,6 +50,9 @@ def parse_args():
 def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
          index_bucket=None, index=None, working_directory='./'):
 
+    if not working_directory.endswith('/'):
+        working_directory += '/'
+
     # set the index
     if not index:  # download the index
         log_info('Downloading index from S3')
