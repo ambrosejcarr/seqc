@@ -290,7 +290,7 @@ class GEO:
         return output_files
 
     @staticmethod
-    def _extract_fastq(sra_queue, verbose=True):
+    def _extract_fastq(sra_queue, working_directory, verbose=True):
 
         while True:
             try:
@@ -305,12 +305,13 @@ class GEO:
             # extract file
             if verbose:
                 print('beginning extraction of file: "%s"' % file_)
-            Popen(['fastq-dump', '--split-3', file_])
+            Popen(['fastq-dump', '--split-3', '--outdir', working_directory, file_])
             if verbose:
                 print('extraction of file complete: "%s"' % file_)
 
     @classmethod
-    def extract_fastq(cls, sra_files, max_concurrent, verbose=True):
+    def extract_fastq(cls, sra_files, max_concurrent, working_directory='.',
+                      verbose=True):
         """requires fastq-dump from sra-tools"""
 
         # check that fastq-dump exists
@@ -325,7 +326,7 @@ class GEO:
         threads = []
         for i in range(max_concurrent):
             threads.append(Thread(target=cls._extract_fastq,
-                                  args=([to_extract, verbose])))
+                                  args=([to_extract, working_directory, verbose])))
             threads[i].start()
 
         for t in threads:
