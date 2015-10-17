@@ -8,7 +8,7 @@ import os
 import ftplib
 from threading import Thread
 from queue import Queue, Empty
-from subprocess import Popen, check_output
+from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
 
 
@@ -305,7 +305,11 @@ class GEO:
             # extract file
             if verbose:
                 print('beginning extraction of file: "%s"' % file_)
-            Popen(['fastq-dump', '--split-3', '--outdir', working_directory, file_])
+            p = Popen(['fastq-dump', '--split-3', '--outdir', working_directory, file_],
+                      stderr=PIPE, stdout=PIPE)
+            _, err = p.communicate()
+            if err:
+                raise ChildProcessError(err)
             if verbose:
                 print('extraction of file complete: "%s"' % file_)
 
