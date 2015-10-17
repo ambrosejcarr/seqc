@@ -298,9 +298,9 @@ class GEO:
             except Empty:
                 break
 
-            *dir, file = file_.split('/')
-            dir = '/'.join(dir)
-            os.chdir(dir)  # set working directory as files are output in cwd
+            # *dir, file = file_.split('/')
+            # dir = '/'.join(dir)
+            # os.chdir(dir)  # set working directory as files are output in cwd
 
             # extract file
             if verbose:
