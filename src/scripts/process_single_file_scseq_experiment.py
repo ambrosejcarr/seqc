@@ -24,6 +24,7 @@ def log_info(message):
     logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
 
 
+# todo think about adding paired-end support
 def parse_args():
 
     p = argparse.ArgumentParser()

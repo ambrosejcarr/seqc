@@ -315,7 +315,7 @@ class GEO:
 
     @classmethod
     def extract_fastq(cls, sra_files, max_concurrent, working_directory='.',
-                      verbose=True):
+                      verbose=True, paired_end=False):
         """requires fastq-dump from sra-tools"""
 
         # check that fastq-dump exists
@@ -337,10 +337,10 @@ class GEO:
             t.join()
 
         # get output files
-        forward = []
-        reverse = []
-        for f in sra_files:
-            forward.append(f.replace('.sra', '_1.fastq'))
-            reverse.append(f.replace('.sra', '_2.fastq'))
-
-        return forward, reverse
+        if paired_end:
+            forward = [f.replace('.sra', '_1.fastq') for f in sra_files]
+            reverse = [f.replace('.sra', '_2.fastq') for f in sra_files]
+            return forward, reverse
+        else:
+            forward = [f.replace('.sra', '.fastq') for f in sra_files]
+            return forward

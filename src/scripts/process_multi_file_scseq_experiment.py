@@ -43,12 +43,14 @@ def parse_args():
     p.add_argument('--index-key', help='s3 key for star index', metavar='IK', type=str)
     p.add_argument('-w', '--working-directory', metavar='W', type=str,
                    help='temporary working directory for script', required=True)
+    p.add_argument('--paired-end', help='experiment is paired-ended', default=False,
+                   action='store_true', metavar='PE')
     args = vars(p.parse_args())
     return args
 
 
 def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
-         index_bucket=None, index=None, working_directory='./'):
+         index_bucket=None, index=None, working_directory='./', paired_end=False):
 
     if not working_directory.endswith('/'):
         working_directory += '/'
@@ -71,13 +73,19 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
 
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
-    forward, reverse = GEO.extract_fastq(files, n_threads, working_directory,
-                                         verbose=False)
+    fastq_files = GEO.extract_fastq(
+        files, n_threads, working_directory, verbose=False, paired_end=paired_end)
 
     # align the data
-    log_info('Aligning fastq records')
-    sam_files = STAR.align_multiple_files(
-        forward, index, n_threads, working_directory, reverse_fastq_files=reverse)
+    if paired_end:
+        forward, reverse = fastq_files
+        log_info('Aligning fastq records')
+        sam_files = STAR.align_multiple_files(
+            forward, index, n_threads, working_directory, reverse_fastq_files=reverse)
+    else:
+        log_info('Aligning fastq records')
+        sam_files = STAR.align_multiple_files(
+            fastq_files, index, n_threads, working_directory, reverse_fastq_files=None)
 
     # create the matrix
     log_info('Creating counts matrix')
