@@ -44,7 +44,7 @@ def parse_args():
     p.add_argument('-w', '--working-directory', metavar='W', type=str,
                    help='temporary working directory for script', required=True)
     p.add_argument('--paired-end', help='experiment is paired-ended', default=False,
-                   action='store_true', metavar='PE')
+                   action='store_true')
     args = vars(p.parse_args())
     return args
 
