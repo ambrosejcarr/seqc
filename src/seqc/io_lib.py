@@ -290,7 +290,8 @@ class GEO:
         return output_files
 
     @staticmethod
-    def _extract_fastq(sra_queue, working_directory, verbose=True):
+    def _extract_fastq(sra_queue, working_directory, verbose=True, paired_end=False,
+                       clobber=False):
 
         while True:
             try:
@@ -298,9 +299,14 @@ class GEO:
             except Empty:
                 break
 
-            # *dir, file = file_.split('/')
-            # dir = '/'.join(dir)
-            # os.chdir(dir)  # set working directory as files are output in cwd
+            if not clobber:
+                if paired_end:
+                    if all(os.path.isfile(file_.replace('.sra', '_1.fastq')),
+                           os.path.isfile(file_.replace('.sra', '_2.fastq'))):
+                        continue
+                else:
+                    if os.path.isfile(file_.replace('.sra', '.fastq')):
+                        continue
 
             # extract file
             if verbose:
@@ -315,7 +321,7 @@ class GEO:
 
     @classmethod
     def extract_fastq(cls, sra_files, max_concurrent, working_directory='.',
-                      verbose=True, paired_end=False):
+                      verbose=True, paired_end=False, clobber=False):
         """requires fastq-dump from sra-tools"""
 
         # check that fastq-dump exists
@@ -329,8 +335,10 @@ class GEO:
 
         threads = []
         for i in range(max_concurrent):
-            threads.append(Thread(target=cls._extract_fastq,
-                                  args=([to_extract, working_directory, verbose])))
+            threads.append(Thread(
+                target=cls._extract_fastq,
+                args=([to_extract, working_directory, verbose, paired_end, clobber])
+            ))
             threads[i].start()
 
         for t in threads:

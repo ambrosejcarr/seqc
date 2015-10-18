@@ -71,6 +71,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
     files = GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
                              clobber=False)
 
+    # todo right now there is no clobber, but this could be added later
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
     fastq_files = GEO.extract_fastq(
