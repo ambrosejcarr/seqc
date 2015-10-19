@@ -9,7 +9,7 @@ setup(name='seqc',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
       # note: requires numpy > 1.10.0
-      packages=['seqc'],
+      packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[
           'numpy>=1.10.0',
           'pandas>=0.16.0',

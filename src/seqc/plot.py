@@ -702,3 +702,56 @@ def characterize_cells_no_table(arr_or_df, fname, experiment_name):
         # plot a table summarizing the data
         plt.tight_layout()
         _savefig(f, fname)
+
+
+def figure_1_lin_vs_exponential(data_matrices):
+    """
+    Figure 1 is a multi-part figure designed to highlight the differences between linear
+    and exponential amplification protocols. It addresses the differences in distribution
+    of (a) cells across an experiment and (b) genes across cells.
+
+    I predict genes across cells will have a more significant impact.
+
+    Genes across cells:
+    1. Box plots of cells: High outliers exist above the upper-hinge (how to deal with
+     large numbers of cells?)
+    2. Thresholds: How many genes with > 1% of data? >5% of data? >10% of data? ... > 30%
+     of data?
+    3. Expand to reads per molecule - How do (1) and (2) look now? Is it worse?
+    4. Codify skewness to directly compare the relative skew of the distributions.
+
+    """
+
+    # what is a good starting statistic to measure jackpotting?
+    # average largest outlier size?
+    # get stdev, mean, max for each cell
+    # calculate the mean of (max - mean) / stdev for each experiment
+
+    largest_outlier = []
+    for mat in data_matrices:
+        mu = np.mean(mat, axis=1)
+        sigma = np.std(mat, axis=1)
+        max_expr_gene = np.max(mat, axis=1)
+        largest_outlier.append(np.mean((max_expr_gene - mu) / sigma))
+    return largest_outlier
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
