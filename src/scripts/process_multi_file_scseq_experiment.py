@@ -56,6 +56,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
         working_directory += '/'
 
     # set the index
+    # todo bug: not downloading index to file, downloading into seqc.log for some reason?
     if not index:  # download the index
         log_info('Downloading index from S3')
         index_dir = working_directory + 'index/'

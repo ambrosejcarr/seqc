@@ -301,8 +301,8 @@ class GEO:
 
             if not clobber:
                 if paired_end:
-                    if all(os.path.isfile(file_.replace('.sra', '_1.fastq')),
-                           os.path.isfile(file_.replace('.sra', '_2.fastq'))):
+                    if all([os.path.isfile(file_.replace('.sra', '_1.fastq')),
+                            os.path.isfile(file_.replace('.sra', '_2.fastq'))]):
                         continue
                 else:
                     if os.path.isfile(file_.replace('.sra', '.fastq')):
