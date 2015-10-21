@@ -948,7 +948,11 @@ def sam_to_count_single_file(sam_file, gtf_file):
                     start = int(record[3])
                     end = start + read_length
 
-                genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                try:
+                    genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                except KeyError:
+                    continue  # todo include these non-chromosome scaffolds instead of
+                    # discarding
                 if len(genes) == 1:
                     int_gene_id = gene_to_int_id[genes[0]]
                 if len(genes) == 0:
