@@ -406,6 +406,11 @@ class STAR:
     def align(cls, fastq_file, index, n_threads, temp_dir, reverse_fastq_file=None,
               **kwargs):
 
+        # check if file exists; if it does, return the filename
+        if os.path.isfile(temp_dir + 'Aligned.out.sam'):
+            if os.path.getsize(temp_dir + 'Aligned.out.sam') > 0:
+                return temp_dir + 'Aligned.out.sam'
+
         runtime_args = cls.default_alignment_args(
             fastq_file, n_threads, index, temp_dir)
 
@@ -461,6 +466,14 @@ class STAR:
         for fastq_file in fastq_files:
             alignment_dir = (temp_dir +
                              fastq_file.split('/')[-1].replace('.fastq', '/'))
+
+            # only add the file to runs if the samfile does not already exist
+            if os.path.isfile(alignment_dir + 'Aligned.out.sam'):
+                if os.path.getsize(alignment_dir + 'Aligned.out.sam') > 0:
+                    samfiles.append(alignment_dir + 'Aligned.out.sam')
+                    continue
+
+            # file doesn't exist, add it to runs
             try:
                 os.mkdir(temp_dir + fastq_file.split('/')[-1].replace('.fastq', '/'))
             except FileExistsError:

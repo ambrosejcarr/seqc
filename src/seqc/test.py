@@ -1,5 +1,6 @@
 __author__ = 'ambrose'
 
+import hashlib
 import unittest
 import os
 import pickle
@@ -7,6 +8,9 @@ import seqc
 from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
 from io import StringIO
 from itertools import product
+from xml.etree import ElementTree as ET
+from subprocess import Popen, PIPE
+import xml.dom.minidom
 import logging
 import socket
 import re
@@ -28,9 +32,137 @@ from pyftpdlib.authorizers import DummyAuthorizer
 #    error_correction() At the moment, the data generation doesn't produce any reads that
 #    get filtered.
 
-def generate_dummy_xml_files_for_sra_upload(
-        filename, forward_fastq_list, reverse_fastq_list):
-    raise NotImplementedError
+
+class SRAGenerator:
+
+    @classmethod
+    def make_run_xml(cls, forward_fastq_files, experiment_alias, forward_checksum_results,
+                     fout_stem=None, data_block=None, reverse_fastq_files=None,
+                     reverse_checksum_results=None):
+        """data_block should be a member name if the experiment is a pooled experiment,
+        and this run is a demultiplexed member"""
+
+        if not fout_stem:
+            fout_stem = experiment_alias + '_run.xml'
+
+        if reverse_fastq_files:
+            input_files = [forward_fastq_files, reverse_fastq_files,
+                           forward_checksum_results, reverse_checksum_results]
+        else:
+            input_files = [forward_fastq_files, forward_checksum_results]
+        if not len(set(len(f) for f in input_files)) == 1:
+            raise ValueError('Input files must be of equal length')
+        n = len(input_files[0])
+
+        run_set = ET.Element('RUN_SET')
+        run_set.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+        run_set.set('xsi:noNamespaceSchemaLocation',
+                    'ftp://ftp.sra.ebi.ac.uk/meta/xsd/sra_1_5/SRA.run.xsd')
+        run = ET.SubElement(run_set, 'RUN', alias='RUN NAME',
+                            center_name='Columbia University')
+        experiment_ref = ET.SubElement(run, 'EXPERIMENT_REF')
+        experiment_ref.set('alias', experiment_alias)
+
+        if data_block:
+            data_block_field = ET.SubElement(run, 'DATA_BLOCK')
+            data_block_field.set('member_name', data_block)
+
+        files = ET.SubElement(run, 'FILES')
+        for i in range(n):
+            forward_file = ET.SubElement(files, 'FILE')
+            forward_file.set('filename', forward_fastq_files[i])
+            forward_file.set('filetype', 'fastq')
+            forward_file.set('checksum_method', 'MD5')
+            forward_file.set('checksum', forward_checksum_results[i])
+            if reverse_fastq_files:
+                reverse_file = ET.SubElement(files, 'FILE')
+                reverse_file.set('filename', reverse_fastq_files[i])
+                reverse_file.set('filetype', 'fastq')
+                reverse_file.set('checksum_method', 'MD5')
+                reverse_file.set('checksum', reverse_checksum_results[i])
+        tree = ET.ElementTree(run_set)
+        tree.write(fout_stem + '_run.xml', method='xml')
+        return fout_stem + '_run.xml'
+
+    @classmethod
+    def make_experiment_xml(
+            cls, reference_alias, sample_alias, platform_name='ILLUMINA',
+            single_or_paired_end='SINGLE', instrument_model='Illumina HiSeq 2500',
+            fout_stem='SRA'):
+
+        if not single_or_paired_end in ['SINGLE', 'PAIRED']:
+            raise ValueError('single_or_paired_end must be one of "SINGLE" or "PAIRED"')
+
+        valid_platform_names = ['LS454', 'ILLUMINA', 'COMPLETE_GENOMICS', 'PACBIO_SMRT',
+                                'ION_TORRNET', 'OXFORD_NANOPORE', 'CAPILLARY']
+        if not platform_name in valid_platform_names:
+            raise ValueError('platform_name must be one of %s' %
+                             repr(valid_platform_names))
+
+        exp_set = ET.Element('EXPERIMENT_SET')
+        exp_set.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+        exp_set.set('xsi:noNamespaceSchemaLocation',
+                    'ftp://ftp.sra.ebi.ac.uk/meta/xsd/sra_1_5/SRA.experiment.xsd')
+        exp = ET.SubElement(exp_set, 'EXPERIMENT')
+        exp.set("alias", "DUMMY EXPERIMENT FOR TESTING")
+        exp.set("center_name", "Columbia University")
+        title = ET.SubElement(exp, 'TITLE')
+        title.text = 'EXPERIMENT TITLE'
+        study_ref = ET.SubElement(exp, 'STUDY_REF')
+        study_ref.set('refname', '%s' % reference_alias)
+        design = ET.SubElement(exp, 'DESIGN')
+        design_description = ET.SubElement(design, 'DESIGN_DESCRIPTION')
+        design_description.text = 'DETAILS ABOUT SETUP AND GOALS'
+        sample_descriptor = ET.SubElement(design, 'SAMPLE_DESCRIPTOR')
+        sample_descriptor.set('refname', '%s' % sample_alias)
+        library_descriptor = ET.SubElement(design, 'LIBRARY_DESCRIPTOR')
+        library_name = ET.SubElement(library_descriptor, 'LIBRARY_NAME')
+        library_name.text = 'DUMMY NAME'
+        library_strategy = ET.SubElement(library_descriptor, 'LIBRARY_STRATEGY')
+        library_strategy.text = 'RNA-Seq'
+        library_source = ET.SubElement(library_descriptor, 'LIBRARY_SOURCE')
+        library_source.text = 'TRANSCRIPTOMIC'
+        library_selection = ET.SubElement(library_descriptor, 'LIBRARY_SELECTION')
+        library_selection.text = 'Oligo-dT'
+        library_layout = ET.SubElement(library_descriptor, 'LIBRARY_LAYOUT')
+        library_layout.text = single_or_paired_end
+        platform = ET.SubElement(exp, 'PLATFORM')
+        specific_platform = ET.SubElement(platform, platform_name)
+        instrument = ET.SubElement(specific_platform, 'INSTRUMENT_MODEL')
+        instrument.text = instrument_model
+        tree = ET.ElementTree(exp_set)
+        tree.write(fout_stem + '_experiment.xml', method='xml')
+        return fout_stem + '_experiment.xml'
+
+    # @classmethod
+    # def create_xml_for_fastq_data(cls, forward_fastq, reverse_fastq=None):
+    #     if reverse_fastq:
+    #         single_or_paired_end = 'PAIRED'
+    #     else:
+    #         single_or_paired_end = 'SINGLE'
+
+    @staticmethod
+    def md5sum(fname):
+
+        def hashfile(afile, hasher, blocksize=65536):
+            buf = afile.read(blocksize)
+            while len(buf) > 0:
+                hasher.update(buf)
+                buf = afile.read(blocksize)
+            return hasher.digest()
+
+        return hashfile(open(fname, 'rb'), hashlib.md5())
+
+
+
+    @staticmethod
+    def fastq_load(file_directory, run_xml, experiment_xml, output_path):
+        cmd = ['fastq-load', '-r', run_xml, '-e', experiment_xml, '-o', output_path, '-i',
+               file_directory]
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+        if err:
+            raise ChildProcessError(err)
 
 
 def generate_in_drop_fastq_data(n, prefix):
@@ -1217,6 +1349,69 @@ class TestS3Client(unittest.TestCase):
         shutil.rmtree('.test_aws_s3/')
 
 
+class TestGenerateSRA(unittest.TestCase):
+
+    def setUp(self):
+        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.sra_dir = self.data_dir + '.test_dump_sra/'
+        if not os.path.isdir(self.sra_dir):
+            os.makedirs(self.sra_dir)
+
+    @unittest.skip("doesn't work")
+    def test_md5sum(self):
+        res = SRAGenerator.md5sum(self.data_dir + 'in_drop/sample_data_r1.fastq')
+        print(res)
+
+    @unittest.skip('')
+    def test_generate_experiment_xml_file(self):
+
+        SRAGenerator.make_experiment_xml('mm38', 'DUMMY_SAMPLE',
+                                         fout_stem=self.sra_dir + 'EXP_XML')
+        xml_data = xml.dom.minidom.parse(self.sra_dir + 'EXP_XML_experiment.xml')
+        pretty = xml_data.toprettyxml()
+        print('\n', pretty)
+
+    @unittest.skip('')
+    def test_generate_run_xml_file(self):
+        forward_fastq = ['testfile_r1.fastq']
+        reverse_fastq = ['testfile_r2.fastq']
+        forward_checksum = [str(912301292)]
+        reverse_checksum = [str(102931209)]
+        data_block = str(1)
+        fout_stem = self.sra_dir + 'RUN_XML'
+        experiment_alias = 'EXP_XML_experiment.xml'
+        SRAGenerator.make_run_xml(
+            forward_fastq, experiment_alias, forward_checksum, fout_stem, data_block,
+            reverse_fastq, reverse_checksum)
+        xml_data = xml.dom.minidom.parse(self.sra_dir + 'RUN_XML_run.xml')
+        pretty = xml_data.toprettyxml()
+        print('\n', pretty)
+
+    # @unittest.skip('')
+    def test_generate_sra_paired_end(self):
+        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        forward_fastq = [data_dir + 'in_drop/sample_data_r1.fastq']
+        forward_md5 = ['DUMMY' for f in forward_fastq]
+        reverse_fastq = [data_dir + 'in_drop/sample_data_r2.fastq']
+        reverse_md5 = ['DUMMY' for f in reverse_fastq]
+        file_directory = data_dir + 'in_drop/'
+        experiment_alias = 'in_drop_test_experiment_2014'
+        reference = 'mm38'
+        platform_name = 'ILLUMINA'
+        instrument = 'Illumina HiSeq 2500'
+        single_or_paired_end = 'PAIRED'
+        fout_stem = self.sra_dir + experiment_alias
+        exp_xml = SRAGenerator.make_experiment_xml(
+            reference, experiment_alias, platform_name, single_or_paired_end, instrument,
+            fout_stem)
+        run_xml = SRAGenerator.make_run_xml(
+            forward_fastq, experiment_alias, forward_md5, fout_stem, data_block=None,
+            reverse_fastq_files=reverse_fastq, reverse_checksum_results=reverse_md5)
+        output_path = data_dir + 'test_generate_sra'
+        SRAGenerator.fastq_load(file_directory, run_xml, exp_xml, output_path)
+
+
+@unittest.skip('')
 class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
     """This is a longer, functional test which will run on 10,000 fastq records"""
 

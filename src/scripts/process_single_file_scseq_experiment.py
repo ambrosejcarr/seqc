@@ -89,7 +89,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     # create the matrix
     log_info('Creating counts matrix')
-    gtf_file = index_dir + 'annotations.gtf'
+    gtf_file = index + 'annotations.gtf'
     coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
 
     log_info('Saving counts matrix')

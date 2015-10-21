@@ -630,7 +630,7 @@ def correct_errors(data, cell_barcodes, donor_cutoff=1, p_val=0.1):
 
         # get donor sequences (any with valid cell barcodes)
         d_mask = gene_data['valid_cell'] == 1
-        # d_indices = gene_indices[d_mask]  # todo I commented a bunch of stuff that I don't think is necessary; np.unique shouls suffice for donors.
+        # d_indices = gene_indices[d_mask]  # todo I commented a bunch of stuff that I don't think is necessary; np.unique shoulds suffice for donors.
 
         # group donor reads by indices
         donor_counts = dict(zip(*np.unique(gene_seqs[d_mask], return_counts=True)))
