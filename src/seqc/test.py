@@ -10,6 +10,7 @@ from io import StringIO
 from itertools import product
 from xml.etree import ElementTree as ET
 from subprocess import Popen, PIPE
+import random
 import xml.dom.minidom
 import logging
 import socket
@@ -565,6 +566,22 @@ class DummyFTPClient(threading.Thread):
 
 
 @unittest.skip('')
+class TestJaggedArray(unittest.TestCase):
+
+    def generate_input_iterable(self, n):
+        for i in range(n):
+            yield [random.randint(0, 5) for _ in range(random.randint(0, 5))]
+
+    def test_jagged_array(self):
+        n = int(1e6)
+        data = list(self.generate_input_iterable(n))
+        data_size = sum(len(i) for i in data)
+        jarr = sam.JaggedArray.from_samfile(data_size, data)
+        self.assertTrue(jarr._data.dtype == np.uint32)
+        self.assertTrue(jarr._data.shape == (data_size,))
+        print(jarr[10])
+
+@unittest.skip('')
 class TestGenerateFastq(unittest.TestCase):
 
     def setUp(self):
@@ -1067,13 +1084,38 @@ class TestSamProcessing(unittest.TestCase):
         n_threads = 4
         arr = sam.process_alignments(self.in_drop_samfile, n_threads, self.gtf,
                                      fragment_len=1000)
-        # print(arr)
+        print(arr)
 
     def test_process_drop_seq_alignments(self):
         n_threads = 4
         arr = sam.process_alignments(self.drop_seq_samfile, n_threads, self.gtf,
                                      fragment_len=1000)
         print(arr)
+
+
+# @unittest.skip('')
+class TestSamToReadArray(unittest.TestCase):
+
+    def setUp(self):
+        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.in_drop_samfile = data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
+        self.drop_seq_samfile = (
+            data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam')
+        self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
+        self.ftable, self.fpositions = sam.construct_feature_table(
+            self.gtf, fragment_len=1000)
+
+    def test_construct_read_array(self):
+        a = sam.ReadArray.from_samfile(self.in_drop_samfile, self.fpositions, self.ftable)
+        array_lengths = (len(a.data), len(a.features), len(a.positions))
+        self.assertTrue(len(set(array_lengths)) == 1)  # all arrays should have same #rows
+
+    def test_generate_indices_for_error_correction(self):
+        a = sam.ReadArray.from_samfile(self.in_drop_samfile, self.fpositions, self.ftable)
+        array_lengths = (len(a.data), len(a.features), len(a.positions))
+        inds, seq = a.group_for_error_correction(required_poly_t=4)
+
+
 
 
 @unittest.skip('')
@@ -1349,6 +1391,7 @@ class TestS3Client(unittest.TestCase):
         shutil.rmtree('.test_aws_s3/')
 
 
+@unittest.skip('')
 class TestGenerateSRA(unittest.TestCase):
 
     def setUp(self):
