@@ -530,14 +530,14 @@ class ReadArray:
         molecules = defaultdict(dict)
         for i, s, f in zip(indices, seq, self.features):
             try:
-                molecules[f.tobytes()][s].append(i)
-            except AttributeError:
-                molecules[np.array(f).tobytes()][s].append(i)
-            except KeyError:
+                molecules[hash(f.tobytes())][s].append(i)
+            except AttributeError:  # f is not an array
+                molecules[hash(np.array(f).tobytes())][s].append(i)
+            except KeyError:  # s has not yet been seen, cannot append.
                 try:
-                    molecules[f.tobytes()][s] = [i]
+                    molecules[hash(f.tobytes())][s] = [i]
                 except AttributeError:
-                    molecules[np.array(f).tobytes()][s].append(i)
+                    molecules[hash(np.array(f).tobytes())][s].append(i)
         for f in molecules.keys():
             for s, v in molecules[f].items():
                 molecules[f][s] = np.array(v)
