@@ -6,7 +6,6 @@ import pandas as pd
 from collections import defaultdict, Counter
 import pickle
 from seqc import three_bit
-from seqc.sam import ObfuscatedTuple
 from seqc.convert_features import GeneTable
 from scipy.special import gammaln, gammaincinv
 from scipy.stats import chi2
@@ -15,6 +14,49 @@ from itertools import chain
 import sys
 from itertools import permutations
 import subprocess
+
+class ObfuscatedTuple:
+
+    def __init__(self, tuple_):
+        if not isinstance(tuple_, tuple):
+            tuple_ = tuple(tuple_)
+        self._tuple = tuple_
+
+    def __repr__(self):
+        return '<ObfuscatedTuple: %s>' % self._tuple.__repr__()
+
+    def __lt__(self, other):
+        return self._tuple.__lt__(other)
+
+    def __gt__(self, other):
+        return self._tuple.__gt__(other)
+
+    def __eq__(self, other):
+        return self._tuple.__eq__(other)
+
+    def __ne__(self, other):
+        return self._tuple.__ne__(other)
+
+    def __le__(self, other):
+        return self._tuple.__le__(other)
+
+    def __ge__(self, other):
+        return self._tuple.__ge__(other)
+
+    def __len__(self):
+        return len(self._tuple)
+
+    def __contains__(self, item):
+        return self._tuple.__contains__(item)
+
+    def __iter__(self):
+        return iter(self._tuple)
+
+    def __hash__(self):
+        return hash(self._tuple)
+
+    def to_tuple(self):
+        return self._tuple
 
 
 def deobfuscate(df):

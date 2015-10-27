@@ -6,11 +6,11 @@ import os
 import pickle
 import seqc
 from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
+from seqc import arrays
 from io import StringIO
 from itertools import product
 from xml.etree import ElementTree as ET
 from subprocess import Popen, PIPE
-import random
 import xml.dom.minidom
 import logging
 import socket
@@ -154,8 +154,6 @@ class SRAGenerator:
 
         return hashfile(open(fname, 'rb'), hashlib.md5())
 
-
-
     @staticmethod
     def fastq_load(file_directory, run_xml, experiment_xml, output_path):
         cmd = ['fastq-load', '-r', run_xml, '-e', experiment_xml, '-o', output_path, '-i',
@@ -171,9 +169,9 @@ def generate_in_drop_fastq_data(n, prefix):
     gfq = GenerateFastq()
     fwd_len = 50
     rev_len = 100
-    barcodes = data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p'
+    barcodes_ = data_dir + 'in_drop/barcodes_/concatenated_string_in_drop_barcodes.p'
     umi_len = 6
-    forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes, umi_len)
+    forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes_, umi_len)
     forward = forward.read()  # consume the StringIO object
     reverse = gfq.generate_reverse_fastq(n, rev_len)
     reverse = reverse.read()  # consume the StringIO object
@@ -196,7 +194,7 @@ def generate_drop_seq_fastq_data(n, prefix):
         r.write(reverse)
 
 
-def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save=None):
+def generate_in_drop_read_array(expectations, cell_barcodes, n, k, save=None):
 
     """generate N observations split between k ambiguous molecular models"""
     with open(expectations, 'rb') as f:
@@ -235,7 +233,77 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
     rpm = np.round(n / k)
 
     # create a container for the data
-    arrays = []
+    arrays_ = []
+    features = []
+    # create the data
+    for m in models:
+        cell = random.choice(cells)
+        rmt = random.choice(rmts)
+        m_features, probs = zip(*non_unique[m].items())
+
+        counts = np.random.multinomial(rpm, probs)
+        arr = sam.create_structured_array(sum(counts))
+
+        i = 0
+        for f, c in zip(m_features, counts):
+            for _ in range(c):
+                arr[i] = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
+                          fwd_quality, is_aligned, alignment_score)
+                features.append(f)
+                i += 1
+        arrays_.append(arr)
+
+    read_data = np.hstack(arrays_)
+    jagged_features = arrays.JaggedArray.from_iterable(features)
+    jagged_positions = arrays.JaggedArray.from_iterable(features)  # this is a dummy obj
+    ra = arrays.ReadArray(read_data, jagged_features, jagged_positions)
+
+    if isinstance(save, str):
+        with open(save, 'wb') as f:
+            pickle.dump(ra, f)
+
+    return ra
+
+
+def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save=None):
+    """generate N observations split between k ambiguous molecular models"""
+    with open(expectations, 'rb') as f:
+        expectations = pickle.load(f)
+
+    # split the data between two cell barcodes and 2 rmts
+    with open(cell_barcodes, 'rb') as f:
+        cb = pickle.load(f)
+    cells = np.random.choice(list(cb.perfect_codes), 2)
+
+    # get two random rmts
+    rmts = [''.join(np.random.choice(list('ACGT'), 6)) for _ in range(2)]
+    rmts = [three_bit.ThreeBit.str2bin(r) for r in rmts]
+
+    n_poly_t = 5
+    valid_cell = 1
+    trimmed_bases = 0
+    fwd_quality = 40
+    rev_quality = 40
+    alignment_score = 50
+    is_aligned = True
+
+    # get all the expectations that are not unique
+    non_unique = {}
+    for e, prob_dict in expectations.items():
+        if len(prob_dict) > 1:
+            non_unique[e] = prob_dict
+
+    # get total number of models
+    non_unique = pd.Series(non_unique)
+
+    # select models
+    models = np.random.choice(non_unique.index, size=k)
+
+    # reads per model
+    rpm = np.round(n / k)
+
+    # create a container for the data
+    arrays_ = []
 
     # create the data
     for m in models:
@@ -253,15 +321,15 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
                           sam.ObfuscatedTuple(tuple([0] * len(f))), is_aligned,
                           alignment_score)
                 i += 1
-        arrays.append(arr)
+        arrays_.append(arr)
 
-    arrays = np.hstack(arrays)
+    arrays_ = np.hstack(arrays_)
 
     if isinstance(save, str):
         with open(save, 'wb') as f:
-            pickle.dump(arrays, f)
+            pickle.dump(arrays_, f)
 
-    return arrays
+    return arrays_
 
 
 class GenerateFastq(object):
@@ -290,16 +358,16 @@ class GenerateFastq(object):
         return reverse_fastq
 
     @staticmethod
-    def generate_forward_in_drop_fastq(n, read_length, barcodes, umi_len):
-        with open(barcodes, 'rb') as f:
-            barcodes = list(pickle.load(f))
+    def generate_forward_in_drop_fastq(n, read_length, barcodes_, umi_len):
+        with open(barcodes_, 'rb') as f:
+            barcodes_ = list(pickle.load(f))
         names = range(n)
         name2 = '+'
         quality = 'I' * read_length
         records = []
         alphabet = np.array(['A', 'C', 'G', 'T'])
         for name in names:
-            cb = random.choice(barcodes)
+            cb = random.choice(barcodes_)
             umi = ''.join(np.random.choice(alphabet, umi_len))
             poly_a = (read_length - len(cb) - len(umi)) * 'T'
             records.append('\n'.join(['@%d' % name, cb + umi + poly_a, name2, quality]))
@@ -446,23 +514,23 @@ class GenerateFastq(object):
 
     @staticmethod
     def prepare_barcodes(fout, barcode_files, spacer=None):
-        barcodes = []
+        barcodes_ = []
         for file_ in barcode_files:
             with open(file_, 'r') as f:
-                barcodes.append([l.strip() for l in f.readlines()])
+                barcodes_.append([l.strip() for l in f.readlines()])
 
-        if len(barcodes) == 1:
-            barcodes = set(barcodes)
+        if len(barcodes_) == 1:
+            barcodes_ = set(barcodes_)
             with open(fout, 'wb') as f:
-                pickle.dump(barcodes, f)
+                pickle.dump(barcodes_, f)
         else:
             try:
-                barcodes = set(spacer.join(pair) for pair in product(*barcodes))
+                barcodes_ = set(spacer.join(pair) for pair in product(*barcodes_))
             except AttributeError:
                 raise ValueError('must pass spacer argument for experiments with multiple'
                                  'barcodes')
             with open(fout, 'wb') as f:
-                pickle.dump(barcodes, f)
+                pickle.dump(barcodes_, f)
 
 
 class DummyFTPClient(threading.Thread):
@@ -537,7 +605,7 @@ class DummyFTPClient(threading.Thread):
             raise RuntimeError("Server already started")
         if self.__stopped:
             # ensure the server can be started again
-            FTPd.__init__(self, self.server.socket.getsockname(), self.handler)
+            DummyFTPClient.__init__(self, self.server.socket.getsockname(), self.handler)
         self.__timeout = timeout
         threading.Thread.start(self)
         self.__flag.wait()
@@ -576,10 +644,11 @@ class TestJaggedArray(unittest.TestCase):
         n = int(1e6)
         data = list(self.generate_input_iterable(n))
         data_size = sum(len(i) for i in data)
-        jarr = sam.JaggedArray.from_samfile(data_size, data)
+        jarr = arrays.JaggedArray.from_iterable(data_size, data)
         self.assertTrue(jarr._data.dtype == np.uint32)
         self.assertTrue(jarr._data.shape == (data_size,))
         print(jarr[10])
+
 
 @unittest.skip('')
 class TestGenerateFastq(unittest.TestCase):
@@ -1093,7 +1162,7 @@ class TestSamProcessing(unittest.TestCase):
         print(arr)
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestSamToReadArray(unittest.TestCase):
 
     def setUp(self):
@@ -1106,16 +1175,16 @@ class TestSamToReadArray(unittest.TestCase):
             self.gtf, fragment_len=1000)
 
     def test_construct_read_array(self):
-        a = sam.ReadArray.from_samfile(self.in_drop_samfile, self.fpositions, self.ftable)
+        a = arrays.ReadArray.from_samfile(
+            self.in_drop_samfile, self.fpositions, self.ftable)
         array_lengths = (len(a.data), len(a.features), len(a.positions))
         self.assertTrue(len(set(array_lengths)) == 1)  # all arrays should have same #rows
 
     def test_generate_indices_for_error_correction(self):
-        a = sam.ReadArray.from_samfile(self.in_drop_samfile, self.fpositions, self.ftable)
-        array_lengths = (len(a.data), len(a.features), len(a.positions))
-        inds, seq = a.group_for_error_correction(required_poly_t=4)
-
-
+        a = arrays.ReadArray.from_samfile(
+            self.in_drop_samfile, self.fpositions, self.ftable)
+        _ = (len(a.data), len(a.features), len(a.positions))
+        _ = a.group_for_error_correction(required_poly_t=4)
 
 
 @unittest.skip('')
@@ -1209,7 +1278,7 @@ class TestUnionFind(unittest.TestCase):
                         '%s != %s' % (repr(set_membership), repr(prediction)))
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestDisambiguation(unittest.TestCase):
     """this may need more tests for more sophisticated input data."""
 
@@ -1224,13 +1293,30 @@ class TestDisambiguation(unittest.TestCase):
         self.data = generate_in_drop_disambiguation_data(
             self.expectations, cell_barcodes, 1000, 10, save=save)
 
-    # @unittest.skip('')
+    @unittest.skip('only run this if new ra disambiguation input is needed')
+    def test_generate_disambiguation_read_array(self):
+        cell_barcodes = self.data_dir + 'in_drop/barcodes/cb_3bit.p'
+        save = self.data_dir + 'in_drop/disambiguation_ra_input.p'
+        _ = generate_in_drop_read_array(self.expectations, cell_barcodes, 1000, 10,
+                                        save=save)
+
+    @unittest.skip('')
     def test_disambiguation(self):
         arr_pickle = self.data_dir + 'in_drop/disambiguation_input.p'
         with open(arr_pickle, 'rb') as f:
             arr = pickle.load(f)
         res, data = qc.disambiguate(arr, self.expectations)
         self.assertTrue(np.all(res == 4))  # 4 == complete disambiguation.
+
+    # @unittest.skip('')
+    def test_ra_disambiguate(self):
+        expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment_array.pckl'
+        arr_pickle = self.data_dir + 'in_drop/disambiguation_ra_input.p'
+        with open(arr_pickle, 'rb') as f:
+            ra = pickle.load(f)
+        ra.disambiguate(expectations)
+        # 4 == complete disambiguation.
+        self.assertTrue(np.all(ra.data['disambiguation_results'] == 4))
 
 
 @unittest.skip('')
@@ -1270,8 +1356,8 @@ class TestSaveCountsMatrices(unittest.TestCase):
 
         with open(self.data_dir + 'in_drop/disambiguation_input.p', 'rb') as f:
             arr = pickle.load(f)
-        mols, mr, mc = qc.counts_matrix(arr, True)
-        reads, rr, rc = qc.counts_matrix(arr, False)
+        _ = qc.counts_matrix(arr, True)
+        _ = qc.counts_matrix(arr, False)
 
 
 @unittest.skip('')
@@ -1434,9 +1520,9 @@ class TestGenerateSRA(unittest.TestCase):
     def test_generate_sra_paired_end(self):
         data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
         forward_fastq = [data_dir + 'in_drop/sample_data_r1.fastq']
-        forward_md5 = ['DUMMY' for f in forward_fastq]
+        forward_md5 = ['DUMMY' for _ in forward_fastq]
         reverse_fastq = [data_dir + 'in_drop/sample_data_r2.fastq']
-        reverse_md5 = ['DUMMY' for f in reverse_fastq]
+        reverse_md5 = ['DUMMY' for _ in reverse_fastq]
         file_directory = data_dir + 'in_drop/'
         experiment_alias = 'in_drop_test_experiment_2014'
         reference = 'mm38'
@@ -1543,8 +1629,8 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         experiment_name = 'test_in_drop'
         s3_bucket = self.s3_bucket
         s3_key = self.s3_key
-        cell_barcodes = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
-                         'in_drop_barcodes.p')
+        _ = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
+             'in_drop_barcodes.p')
 
         # potential issue: reverse should never map..
         forward = [self.forward[0]] * 3
@@ -1581,20 +1667,3 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
