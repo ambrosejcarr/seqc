@@ -25,55 +25,55 @@ def mask_failing_cells(df_or_array, n_poly_t_required):
             )
 
 
-"""
-the sole purpose of the two classes below is to defeat the confounding way that numpy
-treats tuples with len == 1 when constructing arrays by obscuring the existence of tuple
-data by 1 level. Pass a tuple as a feature or it will break
-"""
-
-
-class ObfuscatedTuple:
-
-    def __init__(self, tuple_):
-        if not isinstance(tuple_, tuple):
-            tuple_ = tuple(tuple_)
-        self._tuple = tuple_
-
-    def __repr__(self):
-        return '<ObfuscatedTuple: %s>' % self._tuple.__repr__()
-
-    def __lt__(self, other):
-        return self._tuple.__lt__(other)
-
-    def __gt__(self, other):
-        return self._tuple.__gt__(other)
-
-    def __eq__(self, other):
-        return self._tuple.__eq__(other)
-
-    def __ne__(self, other):
-        return self._tuple.__ne__(other)
-
-    def __le__(self, other):
-        return self._tuple.__le__(other)
-
-    def __ge__(self, other):
-        return self._tuple.__ge__(other)
-
-    def __len__(self):
-        return len(self._tuple)
-
-    def __contains__(self, item):
-        return self._tuple.__contains__(item)
-
-    def __iter__(self):
-        return iter(self._tuple)
-
-    def __hash__(self):
-        return hash(self._tuple)
-
-    def to_tuple(self):
-        return self._tuple
+# """
+# the sole purpose of the two classes below is to defeat the confounding way that numpy
+# treats tuples with len == 1 when constructing arrays by obscuring the existence of tuple
+# data by 1 level. Pass a tuple as a feature or it will break
+# """
+#
+#
+# class ObfuscatedTuple:
+#
+#     def __init__(self, tuple_):
+#         if not isinstance(tuple_, tuple):
+#             tuple_ = tuple(tuple_)
+#         self._tuple = tuple_
+#
+#     def __repr__(self):
+#         return '<ObfuscatedTuple: %s>' % self._tuple.__repr__()
+#
+#     def __lt__(self, other):
+#         return self._tuple.__lt__(other)
+#
+#     def __gt__(self, other):
+#         return self._tuple.__gt__(other)
+#
+#     def __eq__(self, other):
+#         return self._tuple.__eq__(other)
+#
+#     def __ne__(self, other):
+#         return self._tuple.__ne__(other)
+#
+#     def __le__(self, other):
+#         return self._tuple.__le__(other)
+#
+#     def __ge__(self, other):
+#         return self._tuple.__ge__(other)
+#
+#     def __len__(self):
+#         return len(self._tuple)
+#
+#     def __contains__(self, item):
+#         return self._tuple.__contains__(item)
+#
+#     def __iter__(self):
+#         return iter(self._tuple)
+#
+#     def __hash__(self):
+#         return hash(self._tuple)
+#
+#     def to_tuple(self):
+#         return self._tuple
 
 
 class Peekable(collections.Iterator):
@@ -199,8 +199,6 @@ def create_structured_array(n):
         ('trimmed_bases', np.uint8),
         ('rev_quality', np.uint8),
         ('fwd_quality', np.uint8),
-        # ('features', np.object),
-        # ('positions', np.object),
         ('is_aligned', np.bool),
         ('alignment_score', np.uint8)
     ]
@@ -226,7 +224,7 @@ def process_alignments(samfile, n_threads, gtf, fragment_len):
             while True:
                 try:
                     # get data
-                    data = list(islice(iterator, 10000))
+                    data = list(islice(iterator, int(1e6)))
                     # make sure we haven't bisected a multialignment
                     final_record = data[-1]
                     while True:
@@ -266,7 +264,7 @@ def process_alignments(samfile, n_threads, gtf, fragment_len):
                 data = in_queue.get_nowait()
 
                 # process the alignment group
-                arr = create_structured_array(10000)
+                arr = create_structured_array(len(data))
                 for i, ma in enumerate(group_multialignments(data)):
                     row = process_multialignment(ma, feature_positions, feature_table)
                     arr[i] = row

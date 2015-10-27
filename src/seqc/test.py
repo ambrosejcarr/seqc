@@ -1,6 +1,7 @@
 __author__ = 'ambrose'
 
 import hashlib
+from memory_profiler import profile, memory_usage
 import unittest
 import os
 import pickle
@@ -169,7 +170,7 @@ def generate_in_drop_fastq_data(n, prefix):
     gfq = GenerateFastq()
     fwd_len = 50
     rev_len = 100
-    barcodes_ = data_dir + 'in_drop/barcodes_/concatenated_string_in_drop_barcodes.p'
+    barcodes_ = data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p'
     umi_len = 6
     forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes_, umi_len)
     forward = forward.read()  # consume the StringIO object
@@ -648,7 +649,6 @@ class TestJaggedArray(unittest.TestCase):
         self.assertTrue(jarr._data.dtype == np.uint32)
         self.assertTrue(jarr._data.shape == (data_size,))
         print(jarr[10])
-
 
 @unittest.skip('')
 class TestGenerateFastq(unittest.TestCase):
@@ -1162,29 +1162,159 @@ class TestSamProcessing(unittest.TestCase):
         print(arr)
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestSamToReadArray(unittest.TestCase):
 
     def setUp(self):
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.in_drop_samfile = data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
+        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.in_drop_samfile = (
+            self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam')
         self.drop_seq_samfile = (
-            data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam')
-        self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
+            self.data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam')
+        self.gtf = self.data_dir + 'genome/mm38_chr19/annotations.gtf'
         self.ftable, self.fpositions = sam.construct_feature_table(
             self.gtf, fragment_len=1000)
+        self.h5name = self.data_dir + 'test_seqc_merge_in_drop_fastq/ra.h5'
 
+    @unittest.skip('')
     def test_construct_read_array(self):
         a = arrays.ReadArray.from_samfile(
             self.in_drop_samfile, self.fpositions, self.ftable)
         array_lengths = (len(a.data), len(a.features), len(a.positions))
         self.assertTrue(len(set(array_lengths)) == 1)  # all arrays should have same #rows
 
+    @unittest.skip('')
     def test_generate_indices_for_error_correction(self):
         a = arrays.ReadArray.from_samfile(
             self.in_drop_samfile, self.fpositions, self.ftable)
         _ = (len(a.data), len(a.features), len(a.positions))
         _ = a.group_for_error_correction(required_poly_t=4)
+
+    @unittest.skip('')
+    def test_save_and_load_readarray(self):
+        ra = arrays.ReadArray.from_samfile(
+            self.in_drop_samfile, self.fpositions, self.ftable)
+        ra.save_h5(self.h5name)
+        ra2 = arrays.ReadArray.from_h5(self.h5name)
+
+        self.assertTrue(np.array_equiv(ra.data, ra2.data))
+        self.assertTrue(np.array_equiv(ra._features._data, ra2._features._data))
+        self.assertTrue(np.array_equiv(ra._features._index, ra2._features._index))
+        self.assertTrue(np.array_equiv(ra._positions._data, ra2._positions._data))
+        self.assertTrue(np.array_equiv(ra._positions._index, ra2._positions._index))
+
+    def memory_usage(self, sizes, directory, index):
+
+        # generate fastq files
+        for s in sizes:
+            fastq_filename = directory + str(s)
+            generate_in_drop_fastq_data(s, fastq_filename)
+        forward = [directory + str(s) + '_r1.fastq' for s in sizes]
+        reverse = [directory + str(s) + '_r2.fastq' for s in sizes]
+
+        # get cell barcodes
+        with open(self.data_dir + 'in_drop/barcodes/cb_3bit.p', 'rb') as f:
+            cb = pickle.load(f)
+
+        # merge the data
+        merged_files = []
+        for f, r in zip(forward, reverse):
+            fq, _ = fastq.merge_fastq([f], [r], 'in-drop', directory, cb)
+            merged_files.append(fq)
+
+        # align the data
+        samfiles = align.STAR.align_multiple_files(
+            merged_files, index, 7, directory
+        )
+
+        ft, fp = convert_features.construct_feature_table(self.gtf, 1000)
+
+        logfile = open(directory + 'report.txt', 'w+')
+
+        h5files = [directory + '%dm.h5' % s for s in sizes]
+
+        # define and run functions
+        def test_memory_usage(idx):
+            memory_usage((arrays.ReadArray.from_samfile, (samfiles[idx], ft, fp)))
+            # arr.save_h5(h5files[index])
+
+        for i in range(len(samfiles)):
+            test_memory_usage(i)
+
+        logfile.close()
+
+    @unittest.skip('')
+    def test_ra_memory_usage_small(self):
+        index = self.data_dir + 'genome/mm38_chr19/'
+        working_directory = self.data_dir + 'test_ra_memory_usage/'
+        if not os.path.isdir(working_directory):
+            os.makedirs(working_directory)
+        self.memory_usage([int(1e6)], working_directory, index)
+
+    def test_profile_mem_usage(self):
+        samfile = ('/Users/ambrose/PycharmProjects/SEQC/src/data/test_ra_memory_usage/'
+                   'merged_temp/Aligned.out.sam')
+        ft, fp = convert_features.construct_feature_table(self.gtf, 1000)
+        usage = memory_usage((arrays.ReadArray.from_samfile, (samfile, ft, fp)))
+        print(np.array(usage).mean(), np.array(usage).max())
+
+    @unittest.skip('')
+    def test_ra_memory_usage(self):
+        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+
+        # generate fastq data for testing
+        files = [data_dir + 'test_memory_usage/' + prefix for prefix in
+                 ['1m', '2m', '4m', '8m', '16m']]
+        index = data_dir + 'genome/mm38_chr19/'
+        generate_in_drop_fastq_data(int(1e6), files[0])
+        generate_in_drop_fastq_data(int(2e6), files[1])
+        generate_in_drop_fastq_data(int(4e6), files[2])
+        generate_in_drop_fastq_data(int(8e6), files[3])
+        generate_in_drop_fastq_data(int(16e6), files[4])
+
+        # align the data, generating sam files
+        samfiles = align.STAR.align_multiple_files(
+            files, index, 7, data_dir + 'test_memory_usage/')
+
+        ft, fp = convert_features.construct_feature_table(self.gtf, 1000)
+
+        logfile = open(data_dir + 'test_memory_usage/report.txt', 'w+')
+
+        h5files = [f + '.h5' for f in files]
+
+        @profile(stream=logfile)
+        def test_1m():
+            arr = arrays.ReadArray.from_samfile(samfiles[0], ft, fp)
+            arr.save_h5(h5files[0])
+
+        @profile(stream=logfile)
+        def test_2m():
+            arr = arrays.ReadArray.from_samfile(samfiles[1], ft, fp)
+            arr.save_h5(h5files[1])
+
+        @profile(stream=logfile)
+        def test_4m():
+            arr = arrays.ReadArray.from_samfile(samfiles[2], ft, fp)
+            arr.save_h5(h5files[2])
+
+        @profile(stream=logfile)
+        def test_8m():
+            arr = arrays.ReadArray.from_samfile(samfiles[3], ft, fp)
+            arr.save_h5(h5files[3])
+
+        @profile(stream=logfile)
+        def test_16m():
+            arr = arrays.ReadArray.from_samfile(samfiles[4], ft, fp)
+            arr.save_h5(h5files[4])
+
+        for f in [test_1m, test_2m, test_4m, test_8m, test_16m]:
+            f()
+
+        logfile.close()
+
+    def tearDown(self):
+        if os.path.isfile(self.h5name):
+            os.remove(self.h5name)
 
 
 @unittest.skip('')
@@ -1278,7 +1408,7 @@ class TestUnionFind(unittest.TestCase):
                         '%s != %s' % (repr(set_membership), repr(prediction)))
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestDisambiguation(unittest.TestCase):
     """this may need more tests for more sophisticated input data."""
 

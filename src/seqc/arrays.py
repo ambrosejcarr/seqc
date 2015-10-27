@@ -9,6 +9,8 @@ from seqc.three_bit import ThreeBit
 from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
 from seqc.sam import average_quality
 from collections import deque, defaultdict
+from seqc import h5
+import tables as tb
 import pickle
 
 
@@ -254,34 +256,6 @@ class ArrayCounter:
             yield k, self[k]
 
 
-def outer_join(left, right):
-    """
-    outer join two dictionaries of arrays on the union of their keys and return
-    the expanded arrays in same order"""
-
-    # get all keys
-    all_keys = ArraySet(left.keys()).union(right.keys())
-
-    # allocate empty arrays
-    n = len(all_keys)
-    left_array = np.zeros(n, dtype=np.float)
-    right_array = np.zeros(n, dtype=np.float)
-
-    # fill arrays
-    for i, k in enumerate(all_keys):
-        try:
-            left_array[i] = left[k]
-        except KeyError:
-            left_array[i] = 0.
-    for i, k in enumerate(all_keys):
-        try:
-            right_array[i] = left[k]
-        except KeyError:
-            right_array[i] = 0.
-
-    return left_array, right_array
-
-
 class ReadArray:
 
     _dtype = [
@@ -331,6 +305,12 @@ class ReadArray:
     @property
     def positions(self):
         return self._positions
+
+    @property
+    def nbytes(self):
+        return (self._data.nbytes + self.features._index.nbytes +
+                self.features._data.nbytes + self.positions._data.nbytes +
+                self.positions._index.nbytes)
 
     @classmethod
     def from_samfile(cls, samfile, feature_positions, feature_table):
@@ -669,3 +649,80 @@ class ReadArray:
             else:
                 return 0
 
+    def save_h5(self, archive_name):
+        """efficiently save the ReadArray to a compressed h5 archive"""
+
+        def store_carray(h5f, array, where, name):
+            atom = tb.Atom.from_dtype(array.dtype)
+            store = h5f.createCArray(where, name, atom, array.shape)
+            store[:] = array
+
+        blosc5 = tb.Filters(complevel=5, complib='blosc')
+        f = tb.open_file(archive_name, mode='a', title='Data for seqc.ReadArray',
+                         filters=blosc5)
+
+        # store data
+        # data_description = tb.descr_from_dtype(self._data.dtype)
+        # print(data_description)
+        data_store = f.create_table(
+            f.root, 'data', self._data)
+        # data_store[:] = self.data
+
+        # create group for feature-related data and store.
+        feature_group = h5.create_group(
+            f, 'features', '/', 'Data for ReadArray._features')
+        store_carray(f, self._features._data, feature_group, 'data')
+        store_carray(f, self._features._index, feature_group, 'index')
+
+        # store position data
+        positions_group = h5.create_group(
+            f, 'positions', '/', 'Data for ReadArray._features')
+        store_carray(f, self._positions._data, positions_group, 'data')
+        store_carray(f, self._positions._index, positions_group, 'index')
+
+        f.close()
+
+    @classmethod
+    def from_h5(cls, archive_name):
+        f = tb.open_file(archive_name, mode='r')
+
+        data = f.root.data.read()
+
+        fdata = f.root.features.data.read()
+        findex = f.root.features.index.read()
+
+        pdata = f.root.positions.data.read()
+        pindex = f.root.positions.index.read()
+
+        features = JaggedArray(fdata, findex)
+        positions = JaggedArray(pdata, pindex)
+
+        return cls(data, features, positions)
+
+
+def outer_join(left, right):
+    """
+    outer join two dictionaries of arrays on the union of their keys and return
+    the expanded arrays in same order"""
+
+    # get all keys
+    all_keys = ArraySet(left.keys()).union(right.keys())
+
+    # allocate empty arrays
+    n = len(all_keys)
+    left_array = np.zeros(n, dtype=np.float)
+    right_array = np.zeros(n, dtype=np.float)
+
+    # fill arrays
+    for i, k in enumerate(all_keys):
+        try:
+            left_array[i] = left[k]
+        except KeyError:
+            left_array[i] = 0.
+    for i, k in enumerate(all_keys):
+        try:
+            right_array[i] = left[k]
+        except KeyError:
+            right_array[i] = 0.
+
+    return left_array, right_array

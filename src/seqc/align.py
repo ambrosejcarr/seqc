@@ -448,7 +448,7 @@ class STAR:
         return temp_dir + 'Aligned.out.sam'
 
     @classmethod
-    def align_multiple_files(cls, fastq_files, index, n_threads, temp_dir,
+    def align_multiple_files(cls, fastq_files, index, n_threads, working_dir,
                              reverse_fastq_files=None, **kwargs):
 
         # use shared memory to map each of the individual cells
@@ -464,7 +464,7 @@ class STAR:
         runs = []
         samfiles = []
         for fastq_file in fastq_files:
-            alignment_dir = (temp_dir +
+            alignment_dir = (working_dir +
                              fastq_file.split('/')[-1].replace('.fastq', '/'))
 
             # only add the file to runs if the samfile does not already exist
@@ -475,7 +475,7 @@ class STAR:
 
             # file doesn't exist, add it to runs
             try:
-                os.mkdir(temp_dir + fastq_file.split('/')[-1].replace('.fastq', '/'))
+                os.mkdir(alignment_dir)
             except FileExistsError:
                 pass
             runs.append(cls.default_alignment_args(
