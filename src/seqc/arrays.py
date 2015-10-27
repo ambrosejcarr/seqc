@@ -494,7 +494,7 @@ class ReadArray:
             |
             v
             hashed byte-representation of feature np.ndarray
-                \
+                |
                 v
                 concatenated 3-bit representation of cb1-cb2-rmt, where the least
                 significant bits of the sequence contain the rmt
