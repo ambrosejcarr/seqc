@@ -480,8 +480,35 @@ class ReadArray:
 
         return molecules, seq
 
-    def group_for_error_correction(self, required_poly_t):
-        """better if disambiguation is done by now!"""
+    def group_for_error_correction(self, required_poly_t=0):
+        """
+        returns a two-level dictionary that maps features to their sequences and sequences
+        to all of the positions in self that feature-sequence positions are found.
+
+        The dictionary is created from post-filtered sequences. required_poly_t is one
+        such filter. Setting it equal to zero (default value) will result in a
+        pass-through filter
+
+        In detail, the returned dictionary has the structure:
+        molecules (dict)
+            |
+            v
+            hashed byte-representation of feature np.ndarray
+                \
+                v
+                concatenated 3-bit representation of cb1-cb2-rmt, where the least
+                significant bits of the sequence contain the rmt
+                    |
+                    v
+                    np.ndarray containing the indices where the feature-seq combinations
+                    are found in the original array
+
+        >> group = molecules[features][seq]
+        >> group
+        [1] np.array([1, 5, 11, 224, 123412])
+        >> group.shape[0]
+        [2] 5  # number of counts associated with seq, given feature.
+        """
         indices = np.arange(self.data.shape[0])
 
         mask = self.mask_failing_cells(n_poly_t_required=required_poly_t)
@@ -489,6 +516,7 @@ class ReadArray:
         # filter and merge cell/rmt
         seq_data = np.vstack([self.data['cell'][mask],
                               self.data['rmt'][mask].astype(np.int64)]).T
+        # todo may not need to build this
         seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
                                   arr=seq_data)
 
@@ -514,7 +542,7 @@ class ReadArray:
             for s, v in molecules[f].items():
                 molecules[f][s] = np.array(v)
 
-        return dict(molecules), seq
+        return dict(molecules)
 
     def correct_errors(self):
         raise NotImplementedError
