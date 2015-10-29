@@ -621,6 +621,10 @@ class ReadArray:
                         exp_dict = expectations[m]
                     except KeyError:
                         continue
+                    except IndexError:
+                        print(m)
+                        print(type(m))
+                        raise
                     obs, exp = outer_join(obs_counter, exp_dict)
 
                     # calculate model probability
