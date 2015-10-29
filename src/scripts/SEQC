@@ -118,7 +118,7 @@ def process_input():
         sys.exit(2)
     required = [arguments.output_file, arguments.index, arguments.n_threads]
     if not arguments.subparser_name == 'drop-seq':
-        if not all(required + arguments.barcodes):
+        if not all(required + [arguments.barcodes]):
             print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
                   '--n-threads, -o/--output-file, -b/--barcodes')
         sys.exit(2)

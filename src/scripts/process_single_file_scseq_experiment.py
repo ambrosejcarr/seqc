@@ -45,6 +45,8 @@ def parse_args():
     p.add_argument('--index-key', help='s3 key for star index', metavar='IK', type=str)
     p.add_argument('-w', '--working-directory', metavar='W', type=str,
                    help='temporary working directory for script', required=True)
+    p.add_argument('-t', '--experiment-type', help='pre-processor name', metavar='T',
+                   type=str)
     args = vars(p.parse_args())
     return args
 
