@@ -7,14 +7,11 @@ import os
 import shutil
 from copy import copy
 from seqc.fastq import merge_fastq
-from seqc.sam import process_alignments
 from seqc.align import STAR
-from seqc.qc import disambiguate, counts_matrix
 from seqc.barcodes import DropSeqCellBarcodes
 from seqc.arrays import ReadArray
 from seqc.convert_features import construct_feature_table
 import numpy as np
-import numpy.lib.recfunctions as rf
 import sys
 import logging
 import json
@@ -27,7 +24,8 @@ from datetime import datetime
 # todo | merge all of the metadata into a dictionary that is written at the end of the
 # todo |   pipeline or when any errors occur
 # todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
-
+# todo | change p_coalignment.pckl to an array pickle (as long as this doesn't use too
+# todo |   much memory
 # todo | add sub-commands to allow running drop-seq only, etc. This is done through sub-
 # todo |   parsers, whose names can be identified in the namespace as subparser_name
 def process_input():
@@ -194,19 +192,12 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout):
 
         # align fastq files
         log_info('Aligning merged fastq file')
-        star = STAR(temp_dir, n_threads, index)
-        star.align(merged_fastq, **star_args)
+        STAR.align(merged_fastq, index, n_threads, temp_dir, **star_args)
         samfile = temp_dir + 'Aligned.out.sam'
 
         # copy alignment summary
         shutil.copyfile(temp_dir + 'Log.final.out', fout + '_alignment_summary.txt')
         return samfile
-
-
-# def process_samfile_old(samfile, n_threads, gtf, frag_len):
-#     log_info('Post-processing alignments')
-#     arr = process_alignments(samfile, n_threads, gtf, frag_len)
-#     return arr
 
 
 def process_samfile(samfile, gtf, frag_len):
@@ -237,19 +228,23 @@ def correct_errors():
     raise NotImplementedError
 
 
-def resolve_alignments(index, arr, n):
+def resolve_alignments(index, arr, n, fout):
     log_info('Resolving ambiguous alignments.')
-    expectations = index + 'p_coalignment.pckl'
-    disambiguation_res, arr = disambiguate(arr, expectations, n_poly_t_required=n)
-    arr = rf.append_fields(arr, 'disambiguation_results', disambiguation_res)
-    arr = arr.filled()
-    return arr
+    try:
+        expectations = index + 'p_coalignment_array.pckl'
+        arr.resolve_alignments(expectations, required_poly_t=n)
+    except:
+        log_info('Caught error in resolve_alignments(), saving data')
+        arr.save_h5(fout + '.h5')
+        raise
 
 
 def save_counts_matrices(fout, arr, n):
     log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-    mols, mrow, mcol = counts_matrix(arr, collapse_molecules=True, n_poly_t_required=n)
-    reads, rrow, rcol = counts_matrix(arr, collapse_molecules=False, n_poly_t_required=n)
+    mols, mrow, mcol = arr.to_sparse_counts(
+        collapse_molecules=True, n_poly_t_required=n)
+    reads, rrow, rcol = arr.to_sparse_counts(
+        collapse_molecules=False, n_poly_t_required=n)
     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
     with open(fout + '_read_and_mol_matrices.p', 'wb') as f:
@@ -295,13 +290,9 @@ def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout)
 
-    arr = process_alignments(samfile, n_threads, gtf, frag_len)
+    arr = process_samfile(samfile, gtf, frag_len)
 
-    try:  # might throw errors, if so, make sure to save
-        arr = resolve_alignments(index, arr, n=3)
-    except:
-        store_results(fout, arr)
-        raise
+    resolve_alignments(index, arr, n=0, fout=fout)
 
     store_results(fout, arr)
 
@@ -320,15 +311,11 @@ def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout)
 
-    arr = process_alignments(samfile, n_threads, gtf, frag_len)
+    arr = process_samfile(samfile, gtf, frag_len)
 
-    try:  # might throw errors, if so, make sure to save
-        arr = resolve_alignments(index, arr, n=0)
-    except:
-        store_results(fout, arr)
-        raise
+    resolve_alignments(index, arr, n=0, fout=fout)
 
-    store_results(fout, arr)
+    arr.save_h5(fout + '.h5')
 
     save_counts_matrices(fout, arr, n=0)
 

@@ -30,7 +30,7 @@ from pyftpdlib.authorizers import DummyAuthorizer
 # tests to add:
 # 1. test for processing of multi-aligned reads. Right now there is no test for lines
 #    92-102 of sam.py
-# 2. add a test for masking of filtered reads in qc.py for disambiguate() and
+# 2. add a test for masking of filtered reads in qc.py for resolve_alignments() and
 #    error_correction() At the moment, the data generation doesn't produce any reads that
 #    get filtered.
 
@@ -406,7 +406,7 @@ class GenerateFastq(object):
     def prepare_chr19(cls):
         """prepare a pickled chr19file for quick data synthesis
 
-        Additionally, prepares a chr19 fasta, gtf, and cdna file for use with disambiguate
+        Additionally, prepares a chr19 fasta, gtf, and cdna file for use with resolve_alignments
         """
 
         prefix = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/genome/mm38_chr19/'
@@ -649,6 +649,7 @@ class TestJaggedArray(unittest.TestCase):
         self.assertTrue(jarr._data.dtype == np.uint32)
         self.assertTrue(jarr._data.shape == (data_size,))
         print(jarr[10])
+
 
 @unittest.skip('')
 class TestGenerateFastq(unittest.TestCase):
@@ -1162,7 +1163,7 @@ class TestSamProcessing(unittest.TestCase):
         print(arr)
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestSamToReadArray(unittest.TestCase):
 
     def setUp(self):
@@ -1176,7 +1177,7 @@ class TestSamToReadArray(unittest.TestCase):
             self.gtf, fragment_len=1000)
         self.h5name = self.data_dir + 'test_seqc_merge_in_drop_fastq/ra.h5'
 
-    @unittest.skip('')
+    # @unittest.skip('')
     def test_construct_read_array(self):
         a = arrays.ReadArray.from_samfile(
             self.in_drop_samfile, self.fpositions, self.ftable)
@@ -1251,12 +1252,13 @@ class TestSamToReadArray(unittest.TestCase):
             os.makedirs(working_directory)
         self.memory_usage([int(1e6)], working_directory, index)
 
+    @unittest.skip('')
     def test_profile_mem_usage(self):
         samfile = ('/Users/ambrose/PycharmProjects/SEQC/src/data/test_ra_memory_usage/'
                    'merged_temp/Aligned.out.sam')
         ft, fp = convert_features.construct_feature_table(self.gtf, 1000)
         usage = memory_usage((arrays.ReadArray.from_samfile, (samfile, ft, fp)))
-        print(np.array(usage).mean(), np.array(usage).max())
+        print(np.array(usage))
 
     @unittest.skip('')
     def test_ra_memory_usage(self):
@@ -1444,7 +1446,7 @@ class TestDisambiguation(unittest.TestCase):
         arr_pickle = self.data_dir + 'in_drop/disambiguation_ra_input.p'
         with open(arr_pickle, 'rb') as f:
             ra = pickle.load(f)
-        ra.disambiguate(expectations)
+        ra.resolve_alignments(expectations)
         # 4 == complete disambiguation.
         self.assertTrue(np.all(ra.data['disambiguation_results'] == 4))
 

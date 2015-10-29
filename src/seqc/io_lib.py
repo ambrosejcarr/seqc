@@ -228,6 +228,36 @@ class GEO:
             ftp.close()
 
     @classmethod
+    def download_sra_file(cls, link, prefix, clobber=False, verbose=True, port=0):
+
+        # check link validity
+        if not link.startswith('ftp://'):
+            raise ValueError(
+                'link must start with "ftp://". Provided link is not valid: %s'
+                % link)
+
+        ip, *path, file_name = link.split('/')[2:]  # [2:] -- eliminate 'ftp://'
+        path = '/'.join(path)
+
+        # check if file already exists
+        if os.path.isfile(prefix + file_name):
+            if not clobber:
+                return
+
+        ftp = cls._ftp_login(ip, port)
+        ftp.cwd(path)
+        with open(prefix + file_name, 'wb') as fout:
+            if verbose:
+                print('beginning download of file: "%s"' % link.split('/')[-1])
+            ftp.retrbinary('RETR %s' % file_name, fout.write)
+            if verbose:
+                print('download of file complete: "%s"' % link.split('/')[-1])
+        ftp.close()
+
+        return prefix + file_name.split('/')[-1]
+
+
+    @classmethod
     def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False,
                      port=0):
         """download all files in an SRP experiment into directory 'prefix'."""

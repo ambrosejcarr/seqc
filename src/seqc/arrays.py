@@ -10,10 +10,15 @@ from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
 from seqc.sam import average_quality
 from collections import deque, defaultdict
 from seqc import h5
+from scipy.sparse import coo_matrix
 import tables as tb
 import pickle
+import os
 
 
+# todo | it would save more memory to skip "empty" features and give them equal indices
+# todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
+# todo | returning array([])
 class JaggedArray:
 
     def __init__(self, data, index):
@@ -95,8 +100,9 @@ class JaggedArray:
             self._setitem(index, value)
 
     def __repr__(self):
-        if len(self.data) < 10:
-            return '<JaggedArray:\n[' + '\n '.join(str(i) for i in self) + ']>'
+        if len(self.index) < 10:
+            return ('<JaggedArray:\n[' + '\n '.join(str(self[i])
+                    for i in range(len(self))) + ']>')
         else:
             return ('<JaggedArray:\n[' + '\n '.join(str(self[i]) for i in range(5)) +
                     '\n ...\n ' +
@@ -313,7 +319,12 @@ class ReadArray:
                 self.positions._index.nbytes)
 
     @classmethod
-    def from_samfile(cls, samfile, feature_positions, feature_table):
+    # todo this is losing either the first or the last read
+    def from_samfile(cls, samfile, feature_table, feature_positions):
+
+        # first pass, get size of file
+        # second pass, group up the multi-alignments
+
 
         # first pass through file: get the total number of alignments and the number of
         # multialignments for array construction; store indices for faster second pass
@@ -365,13 +376,13 @@ class ReadArray:
             for i, s in enumerate(ma_sizes):
                 # get all records associated with a multialignment
                 multi_alignment = list(islice(records, s))
-                if not multi_alignment:
+                if not multi_alignment:  # iterator is exhausted
                     break
-                recd, feat, posn = cls._process_multialignment(
-                    multi_alignment, feature_positions, feature_table)
+                recd, feat, pos = cls._process_multialignment(
+                    multi_alignment, feature_table, feature_positions)
                 read_data[i] = recd
-                features[current_index_position:current_index_position + s] = feat
-                positions[current_index_position:current_index_position + s] = posn
+                features[current_index_position:current_index_position + len(feat)] = feat
+                positions[current_index_position:current_index_position + len(pos)] = pos
                 index[i, :] = (current_index_position, current_index_position + s)
                 current_index_position += s
 
@@ -385,18 +396,13 @@ class ReadArray:
         return cls(read_data, jagged_features, jagged_positions)
 
     @classmethod
-    def _process_multialignment(cls, alignments, feature_positions, feature_table):
-        """translate a sam record into a recarray row"""
+    def _process_multialignment(cls, alignments, feature_table, feature_positions):
+        """translate a sam multi-alignment into a ReadArray row"""
 
         # all fields are identical except feature; get from first alignment
         first = alignments[0].strip().split('\t')
 
-        # todo remove; debugging
-        try:
-            rev_quality = average_quality(first[10])
-        except IndexError:
-            print(first)
-            raise
+        rev_quality = average_quality(first[10])
         alignment_score = int(first[13].split(':')[-1])
 
         # parse data from name field, previously extracted from forward read
@@ -405,13 +411,22 @@ class ReadArray:
 
         # get all features and positions
         if len(alignments) == 1:
-            true_position = int(first[3])
+
+            # check if read is unaligned
             flag = int(first[1])
-            strand = '-' if (flag & 16) else '+'
-            reference_name = first[2]
-            features = [cls.translate_feature(reference_name, strand, true_position,
-                                          feature_table, feature_positions)]
-            positions = [true_position]
+            if flag & 4:
+                is_aligned = False
+                rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
+                       fwd_quality, is_aligned, alignment_score)
+                features, positions = [0], [0]
+                return rec, features, positions
+            else:
+                true_position = int(first[3])
+                strand = '-' if (flag & 16) else '+'
+                reference_name = first[2]
+                features = [cls.translate_feature(reference_name, strand, true_position,
+                                                  feature_table, feature_positions)]
+                positions = [true_position]
         else:
             features = []
             positions = []
@@ -434,13 +449,13 @@ class ReadArray:
 
         features, positions = cls.multi_delete(delete, features, positions)
 
-        if not features:
-            features, positions = 0, 0
-
         is_aligned = True if features else False
 
-        rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality, fwd_quality,
-               is_aligned, alignment_score)
+        if not features:
+            features, positions = [0], [0]
+
+        rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
+               fwd_quality, is_aligned, alignment_score)
 
         return rec, features, positions
 
@@ -544,15 +559,12 @@ class ReadArray:
 
         return dict(molecules)
 
-    def correct_errors(self):
-        raise NotImplementedError
-
-    def disambiguate(self, expectations, required_poly_t=0, alpha=0.1):
+    def resolve_alignments(self, expectations, required_poly_t=0, alpha=0.1):
         molecules, seqs = self.group_for_disambiguation(required_poly_t)
         results = np.zeros(self.data.shape[0], dtype=np.int8)
 
         # load the expectations
-        if isinstance(expectations, str):
+        if os.path.isfile(expectations):
             with open(expectations, 'rb') as f:
                 expectations = pickle.load(f)
 
@@ -605,7 +617,10 @@ class ReadArray:
                     # (1, 2): 1. --> array([1, 2]) instead of array([(1, 2)])
                     # (1,) : 1. --> array([[1]]) (shape (1, 1) instead of shape (1,))
 
-                    exp_dict = expectations[m]
+                    try:
+                        exp_dict = expectations[m]
+                    except KeyError:
+                        continue
                     obs, exp = outer_join(obs_counter, exp_dict)
 
                     # calculate model probability
@@ -678,7 +693,10 @@ class ReadArray:
                 return 0
 
     def save_h5(self, archive_name):
-        """efficiently save the ReadArray to a compressed h5 archive"""
+        """
+        efficiently save the ReadArray to a compressed h5 archive; note that this
+        will overwrite an existing archive with the same name
+        """
 
         def store_carray(h5f, array, where, name):
             atom = tb.Atom.from_dtype(array.dtype)
@@ -686,15 +704,14 @@ class ReadArray:
             store[:] = array
 
         blosc5 = tb.Filters(complevel=5, complib='blosc')
-        f = tb.open_file(archive_name, mode='a', title='Data for seqc.ReadArray',
+        f = tb.open_file(archive_name, mode='w', title='Data for seqc.ReadArray',
                          filters=blosc5)
 
         # store data
-        # data_description = tb.descr_from_dtype(self._data.dtype)
-        # print(data_description)
-        data_store = f.create_table(
-            f.root, 'data', self._data)
-        # data_store[:] = self.data
+        f.create_table(f.root, 'data', self._data)
+        # except tb.exceptions.NodeError:
+        #     f.remove_node(f.root, 'data')
+        #     f.create_table(f.root, 'data', self._data)
 
         # create group for feature-related data and store.
         feature_group = h5.create_group(
@@ -726,6 +743,88 @@ class ReadArray:
         positions = JaggedArray(pdata, pindex)
 
         return cls(data, features, positions)
+
+    # todo write tests
+    def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
+
+        mask = self.mask_failing_cells(n_poly_t_required)
+        unmasked_inds = np.arange(self.data.shape[0])[mask]
+        molecule_counts = defaultdict(dict)
+
+        if collapse_molecules:
+            # get molecule counts
+
+            for i in unmasked_inds:
+                feature = self._features[i]
+                cell = self.data['cell'][i]
+                rmt = self.data['rmt'][i]
+                try:
+                    molecule_counts[feature][cell].add(rmt)
+                except KeyError:
+                    molecule_counts[feature][cell] = {rmt}
+
+            # convert to molecule counts
+            for f in molecule_counts.keys():
+                for c, rmts in molecule_counts[f].items():
+                    molecule_counts[f][c] = len(rmts)
+        else:
+            for i in unmasked_inds:
+                feature = self._features[i]
+                cell = self.data['cell'][i]
+                try:
+                    molecule_counts[feature][cell] += 1
+                except KeyError:
+                    molecule_counts[feature][cell] = 1
+
+        # convert to values, row, col form for scipy.coo
+        # pre-allocate arrays
+        size = sum(len(c) for c in molecule_counts.values())
+        values = np.empty(size, dtype=int)
+        row = np.empty(size, dtype=int)
+        col = np.empty(size, dtype=int)
+        i = 0
+        for gene in molecule_counts:
+            for cell, count in molecule_counts[gene].items():
+                values[i] = count
+                row[i] = cell
+                col[i] = gene[0]  # todo this is super arbitrary, I'm selecting the first gene of the multi-alignment.
+                i += 1
+
+        # get max count to shrink dtype if possible
+        maxcount = np.max(values)
+
+        # set dtype
+        if 0 < maxcount < 2 ** 8:
+            dtype = np.uint8
+        elif maxcount < 2 ** 16:
+            dtype = np.uint16
+        elif maxcount < 2 ** 32:
+            dtype = np.uint32
+        elif maxcount < 2 ** 64:
+            dtype = np.uint64
+        elif maxcount < 0:
+            raise ValueError('Negative count value encountered. These values are not'
+                             'defined and indicate a probable upstream bug')
+        else:
+            raise ValueError('Count values too large to fit in int64. This is very '
+                             'unlikely, and will often cause Memory errors. Please check '
+                             'input data.')
+
+        # map row and cell to integer values for indexing
+        unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
+        unq_col = np.unique(col)
+        row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
+        col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
+        row_ind = np.array([row_map[i] for i in row])
+        col_ind = np.array([col_map[i] for i in col])
+
+        # change dtype, set shape
+        values = values.astype(dtype)
+        shape = (unq_row.shape[0], unq_col.shape[0])
+
+        # return a sparse array
+        coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
+        return coo, unq_row, unq_col
 
 
 def outer_join(left, right):
