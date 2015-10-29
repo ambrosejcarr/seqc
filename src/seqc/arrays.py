@@ -567,6 +567,13 @@ class ReadArray:
         if os.path.isfile(expectations):
             with open(expectations, 'rb') as f:
                 expectations = pickle.load(f)
+        elif isinstance(expectations, str):
+            raise FileNotFoundError('could not locate serialized expectations object')
+        elif isinstance(dict):
+            pass  # expectations already loaded
+        else:
+            raise TypeError('invalid expecatation object type, must be a dict expectation'
+                            ' object or a string filepath')
 
         # loop over potential molecules
         for read_indices in molecules.values():
@@ -622,8 +629,6 @@ class ReadArray:
                     except KeyError:
                         continue
                     except IndexError:
-                        print(m)
-                        print(type(m))
                         raise
                     obs, exp = outer_join(obs_counter, exp_dict)
 

@@ -231,6 +231,9 @@ def correct_errors():
 def resolve_alignments(index, arr, n, fout):
     log_info('Resolving ambiguous alignments.')
     try:
+        # todo
+        # I should store this in a jagged array as well. Indexing is 1/2 as fast
+        # but it would still be very quick, and VERY memory efficient.
         expectations = index + 'p_coalignment_array.pckl'
         arr.resolve_alignments(expectations, required_poly_t=n)
     except:
