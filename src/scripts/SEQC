@@ -121,7 +121,7 @@ def process_input():
         if not all(required + [arguments.barcodes]):
             print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
                   '--n-threads, -o/--output-file, -b/--barcodes')
-        sys.exit(2)
+            sys.exit(2)
     else:
         if not all(required):
             print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
