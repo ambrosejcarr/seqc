@@ -783,6 +783,8 @@ class ReadArray:
                     molecule_counts[feature][cell].add(rmt)
                 except KeyError:
                     molecule_counts[feature][cell] = {rmt}
+                except ValueError:
+                    print(feature, cell, rmt)
 
             # convert to molecule counts
             for f in molecule_counts.keys():
