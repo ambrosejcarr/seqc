@@ -18,7 +18,7 @@ import os
 
 # todo | it would save more memory to skip "empty" features and give them equal indices
 # todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
-# todo | returning array([])
+# todo | returning array([]); this would also reduce downstream complexity.
 class JaggedArray:
 
     def __init__(self, data, index):
@@ -236,6 +236,13 @@ class ArrayCounter:
                 raise ValueError('item must be a np.array object')
             else:
                 raise
+
+    def __delitem__(self, key):
+        del self.counts[key]
+        self._keys.remove(key)
+        for i, v in enumerate(self._arrays):
+            if v == key:
+                del self._arrays[i]
 
     def __iter__(self):
         return iter(self._arrays)
@@ -601,12 +608,13 @@ class ReadArray:
             # Loop Over Disjoint molecules
             for s in sets:
 
-                disjoint_group = putative_molecule[set_membership == s]
-                disjoint_features = putative_features[set_membership == s]  # todo doesn't like this because it's a tuple!
+                # disjoint_group = putative_molecule[set_membership == s]
+                disjoint_features = putative_features[set_membership == s]
                 disjoint_group_idx = read_indices[set_membership == s]  # track index
 
-                # get observed counts
+                # get observed counts; delete non-molecules
                 obs_counter = ArrayCounter(putative_features)
+                del obs_counter[0]
 
                 # check that creating disjoint sets haven't made this trivial
                 if len(obs_counter) == 1 and len(next(iter(obs_counter))) == 1:
@@ -622,12 +630,6 @@ class ReadArray:
                 df = np.empty_like(possible_models, dtype=np.int)
 
                 for i, m in enumerate(possible_models):
-
-                    # get model probabilities todo this should be pre-created in pickled index
-                    # todo this does the wrong thing with several types of input:
-                    # (1, 2): 1. --> array([1, 2]) instead of array([(1, 2)])
-                    # (1,) : 1. --> array([[1]]) (shape (1, 1) instead of shape (1,))
-
                     try:
                         exp_dict = expectations[m]
                     except KeyError:
