@@ -772,19 +772,22 @@ class ReadArray:
         unmasked_inds = np.arange(self.data.shape[0])[mask]
         molecule_counts = defaultdict(dict)
 
+        # get a bytes-representation of each feature object
+        feature_map = {}
+
         if collapse_molecules:
             # get molecule counts
 
             for i in unmasked_inds:
                 feature = self._features[i]
+                hashed = hash(self._features[i].tobytes())
+                feature_map[hashed] = feature
                 cell = self.data['cell'][i]
                 rmt = self.data['rmt'][i]
                 try:
-                    molecule_counts[feature][cell].add(rmt)
+                    molecule_counts[hashed][cell].add(rmt)
                 except KeyError:
-                    molecule_counts[feature][cell] = {rmt}
-                except ValueError:
-                    print(feature, cell, rmt)
+                    molecule_counts[hashed][cell] = {rmt}
 
             # convert to molecule counts
             for f in molecule_counts.keys():
@@ -793,11 +796,13 @@ class ReadArray:
         else:
             for i in unmasked_inds:
                 feature = self._features[i]
+                hashed = hash(self._features[i].tobytes())
+                feature_map[hashed] = feature
                 cell = self.data['cell'][i]
                 try:
-                    molecule_counts[feature][cell] += 1
+                    molecule_counts[hashed][cell] += 1
                 except KeyError:
-                    molecule_counts[feature][cell] = 1
+                    molecule_counts[hashed][cell] = 1
 
         # convert to values, row, col form for scipy.coo
         # pre-allocate arrays
@@ -806,11 +811,98 @@ class ReadArray:
         row = np.empty(size, dtype=int)
         col = np.empty(size, dtype=int)
         i = 0
-        for gene in molecule_counts:
-            for cell, count in molecule_counts[gene].items():
+        for hashed_feature in molecule_counts:
+            feature = feature_map[hashed_feature]
+            for cell, count in molecule_counts[hashed_feature].items():
                 values[i] = count
                 row[i] = cell
-                col[i] = gene[0]  # todo this is super arbitrary, I'm selecting the first gene of the multi-alignment.
+                col[i] = feature[0]  # todo this is arbitrary, selecting feature[0] of x
+                i += 1
+
+        # get max count to shrink dtype if possible
+        maxcount = np.max(values)
+
+        # set dtype
+        if 0 < maxcount < 2 ** 8:
+            dtype = np.uint8
+        elif maxcount < 2 ** 16:
+            dtype = np.uint16
+        elif maxcount < 2 ** 32:
+            dtype = np.uint32
+        elif maxcount < 2 ** 64:
+            dtype = np.uint64
+        elif maxcount < 0:
+            raise ValueError('Negative count value encountered. These values are not'
+                             'defined and indicate a probable upstream bug')
+        else:
+            raise ValueError('Count values too large to fit in int64. This is very '
+                             'unlikely, and will often cause Memory errors. Please check '
+                             'input data.')
+
+        # map row and cell to integer values for indexing
+        unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
+        unq_col = np.unique(col)
+        row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
+        col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
+        row_ind = np.array([row_map[i] for i in row])
+        col_ind = np.array([col_map[i] for i in col])
+
+        # change dtype, set shape
+        values = values.astype(dtype)
+        shape = (unq_row.shape[0], unq_col.shape[0])
+
+        # return a sparse array
+        coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
+        return coo, unq_row, unq_col
+
+    # todo write tests
+    def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
+
+        mask = self.mask_failing_cells(n_poly_t_required)
+        unmasked_inds = np.arange(self.data.shape[0])[mask]
+        molecule_counts = defaultdict(dict)
+
+        if collapse_molecules:
+            # get molecule counts
+
+            for i in unmasked_inds:
+                feature = self._features[i]
+                if len(feature) > 1:
+                    continue
+                cell = self.data['cell'][i]
+                rmt = self.data['rmt'][i]
+                try:
+                    molecule_counts[int(feature)][cell].add(rmt)
+                except KeyError:
+                    molecule_counts[int(feature)][cell] = {rmt}
+
+            # convert to molecule counts
+            for f in molecule_counts.keys():
+                for c, rmts in molecule_counts[f].items():
+                    molecule_counts[f][c] = len(rmts)
+        else:
+            for i in unmasked_inds:
+                feature = self._features[i]
+                if len(feature) > 1:
+                    continue
+                cell = self.data['cell'][i]
+                try:
+                    molecule_counts[int(feature)][cell] += 1
+                except KeyError:
+                    molecule_counts[int(feature)][cell] = 1
+
+        # convert to values, row, col form for scipy.coo
+        # pre-allocate arrays
+        size = sum(len(c) for c in molecule_counts.values())
+        values = np.empty(size, dtype=int)
+        row = np.empty(size, dtype=int)
+        col = np.empty(size, dtype=int)
+        i = 0
+        for feature in molecule_counts:
+            for cell, count in molecule_counts[feature].items():
+                values[i] = count
+                row[i] = cell
+                col[i] = feature
                 i += 1
 
         # get max count to shrink dtype if possible
