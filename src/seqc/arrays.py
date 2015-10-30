@@ -238,11 +238,16 @@ class ArrayCounter:
                 raise
 
     def __delitem__(self, key):
-        del self.counts[key]
-        self._keys.remove(key)
-        for i, v in enumerate(self._arrays):
-            if v == key:
-                del self._arrays[i]
+        # if key not in self, do nothing.
+        if key in self:
+            del self.counts[key]
+            self._keys.remove(key)
+            for i, v in enumerate(self._arrays):
+                if v == key:
+                    del self._arrays[i]
+
+    def __contains__(self, key):
+        return key in self._keys
 
     def __iter__(self):
         return iter(self._arrays)
