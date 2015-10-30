@@ -12,8 +12,13 @@ from collections import deque, defaultdict
 from seqc import h5
 from scipy.sparse import coo_matrix
 import tables as tb
+import numbers
 import pickle
+from types import *
 import os
+
+# register numpy integers as Integrals
+numbers.Integral.register(np.integer)
 
 
 # todo | it would save more memory to skip "empty" features and give them equal indices
@@ -39,6 +44,9 @@ class JaggedArray:
     def __len__(self):
         return self._index.shape[0]
 
+    # todo this is the slowest part of constructing a sparse counts matrix
+    # note that under the current numpy release this is _very_ slow. Need to download
+    # at least 1.11.0.dev0-f428bce
     def __getitem__(self, item):
         """
         returns a selection of the array. There are three valid types with different
@@ -51,23 +59,27 @@ class JaggedArray:
         (2) slice: returns a JaggedArray object containing the subsection of indices
         indicated by the slice
         """
-        if isinstance(item, slice):
-            min_index = self.index[slice.start, 0]
-            max_index = self.index[slice.stop, 1]
-            new_index = self.index[slice, :]
-            adj_index = new_index - min_index  # zero the index
-            new_data = self.data[min_index:max_index]
-            return self.__init__(new_data, adj_index)
-        elif isinstance(item, np.ndarray):
-            indices = self._index[item, :]
-            return np.array([self.data[i[0]:i[1]].view(HashableArray) for i in indices])
-        else:
-            i = self._index[item, :]
+        # if isinstance(item, numbers.Integral):
+        i = self._index[item, :]
+        try:
+            return self._data[i[0]:i[1]]
+        except IndexError:
             try:
-                return self._data[i[0]:i[1]].view(HashableArray)
-            except IndexError:
-                raise IndexError('invalid slice: index %d: %s for index of length %d' %
-                                 (item, repr(i), self.__len__()))
+                indices = self._index[item, :]
+                return np.array([self.data[i[0]:i[1]].view(HashableArray)
+                                 for i in indices])
+            except:
+                raise TypeError('__getitem__ supports int or arraytypes, not %s. If a '
+                                'slice is desired us self.get_slice()'
+                                % type(item))
+
+    def get_slice(self):
+        min_index = self.index[slice.start, 0]
+        max_index = self.index[slice.stop, 1]
+        new_index = self.index[slice, :]
+        adj_index = new_index - min_index  # zero the index
+        new_data = self.data[min_index:max_index]
+        return self.__init__(new_data, adj_index)
 
     def _setitem(self, i, value):
         old = self[i]

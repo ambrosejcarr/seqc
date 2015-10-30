@@ -12,6 +12,8 @@ from io import StringIO
 from itertools import product
 from xml.etree import ElementTree as ET
 from subprocess import Popen, PIPE
+import cProfile
+from pstats import Stats
 import xml.dom.minidom
 import logging
 import socket
@@ -1163,7 +1165,7 @@ class TestSamProcessing(unittest.TestCase):
         print(arr)
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestSamToReadArray(unittest.TestCase):
 
     def setUp(self):
@@ -1177,7 +1179,7 @@ class TestSamToReadArray(unittest.TestCase):
             self.gtf, fragment_len=1000)
         self.h5name = self.data_dir + 'test_seqc_merge_in_drop_fastq/ra.h5'
 
-    # @unittest.skip('')
+    @unittest.skip('')
     def test_construct_read_array(self):
         a = arrays.ReadArray.from_samfile(
             self.in_drop_samfile, self.fpositions, self.ftable)
@@ -1314,9 +1316,28 @@ class TestSamToReadArray(unittest.TestCase):
 
         logfile.close()
 
-    def tearDown(self):
-        if os.path.isfile(self.h5name):
-            os.remove(self.h5name)
+    @unittest.skip('')
+    def test_create_ra_object(self):
+        samfile = ('/Users/ambrose/PycharmProjects/SEQC/src/data/test_ra_memory_usage/'
+                   'merged_temp/Aligned.out.sam')
+        ft, fp = convert_features.construct_feature_table(self.gtf, 1000)
+        res = arrays.ReadArray.from_samfile(samfile, ft, fp)
+        res.save_h5(self.h5name)
+
+    def test_profile_counts_creation(self):
+        ra = arrays.ReadArray.from_h5(self.h5name)
+        pr = cProfile.Profile()
+        pr.enable()
+        ra.unique_features_to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
+        pr.disable()
+        p = Stats(pr)
+        p.strip_dirs()
+        p.sort_stats('cumtime')
+        p.print_stats()
+
+    # def tearDown(self):
+    #     if os.path.isfile(self.h5name):
+    #         os.remove(self.h5name)
 
 
 @unittest.skip('')
