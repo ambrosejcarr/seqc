@@ -269,10 +269,10 @@ def select_cells():
 
 
 def store_results(fout, arr):
-    if not fout.endswith('.npy'):
-        fout += '.npy'
+    if not fout.endswith('.h5'):
+        fout += '.h5'
     log_info('Storing processed data in %s' % fout)
-    np.save(fout, arr)
+    arr.save_h5(fout)
 
 
 def clean_up(temp_dir):
