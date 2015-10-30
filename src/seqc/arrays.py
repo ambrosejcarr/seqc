@@ -73,7 +73,9 @@ class JaggedArray:
         old = self[i]
         len_old = len(old)
         if len(value) > len_old:
-            raise ValueError
+            raise ValueError('Attempt to set longer sequence (%s; len=%d) than '
+                             'allocated: %s; len=%d' %
+                             (repr(value), len(value), repr(old), len(old)))
         elif len(value) == len_old:
             idx = self.index[i]
             self._data[idx[0]:idx[1]] = value
