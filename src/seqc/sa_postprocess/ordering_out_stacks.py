@@ -1,4 +1,5 @@
 from seqc.sa_postprocess import load_fasta as lf
+import os
 from collections import defaultdict
 from seqc.arrays import HashableArray
 import time
@@ -235,6 +236,12 @@ def translate_feature_dict_to_arrays(p_coalignments):
     """
     translate the coalignment dictionary from scid: {tuples: probabilities} to
     scid {arrays: probabilities}, using the HashableArray subclass"""
+    if isinstance(p_coalignments, str):
+        if os.path.isfile(p_coalignments):
+            with open(p_coalignments, 'rb') as f:
+                p_coalignments = pickle.load(f)
+        else:
+            raise FileNotFoundError('p_coalignments was not found at %s' % p_coalignments)
     translated = defaultdict(dict)
     for scid in p_coalignments.keys():
         for feature, probability in p_coalignments[scid].items():
