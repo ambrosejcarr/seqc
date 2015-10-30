@@ -320,6 +320,7 @@ class ReadArray:
 
     @classmethod
     # todo this is losing either the first or the last read
+    # todo if necessary, this can be built out-of-memory using an h5 table
     def from_samfile(cls, samfile, feature_table, feature_positions):
 
         # first pass, get size of file
@@ -568,7 +569,8 @@ class ReadArray:
             with open(expectations, 'rb') as f:
                 expectations = pickle.load(f)
         elif isinstance(expectations, str):
-            raise FileNotFoundError('could not locate serialized expectations object')
+            raise FileNotFoundError('could not locate serialized expectations object: %s'
+                                    % expectations)
         elif isinstance(dict):
             pass  # expectations already loaded
         else:

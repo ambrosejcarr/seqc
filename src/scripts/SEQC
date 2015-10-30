@@ -234,7 +234,7 @@ def resolve_alignments(index, arr, n, fout):
         # todo
         # I should store this in a jagged array as well. Indexing is 1/2 as fast
         # but it would still be very quick, and VERY memory efficient.
-        expectations = index + 'p_coalignment_array.pckl'
+        expectations = index + 'p_coalignment_array.p'
         arr.resolve_alignments(expectations, required_poly_t=n)
     except:
         log_info('Caught error in resolve_alignments(), saving data')
