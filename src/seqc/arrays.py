@@ -630,6 +630,7 @@ class ReadArray:
                 possible_models = np.array(
                     list(set(chain(*disjoint_features)))
                 )
+                possible_models = possible_models[possible_models != 0]
 
                 model_likelihoods = np.empty_like(possible_models, dtype=np.float)
                 df = np.empty_like(possible_models, dtype=np.int)
