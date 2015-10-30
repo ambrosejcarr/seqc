@@ -275,6 +275,10 @@ def store_results(fout, arr):
     arr.save_h5(fout)
 
 
+def run_complete():
+    log_info('Run complete.')
+
+
 def clean_up(temp_dir):
     log_info('Run succeeded. Cleaning up and terminating.')
     if os.path.isdir(temp_dir):
@@ -303,6 +307,8 @@ def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     # clean_up(temp_dir)
 
+    run_complete()
+
 
 def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
              n_threads, frag_len, star_args, barcodes):
@@ -323,6 +329,8 @@ def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
     save_counts_matrices(fout, arr, n=0)
 
     # clean_up(temp_dir)
+
+    run_complete()
 
 
 def mars_seq():
