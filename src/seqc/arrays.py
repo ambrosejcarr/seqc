@@ -7,7 +7,7 @@ from numpy.lib.recfunctions import append_fields
 from itertools import islice, chain
 from seqc.three_bit import ThreeBit
 from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
-from seqc.sam import average_quality
+# from seqc.sam import average_quality
 from collections import deque, defaultdict
 from seqc import h5
 from scipy.sparse import coo_matrix
@@ -21,6 +21,7 @@ import os
 numbers.Integral.register(np.integer)
 
 
+# todo test if id() is faster than .tobytes()
 # todo | it would save more memory to skip "empty" features and give them equal indices
 # todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
 # todo | returning array([]); this would also reduce downstream complexity.
@@ -347,11 +348,10 @@ class ReadArray:
     @classmethod
     # todo this is losing either the first or the last read
     # todo if necessary, this can be built out-of-memory using an h5 table
-    def from_samfile(cls, samfile, feature_table, feature_positions):
+    def from_samfile(cls, samfile, feature_converter):
 
         # first pass, get size of file
         # second pass, group up the multi-alignments
-
 
         # first pass through file: get the total number of alignments and the number of
         # multialignments for array construction; store indices for faster second pass
@@ -406,7 +406,7 @@ class ReadArray:
                 if not multi_alignment:  # iterator is exhausted
                     break
                 recd, feat, pos = cls._process_multialignment(
-                    multi_alignment, feature_table, feature_positions)
+                    multi_alignment, feature_converter)
                 read_data[i] = recd
                 features[current_index_position:current_index_position + len(feat)] = feat
                 positions[current_index_position:current_index_position + len(pos)] = pos
@@ -422,14 +422,20 @@ class ReadArray:
 
         return cls(read_data, jagged_features, jagged_positions)
 
+    @staticmethod
+    def _average_quality(quality_string):
+        """calculate the average quality of a sequencing read from ASCII quality string"""
+        n_bases = len(quality_string)
+        return (sum(ord(q) for q in quality_string) - n_bases * 33) // n_bases
+
     @classmethod
-    def _process_multialignment(cls, alignments, feature_table, feature_positions):
+    def _process_multialignment(cls, alignments, feature_converter):
         """translate a sam multi-alignment into a ReadArray row"""
 
         # all fields are identical except feature; get from first alignment
         first = alignments[0].strip().split('\t')
 
-        rev_quality = average_quality(first[10])
+        rev_quality = cls._average_quality(first[10])
         alignment_score = int(first[13].split(':')[-1])
 
         # parse data from name field, previously extracted from forward read
@@ -448,26 +454,22 @@ class ReadArray:
                 features, positions = [0], [0]
                 return rec, features, positions
             else:
-                true_position = int(first[3])
+                pos = int(first[3])
                 strand = '-' if (flag & 16) else '+'
                 reference_name = first[2]
-                features = [cls.translate_feature(reference_name, strand, true_position,
-                                                  feature_table, feature_positions)]
-                positions = [true_position]
+                features = [feature_converter.translate(strand, reference_name, pos)]
+                positions = [pos]
         else:
             features = []
             positions = []
             for alignment in alignments:
                 alignment = alignment.strip().split('\t')
-                true_position = int(alignment[3])
+                pos = int(alignment[3])
                 flag = int(alignment[1])
                 strand = '-' if (flag & 16) else '+'
                 reference_name = alignment[2]
-                features.append(cls.translate_feature(
-                    reference_name, strand, true_position, feature_table,
-                    feature_positions))
-
-                positions.append(true_position)
+                features.append(feature_converter.translate(strand, reference_name, pos))
+                positions.append(pos)
 
         delete = deque()
         for i in range(len(features)):

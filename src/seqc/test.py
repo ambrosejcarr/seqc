@@ -1463,7 +1463,7 @@ class TestDisambiguation(unittest.TestCase):
 
     # @unittest.skip('')
     def test_ra_disambiguate(self):
-        expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment_array.pckl'
+        expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment_array.p'
         arr_pickle = self.data_dir + 'in_drop/disambiguation_ra_input.p'
         with open(arr_pickle, 'rb') as f:
             ra = pickle.load(f)

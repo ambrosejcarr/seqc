@@ -10,7 +10,7 @@ from seqc.fastq import merge_fastq
 from seqc.align import STAR
 from seqc.barcodes import DropSeqCellBarcodes
 from seqc.arrays import ReadArray
-from seqc.convert_features import construct_feature_table
+from seqc.convert_features import ConvertFeatureCoordinates
 import numpy as np
 import sys
 import logging
@@ -24,10 +24,13 @@ from datetime import datetime
 # todo | merge all of the metadata into a dictionary that is written at the end of the
 # todo |   pipeline or when any errors occur
 # todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
-# todo | change p_coalignment.pckl to an array pickle (as long as this doesn't use too
-# todo |   much memory
-# todo | add sub-commands to allow running drop-seq only, etc. This is done through sub-
-# todo |   parsers, whose names can be identified in the namespace as subparser_name
+# todo | SLOWEST PIECES ARE:
+# todo | (1) post-process -- this can be sped up by generating in pieces, out of memory
+# todo |     pandas table using all 30 threads. This will drop the time ~ 30x; somewhat
+# todo |     tricky to generate the JaggedArrays; think on this!
+# todo | (2) disambiguation -- profile to check for slow part. One thing that will speed
+# todo |     up the process is sparsifying the arrays; eliminating zeros. Will reduce
+# todo |     overhead by a lot.
 def process_input():
     parser = argparse.ArgumentParser()
 
@@ -202,8 +205,8 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout):
 
 def process_samfile(samfile, gtf, frag_len):
     log_info('Post-processing alignments')
-    ft, fp = construct_feature_table(gtf, frag_len)
-    arr = ReadArray.from_samfile(samfile, ft, fp)
+    fc = ConvertFeatureCoordinates.from_gtf(gtf, frag_len)
+    arr = ReadArray.from_samfile(samfile, fc)
     return arr
 
 
@@ -346,6 +349,9 @@ def avo_seq():
 
 
 def strt_seq():
+    """
+    This method assumes STRT-seq datasets are being retrieved from GEO, where Sten
+    Linnarsson has demultiplexed the data into multiple, individual fastq files."""
     raise NotImplementedError
 
 
