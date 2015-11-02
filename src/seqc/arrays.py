@@ -45,8 +45,7 @@ class JaggedArray:
     def __len__(self):
         return self._index.shape[0]
 
-    # todo this is the slowest part of constructing a sparse counts matrix
-    # note that under the current numpy release this is _very_ slow. Need to download
+    # todo note that under the current numpy release this is _very_ slow. Need to download
     # at least 1.11.0.dev0-f428bce
     def __getitem__(self, item):
         """
@@ -160,6 +159,10 @@ class JaggedArray:
             data[i:i + size] = val
             i += size
         return cls(data, index)
+
+    @staticmethod
+    def build_index():
+        pass
 
 
 class ArraySet:
@@ -604,6 +607,11 @@ class ReadArray:
         else:
             raise TypeError('invalid expecatation object type, must be a dict expectation'
                             ' object or a string filepath')
+
+        # store indices, associated with their new features, whenever features are changed
+        # this will be used to create a new JaggedArray object at the end.
+        changing_features = {}
+        idx_map = {}
 
         # loop over potential molecules
         for read_indices in molecules.values():
