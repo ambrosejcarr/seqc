@@ -107,9 +107,7 @@ def remove_homopolymer(r):
             continue
         else:
             break
-    if i < 5:
-        pass
-    else:
+    if i >= 5:
         seq = seq[i + 1:]
         qual = qual[i + 1:]
 
@@ -120,11 +118,10 @@ def remove_homopolymer(r):
             continue
         else:
             break
-    if i < 5:
-        pass
-    else:
+    if i >= 5:
         seq = seq[:-i - 1]
         qual = qual[:-i - 1]
+
     trimmed_bases = original_length - len(seq)
     return (r[0], seq + '\n', r[2], qual + '\n'), trimmed_bases
 
@@ -181,7 +178,7 @@ def process_record(forward, reverse, tbp, cb):
     valid_cell = cb.close_match(cell)
     r, trimmed_bases = remove_homopolymer(reverse)
     if len(r[1]) < 20:  # don't return short reads
-        return ''
+        return
     fwd_quality = average_quality(forward[3][:-1])
     r = annotate_fastq_record(
         r, cell, rmt, n_poly_t, valid_cell, trimmed_bases, fwd_quality)
@@ -211,10 +208,10 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_low_comp
 
                 for f, r in paired_fastq_records(ffile, rfile):
                     merged_record = process_record(f, r, tbp, cb)
-                    if merged_record == '':
+                    if not merged_record:
                         n_low_complexity += 1
-                        continue
-                    merged_file.write(merged_record)
+                    else:
+                        merged_file.write(merged_record)
             finally:
                 ffile.close()
                 rfile.close()
