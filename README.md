@@ -124,15 +124,16 @@ Help on parsing individual data types can be obtained by typing:
                             list SEQDB default args for the STAR aligner
 
 
-All SEQC runs require that you pass a SEQC index (-i/--index). These are STAR indices,
+All SEQC runs require that you pass a SEQC index (`-i/--index`). These are STAR indices,
 augmented by SEQC-specific files:
+
 1. `annotations.gtf`: a modified GTF file, containing truncated sequence sizes that
- reflect that we expect all data to fall within ~ 1kb of the transcriptional termination
- sites. In addition, transcripts are tagged with "SCIDs", identifiers that merge
- transcripts and genes which cannot be distinguished in the ~ 1kb of sequence that we
- expect to observe.
+reflect that we expect all data to fall within ~ 1kb of the transcriptional termination
+sites. In addition, transcripts are tagged with "SCIDs", identifiers that merge
+transcripts and genes which cannot be distinguished in the ~ 1kb of sequence that we
+expect to observe.
 2. `p_coalignments_array.p`: a binary file containing, for each SCID, the probability of
- observing a co-alignment to other genes.
+observing a co-alignment to other genes.
 
 Human and mouse indices can be found on our aws s3 bucket at
 `s3://dplab-data/genomes/mm38/` and `s3://dplab-data/genomes/hg38`. These indices
@@ -141,18 +142,22 @@ are built from recent releases of ENSEMBL genomes.
 If new indices must be generated, these can be produced by calling:
 
     $> INDEX=<index_folder>
-    $> ORG=<organism>  # valid organisms are hg38 and mm38. Can also produce joint indicies with "[hg38, mm38]"
-    $> THREADS=<number of threads to use>  # STAR will use this number of threads to produce the index
+    $> # valid organisms are hg38 and mm38. Can also produce joint indicies with 
+    $> # "[hg38, mm38]"
+    $> ORG=<organism>
+    $> # STAR will use this number of threads to produce the index
+    $> THREADS=<number of threads to use>  
     $> mkdir $INDEX  # create index directory
     $> python3 -c "import seqc.align; seqc.align.STAR.verify_index($INDEX, $ORG, $THREADS)"
 
-Some data types require serialized barcode objects (-b/--barcodes). These objects contain
+Some data types require serialized barcode objects (`-b/--barcodes`). These objects contain
 all of the barcodes for an experiment, as they would be expected to be observed.
 For example, if you expect to observe the reverse complement of the barcodes you used to
 construct the library, then this object should be built from reverse complements.   
  
 These barcode files can be found at `s3://dplab-data/barcodes/`. If you need to generate
-a new barcode object, this can be accomplished with the built-in PROCESS_BARCODES utility:
+a new barcode object, this can be accomplished with the built-in `PROCESS_BARCODES`
+utility:
 
     $> PROCESS_BARCODES -h
     usage: PROCESS_BARCODES [-h] [-o O] [-b B [B ...]] [-p P]
