@@ -1,6 +1,5 @@
 __author__ = 'ambrose'
 
-from seqc.convert_features import construct_feature_table
 from threading import Thread
 from queue import Queue, Full, Empty
 from time import sleep
