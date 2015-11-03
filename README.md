@@ -1,5 +1,23 @@
 # SEquence Quality Control
 
+## Dependencies:
+
+Most dependencies will be automatically installed by SEQC. However, there are a few
+external dependencies that must be installed in order for certain functions to be enabled.
+
+1. Amazon Web Services (optional): If you wish to run SEQC on amazon (AWS), 
+you must set up an AWS account (see below). 
+2. Starcluster (optional): If you run SEQC on aws, that you create aws compute instances 
+with the python 2.7 <a href=https://github.com/jtriley/StarCluster>starcluster</a>
+package, which streamlines creation and shutdown of servers that are ready to run SEQC.
+2. libhdf5: We have provided amazon machine images or "AMIs" with all of starcluster's 
+external dependencies pre-installed. However, if you wish to use your own machine image, 
+you will need to install <a href=https://www.hdfgroup.org/HDF5>libhdf5</a>. Similarly, if
+you wish to parse any intermediate data offline on your local machine, you will need to 
+install libhdf5. 
+3. SEQC depends on several python3 packages that are automatically installed and updated.
+to view these packages, please view the `setup.py` file packaged with SEQC.
+
 ## Setting up SEQC and starcluster
 
 ### Creating a new AWS account:
