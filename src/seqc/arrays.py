@@ -7,7 +7,6 @@ from numpy.lib.recfunctions import append_fields
 from itertools import islice, chain
 from seqc.three_bit import ThreeBit
 from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
-# from seqc.sam import average_quality
 from collections import deque, defaultdict
 from seqc import h5
 from scipy.sparse import coo_matrix
@@ -73,6 +72,10 @@ class JaggedArray:
                                 'slice is desired us self.get_slice()'
                                 % type(item))
 
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
     def get_slice(self):
         min_index = self.index[slice.start, 0]
         max_index = self.index[slice.stop, 1]
@@ -130,6 +133,47 @@ class JaggedArray:
         other_index = other.index + l
         new_index = np.vstack([self.index, other_index])
         return JaggedArray(new_data, new_index)
+
+    # todo add shrink() call to resolve_alignments()
+    # todo write tests
+    def shrink(self):
+        """eliminate any unused space in self._data
+
+        if a method, such as ReadArray.resolve_alignments() has reduced the size of
+        internal arrays via __setitem__(), there will be unused space in the array. This
+        method will generate a new array object that uses the minimum amount of memory
+
+        Note that this will generate a copy of self with memory usage <= self. The user
+        is resposible for deleting the original object so that it can be garbage
+        collected.
+        """
+        raise NotImplementedError  # todo implement
+        # build a new index; identify any empty space
+        index = np.zeros(self.index.shape, dtype=self.index.dtype)
+        empty_size = 0
+        current_position = 0
+        for i in self._index:
+            if i[0] > current_position:
+                empty_size += i[0] - current_position
+            index[i] = [current_position, len(self._data[i])]
+
+        # check that there is no excess in the final position
+        last_index = self._index[-1][1]
+        if last_index > current_position:
+            empty_size += last_index - current_position
+
+        # if no empty space, return self
+        if not empty_size:
+            return self
+
+        # otherwise, build new data
+        new_size = self.data.shape[0] - empty_size
+        data = np.zeros(new_size, dtype=self.data.dtype)
+        for i, v in enumerate(self):
+            data[index[i][0]:index[i][1]] = v
+
+        return JaggedArray(data, index)
+
 
     @staticmethod
     def size_to_dtype(n):
@@ -508,7 +552,7 @@ class ReadArray:
         """
         indices = np.arange(self.data.shape[0])
 
-        mask = self.mask_failing_cells(n_poly_t_required=required_poly_t)
+        mask = self.mask_failing_records(n_poly_t_required=required_poly_t)
 
         # filter, then merge cell & rmt; this creates a copy of cell + rmt
         # memory overhead = n * 16b
@@ -558,7 +602,7 @@ class ReadArray:
         """
         indices = np.arange(self.data.shape[0])
 
-        mask = self.mask_failing_cells(n_poly_t_required=required_poly_t)
+        mask = self.mask_failing_records(n_poly_t_required=required_poly_t)
 
         # filter and merge cell/rmt
         seq_data = np.vstack([self.data['cell'][mask],
@@ -602,22 +646,17 @@ class ReadArray:
         elif isinstance(expectations, str):
             raise FileNotFoundError('could not locate serialized expectations object: %s'
                                     % expectations)
-        elif isinstance(dict):
+        elif isinstance(expectations, dict):
             pass  # expectations already loaded
         else:
             raise TypeError('invalid expecatation object type, must be a dict expectation'
                             ' object or a string filepath')
 
-        # store indices, associated with their new features, whenever features are changed
-        # this will be used to create a new JaggedArray object at the end.
-        changing_features = {}
-        idx_map = {}
-
         # loop over potential molecules
         for read_indices in molecules.values():
 
             # get a view of the structarray
-            putative_molecule = self.data[read_indices]
+            # putative_molecule = self.data[read_indices]
             putative_features = self.features[read_indices]
 
             # check if all reads have a single, identical feature
@@ -639,20 +678,41 @@ class ReadArray:
                 disjoint_features = putative_features[set_membership == s]
                 disjoint_group_idx = read_indices[set_membership == s]  # track index
 
-                # get observed counts; delete non-molecules
+                # get observed counts
                 obs_counter = ArrayCounter(putative_features)
-                del obs_counter[0]
 
-                # check that creating disjoint sets haven't made this trivial
-                if len(obs_counter) == 1 and len(next(iter(obs_counter))) == 1:
+                # delete failing molecules
+                # this should no longer be necessary due to changes in
+                # mask_failing_records
+                # del obs_counter[0]
+
+                # get the subset of features that are supported by the data
+                # these features should be present in all multi-alignments
+                possible_models = set(disjoint_features[0])
+                for molecule_group in disjoint_features:
+                    possible_models.intersection_update(molecule_group)
+                    if not possible_models:  # no molecule is supported by data.
+                        continue  # could not resolve BUT a subset could be unique!
+
+                # check that creating disjoint sets or eliminating unsupported molecules
+                # haven't made this trivial
+                if len(possible_models) == 1:
                     results[disjoint_group_idx] = 2
-                    continue  # no need to calculate probabilities for single model
+                    continue
 
-                # get all potential molecule identities, create container for lh, df
-                possible_models = np.array(
-                    list(set(chain(*disjoint_features)))
-                )
-                possible_models = possible_models[possible_models != 0]
+                # convert possible models to np.array for downstream indexing
+                possible_models = np.array(list(possible_models))
+
+                # # check that creating disjoint sets haven't made this trivial
+                # if len(obs_counter) == 1 and len(next(iter(obs_counter))) == 1:
+                #     results[disjoint_group_idx] = 2
+                #     continue  # no need to calculate probabilities for single model
+
+                # # get all potential molecule identities, create container for lh, df
+                # possible_models = np.array(
+                #     list(set(chain(*disjoint_features)))
+                # )
+                # possible_models = possible_models[possible_models != 0]
 
                 model_likelihoods = np.empty_like(possible_models, dtype=np.float)
                 df = np.empty_like(possible_models, dtype=np.int)
@@ -703,6 +763,7 @@ class ReadArray:
                 self.features[disjoint_group_idx] = passing_models
 
         self._data = append_fields(self.data, 'disambiguation_results', results)
+        # self._features = self.features.shrink()
 
     @staticmethod
     def multi_delete(sorted_deque, *lists):
@@ -712,12 +773,30 @@ class ReadArray:
                 del l[i]
         return lists
 
-    def mask_failing_cells(self, n_poly_t_required):
-        return ((self.data['cell'] != 0) &
-                (self.data['rmt'] != 0) &
-                (self.data['n_poly_t'] >= n_poly_t_required) &
-                (self.data['is_aligned'])
-                )
+    def mask_failing_records(self, n_poly_t_required):
+        """
+        generates a boolean mask for any records lacking cell barcodes or rmts, records
+        that are not aligned, or records missing poly_t sequences
+
+        args:
+        -----
+        n_poly_t_required: the number of 'T' nucleotides that must be present for the
+         record to be considered to have a poly-T tail.
+
+        returns:
+        --------
+        np.ndarray((n,) dtype=bool)  # n = len(self._data)
+        """
+        vbool = ((self.data['cell'] != 0) &
+                 (self.data['rmt'] != 0) &
+                 (self.data['n_poly_t'] >= n_poly_t_required) &
+                 (self.data['is_aligned'])
+                 )
+        no_feature = np.array([0])
+        has_feature = np.array([False if np.array_equal(v, no_feature) else True for v in
+                                self._features], dtype=np.bool)
+
+        return vbool & has_feature
 
     @staticmethod
     def translate_feature(reference_name, strand, true_position, feature_table,
@@ -790,7 +869,7 @@ class ReadArray:
     # todo write tests
     def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
-        mask = self.mask_failing_cells(n_poly_t_required)
+        mask = self.mask_failing_records(n_poly_t_required)
         unmasked_inds = np.arange(self.data.shape[0])[mask]
         molecule_counts = defaultdict(dict)
 
@@ -880,7 +959,7 @@ class ReadArray:
     # todo write tests
     def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
-        mask = self.mask_failing_cells(n_poly_t_required)
+        mask = self.mask_failing_records(n_poly_t_required)
         unmasked_inds = np.arange(self.data.shape[0])[mask]
         molecule_counts = defaultdict(dict)
 
