@@ -12,6 +12,7 @@ from collections import deque, defaultdict
 from seqc import h5
 from scipy.sparse import coo_matrix
 import tables as tb
+import pandas as pd
 import numbers
 import pickle
 from types import *
@@ -712,6 +713,30 @@ class ReadArray:
                 del l[i]
         return lists
 
+    def mask_low_support_molecules(self, required_support=2):
+        """
+        mask any molecule supported by fewer than <required_support> reads
+        """
+        # use the minimum number of columns to construct the dataframe, not sure if
+        # pandas copies data.
+        view = self.data[['cell', 'rmt']]
+        df = pd.DataFrame(view)
+        grouped = df.groupby(['cell', 'rmt'])
+        failing = []
+        for idx, g in grouped:
+            if len(g) < required_support:
+                failing.extend(g.index)
+        failing.sort()
+        ifail = 0
+        imask = 0
+        mask = np.ones(len(self.data), dtype=np.bool)
+        while ifail < len(failing):
+            if imask == failing[ifail]:
+                mask[imask] = 0
+                ifail += 1
+            imask += 1
+        return mask
+
     def mask_failing_cells(self, n_poly_t_required):
         return ((self.data['cell'] != 0) &
                 (self.data['rmt'] != 0) &
@@ -787,11 +812,12 @@ class ReadArray:
 
         return cls(data, features, positions)
 
-    # todo write tests
     def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
-        mask = self.mask_failing_cells(n_poly_t_required)
-        unmasked_inds = np.arange(self.data.shape[0])[mask]
+        # mask failing cells and molecules with < 2 reads supporting them.
+        read_mask = self.mask_failing_cells(n_poly_t_required)
+        low_coverage_mask = self.mask_low_support_molecules()
+        unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
         molecule_counts = defaultdict(dict)
 
         # get a bytes-representation of each feature object
@@ -877,11 +903,12 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
-    # todo write tests
     def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
-        mask = self.mask_failing_cells(n_poly_t_required)
-        unmasked_inds = np.arange(self.data.shape[0])[mask]
+        # mask failing cells and molecules with < 2 reads supporting them.
+        read_mask = self.mask_failing_cells(n_poly_t_required)
+        low_coverage_mask = self.mask_low_support_molecules()
+        unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
         molecule_counts = defaultdict(dict)
 
         if collapse_molecules:
