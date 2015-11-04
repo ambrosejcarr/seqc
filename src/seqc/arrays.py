@@ -814,8 +814,10 @@ class ReadArray:
 
     def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
-        mask = self.mask_failing_cells(n_poly_t_required)
-        unmasked_inds = np.arange(self.data.shape[0])[mask]
+        # mask failing cells and molecules with < 2 reads supporting them.
+        read_mask = self.mask_failing_cells(n_poly_t_required)
+        low_coverage_mask = self.mask_low_support_molecules()
+        unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
         molecule_counts = defaultdict(dict)
 
         # get a bytes-representation of each feature object
@@ -903,6 +905,7 @@ class ReadArray:
 
     def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
+        # mask failing cells and molecules with < 2 reads supporting them.
         read_mask = self.mask_failing_cells(n_poly_t_required)
         low_coverage_mask = self.mask_low_support_molecules()
         unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
