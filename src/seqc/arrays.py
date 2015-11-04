@@ -735,6 +735,11 @@ class ReadArray:
                 if len(possible_models) == 1:
                     results[disjoint_group_idx] = 2
                     continue
+                # if we no longer have any supported models, we cannot disambiguate this
+                # molecule
+                elif len(possible_models) == 0:
+                    results[disjoint_group_idx] = 5
+                    continue
 
                 # convert possible models to np.array for downstream indexing
                 possible_models = np.array(list(possible_models))
