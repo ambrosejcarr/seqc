@@ -636,6 +636,42 @@ class ReadArray:
         return dict(molecules)
 
     def resolve_alignments(self, expectations, required_poly_t=0, alpha=0.1):
+        """
+        Resolve ambiguously aligned molecules and edit the ReadArray data structures
+        in-place to reflect the more specific gene assignments.
+
+        args:
+        expectations: serialized coalignment expectation file. Often found in
+          index/p_coalignment_array.p. Accepts either the loaded object or the filesystem
+          location of the serialized object
+        required_poly_t (default: 0): the number of poly_t required for a read to be
+          considered a valid input for resolution. Reads lacking a poly_t tail are likely
+          to randomly prime into non-mRNA sequences, so requiring the presence of poly_t
+          in the 5' end of the forward read can reduce unwanted contamination
+        alpha (default: 0.1): significance threshold for differentiating potential donor
+          genes. lowering the alpha value causes the algorithm to require that models
+          are better differentiated from inferior alternatives to declare the model
+          differentiated. If the significance threshold is not reached, then the inferior
+          model cannot be distinguished from the best model, and resolve_alignments fails
+          to disambiguate the molecule in question.
+
+        actions:
+        edits self.features and self.data in-place to reflect resolved alignments. adds
+          a column to self.data called 'disambiguation_results', this is an indicator
+          column that tracks the result of this method.
+          0: no model is fully supported by the data. This represents a molecule with
+             higher-order complexity. These umi-cell combinations have two molecules
+             associated with overlapping alignments and cannot be differentiated without
+             considering multiple molecule contributions. This problem can be mitigated
+             by increasing the UMI length or decreasing the concentration of input RNA.
+          1: trivial result, molecule was unambiguous
+          2: separating molecules into disjoint sets and limiting the algorithm to
+          supported gene fully disambiguated the molecule
+          3: molecule was partially disambiguated using the multinomial expectation model
+          4: molecule was fully disambiguated using the multinomial expectation model
+          5: model failed to remove any ambiguity
+        """
+
         molecules, seqs = self.group_for_disambiguation(required_poly_t)
         results = np.zeros(self.data.shape[0], dtype=np.int8)
 
