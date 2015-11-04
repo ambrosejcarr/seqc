@@ -18,8 +18,6 @@ import json
 from datetime import datetime
 # logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
-# todo | allow fetching from s3
-# todo | add ability to fetch genome from amazon (provide s3 link OR file path)
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
 # todo | test index generation (pull from seqdb)
 # todo | merge all of the metadata into a dictionary that is written at the end of the
@@ -59,8 +57,9 @@ def process_input():
     for i, p in enumerate(subparser_list):
         r = p.add_argument_group('Required Arguments')
         # todo needs to take input from user on what organism it should be
-        r.add_argument('-i', '--index', metavar='I', help='star alignment index folder. '
-                       'This folder will be created if it does not exist', default=None)
+        r.add_argument('-i', '--index', metavar='I', help='local or s3 location of star '
+                       'alignment index folder. This folder will be created if it does '
+                       'not exist', default=None)
         r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
                        type=int, default=None)
         r.add_argument('-o', '--output-file', metavar='O', default=None,
@@ -69,7 +68,7 @@ def process_input():
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
             r.add_argument('-b', '--barcodes', metavar='B', default=None,
-                           help='location of serialized barcode object.')
+                           help='local or s3 location of serialized barcode object.')
 
         i = p.add_argument_group(
             title='Input Files',
@@ -159,6 +158,7 @@ def set_up(fout, index, barcodes):
 
     # check that index exists. If index is an aws link, download the index
     if index.startswith('s3://'):
+        log_info('AWS s3 link provided for index. Downloading index.')
         bucket, prefix = S3.split_link(index)
         index = temp_dir + 'index/'
         cut_dirs = prefix.count('/')
@@ -174,9 +174,15 @@ def set_up(fout, index, barcodes):
         cb = DropSeqCellBarcodes()
     else:
         if barcodes.startswith('s3://'):
+            log_info('AWS s3 link provided for barcodes. Downloading barcodes')
             bucket, key = S3.split_link(barcodes)
             fout = temp_dir + 'barcodes.p'
-            barcodes = S3.download_file(bucket, key, fout)
+            try:
+                barcodes = S3.download_file(bucket, key, fout)
+            except FileExistsError:
+                barcodes = fout
+                pass  # already have the file in this location from a previous run
+
         # now, we should definitely have the binary file. Load it.
         with open(barcodes, 'rb') as f:
             cb = pickle.load(f)
