@@ -13,7 +13,7 @@ from itertools import zip_longest
 import boto3
 import logging
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
-logging.getLogger('boto').setLevel(logging.CRITICAL)
+logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
 
 class S3:

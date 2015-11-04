@@ -16,7 +16,7 @@ import sys
 import logging
 import json
 from datetime import datetime
-
+# logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
 # todo | allow fetching from s3
 # todo | add ability to fetch genome from amazon (provide s3 link OR file path)
