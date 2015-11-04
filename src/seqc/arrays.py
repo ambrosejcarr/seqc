@@ -787,7 +787,6 @@ class ReadArray:
 
         return cls(data, features, positions)
 
-    # todo write tests
     def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
         mask = self.mask_failing_cells(n_poly_t_required)
@@ -877,7 +876,6 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
-    # todo write tests
     def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
         mask = self.mask_failing_cells(n_poly_t_required)
