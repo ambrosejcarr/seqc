@@ -79,7 +79,7 @@ def process_input():
                        nargs='*', default=None)
         i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
                        nargs='*', default=None)
-        i.add_argument('-s', '--sam', metavar='S', nargs='?', default=None,
+        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default=None,
                        help='sam file(s) containing aligned, pre-processed reads')
         i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
                        help='fastq file containing merged, pre-processed records')
@@ -143,7 +143,7 @@ def process_input():
             sys.exit(2)
 
         # check that at least one input argument was passed:
-        check = [arguments.forward, arguments.reverse, arguments.sam,
+        check = [arguments.forward, arguments.reverse, arguments.samfile,
                  arguments.merged_fastq]
         if not any(check):
             print('SEQC %s: error: one or more of the following arguments must be '
@@ -174,14 +174,14 @@ def process_input():
 #     logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
 
 
-def set_up(fout, index, barcodes):
+def set_up(output_file, index, barcodes):
     """
     create temporary directory for run, find gtf in index, and create or load a
     serialized barcode object
     """
 
     # create temporary directory based on experiment name
-    temp_dir = '.' + fout
+    temp_dir = '.' + output_file
     if not os.path.isdir(temp_dir):
         os.makedirs(temp_dir)
     if not temp_dir.endswith('/'):
@@ -207,11 +207,11 @@ def set_up(fout, index, barcodes):
         if barcodes.startswith('s3://'):
             log_info('AWS s3 link provided for barcodes. Downloading barcodes')
             bucket, key = S3.split_link(barcodes)
-            fout = temp_dir + 'barcodes.p'
+            output_file = temp_dir + 'barcodes.p'
             try:
-                barcodes = S3.download_file(bucket, key, fout)
+                barcodes = S3.download_file(bucket, key, output_file)
             except FileExistsError:
-                barcodes = fout
+                barcodes = output_file
                 pass  # already have the file in this location from a previous run
 
         # now, we should definitely have the binary file. Load it.
@@ -221,20 +221,20 @@ def set_up(fout, index, barcodes):
     return temp_dir, gtf, cb, index
 
 
-def merge(fout, forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
+def merge(output_file, forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
     if (forward or reverse) and not (samfile or merged_fastq):
 
         # pre-process reads
         log_info('Merging fastq files.')
         merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
 
-    with open(fout + '_metadata.txt', 'a') as f:
+    with open(output_file + '_metadata.txt', 'a') as f:
         f.write('Low Complexity Reads: %d\n' % nlc)
 
     return merged_fastq
 
 
-def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout):
+def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file):
     if merged_fastq and not samfile:
         # process any additional arguments for star passed from the command line
         if star_args:
@@ -249,7 +249,7 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout):
         samfile = temp_dir + 'Aligned.out.sam'
 
         # copy alignment summary
-        shutil.copyfile(temp_dir + 'Log.final.out', fout + '_alignment_summary.txt')
+        shutil.copyfile(temp_dir + 'Log.final.out', output_file + '_alignment_summary.txt')
         return samfile
 
 
@@ -281,7 +281,7 @@ def correct_errors():
     raise NotImplementedError
 
 
-def resolve_alignments(index, arr, n, fout):
+def resolve_alignments(index, arr, n, output_file):
     log_info('Resolving ambiguous alignments.')
     try:
         # todo
@@ -291,11 +291,11 @@ def resolve_alignments(index, arr, n, fout):
         arr.resolve_alignments(expectations, required_poly_t=n)
     except:
         log_info('Caught error in resolve_alignments(), saving data')
-        arr.save_h5(fout + '.h5')
+        arr.save_h5(output_file + '.h5')
         raise
 
 
-def save_counts_matrices(fout, arr, n):
+def save_counts_matrices(output_file, arr, n):
     log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     mols, mrow, mcol = arr.unique_features_to_sparse_counts(
         collapse_molecules=True, n_poly_t_required=n)
@@ -303,7 +303,7 @@ def save_counts_matrices(fout, arr, n):
         collapse_molecules=False, n_poly_t_required=n)
     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
-    with open(fout + '_read_and_mol_matrices.p', 'wb') as f:
+    with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
         pickle.dump(matrices, f)
 
 
@@ -321,11 +321,11 @@ def select_cells():
     raise NotImplementedError
 
 
-def store_results(fout, arr):
-    if not fout.endswith('.h5'):
-        fout += '.h5'
-    log_info('Storing processed data in %s' % fout)
-    arr.save_h5(fout)
+def store_results(output_file, arr):
+    if not output_file.endswith('.h5'):
+        output_file += '.h5'
+    log_info('Storing processed data in %s' % output_file)
+    arr.save_h5(output_file)
 
 
 def run_complete():
@@ -340,46 +340,46 @@ def clean_up(temp_dir):
         shutil.rmtree('_STARtmp')
 
 
-def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
+def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
             n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb, index = set_up(fout, index, barcodes)
+    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    merged_fastq = merge(fout, forward, reverse, samfile, merged_fastq, processor,
+    merged_fastq = merge(output_file, forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout)
+    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
 
     arr = process_samfile(samfile, gtf, frag_len)
 
-    resolve_alignments(index, arr, n=0, fout=fout)
+    resolve_alignments(index, arr, n=0, output_file=output_file)
 
-    store_results(fout, arr)
+    store_results(output_file, arr)
 
-    save_counts_matrices(fout, arr, n=3)
+    save_counts_matrices(output_file, arr, n=3)
 
     # clean_up(temp_dir)
 
     run_complete()
 
 
-def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
+def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
              n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb, index = set_up(fout, index, barcodes)
+    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    merged_fastq = merge(fout, forward, reverse, samfile, merged_fastq, processor,
+    merged_fastq = merge(output_file, forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout)
+    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
 
     arr = process_samfile(samfile, gtf, frag_len)
 
-    resolve_alignments(index, arr, n=0, fout=fout)
+    resolve_alignments(index, arr, n=0, output_file=output_file)
 
-    arr.save_h5(fout + '.h5')
+    arr.save_h5(output_file + '.h5')
 
-    save_counts_matrices(fout, arr, n=0)
+    save_counts_matrices(output_file, arr, n=0)
 
     # clean_up(temp_dir)
 
