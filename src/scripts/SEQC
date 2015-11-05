@@ -321,7 +321,7 @@ def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     arr = process_samfile(samfile, gtf, frag_len)
 
-    # resolve_alignments(index, arr, n=0, fout=fout)
+    resolve_alignments(index, arr, n=0, fout=fout)
 
     store_results(fout, arr)
 
@@ -344,7 +344,7 @@ def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
 
     arr = process_samfile(samfile, gtf, frag_len)
 
-    # resolve_alignments(index, arr, n=0, fout=fout)
+    resolve_alignments(index, arr, n=0, fout=fout)
 
     arr.save_h5(fout + '.h5')
 
