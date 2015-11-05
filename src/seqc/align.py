@@ -448,7 +448,13 @@ class STAR:
 
     @staticmethod
     def test_index(index, organism, n_threads, **kwargs):
-        raise NotImplementedError
+        critical_files = ['annotations.gtf', 'p_coalignment_array.p', 'SA', 'SAIndex',
+                          'Genome', 'scid_to_feature.txt']
+        # check that we have all the files we need to generate the index
+        if not all(os.path.isfile(index + f) for f in critical_files):
+            print('Invalid Index')
+        else:
+            print('Valid Index')
 
     @classmethod
     def align(cls, fastq_file, index, n_threads, temp_dir, reverse_fastq_file=None,
