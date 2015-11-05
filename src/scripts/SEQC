@@ -11,15 +11,15 @@ from seqc.fastq import merge_fastq
 from seqc.align import STAR, _download_links
 from seqc.barcodes import DropSeqCellBarcodes
 from seqc.arrays import ReadArray
+from seqc.log import setup_logger, log_info, log_exception
 from seqc.convert_features import ConvertFeatureCoordinates
 import sys
-import logging
 import json
-from datetime import datetime
+# import logging
+# from datetime import datetime
 
 
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
-# todo | test index generation (pull from seqdb)
 # todo | merge all of the metadata into a dictionary that is written at the end of the
 # todo |   pipeline or when any errors occur
 # todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
@@ -164,14 +164,14 @@ def process_input():
     return vars(arguments)
 
 
-def setup_logger():
-    """create a simple log file in the cwd to track progress and any errors"""
-    logging.basicConfig(filename='seqc.log', level=logging.DEBUG)
-
-
-def log_info(message):
-    """print a timestamped update for the user"""
-    logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
+# def setup_logger():
+#     """create a simple log file in the cwd to track progress and any errors"""
+#     logging.basicConfig(filename='seqc.log', level=logging.DEBUG)
+#
+#
+# def log_info(message):
+#     """print a timestamped update for the user"""
+#     logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
 
 
 def set_up(fout, index, barcodes):
@@ -422,5 +422,6 @@ if __name__ == "__main__":
         #           args.merged_fastq, args.subparser_name, args.index, args.n_threads,
         #           args.frag_len, args.star_args, args.barcodes)
     except:
-        logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
+        log_exception()
+        # logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
         raise
