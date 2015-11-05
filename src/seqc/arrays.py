@@ -1110,6 +1110,52 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
+    def summarize(self, alignment_metadata=None, save_plots=False):
+        """return descriptive statistics for this dataset
+
+        Note that this function can take a very long time to run, particularly if
+        save_plots is not False.
+
+        summarize calculates several statistics:
+        1. average reads per molecule, and the read per molecule distribution
+        2. average molecules per cell, and the molecule per cell distribution
+        3. percentage of records that:
+           a. align to the transcriptome
+           b. are phiX
+           c. are mitochondrial
+           d. that result from technical errors
+           e. have a valid cell barcode
+           f. contribute to molecules (pass all filters)
+           g. aligned ambiguously
+           h. aligned ambiguously but were corrected
+           i. aligned to unique features
+        4. nucleotide error rates for:
+           a. each error type
+           b. overall average error rate
+
+        # todo implement
+        if a folder location is provided to save_plots, summarize also generates several
+        plots:
+        1. Cell Yield across a moving threshold
+        2. Impact of UMI/RMT correction
+        3. Impact of disambiguation & error correction
+        4. GC bias across cell barcodes
+        5. filter correlation heatmap
+
+        args:
+        -----
+        save_plots (str): folder location where plots should be saved. If False, not plots
+          are generated
+
+        returns:
+        dictionary of summary statistics. If save_plots is not False, writes the result
+          to save_plots/summary.json
+        """
+
+        # get record filter percentages
+        metadata = {}
+
+
 
 def outer_join(left, right):
     """

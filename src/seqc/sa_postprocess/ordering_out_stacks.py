@@ -266,10 +266,12 @@ def standard_run(input_file, nums_to_transcripts_path, labeled_fasta, pickle_des
                                                              sc_translations)
 
     print("Now just have to pickle...")
+    # translate dict to arrays
+    overlap_probabilities = translate_feature_dict_to_arrays(overlap_probabilities)
     pickle_dictionary(overlap_probabilities, pickle_destination)
     print(time.time() - start_time, "seconds to complete")
 
 
 if __name__ == "__main__":
     standard_run("jelly_output_stack_50.txt", "nums_to_transcripts_99.txt",
-                 "my_labeled_fasta.fa", "p_coalignment.pckl")
+                 "my_labeled_fasta.fa", "p_coalignment_array.p")

@@ -166,7 +166,7 @@ If new indices must be generated, these can be produced by calling:
     $> # STAR will use this number of threads to produce the index
     $> THREADS=<number of threads to use>  
     $> mkdir $INDEX  # create index directory
-    $> python3 -c "import seqc.align; seqc.align.STAR.verify_index($INDEX, $ORG, $THREADS)"
+    $> python3 -c "import seqc.align; seqc.align.STAR.build_index($INDEX, $ORG, $THREADS)"
 
 Some data types require serialized barcode objects (`-b/--barcodes`). These objects contain
 all of the barcodes for an experiment, as they would be expected to be observed.
