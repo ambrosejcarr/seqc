@@ -1,26 +1,61 @@
-# SEquence Quality Control
+## SEquence Quality Control (SEQC -- /sek-si:/)
 
-## Dependencies:
+### Overview:
 
-Most dependencies will be automatically installed by SEQC. However, there are a few
-external dependencies that must be installed in order for certain functions to be enabled.
+SEQC is a package that is designed to process sequencing data on the cloud. It also
+contains tools to analyze processed data, which has a much smaller memory footprint. 
+Thus, it should be installed both locally and on your remote server. However, it should
+be noted that some portions of the data pre-processing software require 30GB of RAM to 
+run, and are unlikely to work on most laptops and workstations.
+ 
+To faciliate easy installation and use, we have made available Amazon Machine Images
+(AMIs) that come with all of SEQC's dependencies pre-installed. In addition, we have
+uploaded the indices (-i/--index parameter, see "Running SEQC) and barcode data
+(-b/--barcodes) to public amazon s3 repositories. These links can be provided to SEQC and
+it will automatically fetch them prior to initiating an analysis run. 
 
+Amazon Web Services (AWS) is only accessible through a programmatic interface. To
+simplify the starting and stopping of amazon compute servers, we have written several
+plug-ins for a popular AWS interface, StarCluster. By installing starcluster, users can
+simply call starcluster start <cluster name>; starcluster sm <cluster name> for instant
+access to a compute server that is immediately ready to run SEQC on data of your choosing.
+
+### Installation \& Dependencies:
+
+#### Dependencies For Remotely Running on AWS:
 1. Amazon Web Services (optional): If you wish to run SEQC on amazon (AWS), 
-you must set up an AWS account (see below). 
-2. Starcluster (optional): If you run SEQC on aws, that you create aws compute instances 
-with the python 2.7 <a href=https://github.com/jtriley/StarCluster>starcluster</a>
+you must set up an AWS account (see below). SEQC will function on any machine running
+a nix-based operating system, but we only provide AMIs for AWS. 
+3. Starcluster (optional; install locally): If you run SEQC on aws, then you create aws
+compute instances with the python 2.7 
+<a href=https://github.com/jtriley/StarCluster>starcluster</a>
 package, which streamlines creation and shutdown of servers that are ready to run SEQC.
-2. libhdf5: We have provided amazon machine images or "AMIs" with all of starcluster's 
-external dependencies pre-installed. However, if you wish to use your own machine image, 
-you will need to install <a href=https://www.hdfgroup.org/HDF5>libhdf5</a>. Similarly, if
-you wish to parse any intermediate data offline on your local machine, you will need to 
-install libhdf5. 
+Requires <a href=https://www.python.org/downloads/release/python-2710/>Python 2.7</a> 
+with <a href=http://pip.readthedocs.org/en/stable/installing/>pip</a>.
+        
+        sudo pip install starcluster
+
+3. Install Starcluster plugins and config template from SEQC:
+
+        git clone https://github.com/ambrosejcarr/seqc.git
+        cp seqc/src/plugins/*.py ~/.starcluster/plugins/
+        cp seqc/src/plugins/starcluster.config ~/.starcluster/config
+
+#### Dependencies for Local Installation or on Other Cloud Computing Platforms:
+1. <a href=https://www.python.org/downloads/>Python 3</a>
+2. <a href=https://www.hdfgroup.org/HDF5>libhdf5</a>, a highly efficient database used to
+store SEQC output.
 3. SEQC depends on several python3 packages that are automatically installed and updated.
 to view these packages, please view the `setup.py` file packaged with SEQC.
 
-## Setting up SEQC and starcluster
+### Setting up AWS, SEQC, and starcluster
 
-### Creating a new AWS account:
+Once all dependencies have been installed, SEQC can be installed on any machine by typing:
+
+    git clone https://github.com/ambrosejcarr/seqc.git
+    pip install -e seqc/
+
+#### Setting up an AWS Account: 
 1. Navigate <a href=http://aws.amazon.com>here</a> and click “Create an AWS Account.”
 2. Enter your desired login e-mail and click the “I am a new user” radio button.
 3. Fill out the Login Credentials with your name and password.
@@ -28,7 +63,7 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
 wish to create an account.
 5. Save your AWS Access ID and Secret Key -- this information is very important!
 
-### Create an RSA key to launch a new cluster:
+#### Create an RSA key to allow you to launch a cluster
 1. Sign into your AWS account and go to the EC2 Dashboard.
 2. Click “Key Pairs” in the NETWORK & SECURITY tab.
 3. Click “Create Key Pair” and give it a new name.
@@ -37,35 +72,20 @@ wish to create an account.
 6. example: `<keyname>.rsa` and move it to a directory (e.g. `~/.ssh/`)
 7. Change the permission settings with `$> chmod 600 /path/to/key/keyname.rsa`
 
-### Next, install StarCluster by cloning the Github repo.
-1. `$> git clone https://github.com/ambrosejcarr/StarCluster.git`
-2. `$> sudo python setup.py install`
-
-### Set up the default StarCluster config file.
-1. Type `starcluster help` and enter `2`
+#### Personalize the Dummy StarCluster Config File Provided by SEQC.
+1. Open the `~/.starcluster/config` file
 2. Under `[aws info]` enter the following information: 
     1. `AWS_ACCESS_KEY_ID = #access_id` (This is your AWS Access ID from Step (1))
     2. `AWS_SECRET_ACCESS_KEY = #secret_key` (This is your AWS Secret Key from Step (1))
-    3. `AWS_USER_ID= #user_id`
+    3. `AWS_USER_ID= #user_id` (This is a numerical ID from AWS, found under IAM users)
     4. Click on your username on the top right corner of the AWS dashboard and click
     “My Account” -- your Account Id should pop up at the top of the page (a 12-digit 
     number)
-    5. `AWS_REGION_NAME = us-east-1a` (or any other of 1b, 1c, 1d, 1e - they have 
-    different spot prices) 
 3. Under Defining EC2 Keypairs:
-    1. Create a section called: `[key <keyname>]`
-    2. below, write: `KEY_LOCATION=~/.ssh/<keyname>.rsa`
-    3. Under `[cluster smallcluster]`:
-    4. `KEYNAME = <keyname>`
-    5. `NODE_IMAGE_ID = %(x86_64_ami)s`
-    6. `SUBNET_ID=subnet-99999999`
-        1. Go to the “VPC” under the Networking Tab in the AWS Dashboard
-        2. Click on “Subnets”
-        3. Find the appropriate subnet according to your availability zone
-        (e.g. “subnet-99999999”) and write it there
-    7. `AVAILABILITY_ZONE = us-east-1a` (or other, if you changed this in 2.5)
+    2. change key location to the location of your `<keyname.rsa>` file:
+    `KEY_LOCATION=~/.ssh/<keyname>.rsa`
 
-### Start a cluster:
+#### Start a cluster:
 1. `$> starcluster start -c <template_name> <cluster_name>`
 2. Wait until the cluster is finished setting up. Then, the cluster can be accessed
 using:
@@ -79,15 +99,16 @@ To copy a file or entire directory from your local computer to the cluster:
 `$> starcluster get mycluster /path/to/remote/file/or/dir /local/path/`
 
 
-## Running SEQC:
+### Running SEQC:
 
 After SEQC is installed, help can be listed:
 
     $> SEQC -h
-    usage: SEQC [-h] {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq} ...
+    usage: SEQC [-h]
+                {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq,index} ...
     
     positional arguments:
-      {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq}
+      {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq,index}
                             library construction method types
         in-drop             in-drop help
         drop-seq            drop-seq help
@@ -95,6 +116,7 @@ After SEQC is installed, help can be listed:
         cel-seq             cel-seq help
         avo-seq             avo-seq help
         strt-seq            strt-seq help
+        index               SEQC index functions
     
     optional arguments:
       -h, --help            show this help message and exit
@@ -155,19 +177,29 @@ observing a co-alignment to other genes.
 
 Human and mouse indices can be found on our aws s3 bucket at
 `s3://dplab-data/genomes/mm38/` and `s3://dplab-data/genomes/hg38`. These indices
-are built from recent releases of ENSEMBL genomes.
+are built from recent releases of ENSEMBL genomes, and these links can be passed to SEQC,
+which as index or barcode parameters. SEQC will download them before beginning the run.
 
-If new indices must be generated, these can be produced by calling:
+If new indices must be generated, these can be produced by the SEQC index method:
 
-    $> INDEX=<index_folder>
-    $> # valid organisms are hg38 and mm38. Can also produce joint indicies with 
-    $> # "[hg38, mm38]"
-    $> ORG=<organism>
-    $> # STAR will use this number of threads to produce the index
-    $> THREADS=<number of threads to use>  
-    $> mkdir $INDEX  # create index directory
-    $> python3 -c "import seqc.align; seqc.align.STAR.build_index($INDEX, $ORG, $THREADS)"
-
+    $> SEQC index -h
+    usage: SEQC index [-h] [-b] [-t] -o O [O ...] -i I [-n N] [--phix]
+    
+    optional arguments:
+      -h, --help            show this help message and exit
+      -b, --build           build a SEQC index
+      -t, --test            test a SEQC index
+      -o O [O ...], --organism O [O ...]
+                            build index for these organism(s)
+      -i I, --index I       name of folder where index should be built or
+                            containing the index to be verified
+      -n N, --n-threads N   number of threads to use when building index
+      --phix                add phiX to the genome index and GTF file.
+     
+     $> # for example, to build a mouse index with phiX features added to mm38, in a
+     $> $ folder called 'mouse', using 7 threads
+     $> SEQC index -b -o mm38 -i mouse -n 7 --phix
+    
 Some data types require serialized barcode objects (`-b/--barcodes`). These objects contain
 all of the barcodes for an experiment, as they would be expected to be observed.
 For example, if you expect to observe the reverse complement of the barcodes you used to
