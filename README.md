@@ -82,8 +82,11 @@ wish to create an account.
     “My Account” -- your Account Id should pop up at the top of the page (a 12-digit 
     number)
 3. Under Defining EC2 Keypairs:
+    1. rename `[key <your_key_name>]` to the name of the key you generate above.
     2. change key location to the location of your `<keyname.rsa>` file:
     `KEY_LOCATION=~/.ssh/<keyname>.rsa`
+5. Under templates, find `[cluster c3.large]`
+    1. change key to `<your_key_name>`
 
 #### Start a cluster:
 1. `$> starcluster start -c <template_name> <cluster_name>`
