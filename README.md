@@ -41,7 +41,7 @@ with <a href=http://pip.readthedocs.org/en/stable/installing/>pip</a>.
         cp seqc/src/plugins/*.py ~/.starcluster/plugins/
         cp seqc/src/plugins/starcluster.config ~/.starcluster/config
 
-#### Dependencies for Local Installation or on Other Cloud Computing Platforms:
+#### Dependencies for Local Installation or Other Cloud Computing Platforms:
 1. <a href=https://www.python.org/downloads/>Python 3</a>
 2. <a href=https://www.hdfgroup.org/HDF5>libhdf5</a>, a highly efficient database used to
 store SEQC output.
@@ -177,8 +177,8 @@ observing a co-alignment to other genes.
 
 Human and mouse indices can be found on our aws s3 bucket at
 `s3://dplab-data/genomes/mm38/` and `s3://dplab-data/genomes/hg38`. These indices
-are built from recent releases of ENSEMBL genomes, and these links can be passed to SEQC,
-which as index or barcode parameters. SEQC will download them before beginning the run.
+are built from recent releases of ENSEMBL genomes. These links can be passed directly to
+SEQC, which will download them before beginning the analysis
 
 If new indices must be generated, these can be produced by the SEQC index method:
 
