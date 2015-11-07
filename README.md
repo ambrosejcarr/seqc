@@ -32,14 +32,17 @@ compute instances with the python 2.7
 package, which streamlines creation and shutdown of servers that are ready to run SEQC.
 Requires <a href=https://www.python.org/downloads/release/python-2710/>Python 2.7</a> 
 with <a href=http://pip.readthedocs.org/en/stable/installing/>pip</a>.
-        
-        sudo pip install starcluster
-
+            
+        $> git clone git://github.com/jtriley/StarCluster.git
+        $> cd StarCluster
+        $> sudo python distribute_setup.py
+        $> sudo python setup.py install
+    
 3. Install Starcluster plugins and config template from SEQC:
 
-        git clone https://github.com/ambrosejcarr/seqc.git
-        cp seqc/src/plugins/*.py ~/.starcluster/plugins/
-        cp seqc/src/plugins/starcluster.config ~/.starcluster/config
+        $> git clone https://github.com/ambrosejcarr/seqc.git
+        $> cp seqc/src/plugins/*.py ~/.starcluster/plugins/
+        $> cp seqc/src/plugins/starcluster.config ~/.starcluster/config
 
 #### Dependencies for Local Installation or Other Cloud Computing Platforms:
 1. <a href=https://www.python.org/downloads/>Python 3</a>
@@ -52,8 +55,8 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
 
 Once all dependencies have been installed, SEQC can be installed on any machine by typing:
 
-    git clone https://github.com/ambrosejcarr/seqc.git
-    pip install -e seqc/
+    $> git clone https://github.com/ambrosejcarr/seqc.git
+    $> pip install -e seqc/
 
 #### Setting up an AWS Account: 
 1. Navigate <a href=http://aws.amazon.com>here</a> and click “Create an AWS Account.”
