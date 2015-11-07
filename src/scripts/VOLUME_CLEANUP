@@ -23,7 +23,7 @@ def main():
 
     #updating vol_names.txt file
     call(["rm", "../plugins/vol_names.txt"])
-    with open('../plugins/vol_names.txt','r') as f:
+    with open('../plugins/vol_names.txt','w') as f:
         for name in vol_names:
             f.write('%s\n' %name)
 
