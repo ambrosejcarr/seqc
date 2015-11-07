@@ -56,7 +56,7 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
 Once all dependencies have been installed, SEQC can be installed on any machine by typing:
 
     $> git clone https://github.com/ambrosejcarr/seqc.git
-    $> pip install -e seqc/
+    $> pip3 install -e seqc/
 
 #### Setting up an AWS Account: 
 1. Navigate <a href=http://aws.amazon.com>here</a> and click “Create an AWS Account.”
