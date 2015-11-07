@@ -5,6 +5,7 @@ from seqc.arrays import HashableArray
 import time
 import pickle as pickle
 from seqc.sa_postprocess import set_classes as sc
+from seqc.log import log_info
 
 from scipy.stats import poisson
 
@@ -26,7 +27,7 @@ def create_spots(jelly_file):
 
     gene_spots = {}
 
-    print("Reading through file, creating gene spots.")
+    log_info("Reading through SA file, creating gene spots (1/2)")
     line_count = 0
     for line in in_read:
         lsp = line.strip().split("\t")
@@ -42,7 +43,7 @@ def create_spots(jelly_file):
 
 
 def determine_probabilities(gene_spots, in_read):
-    print("Beginning to examine gene-level information.")
+    log_info("Beginning to examine gene-level information (1/2).")
     gene_start = time.time()
     big_dictionary = {}
     giant_dictionary = {}
@@ -109,7 +110,7 @@ def determine_sc_groups(big_dictionary, giant_dictionary,
 
     all_genes = set(all_genes)
 
-    print("Done reading file")
+    log_info("Done reading file.")
 
     dj = sc.DisjointSet()
     set_dictionary = {}
@@ -118,7 +119,7 @@ def determine_sc_groups(big_dictionary, giant_dictionary,
         set_dictionary[gene] = new_aset
         dj.makeSet(new_aset)
 
-    print("joining up transcripts")
+    log_info("Joining overlapping transcripts.")
     for gene in sorted(giant_dictionary.keys()):
         for pair in giant_dictionary[gene]:
             # if we only want to merge features if they belong to same gene, need the next if. If we want to just reduce features, just do if True:
@@ -132,7 +133,7 @@ def determine_sc_groups(big_dictionary, giant_dictionary,
                         pass
                     #print "Apparently missing one of", gene, pair
 
-    print("Collecting info")
+    log_info("Collecting transcript information.")
     raf, leaders = dj.collect()  # representatives_and_families, leaders
     overlap_probabilities = {}
 
@@ -160,7 +161,7 @@ def create_sc_spots(jelly_file, sc_translations, repres):
 
     gene_spots = {}
 
-    print("Reading through file, creating gene spots.")
+    log_info("Reading through file, creating gene spots (2/2).")
     line_count = 0
     for line in in_read:
         lsp = line.strip().split("\t")
@@ -180,7 +181,7 @@ def create_sc_spots(jelly_file, sc_translations, repres):
 
 
 def determine_probabilities_after_sc(sc_gene_spots, in_read, sc_translations):
-    print("Beginning to examine gene-level information.")
+    log_info("Beginning to examine gene-level information (2/2).")
     big_dictionary = {}
     gene_count = 0
     for gene in list(sc_gene_spots.keys())[:]:
@@ -254,9 +255,9 @@ def standard_run(input_file, nums_to_transcripts_path, labeled_fasta, pickle_des
     start_time = time.time()
 
     gene_spots, in_read = create_spots(input_file)
-    print("Done with create_spots()")
+    log_info("Done with create_spots().")
     big_dictionary, giant_dictionary = determine_probabilities(gene_spots, in_read)
-    print("Done with determine_probabilities()")
+    log_info("Done with determine_probabilities().")
     gene_spots = {}
     sc_translations, repres = determine_sc_groups(big_dictionary, giant_dictionary,
                                                   labeled_fasta,
@@ -265,11 +266,13 @@ def standard_run(input_file, nums_to_transcripts_path, labeled_fasta, pickle_des
     overlap_probabilities = determine_probabilities_after_sc(sc_gene_spots, in_read,
                                                              sc_translations)
 
-    print("Now just have to pickle...")
+    log_info("Pickling coalignment file.")
+    # translate dict to arrays
+    overlap_probabilities = translate_feature_dict_to_arrays(overlap_probabilities)
     pickle_dictionary(overlap_probabilities, pickle_destination)
-    print(time.time() - start_time, "seconds to complete")
+    log_info("Completed coalignment generation.")
 
 
 if __name__ == "__main__":
     standard_run("jelly_output_stack_50.txt", "nums_to_transcripts_99.txt",
-                 "my_labeled_fasta.fa", "p_coalignment.pckl")
+                 "my_labeled_fasta.fa", "p_coalignment_array.p")

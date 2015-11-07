@@ -3,6 +3,7 @@
 
 from seqc.sa_preprocess import load_fasta as lf
 from seqc.sa_preprocess import buffered_printer as bf
+from seqc.log import log_info
 import random
 import gzip
 import pickle
@@ -126,16 +127,9 @@ def standard_run(annotations_gtf="annotations.gtf",
     of cdna.fa and ncrna.fa for organism of interest. output_file is the desired local
     path of the file to be outputted by this program.
     """
-    # this get_seqs.sh probably shouldn't be run even if files are missing. Should be
-    # included to give possible documentation but not run.
-    # import os
-    # import subprocess
-    # if cdna_plus_ncrna_fa not in os.listdir(os.getcwd()) and "get_seqs.sh" in os.listdir(os.getcwd()):
-    # print("Seem to be missing required fasta files. Downloading from ensembl to local directory.")
-    # proc = subprocess.check_output("./get_seqs.sh")
+    log_info("Preprocessing fasta and gtf files")
     accepted_dict = find_acceptable(annotations_gtf, cdna_plus_ncrna_fa)
     process_sequences(accepted_dict, output_file)
-    print("Done preprocessing.")
 
 
 if __name__ == "__main__":
