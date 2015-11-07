@@ -68,8 +68,11 @@ class RaidAutomator(ClusterSetup):
         log.info("creating logical RAID device...")
         all_dev = ' '.join(dev_names)
 
-        #write names to file here
-        ##TODO##
+        #writing names to file for future volume cleanup
+        with open('vol_names.txt','w') as f:
+            for x in dev_names:
+                f.write('%s\n' %x)
+
         master.ssh.execute(
             "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
             "--raid-devices=%s %s" % (vol_num, all_dev))
