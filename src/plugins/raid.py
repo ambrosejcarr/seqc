@@ -50,6 +50,10 @@ class RaidAutomator(ClusterSetup):
             log.info("attaching new volume...")
             call(["aws", "ec2", "attach-volume", "--volume-id", vol_id, "--instance-id", inst_id, "--device", dev_id])
 
+            log.info("waiting for volume to finish attaching...")
+            vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
+            vol_stat = vol_stat.decode().split()
+
             while vol_stat[14] != 'attached':
                 time.sleep(5)
                 vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
@@ -57,16 +61,18 @@ class RaidAutomator(ClusterSetup):
                 log.info("...")
             # configure volumes here to delete on termination :(
             call(["aws", "ec2", "modify-instance-attribute", "--instance-id", inst_id, "--block-device-mappings",
-                      "[{\"DeviceName\": \"" + dev_id + "\",\"Ebs\":{\"DeleteOnTermination\":true}}]"])
+                  "[{\"DeviceName\": \"" + dev_id + "\",\"Ebs\":{\"DeleteOnTermination\":true}}]"])
             i += 1
 
         log.info("successfully attached %s TB in %s volumes!" % (self.n_tb, vol_num))
         log.info("creating logical RAID device...")
         all_dev = ' '.join(dev_names)
-        master.ssh.execute(
-        "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
-        "--raid-devices=%s %s" % (vol_num, all_dev))
 
+        #write names to file here
+        ##TODO##
+        master.ssh.execute(
+            "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
+            "--raid-devices=%s %s" % (vol_num, all_dev))
         master.ssh.execute("sudo mkfs.ext4 -L my_raid /dev/md0")
         master.ssh.execute("sudo mkdir -p /data")
         master.ssh.execute("sudo mount LABEL=my_raid /data")
