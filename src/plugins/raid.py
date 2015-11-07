@@ -21,6 +21,7 @@ class RaidAutomator(ClusterSetup):
         dev_base = "/dev/xvd"
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
+        vol_names = []
         availability_zone = self.availability_zone
 
         for i in range(int(vol_num)):
@@ -31,6 +32,7 @@ class RaidAutomator(ClusterSetup):
                  "gp2"])
             vol_list = vol.decode().split()
             vol_id = [s for s in vol_list if 'vol-' in s][0]
+            vol_names.append(vol_id)
 
             # generating new device id to mount
             dev_id = dev_base + alphabet[i]
@@ -70,7 +72,7 @@ class RaidAutomator(ClusterSetup):
 
         #writing names to file for future volume cleanup
         with open('vol_names.txt','w') as f:
-            for x in dev_names:
+            for x in vol_names:
                 f.write('%s\n' %x)
 
         master.ssh.execute(
