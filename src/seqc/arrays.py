@@ -852,6 +852,10 @@ class ReadArray:
         # then, to build boolean mask, run through the list a second time
 
         # get counts
+        n = self.data.shape[0]
+        if required_support <= 1:
+            return np.ones(n, dtype=np.bool)
+
         mol_counts = defaultdict(int)
         for row in self.data:
             # 0 = cell; 1 = rmt -- integer indexing is faster than row['cell'], row['rmt']
@@ -860,10 +864,9 @@ class ReadArray:
         mol_counts = dict(mol_counts)  # defaultdict indexing can produce odd results
 
         # build mask
-        n = self.data.shape[0]
         mask = np.zeros(n, dtype=np.bool)
         for i, row in enumerate(self.data):
-            if mol_counts[(row[0], row[1])] > required_support:
+            if mol_counts[(row[0], row[1])] >= required_support:
                 mask[i] = 1
 
         return mask
@@ -1046,11 +1049,12 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
-    def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
+    def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required,
+                                         support_required=2):
 
         # mask failing cells and molecules with < 2 reads supporting them.
         read_mask = self.mask_failing_records(n_poly_t_required)
-        low_coverage_mask = self.mask_low_support_molecules()
+        low_coverage_mask = self.mask_low_support_molecules(support_required)
         unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
         if unmasked_inds.shape[0] == 0:
             raise ValueError('Zero reads passed filters. Cannot save sparse matrix')
