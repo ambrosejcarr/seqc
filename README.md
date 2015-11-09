@@ -71,7 +71,7 @@ that you have the necessary prereqs already installed:
 ```
 export HDF_DIR=/your/installation/directory/for/hdf5
 ```
-
+3. You should now be able to install pytables: `pip3 install tables`
 
 ### Setting up AWS, SEQC, and starcluster
 
