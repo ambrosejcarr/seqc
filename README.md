@@ -53,11 +53,11 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
 
 ### Setting up HDF5 on your local computer:
 1. After downloading libhdf5 from source, it can be installed by typing:
-```
+    ```
     $> ./configure --prefix=/usr/local/
     $> make
     $> make install
-```
+    ```
 2. Then, you can install pytables by typing: ```pip3 install tables```
 3. If you installed libhdf5 without giving arguments in the "configure" step, make sure
 that you have the necessary prereqs already installed:
