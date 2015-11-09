@@ -60,13 +60,17 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
     $> make install
 ```
 2. Install pytables by typing: ```pip3 install tables```
+
 #### Installing without previous configuration
 1. If you installed libhdf5 without giving arguments in the "configure" step, make sure
 that you have the necessary prereqs already installed:
     * numpy
     * numexpr
     * cython
-2. Then set the $HDF_DIR environment variable by typing: ```export HDF_DIR=/your/installation/directory/for/hdf5```
+2. Then set the $HDF_DIR environment variable by typing: 
+```
+export HDF_DIR=/your/installation/directory/for/hdf5
+```
 
 
 ### Setting up AWS, SEQC, and starcluster
