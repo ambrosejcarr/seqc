@@ -64,8 +64,8 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
     ```export HDF_DIR=/your/installation/directory/for/hdf5```
 But before you do that, you need to make sure that you have the prereqs installed previously:
     * numpy
-    *numexpr
-    *cython
+    * numexpr
+    * cython
 
 ### Setting up AWS, SEQC, and starcluster
 
