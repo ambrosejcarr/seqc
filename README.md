@@ -106,10 +106,10 @@ wish to create an account.
 #### Install and Configure AWS CLI (AWS Command Line Interface).
 1. You can install by typing `pip install awscli`
 2. Then, configure it by typing `aws configure`:
-    AWS Access Key ID [*******]: `access_id`
-    AWS Secret Access Key [*******]: `secret_key`
-    Default region name [us-west-2]: `us-east-1` (Adjust accordingly)
-    Default output format [None]: `text`
+    * AWS Access Key ID [*******]: `access_id`
+    * AWS Secret Access Key [*******]: `secret_key`
+    * Default region name [us-west-2]: `us-east-1` (Adjust accordingly)
+    * Default output format [None]: `text`
 
 #### Start a cluster:
 1. `$> starcluster start -c <template_name> <cluster_name>`
