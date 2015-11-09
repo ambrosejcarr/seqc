@@ -53,17 +53,19 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
 
 ### Setting up HDF5 on your local computer:
 1. After downloading libhdf5 from source, it can be installed by typing:
-
+```
     $> ./configure --prefix=/usr/local/
     $> make
     $> make install
-
+```
 2. Then, you can install pytables by typing:
-    $> pip3 install tables
+    ```pip3 install tables```
 3. If you installed libhdf5 without giving arguments in the "configure" step, you can also:
-    $> export HDF_DIR=/your/installation/directory/for/hdf5
+    ```export HDF_DIR=/your/installation/directory/for/hdf5```
 But before you do that, you need to make sure that you have the prereqs installed previously:
-    - numpy, numexpr, cython
+    * numpy
+    *numexpr
+    *cython
 
 ### Setting up AWS, SEQC, and starcluster
 
