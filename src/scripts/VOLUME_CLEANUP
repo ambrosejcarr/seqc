@@ -24,11 +24,11 @@ def main():
         else:
             remain_vol.append(name)
     print('Finished deleting all new, unattached volumes')
-    print('There are %d new volumes still being used' % len(remain_vol))
 
     # updating vol_names.txt file
     call(["rm", fpath])
     if remain_vol:
+        print('There are %d new volumes still being used' % len(remain_vol))
         with open(fpath, 'w') as f:
             for name in remain_vol:
                 f.write('%s\n' % name)
