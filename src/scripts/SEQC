@@ -181,8 +181,11 @@ def set_up(output_file, index, barcodes):
     serialized barcode object
     """
 
+    # temporary directory should be made in the same directory as the output prefix
+    *stem, final_dir = output_file.split('/')
+    temp_dir = '/'.join(stem + ['.' + final_dir])
+
     # create temporary directory based on experiment name
-    temp_dir = '.' + output_file
     if not os.path.isdir(temp_dir):
         os.makedirs(temp_dir)
     if not temp_dir.endswith('/'):
