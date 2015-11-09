@@ -59,6 +59,7 @@ to view these packages, please view the `setup.py` file packaged with SEQC.
     $> make
     $> make install
 ```
+
 2. Install pytables by typing: `pip3 install tables`
 
 #### Installing without previous configuration
