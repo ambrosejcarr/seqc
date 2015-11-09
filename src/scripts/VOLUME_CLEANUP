@@ -1,14 +1,17 @@
 #!/usr/local/bin/python3
 import sys
 import boto3
+from os.path import expanduser
 from subprocess import call
 
 
 def main():
     ec2 = boto3.resource('ec2')
+    home = expanduser("~")
+    fpath = home + "/.starcluster/plugins/vol_names.txt"
 
     try:
-        with open('../plugins/vol_names.txt', 'r') as f:
+        with open(fpath, 'r') as f:
             vol_names = [line.strip() for line in f]
     except IOError:
         print('No new volumes for cleanup!')
@@ -25,9 +28,9 @@ def main():
     print('There are %d new volumes still being used' % len(remain_vol))
 
     # updating vol_names.txt file
-    call(["rm", "../plugins/vol_names.txt"])
+    call(["rm", fpath])
     if remain_vol:
-        with open('../plugins/vol_names.txt', 'w') as f:
+        with open(fpath, 'w') as f:
             for name in remain_vol:
                 f.write('%s\n' % name)
 
