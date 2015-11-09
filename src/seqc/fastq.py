@@ -126,6 +126,25 @@ def remove_homopolymer(r):
     return (r[0], seq + '\n', r[2], qual + '\n'), trimmed_bases
 
 
+def dust_low_complexity_score(record):
+    # Sequence
+    seq = record[1].strip()
+
+    # Counts of 3-mers in the sequence
+    counts = {}
+    for i in range(len(seq) - 2):
+        kmer = seq[i:i + 3]
+        counts[kmer] = counts.get(kmer, 0) + 1
+
+    # Calculate dust score
+    score = np.sum([i * (i - 1) / 2 for i in counts.values()]) / (len(seq) - 3)
+
+    # Scale score (Max score possible is no. of 3mers/2)
+    score = np.int8(score / ((len(seq) - 2) / 2) * 100)
+
+    return score
+
+
 def is_primer_dimer(cell_barcode, r):
     """
     determine if the reverse sequence r is a primer_dimer if r contains a cell barcode
@@ -158,9 +177,10 @@ def is_primer_dimer(cell_barcode, r):
 
 
 def annotate_fastq_record(r, cell, rmt, n_poly_t, valid_cell, trimmed_bases, fwd_quality):
-    name = ('@' + ':'.join(str(v) for v in [cell, rmt, n_poly_t, valid_cell, trimmed_bases,
-                                            fwd_quality]) +
-            ';' + r[0][1:])
+    name = (
+        '@' + ':'.join(str(v) for v in [cell, rmt, n_poly_t, valid_cell, trimmed_bases,
+                                        fwd_quality]) +
+        ';' + r[0][1:])
     return ''.join([name] + list(r[1:]))
 
 
@@ -176,12 +196,13 @@ def process_record(forward, reverse, tbp, cb):
     primer dimers"""
     cell, rmt, n_poly_t = tbp.process_forward_sequence(forward[1][:-1])  # exclude \n
     valid_cell = cb.close_match(cell)
-    r, trimmed_bases = remove_homopolymer(reverse)
-    if len(r[1]) < 20:  # don't return short reads
-        return
+    # r, trimmed_bases = remove_homopolymer(reverse)
+    # if len(r[1]) < 20:  # don't return short reads
+    #     return
+    dust_score = dust_low_complexity_score(reverse)
     fwd_quality = average_quality(forward[3][:-1])
     r = annotate_fastq_record(
-        r, cell, rmt, n_poly_t, valid_cell, trimmed_bases, fwd_quality)
+        reverse, cell, rmt, n_poly_t, valid_cell, dust_score, fwd_quality)
     return r
 
 
@@ -208,17 +229,17 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_low_comp
 
                 for f, r in paired_fastq_records(ffile, rfile):
                     merged_record = process_record(f, r, tbp, cb)
-                    if not merged_record:
-                        n_low_complexity += 1
-                    else:
-                        merged_file.write(merged_record)
+                    # if not merged_record:
+                    #     n_low_complexity += 1
+                    # else:
+                    merged_file.write(merged_record)
             finally:
                 ffile.close()
                 rfile.close()
     finally:
         merged_file.close()
 
-    return fout, n_low_complexity
+    return fout  #, n_low_complexity
 
 
 def auto_detect_processor(experiment_name):
@@ -239,7 +260,7 @@ def auto_detect_processor(experiment_name):
 
 # # todo not working right now
 # def merge_fastq_threaded(forward, reverse, n_threads, exp_type, temp_dir,
-#                          cell_barcode_pickle):
+# cell_barcode_pickle):
 #     """multi-threaded merge of forward and reverse records into a single alignable file"""
 #
 #     def read(forward_, reverse_, in_queue):

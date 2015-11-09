@@ -344,7 +344,7 @@ class ReadArray:
         ('rmt', np.int32),
         ('n_poly_t', np.uint8),
         ('valid_cell', np.bool),
-        ('trimmed_bases', np.uint8),
+        ('dust_score', np.uint8),
         ('rev_quality', np.uint8),
         ('fwd_quality', np.uint8),
         ('is_aligned', np.bool),

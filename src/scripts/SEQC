@@ -225,15 +225,19 @@ def set_up(output_file, index, barcodes):
     return temp_dir, gtf, cb, index
 
 
-def merge(output_file, forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
+# removed output_file argument because it was only used for metadata
+def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
     if (forward or reverse) and not (samfile or merged_fastq):
 
         # pre-process reads
         log_info('Merging fastq files.')
-        merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
+        # removed number_low_complexity because we are now scoring with a DUST-based
+        # low-quality implementation.
+        # merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
+        merged_fastq = merge_fastq(forward, reverse, processor, temp_dir, cb)
 
-    with open(output_file + '_metadata.txt', 'a') as f:
-        f.write('Low Complexity Reads: %d\n' % nlc)
+    # with open(output_file + '_metadata.txt', 'a') as f:
+    #     f.write('Low Complexity Reads: %d\n' % nlc)
 
     return merged_fastq
 
@@ -350,7 +354,8 @@ def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name
 
     temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    merged_fastq = merge(output_file, forward, reverse, samfile, merged_fastq, subparser_name,
+    # removed output_file argument due to dust filtering
+    merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb)
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
@@ -373,7 +378,8 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
 
     temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    merged_fastq = merge(output_file, forward, reverse, samfile, merged_fastq, subparser_name,
+    # removed output_file argument due to dust filtering
+    merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb)
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
