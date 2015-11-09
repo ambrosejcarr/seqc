@@ -21,6 +21,7 @@ class RaidAutomator(ClusterSetup):
         dev_base = "/dev/xvd"
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
+        vol_names = []
         availability_zone = self.availability_zone
 
         for i in range(int(vol_num)):
@@ -31,6 +32,7 @@ class RaidAutomator(ClusterSetup):
                  "gp2"])
             vol_list = vol.decode().split()
             vol_id = [s for s in vol_list if 'vol-' in s][0]
+            vol_names.append(vol_id)
 
             # generating new device id to mount
             dev_id = dev_base + alphabet[i]
@@ -42,26 +44,40 @@ class RaidAutomator(ClusterSetup):
             vol_stat = vol_stat.decode().split()
 
             while vol_stat[6] != 'available':
-                time.sleep(10)
-                vol_stat = check_output(
-                    ["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
+                time.sleep(5)
+                vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
                 vol_stat = vol_stat.decode().split()
-                log.info("...")
+                log.info('...')
 
             log.info("attaching new volume...")
-            call(["aws", "ec2", "attach-volume", "--volume-id", vol_id, "--instance-id",
-                  inst_id, "--device", dev_id])
-            i += 1
-        log.info("successfully attached %s TB in %s volumes!" % (self.n_tb, vol_num))
+            call(["aws", "ec2", "attach-volume", "--volume-id", vol_id, "--instance-id", inst_id, "--device", dev_id])
 
+            log.info("waiting for volume to finish attaching...")
+            vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
+            vol_stat = vol_stat.decode().split()
+
+            while vol_stat[14] != 'attached':
+                time.sleep(5)
+                vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
+                vol_stat = vol_stat.decode().split()
+                log.info("...")
+            # configure volumes here to delete on termination :(
+            call(["aws", "ec2", "modify-instance-attribute", "--instance-id", inst_id, "--block-device-mappings",
+                  "[{\"DeviceName\": \"" + dev_id + "\",\"Ebs\":{\"DeleteOnTermination\":true}}]"])
+            i += 1
+
+        log.info("successfully attached %s TB in %s volumes!" % (self.n_tb, vol_num))
         log.info("creating logical RAID device...")
         all_dev = ' '.join(dev_names)
-        log.info('waiting for all volumes to be available...')
-        time.sleep(10)
+
+        #writing names to file for future volume cleanup
+        with open('vol_names.txt','w') as f:
+            for x in vol_names:
+                f.write('%s\n' %x)
+
         master.ssh.execute(
             "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
             "--raid-devices=%s %s" % (vol_num, all_dev))
-
         master.ssh.execute("sudo mkfs.ext4 -L my_raid /dev/md0")
         master.ssh.execute("sudo mkdir -p /data")
         master.ssh.execute("sudo mount LABEL=my_raid /data")

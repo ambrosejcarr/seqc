@@ -1,0 +1,44 @@
+#!/usr/local/bin/python3
+import sys
+import boto3
+from subprocess import call
+
+
+def main():
+    ec2 = boto3.resource('ec2')
+
+    try:
+        with open('../plugins/vol_names.txt', 'r') as f:
+            vol_names = [line.strip() for line in f]
+    except IOError:
+        print('No new volumes for cleanup!')
+        sys.exit(2)
+
+    remain_vol = []
+    for name in vol_names:
+        volume = ec2.Volume(name)
+        if not volume.attachments:
+            call(["aws", "ec2", "delete-volume", "--volume-id", name])
+        else:
+            remain_vol.append(name)
+    print('Finished deleting all new, unattached volumes')
+    print('There are %d new volumes still being used' % len(remain_vol))
+
+    # updating vol_names.txt file
+    call(["rm", "../plugins/vol_names.txt"])
+    if remain_vol:
+        with open('../plugins/vol_names.txt', 'w') as f:
+            for name in remain_vol:
+                f.write('%s\n' % name)
+
+
+if __name__ == "__main__":
+    help = """
+	VOLUME_CLEANUP iterates through all newly created volumes
+	and deletes any that is not currently being used.
+	"""
+    if len(sys.argv) > 1:
+        print(help)
+        sys.exit(2)
+    else:
+        main()
