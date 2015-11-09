@@ -4,7 +4,6 @@ import boto3
 from os.path import expanduser
 from subprocess import call
 
-
 def main():
     ec2 = boto3.resource('ec2')
     home = expanduser("~")
