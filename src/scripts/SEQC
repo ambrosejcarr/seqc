@@ -181,8 +181,11 @@ def set_up(output_file, index, barcodes):
     serialized barcode object
     """
 
+    # temporary directory should be made in the same directory as the output prefix
+    *stem, final_dir = output_file.split('/')
+    temp_dir = '/'.join(stem + ['.' + final_dir])
+
     # create temporary directory based on experiment name
-    temp_dir = '.' + output_file
     if not os.path.isdir(temp_dir):
         os.makedirs(temp_dir)
     if not temp_dir.endswith('/'):
@@ -298,44 +301,15 @@ def resolve_alignments(index, arr, n, output_file):
 
 def save_counts_matrices(output_file, arr, n):
 
-#### DEBUGGING TRY/EXCEPT; remove when clear what the problem with this error is ####
-# Traceback (most recent call last):
-#   File "/data/seqc/src/scripts/SEQC", line 419, in <module>
-#     func(**kwargs)
-#   File "/data/seqc/src/scripts/SEQC", line 359, in in_drop
-#     save_counts_matrices(output_file, arr, n=3)
-#   File "/data/seqc/src/scripts/SEQC", line 301, in save_counts_matrices
-#     collapse_molecules=True, n_poly_t_required=n)
-#   File "/data/seqc/src/seqc/arrays.py", line 1030, in unique_features_to_sparse_counts
-#     low_coverage_mask = self.mask_low_support_molecules()
-#   File "/data/seqc/src/seqc/arrays.py", line 850, in mask_low_support_molecules
-#     df = pd.DataFrame(view)
-#   File "/usr/local/lib/python3.5/site-packages/pandas/core/frame.py", line 238, in __init__
-#     if mask.any():
-#   File "/usr/local/lib/python3.5/site-packages/numpy/core/_methods.py", line 38, in _any
-#     return umr_any(a, axis, dtype, out, keepdims)
-# TypeError: cannot perform reduce with flexible type
-
-    try:
-        log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-        mols, mrow, mcol = arr.unique_features_to_sparse_counts(
-            collapse_molecules=True, n_poly_t_required=n)
-        reads, rrow, rcol = arr.unique_features_to_sparse_counts(
-            collapse_molecules=False, n_poly_t_required=n)
-        matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
-                    'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
-        with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
-            pickle.dump(matrices, f)
-    except TypeError:
-        all_objects = dir()
-        log_info('all array objects:' + repr(all_objects))
-        for obj in all_objects:
-            if isinstance(obj, np.ndarray):
-                log_info('Raised TypeError; logging all array object types and shapes')
-                log_info(repr(obj))
-                log_info(repr(obj.dtype))
-                log_info(repr(obj.shape))
-        raise
+    log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
+    mols, mrow, mcol = arr.unique_features_to_sparse_counts(
+        collapse_molecules=True, n_poly_t_required=n)
+    reads, rrow, rcol = arr.unique_features_to_sparse_counts(
+        collapse_molecules=False, n_poly_t_required=n)
+    matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
+                'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
+    with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
+        pickle.dump(matrices, f)
 
 
 def select_cells():

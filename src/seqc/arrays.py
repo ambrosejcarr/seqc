@@ -844,25 +844,48 @@ class ReadArray:
         """
         mask any molecule supported by fewer than <required_support> reads
         """
-        # use the minimum number of columns to construct the dataframe, not sure if
-        # pandas copies data.
-        view = self.data[['cell', 'rmt']]
-        df = pd.DataFrame(view)
-        grouped = df.groupby(['cell', 'rmt'])
-        failing = []
-        for idx, g in grouped:
-            if len(g) < required_support:
-                failing.extend(g.index)
-        failing.sort()
-        ifail = 0
-        imask = 0
-        mask = np.ones(len(self.data), dtype=np.bool)
-        while ifail < len(failing):
-            if imask == failing[ifail]:
-                mask[imask] = 0
-                ifail += 1
-            imask += 1
+
+        # goal: track whether a given index has > molecule associated with it
+        # need to track molecule counts; defined as a combination of cell & rmt.
+        # simple way to track seems like a tuple of ints; can use defaultdict to build?
+
+        # then, to build boolean mask, run through the list a second time
+
+        # get counts
+        mol_counts = defaultdict(int)
+        for row in self.data:
+            # 0 = cell; 1 = rmt -- integer indexing is faster than row['cell'], row['rmt']
+            mol_counts[(row[0], row[1])] += 1
+
+        mol_counts = dict(mol_counts)  # defaultdict indexing can produce odd results
+
+        # build mask
+        n = self.data.shape[0]
+        mask = np.zeros(n, dtype=np.bool)
+        for i, row in enumerate(self.data):
+            if mol_counts[(row[0], row[1])] > required_support:
+                mask[i] = 1
+
         return mask
+        #
+        #
+        # view = self.data[['cell', 'rmt']].copy()
+        # df = pd.DataFrame(view)
+        # grouped = df.groupby(['cell', 'rmt'])
+        # failing = []
+        # for idx, g in grouped:
+        #     if len(g) < required_support:
+        #         failing.extend(g.index)
+        # failing.sort()
+        # ifail = 0
+        # imask = 0
+        # mask = np.ones(len(self.data), dtype=np.bool)
+        # while ifail < len(failing):
+        #     if imask == failing[ifail]:
+        #         mask[imask] = 0
+        #         ifail += 1
+        #     imask += 1
+        # return mask
 
     @staticmethod
     def translate_feature(reference_name, strand, true_position, feature_table,
@@ -1029,6 +1052,8 @@ class ReadArray:
         read_mask = self.mask_failing_records(n_poly_t_required)
         low_coverage_mask = self.mask_low_support_molecules()
         unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
+        if unmasked_inds.shape[0] == 0:
+            raise ValueError('Zero reads passed filters. Cannot save sparse matrix')
         molecule_counts = defaultdict(dict)
 
         if collapse_molecules:
