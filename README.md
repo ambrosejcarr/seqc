@@ -69,7 +69,7 @@ that you have the necessary prereqs already installed:
     * cython
 2. Then set the $HDF_DIR environment variable by typing: 
 
-        export HDF_DIR=/your/installation/directory/for/hdf5
+        $> export HDF_DIR=/your/installation/directory/for/hdf5
 
 3. You should now be able to install pytables: `pip3 install tables`
 
