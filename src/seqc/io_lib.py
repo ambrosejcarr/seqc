@@ -3,13 +3,18 @@ __author__ = 'ambrose'
 
 # interfaces with ftp and s3 go here.
 from glob import glob
-import boto3
 import os
 import ftplib
 from threading import Thread
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
+
+import boto3
+import logging
+# turn off boto3 non-error logging, otherwise it logs tons of spurious information
+logging.getLogger('botocore').setLevel(logging.CRITICAL)
+logging.getLogger('boto3').setLevel(logging.CRITICAL)
 
 
 class S3:
@@ -156,7 +161,6 @@ class S3:
         for file_, key in zip(all_files, upload_keys):
             client.upload_file(file_, bucket, key)
 
-
     @staticmethod
     def list(bucket, key_prefix):
         """
@@ -182,6 +186,29 @@ class S3:
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
+
+    @staticmethod
+    def split_link(link_or_prefix):
+        """
+        take an amazon s3 link or link prefix and return the bucket and key for use with
+        S3.download_file() or S3.download_files()
+
+        args:
+        -----
+        link_or_prefix: an amazon s3 link, e.g. s3://dplab-data/genomes/mm38/chrStart.txt
+          link prefix e.g. s3://dplab-data/genomes/mm38/
+
+        returns:
+        --------
+        bucket: the aws bucket used in the link. Above, this would be dplab-data
+        key_or_prefix: the aws key or prefix provided in link_or_prefix. for the above
+          examples, either genomes/mm38/chrStart.txt (link) or genomes/mm38/ (prefix)
+        """
+        if not link_or_prefix.startswith('s3://'):
+            raise ValueError('aws s3 links must start with s3://')
+        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
+        bucket, *key_or_prefix = link_or_prefix.split('/')
+        return bucket, '/'.join(key_or_prefix)
 
 
 class GEO:

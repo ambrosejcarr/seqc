@@ -490,8 +490,8 @@ function main(fasta_in::String, text_out::String, k_value::Int)
 	string_semi = join(semi_translated)
 
 	final = append!(translated, [0, 0, 0])
-	println("Starting to make sa.")
-	println(total_len)
+	#println("Starting to make sa.")
+	#println(total_len)
 	sa = suffix_array(final, zeros(Int, total_len), total_len, 5 + length(genes) + 1)
 	lcp = get_lcp(sa + 1, translated[1:end-3])
 
@@ -504,7 +504,7 @@ function main(fasta_in::String, text_out::String, k_value::Int)
 
 	#println(cld_tab .- 1)
 	close(out_file)
-	println("Done making sa.")
+	#println("Done making sa.")
 end
 
 #println(ARGS)

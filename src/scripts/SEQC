@@ -6,21 +6,21 @@ import pickle
 import os
 import shutil
 from copy import copy
+from seqc.io_lib import S3
 from seqc.fastq import merge_fastq
-from seqc.align import STAR
+from seqc.align import STAR, _download_links
 from seqc.barcodes import DropSeqCellBarcodes
 from seqc.arrays import ReadArray
+from seqc.log import setup_logger, log_info, log_exception
 from seqc.convert_features import ConvertFeatureCoordinates
 import numpy as np
 import sys
-import logging
 import json
-from datetime import datetime
+# import logging
+# from datetime import datetime
 
-# todo | allow fetching from s3
-# todo | add ability to fetch genome from amazon (provide s3 link OR file path)
+
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
-# todo | test index generation (pull from seqdb)
 # todo | merge all of the metadata into a dictionary that is written at the end of the
 # todo |   pipeline or when any errors occur
 # todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
@@ -58,8 +58,9 @@ def process_input():
     for i, p in enumerate(subparser_list):
         r = p.add_argument_group('Required Arguments')
         # todo needs to take input from user on what organism it should be
-        r.add_argument('-i', '--index', metavar='I', help='star alignment index folder. '
-                       'This folder will be created if it does not exist', default=None)
+        r.add_argument('-i', '--index', metavar='I', help='local or s3 location of star '
+                       'alignment index folder. This folder will be created if it does '
+                       'not exist', default=None)
         r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
                        type=int, default=None)
         r.add_argument('-o', '--output-file', metavar='O', default=None,
@@ -68,7 +69,7 @@ def process_input():
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
             r.add_argument('-b', '--barcodes', metavar='B', default=None,
-                           help='location of serialized barcode object.')
+                           help='local or s3 location of serialized barcode object.')
 
         i = p.add_argument_group(
             title='Input Files',
@@ -79,7 +80,7 @@ def process_input():
                        nargs='*', default=None)
         i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
                        nargs='*', default=None)
-        i.add_argument('-s', '--sam', metavar='S', nargs='?', default=None,
+        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default=None,
                        help='sam file(s) containing aligned, pre-processed reads')
         i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
                        help='fastq file containing merged, pre-processed records')
@@ -102,59 +103,101 @@ def process_input():
         parser.print_help()
         sys.exit(2)
 
+    # add a sub-parser for building the index
+    pindex = subparsers.add_parser('index', help='SEQC index functions')
+    pindex.add_argument('-b', '--build', action='store_true', default=False,
+                        help='build a SEQC index')
+    pindex.add_argument('-t', '--test', action='store_true', default=False,
+                        help='test a SEQC index')
+    pindex.add_argument('-o', '--organism', required=True, nargs='+', metavar='O',
+                        help='build index for these organism(s)')
+    pindex.add_argument('-i', '--index', help='name of folder where index should be '
+                        'built or containing the index to be verified',
+                        required=True, metavar='I')
+    pindex.add_argument('-n', '--n-threads', type=int, default=4, help='number of threads'
+                        ' to use when building index', metavar='N')
+    # todo | phiX is going to need an SCID! will this be automatically generated? Is it
+    # todo |  going to get fucked up by all the post-processing last 1kb stuff?
+    # todo | change p_coalignment to array
+    pindex.add_argument('--phix', help='add phiX to the genome index and GTF file.',
+                        action='store_true', default=False)
+
     arguments = parser.parse_args()
 
-    # list star args if requested, then exit
-    if arguments.list_default_star_args:
-        printable_args = json.dumps(
-            STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
-            separators=(',', ': '), indent=4)
-        print(printable_args)
-        sys.exit(2)
-
-    # check that at least one input argument was passed:
-    check = [arguments.forward, arguments.reverse, arguments.sam, arguments.merged_fastq]
-    if not any(check):
-        print('SEQC %s: error: one or more of the following arguments must be provided: '
-              '-f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
-              arguments.subparser_name)
-        sys.exit(2)
-    required = [arguments.output_file, arguments.index, arguments.n_threads]
-    if not arguments.subparser_name == 'drop-seq':
-        if not all(required + [arguments.barcodes]):
-            print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
-                  '--n-threads, -o/--output-file, -b/--barcodes')
+    if arguments.subparser_name == 'index':
+        if arguments.build and not arguments.test:
+            arguments.func = STAR.build_index
+        elif arguments.test and not arguments.build:
+            arguments.func = STAR.test_index
+        else:
+            print('SEQC index: error: one but not both of the following arguments must '
+                  'be provided: -b/--build, -t/--test')
             sys.exit(2)
     else:
-        if not all(required):
-            print('SEQC %s: error: the following arguments are required: -i/--index, -n/'
-                  '--n-threads, -o/--output-file')
 
-    return arguments
+        # list star args if requested, then exit
+        if arguments.list_default_star_args:
+            printable_args = json.dumps(
+                STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
+                separators=(',', ': '), indent=4)
+            print(printable_args)
+            sys.exit(2)
+
+        # check that at least one input argument was passed:
+        check = [arguments.forward, arguments.reverse, arguments.samfile,
+                 arguments.merged_fastq]
+        if not any(check):
+            print('SEQC %s: error: one or more of the following arguments must be '
+                  'provided: -f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
+                  arguments.subparser_name)
+            sys.exit(2)
+        required = [arguments.output_file, arguments.index, arguments.n_threads]
+        if not arguments.subparser_name == 'drop-seq':
+            if not all(required + [arguments.barcodes]):
+                print('SEQC %s: error: the following arguments are required: -i/--index, '
+                      '-n/--n-threads, -o/--output-file, -b/--barcodes')
+                sys.exit(2)
+        else:
+            if not all(required):
+                print('SEQC %s: error: the following arguments are required: -i/--index, '
+                      '-n/--n-threads, -o/--output-file')
+
+    return vars(arguments)
 
 
-def setup_logger():
-    """create a simple log file in the cwd to track progress and any errors"""
-    logging.basicConfig(filename='seqc.log', level=logging.DEBUG)
+# def setup_logger():
+#     """create a simple log file in the cwd to track progress and any errors"""
+#     logging.basicConfig(filename='seqc.log', level=logging.DEBUG)
+#
+#
+# def log_info(message):
+#     """print a timestamped update for the user"""
+#     logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
 
 
-def log_info(message):
-    """print a timestamped update for the user"""
-    logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
-
-
-def set_up(fout, index, barcodes):
+def set_up(output_file, index, barcodes):
     """
     create temporary directory for run, find gtf in index, and create or load a
     serialized barcode object
     """
 
+    # temporary directory should be made in the same directory as the output prefix
+    *stem, final_dir = output_file.split('/')
+    temp_dir = '/'.join(stem + ['.' + final_dir])
+
     # create temporary directory based on experiment name
-    temp_dir = '.' + fout
     if not os.path.isdir(temp_dir):
         os.makedirs(temp_dir)
     if not temp_dir.endswith('/'):
         temp_dir += '/'
+
+    # check that index exists. If index is an aws link, download the index
+    if index.startswith('s3://'):
+        log_info('AWS s3 link provided for index. Downloading index.')
+        bucket, prefix = S3.split_link(index)
+        index = temp_dir + 'index/'
+        cut_dirs = prefix.count('/')
+        S3.download_files(bucket, prefix, index, cut_dirs)
 
     # obtain gtf file from index argument
     gtf = index + 'annotations.gtf'
@@ -165,26 +208,41 @@ def set_up(fout, index, barcodes):
     if not barcodes:
         cb = DropSeqCellBarcodes()
     else:
+        if barcodes.startswith('s3://'):
+            log_info('AWS s3 link provided for barcodes. Downloading barcodes')
+            bucket, key = S3.split_link(barcodes)
+            output_file = temp_dir + 'barcodes.p'
+            try:
+                barcodes = S3.download_file(bucket, key, output_file)
+            except FileExistsError:
+                barcodes = output_file
+                pass  # already have the file in this location from a previous run
+
+        # now, we should definitely have the binary file. Load it.
         with open(barcodes, 'rb') as f:
             cb = pickle.load(f)
 
-    return temp_dir, gtf, cb
+    return temp_dir, gtf, cb, index
 
 
-def merge(fout, forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
+# removed output_file argument because it was only used for metadata
+def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
     if (forward or reverse) and not (samfile or merged_fastq):
 
         # pre-process reads
         log_info('Merging fastq files.')
-        merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
+        # removed number_low_complexity because we are now scoring with a DUST-based
+        # low-quality implementation.
+        # merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
+        merged_fastq = merge_fastq(forward, reverse, processor, temp_dir, cb)
 
-    with open(fout + '_metadata.txt', 'a') as f:
-        f.write('Low Complexity Reads: %d\n' % nlc)
+    # with open(output_file + '_metadata.txt', 'a') as f:
+    #     f.write('Low Complexity Reads: %d\n' % nlc)
 
     return merged_fastq
 
 
-def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout):
+def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file):
     if merged_fastq and not samfile:
         # process any additional arguments for star passed from the command line
         if star_args:
@@ -199,7 +257,7 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout):
         samfile = temp_dir + 'Aligned.out.sam'
 
         # copy alignment summary
-        shutil.copyfile(temp_dir + 'Log.final.out', fout + '_alignment_summary.txt')
+        shutil.copyfile(temp_dir + 'Log.final.out', output_file + '_alignment_summary.txt')
         return samfile
 
 
@@ -231,7 +289,7 @@ def correct_errors():
     raise NotImplementedError
 
 
-def resolve_alignments(index, arr, n, fout):
+def resolve_alignments(index, arr, n, output_file):
     log_info('Resolving ambiguous alignments.')
     try:
         # todo
@@ -241,11 +299,12 @@ def resolve_alignments(index, arr, n, fout):
         arr.resolve_alignments(expectations, required_poly_t=n)
     except:
         log_info('Caught error in resolve_alignments(), saving data')
-        arr.save_h5(fout + '.h5')
+        arr.save_h5(output_file + '.h5')
         raise
 
 
-def save_counts_matrices(fout, arr, n):
+def save_counts_matrices(output_file, arr, n):
+
     log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     mols, mrow, mcol = arr.unique_features_to_sparse_counts(
         collapse_molecules=True, n_poly_t_required=n)
@@ -253,7 +312,7 @@ def save_counts_matrices(fout, arr, n):
         collapse_molecules=False, n_poly_t_required=n)
     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
-    with open(fout + '_read_and_mol_matrices.p', 'wb') as f:
+    with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
         pickle.dump(matrices, f)
 
 
@@ -271,11 +330,11 @@ def select_cells():
     raise NotImplementedError
 
 
-def store_results(fout, arr):
-    if not fout.endswith('.h5'):
-        fout += '.h5'
-    log_info('Storing processed data in %s' % fout)
-    arr.save_h5(fout)
+def store_results(output_file, arr):
+    if not output_file.endswith('.h5'):
+        output_file += '.h5'
+    log_info('Storing processed data in %s' % output_file)
+    arr.save_h5(output_file)
 
 
 def run_complete():
@@ -290,46 +349,48 @@ def clean_up(temp_dir):
         shutil.rmtree('_STARtmp')
 
 
-def in_drop(fout, forward, reverse, samfile, merged_fastq, processor, index,
-            n_threads, frag_len, star_args, barcodes):
+def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
+            n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb = set_up(fout, index, barcodes)
+    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    merged_fastq = merge(fout, forward, reverse, samfile, merged_fastq, processor,
+    # removed output_file argument due to dust filtering
+    merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout)
+    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
 
     arr = process_samfile(samfile, gtf, frag_len)
 
-    # resolve_alignments(index, arr, n=0, fout=fout)
+    resolve_alignments(index, arr, n=0, output_file=output_file)
 
-    store_results(fout, arr)
+    store_results(output_file, arr)
 
-    save_counts_matrices(fout, arr, n=3)
+    save_counts_matrices(output_file, arr, n=3)
 
     # clean_up(temp_dir)
 
     run_complete()
 
 
-def drop_seq(fout, forward, reverse, samfile, merged_fastq, processor, index,
-             n_threads, frag_len, star_args, barcodes):
+def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
+             n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb = set_up(fout, index, barcodes)
+    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    merged_fastq = merge(fout, forward, reverse, samfile, merged_fastq, processor,
+    # removed output_file argument due to dust filtering
+    merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, fout)
+    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
 
     arr = process_samfile(samfile, gtf, frag_len)
 
-    # resolve_alignments(index, arr, n=0, fout=fout)
+    resolve_alignments(index, arr, n=0, output_file=output_file)
 
-    arr.save_h5(fout + '.h5')
+    arr.save_h5(output_file + '.h5')
 
-    save_counts_matrices(fout, arr, n=0)
+    save_counts_matrices(output_file, arr, n=0)
 
     # clean_up(temp_dir)
 
@@ -356,17 +417,23 @@ def strt_seq():
 
 
 if __name__ == "__main__":
-    args = process_input()
+    kwargs = process_input()
     setup_logger()
     try:
         # log command line arguments for debugging
-        arg_dict = copy(vars(args))
-        del arg_dict['func']  # function is not serializable
+        arg_copy = copy(kwargs)
+        del arg_copy['func']  # function is not serializable
+        log_info('SEQC working directory: %s' % os.getcwd())
         log_info('Passed command line arguments: %s' %
-                 json.dumps(arg_dict, separators=(',', ': '), indent=4))
-        args.func(args.output_file, args.forward, args.reverse, args.sam,
-                  args.merged_fastq, args.subparser_name, args.index, args.n_threads,
-                  args.frag_len, args.star_args, args.barcodes)
+                 json.dumps(arg_copy, separators=(',', ': '), indent=4))
+
+        func = kwargs['func']
+        func(**kwargs)
+
+        # args.func(args.output_file, args.forward, args.reverse, args.sam,
+        #           args.merged_fastq, args.subparser_name, args.index, args.n_threads,
+        #           args.frag_len, args.star_args, args.barcodes)
     except:
-        logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
+        log_exception()
+        # logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
         raise

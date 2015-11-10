@@ -1,6 +1,5 @@
 __author__ = 'ambrose'
 
-from seqc.convert_features import construct_feature_table
 from threading import Thread
 from queue import Queue, Full, Empty
 from time import sleep
@@ -353,3 +352,86 @@ def assess_outliers(samfile):
      2: aligned reads
     """
     raise NotImplementedError
+
+
+def iterate(samfile):
+    """iterate over the lines of a .sam or .bam file"""
+    if samfile.endswith('.bam'):
+
+        from subprocess import PIPE, Popen, check_output
+        import sys
+
+        samtools = check_output(['which', 'samtools'])
+        if not samtools:
+            print('Samtools binary not found on PATH. Exiting')
+            sys.exit(1)
+        else:
+            samtools = samtools.decode('UTF-8').strip()
+        args = [samtools, 'view', samfile]
+        p = Popen(args, stdout=PIPE, bufsize=256)
+
+        while True:
+            line = p.stdout.readline()
+
+            if not line:
+                break
+
+            yield line.decode('UTF-8')
+
+    elif samfile.endswith('.sam'):
+        with open(samfile, 'r') as f:
+            for line in f:
+                if line.startswith('@'):
+                    continue
+                else:
+                    yield line
+    else:
+        raise ValueError('file extension not recognized')
+
+
+def iterate_chunk(samfile, n):
+    """read n gigabytes of sequencing information at a time."""
+
+    if samfile.endswith('.bam'):
+
+        from subprocess import PIPE, Popen, check_output
+        import sys
+
+        samtools = check_output(['which', 'samtools'])
+        if not samtools:
+            print('Samtools binary not found on PATH. Exiting')
+            sys.exit(1)
+        else:
+            samtools = samtools.decode('UTF-8').strip()
+        args = [samtools, 'view', samfile]
+        p = Popen(args, stdout=PIPE, bufsize=-1)
+
+        while True:
+            lines = p.stdout.readlines(n * 1048576)
+
+            if not lines:
+                break
+            lines = [line.decode('UTF-8') for line in lines]
+
+            yield lines
+
+    elif samfile.endswith('.sam'):
+            with open(samfile, 'r') as f:
+                first_lines = f.readlines(n * 1048576)
+                first_lines = [line for line in first_lines if not
+                               line.startswith('@')]
+
+                while True:
+                    lines = f.readlines(n * 1048576)
+
+                    if first_lines:
+                        lines = first_lines + lines
+                        first_lines = None
+
+                    if not lines:
+                        break
+
+                    yield lines
+
+    else:
+        raise ValueError('file extension not recognized')
