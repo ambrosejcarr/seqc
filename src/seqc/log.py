@@ -9,10 +9,10 @@ def setup_logger():
     logging.basicConfig(filename='seqc.log', level=logging.DEBUG)
 
 
-def log_info(message):
+def info(message):
     """print a timestamped update for the user"""
     logging.info(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':' + message)
 
 
-def log_exception():
+def exception():
     logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')

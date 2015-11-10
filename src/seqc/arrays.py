@@ -340,8 +340,8 @@ class ArrayCounter:
 class ReadArray:
 
     _dtype = [
-        ('cell', np.int64),
-        ('rmt', np.int32),
+        ('cell', np.uint64),
+        ('rmt', np.uint32),
         ('n_poly_t', np.uint8),
         ('valid_cell', np.bool),
         ('dust_score', np.uint8),
@@ -557,10 +557,17 @@ class ReadArray:
 
         # filter, then merge cell & rmt; this creates a copy of cell + rmt
         # memory overhead = n * 16b
-        seq_data = np.vstack([self.data['cell'][mask],
-                              self.data['rmt'][mask].astype(np.int64)]).T
-        seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
-                                  arr=seq_data)
+        cells = self.data['cell'][mask]
+        rmts = self.data['rmt'][mask]
+
+        # try:
+        #     seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
+        #                               arr=seq_data)
+        # except TypeError:
+        #     print(seq_data.dtype)
+        #     raise
+
+        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (rmt/cell pair)
@@ -606,12 +613,19 @@ class ReadArray:
         mask = self.mask_failing_records(n_poly_t_required=required_poly_t)
 
         # filter and merge cell/rmt
-        seq_data = np.vstack([self.data['cell'][mask],
-                              self.data['rmt'][mask].astype(np.int64)]).T
-        # todo may not need to build this
-        seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
-                                  arr=seq_data)
+        # seq_data = np.vstack([self.data['cell'][mask],
+        #                       self.data['rmt'][mask].astype(np.uint64)]).T
+        cells = self.data['cell'][mask]
+        rmts = self.data['rmt'][mask]
 
+        # try:
+        #     seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
+        #                               arr=seq_data)
+        # except TypeError:
+        #     print(seq_data.dtype)
+        #     raise
+
+        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (gene/rmt/cell)
