@@ -1,5 +1,68 @@
 __author__ = 'ambrose'
 
+# check if display variable is set. If not, use a limited plotting suite.
+import matplotlib
+import os
+from contextlib import contextmanager
+try:
+    os.environ['DISPLAY']
+except KeyError:
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# set default style as ticks
+sns.set_style('ticks')
+
+# set default fonts
+mpl.rcParams('font', **{'family': 'serif',
+                        'serif': ['Computer Modern Roman'],
+                        'monospace': ['Computer Modern Typewriter']
+                        })
+
+# set default sequential colors
+qualitative_colors = np.vstack([
+    plt.cm.Set1(9),
+    plt.cm.Set2(8),
+    plt.cm.Set3(9)
+])
+
+# set default colormap
+cmap = plt.cm.plasma
+
+
+def get_axes(fig=None, ax=None):
+    """fills in any missing axis or figure with the currently active one"""
+    if not fig:
+        fig = plt.gcf()
+    if not ax:
+        ax = plt.gca()
+    return fig, ax
+
+
+def clean_figure(fig=None):
+    """despine and calculate the tight_layout for the given (or current) figure"""
+    if not fig:
+        fig = plt.gcf()
+    sns.despine(fig=fig)
+    plt.tight_layout()
+    return fig
+
+
+def histogram(data, bins=50, fig=None, ax=None, color=qualitative_colors[0], xlabel='',
+              ylabel='', title=''):
+    fig, ax = get_axes(fig=fig, ax=ax)
+    ax.hist(data, bins=bins, facecolor=color)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    sns.despine(ax=ax)
+
+
+
+########################### BELOW IS OLD PLOTTING STUFF #################################
+
+
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
