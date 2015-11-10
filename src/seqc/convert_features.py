@@ -2,6 +2,7 @@ __author__ = "Ambrose J. Carr"
 
 from collections import defaultdict, namedtuple
 from intervaltree import IntervalTree
+import pickle
 import re
 from sys import argv, exit
 
@@ -13,6 +14,10 @@ from sys import argv, exit
 
 
 class Exon:
+    """
+    Dummy class to store exon data for ConvertFeatureCoordinates. Replaceable with
+    NamedTuple
+    """
 
     __slots__ = ['start', 'end']
 
@@ -22,6 +27,10 @@ class Exon:
 
 
 class Transcript:
+    """
+    Dummy class to store transcript data for ConvertFeatureCoordinates. Not replaceable
+    with NamedTuple because the .exons property must be mutable.
+    """
 
     __slots__ = ['start', 'end', 'strand', 'feature', 'exons', 'scid']
 
@@ -35,14 +44,27 @@ class Transcript:
 
 
 class ConvertFeatureCoordinates:
+    """
+    creates a lookup object whose .translate() method rapidly converts chromosome
+    coordinates to the associated transcripts if the alignment falls in the final n bases
+    of the transcript.
+
+    feature_table = dict() (chr, strand position) -> {scids}
+    feature_positions = dict() scid -> (start, end)
+
+    """
 
     def __init__(self, feature_table, feature_positions):
-        # todo checks for these; this has bugged out multiple times...
+        # todo type checks for these; this has bugged out multiple times...
         self._table = feature_table
         self._positions = feature_positions
 
     @classmethod
     def from_gtf(cls, gtf, fragment_length):
+        """
+        Create a ConvertFeatureCoordinates object from a gtf file. Include only
+        features that fall in the final <fragment_length> of each transcript.
+        """
         feature_table = defaultdict(set)
         feature_positions = defaultdict(list)
         pattern = re.compile(r'(^.*?scseq_id "SC)(.*?)(";.*?$)')
@@ -62,7 +84,7 @@ class ConvertFeatureCoordinates:
                     )
                 elif record[2] == 'exon':
                     scid = int(re.match(pattern, record[-1]).group(2))
-                    exon = Exon(int(record[3]), int(record[4]))
+                    exon = Exon(start=int(record[3]), end=int(record[4]))
                     transcripts[scid].exons.append(exon)
 
         # process the exons, deleting duplicates where they are found
@@ -76,6 +98,8 @@ class ConvertFeatureCoordinates:
                 exons = sorted((s for s in set(transcript.exons)), key=sort_key,
                                reverse=True)
                 transcript.exons = exons
+            # process_transcript modifies feature_table and feature_positions in place
+            # each time the function is called
             cls._process_transcript(transcript, feature_table, feature_positions,
                                     fragment_length)
 
@@ -85,6 +109,7 @@ class ConvertFeatureCoordinates:
         return cls(feature_table, feature_positions)
 
     def save(self, fout):
+        """save a serialized version of self as a pickle file"""
         dout = {'feature_table': self._table,
                 'feature_positions': self._positions,
                 'fragment_length': self._fragment_length}
@@ -93,23 +118,25 @@ class ConvertFeatureCoordinates:
 
     @classmethod
     def load(cls, fin):
+        """load a ConvertFeatureCoordinates file from a serialized pickle"""
         with open(fin, 'rb') as f:
             din = pickle.load(f)
             return cls(**din)
 
     @staticmethod
     def _round_up(x):
+        """round x up to the nearest hundred"""
         return x if x % 100 == 0 else x + 100 - x % 100
 
     @staticmethod
     def _round_down(x):
+        """round x down to the nearest hundred"""
         return x // 100 * 100
 
     @classmethod
     def _process_transcript(cls, transcript, feature_table, feature_positions,
                             fragment_len):
-
-        """updates feature_table and feature_positions (defined below)"""
+        """updates feature_table and feature_positions for the passed transcript"""
         remaining_fragment_size = fragment_len
         if transcript.strand == '+':
             for exon in transcript.exons[::-1]:  # iterate backwards through exons
@@ -171,6 +198,10 @@ class ConvertFeatureCoordinates:
                     break  # move on to next set of exons
 
     def translate(self, strand, chromosome, position):
+        """
+        translate a strand, chromosome, and position into all associated SCIDs, which
+        correspond to groups of overlapping transcripts.
+        """
         rounded_position = position // 100 * 100
         try:
             potential_ids = self._table[(strand, chromosome, rounded_position)]
@@ -192,142 +223,7 @@ class ConvertFeatureCoordinates:
         """
         raise NotImplementedError
 
-#
-#
-# def _round_up(x):
-#     return x if x % 100 == 0 else x + 100 - x % 100
-#
-#
-# def _round_down(x):
-#     return x // 100 * 100
-#
-#
-# def _process_transcript(transcript, fragment_len, feature_table, feature_positions):
-#     """updates feature_table and feature_positions (defined below)"""
-#     remaining_fragment_size = fragment_len
-#     if transcript.strand == '+':
-#         for exon in transcript.exons[::-1]:  # iterate backwards through exons
-#             feature_end = _round_up(exon.end)
-#             if exon.start < exon.end - remaining_fragment_size:
-#
-#                 # break exon into 100 base pieces, round down start, up end
-#                 feature_start = _round_down(exon.start)
-#
-#                 # add each 100-base position in interval to feature_table
-#                 for position in range(feature_start, feature_end + 100, 100):
-#                     key = (transcript.strand, transcript.feature, position)
-#                     feature_table[key].add(transcript.scid)
-#
-#                 # add feature_positions to second look-up table
-#                 feature_positions[transcript.scid].append((
-#                     exon.start, exon.end))
-#
-#                 remaining_fragment_size -= exon.end - exon.start
-#             else:
-#                 # get unrounded start and add to feature_positions
-#                 feature_start = exon.end - remaining_fragment_size
-#                 feature_positions[transcript.scid].append((
-#                     feature_start, exon.end))
-#                 # round and add positions to feature_table
-#                 feature_start = _round_down(feature_start)
-#                 for position in range(feature_start, feature_end + 100, 100):
-#                     key = (transcript.strand, transcript.feature, position)
-#                     feature_table[key].add(transcript.scid)
-#                 break  # move on to next set of exons
-#     else:
-#         for exon in transcript.exons[::-1]:  # iterate backwards
-#             feature_start = _round_down(exon.start)
-#             if exon.start + remaining_fragment_size < exon.end:
-#
-#                 # break exon into 100 base pieces, round down start, up end
-#                 feature_end = _round_up(exon.end)
-#
-#                 # add each 100-base position in interval to feature_table
-#                 for position in range(feature_start, feature_end + 100, 100):
-#                     key = (transcript.strand, transcript.feature, position)
-#                     feature_table[key].add(transcript.scid)
-#
-#                 # add feature_positions to second look-up table
-#                 feature_positions[transcript.scid].append(
-#                     (exon.start, exon.end))
-#
-#                 remaining_fragment_size -= exon.end - exon.start
-#             else:
-#                 # get unrounded start and add to feature_positions
-#                 feature_end = exon.start + remaining_fragment_size
-#                 feature_positions[transcript.scid].append((
-#                     exon.start, feature_end))
-#                 # round and add positions to feature_table
-#                 feature_end = _round_up(exon.start + remaining_fragment_size)
-#                 for position in range(feature_start, feature_end + 100, 100):
-#                     key = (transcript.strand, transcript.feature, position)
-#                     feature_table[key].add(transcript.scid)
-#                 break  # move on to next set of exons
-#
-#
-# # define some simple container classes for Exons and Transcripts
-# class Exon:
-#     def __init__(self, start, end):
-#         self.start = start
-#         self.end = end
-#
-#
-# class Transcript:
-#     def __init__(self, start, end, strand, feature, exons, scid):
-#         self.start = start
-#         self.end = end
-#         self.strand = strand
-#         self.feature = feature
-#         self.exons = exons
-#         self.scid = scid
-#
-#
-# def construct_feature_table(gtf, fragment_len=1000):
-#     """
-#     construct a feature table for n(3) conversions of genomic -> transcriptomic
-#     coordinates
-#     """
-#
-#     # define two helper functions to round to the nearest hundred
-#
-#     feature_table = defaultdict(set)
-#     feature_positions = defaultdict(list)
-#     pattern = re.compile(r'(^.*?scseq_id "SC)(.*?)(";.*?$)')
-#     # pile up exons of each scid
-#     transcripts = {}
-#     with open(gtf, 'r') as f:
-#         for record in f:
-#             # get rid of comments
-#             if record.startswith('#'):
-#                 continue
-#             record = record.split('\t')
-#             if record[2] == 'transcript':
-#                 scid = int(re.match(pattern, record[-1]).group(2))
-#                 transcripts[scid] = Transcript(
-#                     start=int(record[3]), end=int(record[4]), strand=record[6],
-#                     feature=record[0], exons=[], scid=scid
-#                 )
-#             elif record[2] == 'exon':
-#                 scid = int(re.match(pattern, record[-1]).group(2))
-#                 exon = Exon(int(record[3]), int(record[4]))
-#                 transcripts[scid].exons.append(exon)
-#
-#     # process the exons, deleting duplicates where they are found
-#     sort_key = lambda x: (x.start, x.end)
-#     for scid, transcript in transcripts.items():
-#         # eliminate duplicate exons, then regenerate sorted order among exons
-#         if transcript.strand == '+':
-#             exons = sorted((s for s in set(transcript.exons)), key=sort_key)
-#             transcript.exons = exons
-#         else:
-#             exons = sorted((s for s in set(transcript.exons)), key=sort_key,
-#                            reverse=True)
-#             transcript.exons = exons
-#         _process_transcript(transcript, fragment_len, feature_table, feature_positions)
-#
-#     return dict(feature_table), dict(feature_positions)  # get rid of defaultdict
-#
-#
+
 class GeneTable:
 
     def __init__(self, gtf):
