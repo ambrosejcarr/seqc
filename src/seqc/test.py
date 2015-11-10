@@ -1819,5 +1819,92 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         io_lib.S3.remove_file(self.s3_bucket, self.s3_key)
         os.remove('test_in_drop.npz')
 
+
+@unittest.skip('')
+class TestGroupForErrorCorrection(unittest.TestCase):
+
+    def setUp(self):
+        # create a dummy array with 10 records
+        dtype = seqc.arrays.ReadArray._dtype
+        dummy_data = np.zeros((20,), dtype=dtype)
+
+        # we'll use these cell barcodes; no palindromes
+        s2b = three_bit.ThreeBit.str2bin
+        cb11 = s2b('CACGGACA')
+        cb21 = s2b('GTGTGGTT')
+        cb12 = s2b('TTTCCTTT')
+        cb22 = s2b('AGAAAGGAAA')
+
+        # we'll use these rmts, again no palindromes:
+        rmt1 = s2b('AGGTTC')
+        rmt2 = s2b('GGATAC')
+
+        # convert everything to ints the same way as in a fastq
+        # in fastq, we first convert each to an int, and concatenate
+        # the integers using ints2int; we'll create two cells this way
+        i2i = three_bit.ThreeBit.ints2int
+        c1 = i2i([cb11, cb21])
+        c2 = i2i([cb12, cb22])
+
+        # set defaults for the other fields
+        def create_record(cell, rmt):
+            n_poly_t = 4
+            valid_cell = True
+            dust_score = 0
+            rev_quality = 40
+            fwd_quality = 40
+            is_aligned = True
+            alignment_score = 100
+            return (cell, rmt, n_poly_t, valid_cell, dust_score, rev_quality,
+                    fwd_quality, is_aligned, alignment_score)
+
+        # position isn't used, so we'll ignore it, but we need features
+        f1 = [10, 11]
+        f2 = [5]
+
+        # create an array with 20 records: 10 each for f1 and f2,
+        # for each, 4 are c2, 6 are c2, each are evenly split among rmts
+        features = [f1] * 10 + [f2] * 10
+        positions = [[0]] * 20
+        data = [create_record(c1, rmt1)] * 2
+        data += [create_record(c1, rmt2)] * 2
+        data += [create_record(c2, rmt1)] * 3
+        data += [create_record(c2, rmt2)] * 3
+        data += [create_record(c1, rmt1)] * 2
+        data += [create_record(c1, rmt2)] * 2
+        data += [create_record(c2, rmt1)] * 3
+        data += [create_record(c2, rmt2)] * 3
+
+        for i, r in enumerate(data):
+            dummy_data[i] = r
+
+        positions = arrays.JaggedArray.from_iterable(positions)
+        features = arrays.JaggedArray.from_iterable(features)
+
+        self.ra = arrays.ReadArray(dummy_data, features, positions)
+
+    @unittest.skip('')
+    def test_ints2int(self):
+        i2i = three_bit.ThreeBit.ints2int
+        for record in self.ra.data:
+            print(type(record['cell'].astype(int)))
+            print(i2i([record['cell'].astype(int), record['rmt'].astype(int)]))
+
+    # @unittest.skip('')
+    def test_group_for_error_correction(self):
+        grp = self.ra.group_for_error_correction()
+        print(self.ra.data)
+        print(grp)
+        print(grp.keys())
+        b2s = three_bit.ThreeBit.bin2str
+        for feature in grp.keys():
+            for seq in grp[feature].keys():
+                if seq:
+                    print(seq)
+                    print(b2s(seq))
+                else:
+                    print('Returned None')
+
+
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')
