@@ -49,9 +49,10 @@ class Reader:
                 yield record
 
     def scid_to_gene(self, save=''):
+        # seems like there could be a bug with scid=0: it has a huge number of genes.
         gmap = defaultdict(set)
         for record in self.iter_transcripts():
-            gmap[record.attribute['scseq_id'].strip('SC')].add(
+            gmap[int(record.attribute['scseq_id'].strip('SC'))].add(
                 record.attribute['gene_name'])
 
         # merge features that are not unique into single strings
