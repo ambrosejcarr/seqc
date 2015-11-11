@@ -198,6 +198,20 @@ class SparseCounts:
                            title=title)
         return f, ax
 
+    def to_npz(self, npz_file):
+        """
+        Save an .npz archive containing all information necessary to reconstruct the
+        SparseCounts object
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def from_npz(cls, npz_file):
+        """
+        Load a SparseCounts object from a .npz file.
+        """
+        raise NotImplementedError
+
 
 # class ReadsPerMolecule:
 #
