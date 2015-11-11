@@ -72,7 +72,7 @@ def kde(data, bw='scott', fig=None, ax=None, color=qualitative_colors[0], xlabel
     return fig, ax
 
 
-def _2d_density_coloring(x, y):
+def density_coloring(x, y):
     """returns density-based coloring of x and y
 
     calculates a 2d kernel density estimation of the x-y plane. Returns x and y sorted by
@@ -99,7 +99,7 @@ def _2d_density_coloring(x, y):
 def scatter_density(x, y, fig=None, ax=None, xlabel='', ylabel='', title=''):
     """2d scatter plot, colored by density"""
     fig, ax = get_axes(fig=fig, ax=ax)
-    x, y, z = _2d_density_coloring(x, y)
+    x, y, z = density_coloring(x, y)
     ax.scatter(x, y, edgecolor='none', c=z, cmap=cmap, s=20)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -134,9 +134,6 @@ def scatter_colored_by_data(
 #     warnings.simplefilter("ignore")
 #     mpl.use('AGG')
 # from scipy.stats import gaussian_kde
-# from sklearn.preprocessing import PolynomialFeatures
-# from sklearn.linear_model import LinearRegression
-# from sklearn.pipeline import Pipeline
 # from seqc.qc import deobfuscate
 # from seqc.three_bit import ThreeBit
 # import matplotlib.pyplot as plt
@@ -419,7 +416,7 @@ def scatter_colored_by_data(
 #
 #     gs.tight_layout(fig)
 #     plt.savefig(save, dpi=300)
-#
+
 #
 # def _vertical_marginal(data, ax):
 #     marginals = data.sum(axis=0)

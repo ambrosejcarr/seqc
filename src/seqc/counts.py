@@ -7,8 +7,17 @@ from collections import defaultdict, Mapping, Iterable
 from scipy.sparse import coo_matrix
 from seqc import plot, gtf, three_bit
 from tsne import bh_sne
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
 import pickle
+import matplotlib
 import os
+try:
+    os.environ['DISPLAY']
+except KeyError:
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 
 # Below are functions that are shared by sparse and dense counts. However, it is
@@ -38,6 +47,10 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
 
 
 class SparseCounts:
+    """
+    SparseCounts is a thin wrapper around a scipy.sparse.coo_matrix object that provides
+    additional functionality for the analysis of sc-RNA-seq data
+    """
 
     def __init__(self, sparse_counts, index, columns):
         self._counts = sparse_counts
@@ -347,10 +360,18 @@ class SparseCounts:
 
 
 class DenseCounts:
+    """
+    DenseCounts is a light wrapper for a pandas DataFrame that adds some relevant
+    plotting and analysis methods
+
+    """
 
     def __init__(self, df):
         """
-        light wrapper for a pandas DataFrame that adds some relevant plotting methods
+        args:
+        -----
+        df: a Pandas DataFrame object whose rows are cells and columns are features
+          (genes)
         """
 
         # todo preprocess the dataframe indices to enforce unique, sorted indices
@@ -443,6 +464,7 @@ class DenseCounts:
 
     @classmethod
     def from_npz(cls, npz_file):
+        """load a DenseCounts object from a .npz archive"""
         npz_data = np.load(npz_file)
         return cls(npz_data['data'], index=npz_data['index'], columns=npz_data['columns'])
 
@@ -453,7 +475,115 @@ class Experiment:
     these values and implements related statistics and methods
     """
 
-    pass
+    def __init__(self, reads, molecules):
+        for var in [reads, molecules]:
+            if not any(isinstance(var, t) for t in [SparseCounts, DenseCounts]):
+                raise TypeError('reads must be a SparseCounts or DenseCounts object')
+        self._reads = reads
+        self._molecules = molecules
+
+    def __repr__(self):
+        return ("<Experiment object:\nReads:%s\nMolecules:%s>" %
+                (repr(self._reads), repr(self._molecules)))
+
+    @property
+    def reads(self):
+        return self._reads
+
+    @property
+    def molecules(self):
+        return self._molecules
+
+    def plot_umi_correction(self, log=False):
+        """
+        Displays the impact of UMI correction on raw or log-transformed sc-RNA-seq data
+        """
+
+        # create figure
+        gs = plt.GridSpec(nrows=2, ncols=2)
+        fig = plt.figure(figsize=(6, 6))
+
+        # plot # 1: Regression of Reads against Molecules
+        # -----
+        # get mean gene expression values for molecules and reads
+        read_means = np.ravel(self.reads.mean(axis=0))
+        mol_means = np.ravel(self.molecules.mean(axis=0))
+
+        if log:
+            read_means = np.log(read_means)
+            mol_means = np.log(mol_means)
+
+        # carry out polynomial regression
+        x, y = mol_means, read_means  # used for reconstructing y_hat
+        model = Pipeline([('poly', PolynomialFeatures(degree=3)),
+                          ('linear', LinearRegression(fit_intercept=False))])
+        model = model.fit(mol_means[:, np.newaxis], read_means)
+        beta = model.named_steps['linear'].coef_
+
+        # reconstruct y_hat and calculate the fit line.
+        y_hat = beta[0] + beta[1] * x + beta[2] * x ** 2 + beta[3] * x ** 3
+        xmin, xmax = np.min(mol_means), np.max(mol_means)
+        f = np.linspace(xmin, xmax, 1000)
+        fline = beta[0] + beta[1] * f + beta[2] * f ** 2 + beta[3] * f ** 3
+
+        sx, sy, colors = plot.density_coloring(x, y)
+        ax1 = plt.subplot(gs[0, 0])
+        xlabel = 'Molecules  / Gene'
+        ylabel = 'Reads / Gene'
+        title = 'Polynomial Regression'
+        plot.scatter_colored_by_data(sx, sy, colors, ax=ax1, xlabel=xlabel, ylabel=ylabel,
+                                     title=title)
+
+        # plot # 2: Regression Residuals
+        # -----
+        ax2 = plt.subplot(gs[0, 1])
+        residuals = y - y_hat
+        sx, s_residuals, colors = plot.density_coloring(x, residuals)
+        ylabel = 'Residual'
+        title = 'Residuals'
+        plot.scatter_colored_by_data(sx, s_residuals, colors, ax=ax2, xlabel=xlabel,
+                                     ylabel=ylabel, title=title)
+
+        # plot # 3: Scaled Residuals
+        # -----
+        ax3 = plt.subplot(gs[1, 0])
+        scaled_residuals = np.abs(y - y_hat) / y
+        sx, s_scaled_residuals, colors = plot.density_coloring(x, scaled_residuals)
+        ylabel = 'Residual / Reads per Gene'
+        title = 'Normalized Residuals'
+        plot.scatter_colored_by_data(sx, s_scaled_residuals, colors, ax=ax3,
+                                     xlabel=xlabel, ylabel=ylabel, title=title)
+        # adjust axes
+        cmax = np.max(sx)
+        ymax = np.max(scaled_residuals)
+        plt.xlim((0, cmax))
+        plt.ylim((0, ymax + min(1, ymax + 0.05)))
+
+        # plot # 4: Fano Factors
+        # -----
+        ax4 = plt.subplot(gs[1, 1])
+        idx = np.where(np.sum(self.molecules > 0, axis=0) > 2)
+        read_fano = (np.var(self.reads[:, idx], axis=0) /
+                     np.mean(self.reads[:, idx], axis=0))
+        mols_fano = (np.var(self.molecules[:, idx], axis=0) /
+                     np.mean(self.molecules[:, idx], axis=0))
+
+        x, y, colors = plot.density_coloring(read_fano, mols_fano)
+        xlabel = r'Fano ($\frac{\sigma^2}{\mu}$) Molecules / Gene'
+        ylabel = r'Fano ($\frac{\sigma^2}{\mu}$) Reads / Gene'
+        title = 'Normalied Variance of Reads \nvs. Molecules per Gene'
+        plot.scatter_colored_by_data(x, y, colors, ax=ax4, xlabel=xlabel, ylabel=ylabel,
+                                     title=title)
+        # plot x = y
+        cmin, cmax = np.min(np.hstack([x, y])), np.max(np.hstack([x, y]))
+        x_y = np.linspace(cmin, cmax, 1000)
+        ax4.plot(x_y, x_y, 'r--')
+        plt.xlim((cmin, cmax))
+        plt.ylim((cmin, cmax))
+
+        plot.clean_figure(fig)
+
+        return fig, dict(regression=ax1, residual=ax2, scaled_residual=ax3, fano=ax4)
 
 
 class CompareExperiments:
