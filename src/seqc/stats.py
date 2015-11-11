@@ -167,9 +167,21 @@ class SparseCounts:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return cls(coo, unq_row, unq_col)
 
-    def plot_observations_per_cell(self, ax=None):
-        cell_sums = self.counts.sum(axis=1)
-        f, ax = seqc.plot.get_axes(ax=ax)
+    # def plot_observations_per_cell(self, ax=None):
+    #     cell_sums = self.counts.sum(axis=1)
+    #     f, ax = seqc.plot.get_axes(ax=ax)
 
+    def to_dense(self, convert_ids=True):
+        """
+        Implement once we have a better sense of how to threshold cells
+
+        return a pandas dataframe with rows = cells and columns = scids or genes if
+        convert_ids is True
+        """
+        # mask cells that fail filter
+        # convert to pandas dataframe
+        # merge scids that associate with the same genes
+        # return df or DenseCounts (not sure if necessary to have a separate class)
+        raise NotImplementedError
 
 
