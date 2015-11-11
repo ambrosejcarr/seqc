@@ -3,6 +3,7 @@ __author__ = 'ambrose'
 # check if display variable is set. If not, use a limited plotting suite.
 import matplotlib
 import os
+import numpy as np
 from contextlib import contextmanager
 try:
     os.environ['DISPLAY']
@@ -15,10 +16,10 @@ import seaborn as sns
 sns.set_style('ticks')
 
 # set default fonts
-mpl.rcParams('font', **{'family': 'serif',
-                        'serif': ['Computer Modern Roman'],
-                        'monospace': ['Computer Modern Typewriter']
-                        })
+matplotlib.rc('font', **{'family': 'serif',
+                         'serif': ['Computer Modern Roman'],
+                         'monospace': ['Computer Modern Typewriter']
+                         })
 
 # set default sequential colors
 qualitative_colors = np.vstack([
@@ -57,7 +58,18 @@ def histogram(data, bins=50, fig=None, ax=None, color=qualitative_colors[0], xla
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     sns.despine(ax=ax)
+    return fig, ax
 
+
+def kde(data, bw='scott', fig=None, ax=None, color=qualitative_colors[0], xlabel='',
+        ylabel='', title=''):
+    fig, ax = get_axes(fig=fig, ax=ax)
+    sns.kdeplot(data, bw=bw, ax=ax, color=color)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    sns.despine(ax=ax)
+    return fig, ax
 
 
 ########################### BELOW IS OLD PLOTTING STUFF #################################

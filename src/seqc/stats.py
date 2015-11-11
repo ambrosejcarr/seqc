@@ -3,59 +3,15 @@ __author__ = 'ambrose'
 
 import numpy as np
 import pandas as pd
-from collections import defaultdict
+from collections import defaultdict, Mapping
 from scipy.sparse import coo_matrix
-import seqc.plot
-
-# check if display variable is set. If not, use a limited plotting suite.
+from seqc import plot, gtf
+import pickle
+import os
 
 
 class CompareExperiments:
     pass
-
-
-class ReadsPerMolecule:
-
-    def __init__(self, molecule_counts):
-        if not isinstance(molecule_counts, pd.Series):
-            raise ValueError('molecule_counts must be a pandas Series')
-        self._counts = molecule_counts
-
-    @property
-    def counts(self):
-        return self._counts
-
-    @classmethod
-    def from_read_array(cls, read_array):
-        # filter failing molecules
-        record_mask = read_array.mask_failing_records()
-        support_mask = read_array.mask_low_support_molecules()
-        view = read_array.data[record_mask & support_mask][['cell', 'rmt']]
-
-        counts = pd.DataFrame(view).groupby(['cell', 'rmt']).size()
-        return cls(counts)
-
-    def plot_distribution(self, smooth=False, log=False):
-
-        if log:
-            vals = np.log(self.counts.values)
-        else:
-            vals = self.counts.values
-
-        with sns.set_style('ticks'):
-            f, ax = plt.subplots()
-            if smooth:
-                sns.kdeplot(vals, ax=ax)
-            else:
-                ax.hist(vals, bins=50)
-
-        # label
-        plt.xlabel('molecule counts')
-        plt.ylabel('relative frequency')
-        plt.title('Reads per Molecule Distribution')
-        sns.despine()
-        plt.tight_layout()
-        return f, ax
 
 
 class SparseCounts:
@@ -171,6 +127,10 @@ class SparseCounts:
     #     cell_sums = self.counts.sum(axis=1)
     #     f, ax = seqc.plot.get_axes(ax=ax)
 
+    def cells_above_threshold(self, t):
+        """return the number of cells with > t observations"""
+        return np.sum(self.counts.sum(axis=1) > t)
+
     def to_dense(self, convert_ids=True):
         """
         Implement once we have a better sense of how to threshold cells
@@ -184,4 +144,100 @@ class SparseCounts:
         # return df or DenseCounts (not sure if necessary to have a separate class)
         raise NotImplementedError
 
+    def convert_ids(self, fgtf=None, scid_map=None):
+        """
+        Convert scids to gene identifiers either by parsing the gtf file (slow) or by
+        directly mapping scids to genes (fast). In the latter case, the gtf_map must be
+        pre-processed and saved to the index folder.
 
+        see seqc.gtf.Reader.scid_to_gene(gtf, save=<output_file>) to save this gtf_map for
+        repeat-use.
+        """
+        if not any([fgtf, scid_map]):
+            raise ValueError('one of gtf or scid_map must be passed for conversion to'
+                             'occur')
+
+        # load the gene map (gmap)
+        if not scid_map:
+            r = gtf.Reader(fgtf)
+            gmap = r.scid_to_gene()
+        elif isinstance(scid_map, str):
+            # try to load pickle
+            if not os.path.isfile(scid_map):
+                raise FileNotFoundError('scid_map not found: %s' % scid_map)
+            with open(scid_map, 'rb') as f:
+                gmap = pickle.load(f)
+                if not isinstance(gmap, Mapping):
+                    raise TypeError('scid_map file object did not contain a '
+                                    'dictionary')
+        elif isinstance(scid_map, Mapping):
+            gmap = scid_map
+        else:
+            raise TypeError('scid_map must be the location of the scid_map pickle file '
+                            'or the loaded dictionary object, not type: %s' %
+                            type(scid_map))
+
+        # convert ids
+        self._index = np.array([gmap[i] for i in self._index])
+
+    def plot_observations_per_cell(self, smooth=False, xlabel='', ylabel='',
+                                   title=''):
+        cellsums = self.counts.sum(axis=1)
+        f, ax = plot.get_axes()
+        if not xlabel:
+            xlabel = 'observations per cell'
+        if not ylabel:
+            ylabel = 'number of cells'
+        if not title:
+            title = 'distribution of observations per cell'
+        if smooth:
+            plot.kde(cellsums, fig=f, ax=ax, xlabel=xlabel, ylabel=ylabel,
+                     title=title)
+        else:
+            plot.histogram(cellsums, fig=f, ax=ax, xlabel=xlabel, ylabel=ylabel,
+                           title=title)
+        return f, ax
+
+
+# class ReadsPerMolecule:
+#
+#     def __init__(self, molecule_counts):
+#         if not isinstance(molecule_counts, pd.Series):
+#             raise ValueError('molecule_counts must be a pandas Series')
+#         self._counts = molecule_counts
+#
+#     @property
+#     def counts(self):
+#         return self._counts
+#
+#     @classmethod
+#     def from_read_array(cls, read_array):
+#         # filter failing molecules
+#         record_mask = read_array.mask_failing_records()
+#         support_mask = read_array.mask_low_support_molecules()
+#         view = read_array.data[record_mask & support_mask][['cell', 'rmt']]
+#
+#         counts = pd.DataFrame(view).groupby(['cell', 'rmt']).size()
+#         return cls(counts)
+#
+#     def plot_distribution(self, smooth=False, log=False):
+#
+#         if log:
+#             vals = np.log(self.counts.values)
+#         else:
+#             vals = self.counts.values
+#
+#         with sns.set_style('ticks'):
+#             f, ax = plt.subplots()
+#             if smooth:
+#                 sns.kdeplot(vals, ax=ax)
+#             else:
+#                 ax.hist(vals, bins=50)
+#
+#         # label
+#         plt.xlabel('molecule counts')
+#         plt.ylabel('relative frequency')
+#         plt.title('Reads per Molecule Distribution')
+#         sns.despine()
+#         plt.tight_layout()
+#         return f, ax
