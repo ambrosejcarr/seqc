@@ -11,10 +11,6 @@ import pickle
 import os
 
 
-class CompareExperiments:
-    pass
-
-
 # Below are functions that are shared by sparse and dense counts. However, it is
 # not appropriate to have one class inherit from the other, so they are defined once here
 # and referenced in both classes
@@ -458,3 +454,12 @@ class Experiment:
     """
 
     pass
+
+
+class CompareExperiments:
+    """
+    Some plotting methods require experiments themselves to be compareed; this class holds
+    these values and implements related statistics and methods
+    """
+
+
