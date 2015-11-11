@@ -68,6 +68,21 @@ class ThreeBit:
                 tmp >>= 3
             res += num
         return res
+    
+    @staticmethod
+    def rmt_from_int(seq):
+        '''Extract the rmt (6 chrs) from an encoded sequecne'''
+        return seq&0o777777
+
+    @staticmethod
+    def c2_from_int(seq):
+        '''Extract barcode2 from a sequence'''
+        return (seq&0o77777777000000)>>(6*3)
+
+    @staticmethod
+    def c1_from_int(seq):
+        '''Extract barcode1 from a sequence'''
+        return seq>>((8+6)*3)
 
     @staticmethod
     def gc_content(s):
