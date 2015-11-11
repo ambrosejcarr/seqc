@@ -46,6 +46,8 @@ class ThreeBit:
     @classmethod
     def bin2str(cls, i):
         """Convert binary nucleotide sequence into string"""
+        if i < 0:
+            raise ValueError('i must be an unsigned (positive) integer, not %d' % i)
         r = ''
         while i > 0:
             r = cls._bin2strdict[i & 0b111] + r
@@ -55,7 +57,8 @@ class ThreeBit:
     @staticmethod
     def ints2int(ints):
         """convert [i1, i2, i3] -> 0bi1i2i3"""
-
+        if not all(i > 0 for i in ints):
+            raise ValueError('all inputs must be unsigned (positive) integers')
         res = 0
         for num in ints:
             tmp = num
@@ -65,6 +68,21 @@ class ThreeBit:
                 tmp >>= 3
             res += num
         return res
+    
+    @staticmethod
+    def rmt_from_int(seq):
+        '''Extract the rmt (6 chrs) from an encoded sequecne'''
+        return seq&0o777777
+
+    @staticmethod
+    def c2_from_int(seq):
+        '''Extract barcode2 from a sequence'''
+        return (seq&0o77777777000000)>>(6*3)
+
+    @staticmethod
+    def c1_from_int(seq):
+        '''Extract barcode1 from a sequence'''
+        return seq>>((8+6)*3)
 
     @staticmethod
     def gc_content(s):
@@ -268,11 +286,6 @@ class ThreeBitInDrop(ThreeBit):
             cb1 = s >> cb2_length + spacer_length
 
             return self.ints2int([cb1, cb2]), rmt, num_poly_t
-
-
-# todo need different expectations for n_poly t since there should be a different number
-# todo for each cell barcode length
-
 
     @staticmethod
     def split_cell(s):
