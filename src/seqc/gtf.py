@@ -64,3 +64,9 @@ class Reader:
                 pickle.dump(gmap, f)
 
         return gmap
+
+    def get_phix_id(self):
+        for record in self:
+            if record.seqname is 'NC_001422.1':
+                if record.feature == 'transcript':
+                    return record.attribute['scseq_id'].strip('SC')

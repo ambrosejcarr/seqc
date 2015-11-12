@@ -1036,6 +1036,10 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return seqc.analyze.SparseCounts(coo, unq_row, unq_col)
 
+    def plot_filter_correlations(self):
+        """plot filter correlations"""
+        raise NotImplementedError
+
     def summarize(self, alignment_metadata=None, save_plots=False):
         """return descriptive statistics for this dataset
 
@@ -1078,8 +1082,11 @@ class ReadArray:
           to save_plots/summary.json
         """
 
+        tx_aligned = sum(1 for _ in self.features if _) / self.data.shape[0]
+
+
         # get record filter percentages
-        metadata = {}
+        metadata = self
 
 
 def outer_join(left, right):
