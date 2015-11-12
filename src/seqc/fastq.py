@@ -319,7 +319,7 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
         """merge all the fastq files together"""
 
         # set a destination file to write everythign into
-        seed = open('%s/merged_temp.fastq' % temp_dir)
+        seed = open('%s/merged_temp.fastq' % temp_dir, 'w')
 
         # merge all remaining files into it.
         while True:
