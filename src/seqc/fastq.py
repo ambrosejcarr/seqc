@@ -285,7 +285,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
             data = (i, tuple(islice(ffastq, n * 4)), tuple(islice(rfastq, n * 4)))
 
             # check that files aren't exhausted
-            if not any(d for d in data):
+            if not any(d for d in data[1:]):  # don't check the index
                 continue  # move to next file
 
             # put chunk on the queue
