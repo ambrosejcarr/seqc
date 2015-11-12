@@ -328,6 +328,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 try:
                     os.kill(read_pid, 0)  # does nothing if thread is alive
                     sleep(1)
+                    continue
                 except ProcessLookupError:  # process is dead.
                     break
 
