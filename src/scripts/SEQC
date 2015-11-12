@@ -221,6 +221,7 @@ def set_up(output_file, index, barcodes):
 
 def htqc(output_dir, forward, reverse, r, t):
     seqc.log.info('getting QC')
+
     call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
     call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
     call(["ht-stat-draw.pl", "--dir", output_dir])
