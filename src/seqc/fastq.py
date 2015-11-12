@@ -369,6 +369,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 seqc.log.info('Grabbed output object, copying!')
                 shutil.copyfileobj(open(next_file, 'rb'), seed)
                 seqc.log.info('Finished copying object.')
+                os.remove(next_file)
             except Empty:
                 if any_alive(process_pids):
                     sleep(1)
