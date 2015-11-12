@@ -3,8 +3,10 @@ __author__ = 'Ambrose J. Carr'
 import gzip
 import bz2
 import numpy as np
-from threading import Thread
-from queue import Queue, Empty, Full
+# from threading import Thread
+# from queue import Queue, Empty, Full
+from multiprocessing import Process, Queue
+from queue import Empty, Full
 from time import sleep, time
 import shutil
 import re
@@ -262,7 +264,7 @@ def auto_detect_processor(experiment_name):
 
 def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
 
-    def read(forward_:list, reverse_:list, in_queue):
+    def read(forward_: list, reverse_: list, in_queue):
         """
         read chunks from fastq files and place them on the processing queue.
         It seems this should take < 1s per 1M read chunk
@@ -322,7 +324,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 index, (forward_, reverse_) = in_queue.get_nowait()
                 seqc.log.info('%d Processing.' % index)
             except Empty:
-                if not read_thread.is_alive():
+                if not read_proc.is_alive():
                     break
                 else:
                     sleep(1)
@@ -356,31 +358,31 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
             cb = pickle.load(fcb)
 
     # set the number of processing threads
-    proc_t = max(n_threads - 3, 1)
+    n_proc = max(n_threads - 2, 1)
 
     # read the files
-    paired_records = Queue(maxsize=proc_t)  # don't need more waiting items than threads
-    read_thread = Thread(target=read, args=([forward, reverse, paired_records]))
-    read_thread.start()
+    paired_records = Queue(maxsize=n_proc)  # don't need more waiting items than threads
+    read_proc = Process(target=read, args=([forward, reverse, paired_records]))
+    read_proc.start()
 
     # process the data
     output_filenames = Queue()
     # max --> make sure at least one thread starts
-    process_threads = [Thread(target=process, args=([paired_records, output_filenames]))
-                       for _ in range(max(n_threads - 3, 1))]
-    assert(len(process_threads) > 0)
-    for t in process_threads:
-        t.start()
+    processors = [Process(target=process, args=([paired_records, output_filenames]))
+                  for _ in range(n_proc)]
+    assert(len(processors) > 0)
+    for p in processors:
+        p.start()
 
     # write the results
     # merge_thread = Thread(target=merge, args=[output_filenames])
     # merge_thread.start()
 
     # wait for each process to finish
-    read_thread.join()
+    read_proc.join()
     print('reading done: %f' % time())
-    for t in process_threads:
-        t.join()
+    for p in processors:
+        p.join()
     print('processing done: %f' % time())
     # merge_thread.join()
     # print('writing done: %f' % time())
@@ -388,123 +390,123 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
     return '%s/merged_temp.fastq' % temp_dir
 
 
-def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
-    """multi-threaded merge of forward and reverse records into a single alignable file"""
-
-    seqc.log.setup_logger()
-
-    def read(forward_, reverse_, in_queue):
-        """queue 5M reads chunks of fastq for processing"""
-        i = 0  # keep track of the number of objects placed on the queue
-        for forward_file, reverse_file in zip(forward_, reverse_):
-            if not isinstance(forward_file, io.TextIOBase):
-                forward_file = open_file(forward_file)
-            if not isinstance(reverse_file, io.TextIOBase):
-                reverse_file = open_file(reverse_file)
-
-            paired = group_paired(forward_file, reverse_file, int(1e6))
-            while True:  # loop over all input
-                try:
-                    seqc.log.info('Starting to read %s' % str(i))
-                    data = next(paired)
-                except StopIteration:
-                    break
-                while True:
-                    try:
-                        in_queue.put((i, data))
-                        seqc.log.info('Added to process queue %s.' % str(i))
-                        i += 1
-                        break
-                    except Full:
-                        sleep(1)
-                        continue
-
-    def process(in_queue, out_queue):
-        """
-        Process a fastq chunk, write the result to file, put filename on merge queue.
-        """
-        while True:
-            try:
-                # forward_data, reverse_data = in_queue.get_nowait()
-                index, data = in_queue.get_nowait()
-                seqc.log.info('Retrieved %d from process queue.' % index)
-            except Empty:
-                if not read_thread.is_alive():
-                    break
-                else:
-                    sleep(1)  # put on the brakes a bit
-                    continue
-
-            # Process all the reads
-            seqc.log.info('Begun processing %d' % index)
-            merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
-            with open(merged_filename, 'w') as fout:
-                for f, r in data:
-                    fout.write(process_record(f, r, tbp, cb))
-            seqc.log.info('Finished processing %d' % index)
-
-            # Put the filename on the merge queue
-            while True:
-                try:
-                    out_queue.put(merged_filename)
-                    seqc.log.info('Put %d on output queue' % index)
-                    break
-                except Full:
-                    sleep(1)
-                    continue
-
-    def merge(in_queue):
-        """merge all the fastq files together"""
-
-        # set a destination file to write everythign into
-        seed = open('%s/merged_temp.fastq' % temp_dir, 'wb')
-
-        # merge all remaining files into it.
-        while True:
-            try:
-                next_file = in_queue.get_nowait()
-                seqc.log.info('Grabbed output object, copying!')
-                shutil.copyfileobj(open(next_file, 'rb'), seed)
-                seqc.log.info('Finished copying object.')
-            except Empty:
-                if not any(t.is_alive() for t in process_threads):
-                    break
-                else:
-                    sleep(0.5)
-                    continue
-
-        seed.close()
-
-    tbp = ThreeBit.default_processors(exp_type)
-    if not isinstance(cb, CellBarcodes):
-        with open(cb, 'rb') as f:
-            cb = pickle.load(f)
-
-    # read the files
-    paired_records = Queue()
-    read_thread = Thread(target=read, args=([forward, reverse, paired_records]))
-    read_thread.start()
-
-    # process the data
-    output_filenames = Queue()
-    # max --> make sure at least one thread starts
-    process_threads = [Thread(target=process, args=([paired_records, output_filenames]))
-                       for _ in range(max(n_threads - 3, 1))]
-    assert(len(process_threads) > 0)
-    for t in process_threads:
-        t.start()
-
-    # write the results
-    merge_thread = Thread(target=merge, args=[output_filenames])
-    merge_thread.start()
-
-    # wait for each process to finish
-    read_thread.join()
-    print('reading done: %f' % time())
-    for t in process_threads:
-        t.join()
-    print('processing done: %f' % time())
-    merge_thread.join()
-    print('writing done: %f' % time())
-
-    return '%s/merged_temp.fastq' % temp_dir
+# def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
+#     """multi-threaded merge of forward and reverse records into a single alignable file"""
+#
+#     seqc.log.setup_logger()
+#
+#     def read(forward_, reverse_, in_queue):
+#         """queue 5M reads chunks of fastq for processing"""
+#         i = 0  # keep track of the number of objects placed on the queue
+#         for forward_file, reverse_file in zip(forward_, reverse_):
+#             if not isinstance(forward_file, io.TextIOBase):
+#                 forward_file = open_file(forward_file)
+#             if not isinstance(reverse_file, io.TextIOBase):
+#                 reverse_file = open_file(reverse_file)
+#
+#             paired = group_paired(forward_file, reverse_file, int(1e6))
+#             while True:  # loop over all input
+#                 try:
+#                     seqc.log.info('Starting to read %s' % str(i))
+#                     data = next(paired)
+#                 except StopIteration:
+#                     break
+#                 while True:
+#                     try:
+#                         in_queue.put((i, data))
+#                         seqc.log.info('Added to process queue %s.' % str(i))
+#                         i += 1
+#                         break
+#                     except Full:
+#                         sleep(1)
+#                         continue
+#
+#     def process(in_queue, out_queue):
+#         """
+#         Process a fastq chunk, write the result to file, put filename on merge queue.
+#         """
+#         while True:
+#             try:
+#                 # forward_data, reverse_data = in_queue.get_nowait()
+#                 index, data = in_queue.get_nowait()
+#                 seqc.log.info('Retrieved %d from process queue.' % index)
+#             except Empty:
+#                 if not read_thread.is_alive():
+#                     break
+#                 else:
+#                     sleep(1)  # put on the brakes a bit
+#                     continue
+#
+#             # Process all the reads
+#             seqc.log.info('Begun processing %d' % index)
+#             merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
+#             with open(merged_filename, 'w') as fout:
+#                 for f, r in data:
+#                     fout.write(process_record(f, r, tbp, cb))
+#             seqc.log.info('Finished processing %d' % index)
+#
+#             # Put the filename on the merge queue
+#             while True:
+#                 try:
+#                     out_queue.put(merged_filename)
+#                     seqc.log.info('Put %d on output queue' % index)
+#                     break
+#                 except Full:
+#                     sleep(1)
+#                     continue
+#
+#     def merge(in_queue):
+#         """merge all the fastq files together"""
+#
+#         # set a destination file to write everythign into
+#         seed = open('%s/merged_temp.fastq' % temp_dir, 'wb')
+#
+#         # merge all remaining files into it.
+#         while True:
+#             try:
+#                 next_file = in_queue.get_nowait()
+#                 seqc.log.info('Grabbed output object, copying!')
+#                 shutil.copyfileobj(open(next_file, 'rb'), seed)
+#                 seqc.log.info('Finished copying object.')
+#             except Empty:
+#                 if not any(t.is_alive() for t in process_threads):
+#                     break
+#                 else:
+#                     sleep(0.5)
+#                     continue
+#
+#         seed.close()
+#
+#     tbp = ThreeBit.default_processors(exp_type)
+#     if not isinstance(cb, CellBarcodes):
+#         with open(cb, 'rb') as f:
+#             cb = pickle.load(f)
+#
+#     # read the files
+#     paired_records = Queue()
+#     read_thread = Thread(target=read, args=([forward, reverse, paired_records]))
+#     read_thread.start()
+#
+#     # process the data
+#     output_filenames = Queue()
+#     # max --> make sure at least one thread starts
+#     process_threads = [Thread(target=process, args=([paired_records, output_filenames]))
+#                        for _ in range(max(n_threads - 3, 1))]
+#     assert(len(process_threads) > 0)
+#     for t in process_threads:
+#         t.start()
+#
+#     # write the results
+#     merge_thread = Thread(target=merge, args=[output_filenames])
+#     merge_thread.start()
+#
+#     # wait for each process to finish
+#     read_thread.join()
+#     print('reading done: %f' % time())
+#     for t in process_threads:
+#         t.join()
+#     print('processing done: %f' % time())
+#     merge_thread.join()
+#     print('writing done: %f' % time())
+#
+#     return '%s/merged_temp.fastq' % temp_dir
