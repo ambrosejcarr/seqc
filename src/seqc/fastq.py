@@ -10,6 +10,7 @@ import shutil
 import re
 from seqc.three_bit import ThreeBit
 from seqc.barcodes import CellBarcodes
+import seqc.log
 import io
 import pickle
 
@@ -261,6 +262,8 @@ def auto_detect_processor(experiment_name):
 def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
     """multi-threaded merge of forward and reverse records into a single alignable file"""
 
+    seqc.log.setup_logger()
+
     def read(forward_, reverse_, in_queue):
         """queue 5M reads chunks of fastq for processing"""
         i = 0  # keep track of the number of objects placed on the queue
@@ -270,7 +273,7 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
             if not isinstance(reverse_file, io.TextIOBase):
                 reverse_file = open_file(reverse_file)
 
-            paired = group_paired(forward_file, reverse_file, int(5e6))
+            paired = group_paired(forward_file, reverse_file, int(1e6))
             while True:  # loop over all input
                 try:
                     data = next(paired)
@@ -279,10 +282,11 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
                 while True:
                     try:
                         in_queue.put((i, data))
+                        seqc.log.info('Added to process queue %s.' % str(i))
                         i += 1
                         break
                     except Full:
-                        sleep(0.1)
+                        sleep(1)
                         continue
 
     def process(in_queue, out_queue):
@@ -293,26 +297,30 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
             try:
                 # forward_data, reverse_data = in_queue.get_nowait()
                 index, data = in_queue.get_nowait()
+                seqc.log.info('Retrieved %d from process queue.' % index)
             except Empty:
                 if not read_thread.is_alive():
                     break
                 else:
-                    sleep(0.1)  # put on the brakes a bit
+                    sleep(1)  # put on the brakes a bit
                     continue
 
             # Process all the reads
+            seqc.log.info('Begun processing %d' % index)
             merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
             with open(merged_filename, 'w') as fout:
                 for f, r in data:
                     fout.write(process_record(f, r, tbp, cb))
+            seqc.log.info('Finished processing %d' % index)
 
             # Put the filename on the merge queue
             while True:
                 try:
                     out_queue.put(merged_filename)
+                    seqc.log.info('Put %d on output queue' % index)
                     break
                 except Full:
-                    sleep(0.1)
+                    sleep(1)
                     continue
 
     def merge(in_queue):
@@ -325,7 +333,9 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
         while True:
             try:
                 next_file = in_queue.get_nowait()
+                seqc.log.info('Grabbed output object, copying!')
                 shutil.copyfileobj(open(next_file, 'rb'), seed)
+                seqc.log.info('Finished copying object.')
             except Empty:
                 if not any(t.is_alive() for t in process_threads):
                     break
