@@ -348,9 +348,36 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 except Full:
                     sleep(1)
 
+    def any_alive(process_pids):
+        for p in process_pids:
+            try:
+                os.kill(p, 0)
+                return True  # at least one process alive; return True
+            except ProcessLookupError:
+                pass
+        # no process was alive; return False
+        return False
+
     def merge(out_queue):
-        """merge all fileobjects"""
-        pass
+        # set a destination file to write everythign into
+        seed = open('%s/merged_temp.fastq' % temp_dir, 'wb')
+
+        # merge all remaining files into it.
+        while True:
+            try:
+                next_file = out_queue.get_nowait()
+                seqc.log.info('Grabbed output object, copying!')
+                shutil.copyfileobj(open(next_file, 'rb'), seed)
+                seqc.log.info('Finished copying object.')
+            except Empty:
+                if any_alive(process_pids):
+                    sleep(1)
+                    continue
+                else:
+                    break
+
+        seed.close()
+
 
     seqc.log.setup_logger()
 
@@ -377,18 +404,17 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
     for p in processors:
         p.start()
 
+    process_pids = [p.pid for p in processors]
+
     # write the results
-    # merge_thread = Thread(target=merge, args=[output_filenames])
-    # merge_thread.start()
+    merge_process = Process(target=merge, args=[output_filenames])
+    merge_process.start()
 
     # wait for each process to finish
     read_proc.join()
-    print('reading done: %f' % time())
     for p in processors:
         p.join()
-    print('processing done: %f' % time())
-    # merge_thread.join()
-    # print('writing done: %f' % time())
+    merge_process.join()
 
     return '%s/merged_temp.fastq' % temp_dir
 
