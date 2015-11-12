@@ -8,6 +8,7 @@ from queue import Queue, Empty, Full
 from time import sleep, time
 import shutil
 import re
+from itertools import islice
 from seqc.three_bit import ThreeBit
 from seqc.barcodes import CellBarcodes
 import seqc.log
@@ -257,6 +258,136 @@ def auto_detect_processor(experiment_name):
     raise NameError('pre-processor could not be auto-detected from experiment name, '
                     'please pass the pre-processor name using [-p, --processor]. '
                     'available processors can be found in seqdb.fastq.py')
+
+
+def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
+
+    def read(forward_, reverse_, in_queue):
+        """
+        read chunks from fastq files and place them on the processing queue.
+        It seems this should take < 1s per 1M read chunk
+        """
+
+        # set the number of reads in each chunk
+        n = int(1e6)
+        i = 0  # index for chunks
+        # iterate over all input files
+        for ffastq, rfastq in zip(forward_, reverse_):
+
+            # open forward and reverse files for this iteration
+            if not isinstance(ffastq, io.TextIOBase):
+                ffastq = open_file(ffastq)
+            if not isinstance(rfastq, io.TextIOBase):
+                rfastq = open_file(rfastq)
+
+            # get slices of reads and put them on the consume queue
+            seqc.log.info('%d Reading.' % i)
+            data = (i, tuple(islice(ffastq, n * 4)), tuple(islice(rfastq, n * 4)))
+
+            # check that files aren't exhausted
+            if not any(d for d in data):
+                continue  # move to next file
+
+            # put chunk on the queue
+            while True:
+                try:
+                    in_queue.put(data)
+                    seqc.log.info('%d Read. Putting on process Queue.' % i)
+                    i += 1
+                    break
+                except Full:
+                    sleep(1)
+
+            # close fids
+            ffastq.close()
+            rfastq.close()
+
+    def process(in_queue, out_queue):
+
+        # method to group chunks into records
+        def grouped_records(f_, r_):
+            # note that this assert will exhaust iterators. pass ITERABLES not ITERATORS
+            assert len(f_) == len(r_)
+            fit, rit = iter(f_), iter(r_)
+            while True:
+                frecord, rrecord = tuple(islice(fit, 4)), tuple(islice(rit, 4))
+                if not frecord:
+                    return
+                yield frecord, rrecord
+
+        # get a chunk from queue until all chunks are processed
+        while True:
+            try:
+                index, forward_, reverse_ = in_queue.get_nowait()
+                seqc.log.info('%d Processing.' % index)
+            except Empty:
+                if not read_thread.is_alive():
+                    break
+                else:
+                    sleep(1)
+                    continue
+
+            # process records
+            merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
+            with open(merged_filename, 'w') as fout:
+                for f, r in grouped_records(forward_, reverse_):
+                    fout.write(process_record(f, r, tbp, cb))
+            fout.close()
+
+            # put filename out the output queue
+            while True:
+                try:
+                    out_queue.put_nowait(merged_filename)
+                    seqc.log.info('%d Processed. Placed on output queue.' % index)
+                    break
+                except Full:
+                    sleep(1)
+
+    def merge(in_queue):
+        """merge all fileobjects"""
+        pass
+
+    tbp = ThreeBit.default_processors(exp_type)
+    if not isinstance(cb, CellBarcodes):
+        with open(cb, 'rb') as fcb:
+            cb = pickle.load(fcb)
+
+    # set the number of processing threads
+    proc_t = max(n_threads - 3, 1)
+
+    # read the files
+    paired_records = Queue(maxsize=proc_t)  # don't need more waiting items than threads
+    read_thread = Thread(target=read, args=([forward, reverse, paired_records]))
+    read_thread.start()
+
+    # process the data
+    output_filenames = Queue()
+    # max --> make sure at least one thread starts
+    process_threads = [Thread(target=process, args=([paired_records, output_filenames]))
+                       for _ in range(max(n_threads - 3, 1))]
+    assert(len(process_threads) > 0)
+    for t in process_threads:
+        t.start()
+
+    # write the results
+    # merge_thread = Thread(target=merge, args=[output_filenames])
+    # merge_thread.start()
+
+    # wait for each process to finish
+    read_thread.join()
+    print('reading done: %f' % time())
+    for t in process_threads:
+        t.join()
+    print('processing done: %f' % time())
+    # merge_thread.join()
+    # print('writing done: %f' % time())
+
+    return '%s/merged_temp.fastq' % temp_dir
+
+
+
+
+
 
 
 def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
