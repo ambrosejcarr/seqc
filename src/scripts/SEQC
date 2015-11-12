@@ -9,6 +9,7 @@ import seqc
 from copy import copy
 import sys
 import json
+from subprocess import call
 
 
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
@@ -218,6 +219,13 @@ def set_up(output_file, index, barcodes):
 
     return temp_dir, gtf, cb, index
 
+def htqc(output_dir, forward, reverse, r, t):
+    seqc.log.info('getting QC')
+    call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
+    call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
+    call(["ht-stat-draw.pl", "--dir", output_dir])
+    os.remove(output_dir + "sample_1.fastq.gz")
+    os.remove(output_dir + "sample_2.fastq.gz")
 
 def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_threads):
     if (forward or reverse) and not (samfile or merged_fastq):
@@ -342,6 +350,8 @@ def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name
 
     temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
+    htqc(temp_dir, forward, reverse, 1000, 1)
+
     # removed output_file argument due to dust filtering
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb, n_threads)
@@ -366,6 +376,8 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
              n_threads, frag_len, star_args, barcodes, **kwargs):
 
     temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
+
+    htqc(temp_dir, forward, reverse, 1000, 1)
 
     # removed output_file argument due to dust filtering
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
