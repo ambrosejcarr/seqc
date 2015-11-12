@@ -262,7 +262,7 @@ def auto_detect_processor(experiment_name):
 
 def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
 
-    def read(forward_, reverse_, in_queue):
+    def read(forward_:list, reverse_:list, in_queue):
         """
         read chunks from fastq files and place them on the processing queue.
         It seems this should take < 1s per 1M read chunk
@@ -292,7 +292,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 # put chunk on the queue
                 while True:
                     try:
-                        in_queue.put((i, data))
+                        in_queue.put_nowait((i, data))
                         seqc.log.info('%d Read. Putting on process Queue.' % i)
                         i += 1
                         break
