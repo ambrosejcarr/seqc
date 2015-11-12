@@ -219,12 +219,13 @@ def set_up(output_file, index, barcodes):
     return temp_dir, gtf, cb, index
 
 
-def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
+def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_threads):
     if (forward or reverse) and not (samfile or merged_fastq):
 
         # pre-process reads
         seqc.log.info('Merging fastq files.')
-        merged_fastq = seqc.fastq.merge_fastq(forward, reverse, processor, temp_dir, cb)
+        merged_fastq = seqc.fastq.merge_fastq(forward, reverse, processor, temp_dir, cb,
+                                              n_threads)
 
     return merged_fastq
 
@@ -343,9 +344,10 @@ def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name
 
     # removed output_file argument due to dust filtering
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
-                         temp_dir, cb)
+                         temp_dir, cb, n_threads)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
+    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
+                    output_file)
 
     arr = process_samfile(samfile, gtf, frag_len)
 
@@ -367,9 +369,10 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
 
     # removed output_file argument due to dust filtering
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
-                         temp_dir, cb)
+                         temp_dir, cb, n_threads)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file)
+    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
+                    output_file)
 
     arr = process_samfile(samfile, gtf, frag_len)
 
