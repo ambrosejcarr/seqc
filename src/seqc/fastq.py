@@ -9,6 +9,7 @@ from multiprocessing import Process, Queue
 from queue import Empty, Full
 from time import sleep, time
 import shutil
+import os
 import re
 from itertools import islice
 from seqc.three_bit import ThreeBit
@@ -324,11 +325,11 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 index, (forward_, reverse_) = in_queue.get_nowait()
                 seqc.log.info('%d Processing.' % index)
             except Empty:
-                if not read_proc.is_alive():
-                    break
-                else:
+                try:
+                    os.kill(read_pid, 0)  # does nothing if thread is alive
                     sleep(1)
-                    continue
+                except ProcessLookupError:  # process is dead.
+                    break
 
             # process records
             merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
@@ -364,6 +365,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
     paired_records = Queue(maxsize=n_proc)  # don't need more waiting items than threads
     read_proc = Process(target=read, args=([forward, reverse, paired_records]))
     read_proc.start()
+    read_pid = read_proc.pid
 
     # process the data
     output_filenames = Queue()
