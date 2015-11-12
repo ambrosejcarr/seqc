@@ -45,8 +45,9 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
                                    ylabel=ylabel, title=title)
     return fig, ax
 
+
 def _plot_fraction_mitochondrial_rna(mt_counts, cell_counts, fig=None, ax=None,
-                                     molecules=False, reads=False)
+                                     molecules=False, reads=False):
     raise NotImplementedError
 
 
@@ -561,6 +562,7 @@ class Experiment:
         cmax = np.max(sx)
         ymax = np.max(scaled_residuals)
         plt.xlim((0, cmax))
+
         plt.ylim((0, ymax + min(1, ymax + 0.05)))
 
         # plot # 4: Fano Factors
@@ -588,6 +590,11 @@ class Experiment:
         plot.clean_figure(fig)
 
         return fig, dict(regression=ax1, residual=ax2, scaled_residual=ax3, fano=ax4)
+
+
+    def plot_coverage_vs_gc_content(self):
+        raise NotImplementedError
+        # TODO stopped here.
 
 
 class CompareExperiments:
