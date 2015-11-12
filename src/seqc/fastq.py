@@ -301,7 +301,7 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
                     continue
 
             # Process all the reads
-            merged_filename = '%s/temp_%d.fastq' % temp_dir
+            merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
             with open(merged_filename, 'w') as fout:
                 for f, r in data:
                     fout.write(process_record(f, r, tbp, cb))
