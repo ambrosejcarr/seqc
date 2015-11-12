@@ -281,22 +281,23 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 rfastq = open_file(rfastq)
 
             # get slices of reads and put them on the consume queue
-            seqc.log.info('%d Reading.' % i)
-            data = (i, tuple(islice(ffastq, n * 4)), tuple(islice(rfastq, n * 4)))
-
-            # check that files aren't exhausted
-            if not any(d for d in data[1:]):  # don't check the index
-                continue  # move to next file
-
-            # put chunk on the queue
             while True:
-                try:
-                    in_queue.put(data)
-                    seqc.log.info('%d Read. Putting on process Queue.' % i)
-                    i += 1
-                    break
-                except Full:
-                    sleep(1)
+                seqc.log.info('%d Reading.' % i)
+                data = (tuple(islice(ffastq, n * 4)), tuple(islice(rfastq, n * 4)))
+
+                # check that files aren't exhausted
+                if not any(d for d in data):  # don't check the index
+                    break  # these files are exhausted
+
+                # put chunk on the queue
+                while True:
+                    try:
+                        in_queue.put(i, data)
+                        seqc.log.info('%d Read. Putting on process Queue.' % i)
+                        i += 1
+                        break
+                    except Full:
+                        sleep(1)
 
             # close fids
             ffastq.close()
@@ -318,7 +319,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
         # get a chunk from queue until all chunks are processed
         while True:
             try:
-                index, forward_, reverse_ = in_queue.get_nowait()
+                index, (forward_, reverse_) = in_queue.get_nowait()
                 seqc.log.info('%d Processing.' % index)
             except Empty:
                 if not read_thread.is_alive():
