@@ -9,6 +9,7 @@ from seqc.three_bit import ThreeBit
 from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
 from collections import deque, defaultdict
 from seqc import h5
+import seqc.analyze
 from scipy.sparse import coo_matrix
 import tables as tb
 import pandas as pd
@@ -1151,7 +1152,7 @@ class ReadArray:
 
         # return a sparse array
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
-        return coo, unq_row, unq_col
+        return seqc.analyze.SparseCounts(coo, unq_row, unq_col)
 
     def summarize(self, alignment_metadata=None, save_plots=False):
         """return descriptive statistics for this dataset
@@ -1197,7 +1198,6 @@ class ReadArray:
 
         # get record filter percentages
         metadata = {}
-
 
 
 def outer_join(left, right):
