@@ -276,6 +276,7 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
             paired = group_paired(forward_file, reverse_file, int(1e6))
             while True:  # loop over all input
                 try:
+                    seqc.log.info('Starting to read %s' % str(i))
                     data = next(paired)
                 except StopIteration:
                     break
@@ -351,7 +352,7 @@ def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n
             cb = pickle.load(f)
 
     # read the files
-    paired_records = Queue(maxsize=30)
+    paired_records = Queue()
     read_thread = Thread(target=read, args=([forward, reverse, paired_records]))
     read_thread.start()
 
