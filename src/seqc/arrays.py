@@ -1040,7 +1040,40 @@ class ReadArray:
         """plot filter correlations"""
         raise NotImplementedError
 
-    def summarize(self, alignment_metadata=None, save_plots=False):
+    def plot_forward_quality_dist(self):
+        data = self.data['fwd_quality']
+        f, ax = seqc.plot.histogram(
+            data, bins=40, fig=None, ax=None, xlabel='Quality', ylabel='Number of Reads',
+            title='Forward Read Quality')
+        return f, ax
+
+    def plot_reverse_quality_dist(self):
+        data = self.data['rev_quality']
+        f, ax = seqc.plot.histogram(
+            data, bins=40, fig=None, ax=None, xlabel='Quality', ylabel='Number of Reads',
+            title='Reverse Read Quality')
+        return f, ax
+
+    def plot_number_aligned_features(self):
+        """excludes single alignments"""
+        data = np.array([len(f) for f in self.features])
+        non_unique = data[data > 1]  # exclude unique alignments
+        n_unique = non_unique.shape[0] / data.shape[0] * 100
+        f, ax = seqc.plot.histogram(
+            data, bins=40, fig=None, ax=None, xlabel='Quality', ylabel='Number of Reads',
+            title='Reverse Read Quality')
+        ax.text(0.9, 0.9, '%d Unique' % int(n_unique), horizontalalignment='right',
+                verticalalignment='center', transform=ax.transAxes)
+        return f, ax
+
+    def plot_alignment_score(self):
+        data = self.data['alignment_score']
+        f, ax = seqc.plot.histogram(
+            data, bins=40, fig=None, ax=None, xlabel='Quality', ylabel='Number of Reads',
+            title='Reverse Read Quality')
+        return f, ax
+
+    def summarize(self, gtf, alignment_metadata=None, save_plots=False):
         """return descriptive statistics for this dataset
 
         Note that this function can take a very long time to run, particularly if
@@ -1081,12 +1114,27 @@ class ReadArray:
         dictionary of summary statistics. If save_plots is not False, writes the result
           to save_plots/summary.json
         """
+        # get some ids from the gtf file
+        reader = seqc.gtf.Reader(gtf)
+        phix_id = reader.get_phix_id()
+        mt_ids = reader.get_mitochondrial_ids()
 
         tx_aligned = sum(1 for _ in self.features if _) / self.data.shape[0]
+        phix_aligned = sum(1 for f in self.features if phix_id in f) / self.data.shape[0]
+        mt_aligned = sum(1 for features in self.features if
+                         any(f in mt_ids for f in features)) / self.data.shape[0]
+        is_cell = np.sum(self.data['valid_cell'])
+
+        # get number contributing to all filters
 
 
-        # get record filter percentages
-        metadata = self
+        # get error number todo | need to wait for Rami's error correction
+        # is_error = np.sum(self.data['is_error']) / self.data.shape[0]
+
+
+
+
+
 
 
 def outer_join(left, right):

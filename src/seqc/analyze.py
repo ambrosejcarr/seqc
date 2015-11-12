@@ -45,6 +45,10 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
                                    ylabel=ylabel, title=title)
     return fig, ax
 
+def _plot_fraction_mitochondrial_rna(mt_counts, cell_counts, fig=None, ax=None,
+                                     molecules=False, reads=False)
+    raise NotImplementedError
+
 
 class SparseCounts:
     """

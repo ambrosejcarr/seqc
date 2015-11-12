@@ -69,4 +69,12 @@ class Reader:
         for record in self:
             if record.seqname is 'NC_001422.1':
                 if record.feature == 'transcript':
-                    return record.attribute['scseq_id'].strip('SC')
+                    return int(record.attribute['scseq_id'].strip('SC'))
+
+    def get_mitochondrial_ids(self):
+        mt_ids = set()
+        for record in self:
+            if record.feature == 'transcript':
+                if record.attribute['transcript_id'].startswith('MT-'):
+                    mt_ids.add(int(record.attribute['scseq_id'].strip('SC')))
+        return mt_ids
