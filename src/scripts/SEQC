@@ -293,9 +293,9 @@ def resolve_alignments(index, arr, n, output_file):
 def save_counts_matrices(output_file, arr, n):
 
     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-    mols, mrow, mcol = arr.unique_features_to_sparse_counts(
+    mols, mrow, mcol = arr.to_sparse_counts(
         collapse_molecules=True, n_poly_t_required=n)
-    reads, rrow, rcol = arr.unique_features_to_sparse_counts(
+    reads, rrow, rcol = arr.to_sparse_counts(
         collapse_molecules=False, n_poly_t_required=n)
     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
