@@ -292,7 +292,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 # put chunk on the queue
                 while True:
                     try:
-                        in_queue.put(i, data)
+                        in_queue.put((i, data))
                         seqc.log.info('%d Read. Putting on process Queue.' % i)
                         i += 1
                         break
@@ -344,7 +344,7 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
                 except Full:
                     sleep(1)
 
-    def merge(in_queue):
+    def merge(out_queue):
         """merge all fileobjects"""
         pass
 
