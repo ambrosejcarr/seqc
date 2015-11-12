@@ -347,6 +347,8 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
         """merge all fileobjects"""
         pass
 
+    seqc.log.setup_logger()
+
     tbp = ThreeBit.default_processors(exp_type)
     if not isinstance(cb, CellBarcodes):
         with open(cb, 'rb') as fcb:
@@ -383,11 +385,6 @@ def merge_fastq_slice(forward: list, reverse: list, exp_type, temp_dir, cb, n_th
     # print('writing done: %f' % time())
 
     return '%s/merged_temp.fastq' % temp_dir
-
-
-
-
-
 
 
 def merge_fastq_threaded(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
