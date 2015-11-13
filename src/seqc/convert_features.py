@@ -201,19 +201,21 @@ class ConvertFeatureCoordinates:
         """
         translate a strand, chromosome, and position into all associated SCIDs, which
         correspond to groups of overlapping transcripts.
+
+        If no feature, returns None to reduce memory footprint.
         """
         rounded_position = position // 100 * 100
         try:
             potential_ids = self._table[(strand, chromosome, rounded_position)]
         except KeyError:
-            return 0  # todo change to return None to sparsify JaggedArrays
+            return []
 
         # purge end cases
         for scid in potential_ids:
             if any(s < position < e for (s, e) in self._positions[scid]):
-                return scid  # todo write test to ensure there is never more than one feat
+                return [scid]  # todo write test to ensure there is never more than one feat
             else:
-                return 0  # todo change to return None to sparsify JaggedArrays
+                return []
 
     def add_mtDNA(self, gtf):
         """
