@@ -1364,11 +1364,11 @@ class UniqueReadArray:
         return '<UniqueReadArray object with %d items>' % len(self)
 
     def __len__(self):
-        return self._data.shape[0]
+        return self._data.shape
 
     @property
     def shape(self):
-        return tuple(len(self))
+        return len(self)
 
     @property
     def data(self):
