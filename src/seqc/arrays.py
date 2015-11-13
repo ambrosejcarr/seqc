@@ -36,6 +36,10 @@ class JaggedArray:
         self._index = index
 
     @property
+    def shape(self):
+        return tuple(len(self))
+
+    @property
     def data(self):
         return self._data
 
@@ -409,6 +413,10 @@ class ReadArray:
 
     def __repr__(self):
         return '<ReadArray object with %d items>' % len(self)
+
+    @property
+    def shape(self):
+        return tuple(len(self))
 
     @property
     def data(self):
