@@ -1389,6 +1389,39 @@ class UniqueReadArray:
         """
         return ra.to_unique(n_poly_t_required)
 
+    def save_h5(self, archive_name):
+        """
+        efficiently save the UniqueReadArray to a compressed h5 archive; note that this
+        will overwrite an existing archive with the same name
+        """
+
+        def store_carray(h5f, array, where, name):
+            atom = tb.Atom.from_dtype(array.dtype)
+            store = h5f.createCArray(where, name, atom, array.shape)
+            store[:] = array
+
+        blosc5 = tb.Filters(complevel=5, complib='blosc')
+        f = tb.open_file(archive_name, mode='w', title='Data for seqc.ReadArray',
+                         filters=blosc5)
+
+        # store data
+        f.create_table(f.root, 'data', self.data)
+        store_carray(f, self.features, f.root, 'features')
+        store_carray(f, self.positions, f.root, 'positions')
+
+        f.close()
+
+    @classmethod
+    def from_h5(cls, archive_name):
+        f = tb.open_file(archive_name, mode='r')
+
+        data = f.root.data.read()
+        features = f.root.features.read()
+        positions = f.root.positions.read()
+
+        f.close()
+
+        return cls(data, features, positions)
 
 def outer_join(left, right):
     """
