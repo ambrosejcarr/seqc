@@ -1328,7 +1328,7 @@ class TestSamToReadArray(unittest.TestCase):
         ra = arrays.ReadArray.from_h5(self.h5name)
         pr = cProfile.Profile()
         pr.enable()
-        ra.unique_features_to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
+        ra.to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
         pr.disable()
         p = Stats(pr)
         p.strip_dirs()

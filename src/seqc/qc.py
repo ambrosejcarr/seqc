@@ -610,37 +610,6 @@ def estimate_error_rate(cell_barcodes, cell_barcode_data):
     return err_rate
 
 
-# def list_errors(code, correct_barcodes):
-#     """
-#     For a given code and a list of correct barcodes - find the correct barcode
-#     that is closest to code and return the list of errors that turned it into
-#     code. An error is a six bit int representing a two chr string of type "AG","CT", etc.
-#     """
-#     # find the closest correct barcode
-#     min_dist = high_value
-#     donor = 0
-#     for cor_code in correct_barcodes:
-#         hamm_d = hamming_dist_bin(code, cor_code)
-#
-#         if hamm_d < min_dist:
-#             min_dist = hamm_d
-#             donor = cor_code
-#             if hamm_d == 1:
-#                 break
-#
-#     if donor == 0:
-#         print('Error: no donor code was found to be closest. code = ',
-#               three_bit.ThreeBit.bin2str(code))
-#     # return the actual error
-#     err_list = []
-#     while code > 0:
-#         if code & 0b111 != donor & 0b111:
-#             err_list.append(three_bit.ThreeBit.ints2int([code & 0b111, donor & 0b111]))
-#         code >>= 3
-#
-#     return err_list
-
-
 def correct_errors(data, cell_barcodes, donor_cutoff=1, p_val=0.1):
     """calculate and correct errors in barcode sets"""
 
