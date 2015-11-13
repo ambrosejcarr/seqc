@@ -1341,6 +1341,18 @@ class UniqueReadArray:
         self._features = features
         self._positions = positions
 
+        # holder for molecule counts
+        self._molecule_counts = None
+
+        # holder for read counts
+        self._read_counts = None
+
+        # hold inds for molecule sort. Guarantees correct read order.
+        self._sort_molecules = None
+
+        # hold inds for read sort. Does not guarantee correct molecule order
+        self._sort_reads = None
+
     def __getitem__(self, item):
         if isinstance(item, slice):  # return array slice
             return UniqueReadArray(
@@ -1373,6 +1385,98 @@ class UniqueReadArray:
     @property
     def nbytes(self):
         return self.data.nbytes
+
+    def _sort(self, molecules=True):
+        """
+        Lexicographical argsort of self.
+
+        args:
+        -----
+        molecules: if True, sorts on [cell, rmt, features]. In this case, stores both
+         self._sort_molecules and self._sort_reads because molecule sort is also a read
+         sort.
+
+        actions:
+        --------
+        store result of lexsort in either self._sort_reads (molecules=False) or
+         self._sort_reads and self._sort_molecules (molecules=True)
+        """
+        if molecules:
+            self._sort_reads = self.sort_molecules = np.lexsort((
+                self.data['rmt'], self.features, self.data['cell']))
+        else:
+            self._sort_reads = np.lexsort((self.data['rmt'], self.data['cell']))
+
+    def molecule_counts(self):
+
+        # don't reprocess
+        if self._molecule_counts:
+            return self._molecule_counts
+
+        # get sorted index
+        if not self._sort_molecules:
+            self._sort(molecules=True)
+
+        sort_ord = self._sort_molecules
+
+        # TODO refactor once I've determined that this is working.
+
+        # find boundaries between cell, rmt, and feature
+        all_diff = np.zeros(self.shape, dtype=np.bool)
+        all_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)  # diff cell
+        all_diff[1:] |= np.diff(self.data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
+        all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
+
+        # get key_index (into original ReadArray) and reads per molecule couns
+        i = np.where(all_diff > 0)
+        ra_molecule_idx = sort_ord[i]
+        rpm_count = np.diff(i)  # todo use this somehow
+
+        # to get reads per cell, I discard the notion of molecular correction by diffing
+        # on only cell and feature from the original sort
+        rpc_diff = np.zeros(self.shape, dtype=np.bool)
+        rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord])
+        rpc_diff[1:] |= np.diff(self.features[sort_ord])
+        cell_index = np.where(rpc_diff > 0)
+        ra_read_index = sort_ord[cell_index]
+        rpc_count = np.diff(cell_index)
+
+        # because reads per molecule gives me a list of all molecules, molecules per
+        # cell can be calculated by re-diffing on the reads per molecule without
+        # considering the rmt. This has the effect of counting unique RMTs per molecule
+        # and per cell.
+        mpc_diff = np.zeros(self.shape, dtype=np.bool)
+        mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx])
+        mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx])
+        i = np.where(mpc_diff > 0)
+        ra_cell_index = sort_ord[i]
+        mpc_count = np.diff(i)
+
+        def map_to_unique_index(vector):
+            """function to map a vector of gene or feature ids to an index"""
+            ids = np.unique(np.ravel(vector))
+            # key gives the new values you wish original ids to be mapped to.
+            key = np.arange(ids.shape[0])
+            index = np.digitize(vector.ravel(), ids, right=True)
+            return key[index].reshape(vector.shape), ids
+
+        # generate sparse matrices
+
+        # reads per cell
+        row, cells = map_to_unique_index(self.data['cell'][ra_read_index])
+        col, genes = map_to_unique_index(self.features[ra_read_index])
+        rpc = {
+            'data': coo_matrix((rpc_count, (row, col))),
+            'row_id': cells,
+            'col_id': genes}
+        row, cells = map_to_unique_index(self.data['cell'][ra_cell_index])
+        col, genes = map_to_unique_index(self.features[ra_cell_index])
+        mpc = {
+            'data': coo_matrix((mpc_count, (row, col))),
+            'row_id': cells,
+            'col_id': genes}
+
+        return rpc, mpc
 
     @staticmethod
     def from_read_array(ra, n_poly_t_required):
@@ -1422,6 +1526,7 @@ class UniqueReadArray:
         f.close()
 
         return cls(data, features, positions)
+
 
 def outer_join(left, right):
     """
