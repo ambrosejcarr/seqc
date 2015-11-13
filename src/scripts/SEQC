@@ -10,6 +10,7 @@ from copy import copy
 import sys
 import json
 from subprocess import call
+from multiprocessing import Process
 
 
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
@@ -221,11 +222,14 @@ def set_up(output_file, index, barcodes):
 
 def htqc(output_dir, forward, reverse, r, t):
     seqc.log.info('getting QC')
-    call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
-    call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
-    call(["ht-stat-draw.pl", "--dir", output_dir])
-    os.remove(output_dir + "sample_1.fastq.gz")
-    os.remove(output_dir + "sample_2.fastq.gz")
+    def run_htqc():
+        call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
+        call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
+        call(["ht-stat-draw.pl", "--dir", output_dir])
+        os.remove(output_dir + "sample_1.fastq.gz")
+        os.remove(output_dir + "sample_2.fastq.gz")
+    p = Process(target=run_htqc, args=(), daemon=True)
+    p.start()
 
 def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_threads):
     if (forward or reverse) and not (samfile or merged_fastq):
