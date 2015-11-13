@@ -175,6 +175,19 @@ class JaggedArray:
 
         return JaggedArray(data, index)
 
+    def has_feature(self):
+        """
+        return a boolean vector indicating whether each entry in index is associated
+        with a non-zero number of features
+        """
+        return self.index[:, 0] == self.index[:, 1]
+
+    def has_unique_feature(self):
+        """
+        return a boolean vector indicating whether each entry in index is assocaited
+        with a single, unique feature.
+        """
+        return self.index[:, 0] + 1 == self.index[:, 1]
 
     @staticmethod
     def size_to_dtype(n):
@@ -444,8 +457,8 @@ class ReadArray:
         positions = np.zeros(n_reads, dtype=np.uint32)
 
         # 2nd pass through the file: populate the arrays
-        current_index_position = 0
-        with open(samfile, 'r') as f:
+        idx = 0  # current index in jagged arrays
+        with open(samfile) as f:
             records = iter(f)
             _ = list(islice(records, header_size))  # get rid of header
             for i, s in enumerate(ma_sizes):
@@ -456,14 +469,18 @@ class ReadArray:
                 recd, feat, pos = cls._process_multialignment(
                     multi_alignment, feature_converter)
                 read_data[i] = recd
-                features[current_index_position:current_index_position + len(feat)] = feat
-                positions[current_index_position:current_index_position + len(pos)] = pos
-                index[i, :] = (current_index_position, current_index_position + s)
-                current_index_position += s
+                if feat:
+                    nfeatures = len(feat)
+                    features[idx:idx + nfeatures] = feat
+                    positions[idx:idx + nfeatures] = pos
+                    index[i, :] = (idx, idx + nfeatures)
+                    idx += nfeatures
+                else:
+                    index[i, :] = (idx, idx)
 
         # eliminate any extra size from the features & positions arrays
-        features = features[:current_index_position]
-        positions = positions[:current_index_position]
+        features = features[:idx]
+        positions = positions[:idx]
 
         jagged_features = JaggedArray(features, index)
         jagged_positions = JaggedArray(positions, index)
@@ -499,14 +516,17 @@ class ReadArray:
                 is_aligned = False
                 rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
                        fwd_quality, is_aligned, alignment_score)
-                features, positions = [0], [0]
+                features, positions = [], []
                 return rec, features, positions
-            else:
+            else:  # single alignment
                 pos = int(first[3])
                 strand = '-' if (flag & 16) else '+'
                 reference_name = first[2]
-                features = [feature_converter.translate(strand, reference_name, pos)]
-                positions = [pos]
+                features = feature_converter.translate(strand, reference_name, pos)
+                if features:
+                    positions = [pos]
+                else:
+                    positions = []
         else:
             features = []
             positions = []
@@ -516,24 +536,29 @@ class ReadArray:
                 flag = int(alignment[1])
                 strand = '-' if (flag & 16) else '+'
                 reference_name = alignment[2]
-                features.append(feature_converter.translate(strand, reference_name, pos))
-                positions.append(pos)
+                feature = feature_converter.translate(strand, reference_name, pos)
+                if feature:
+                    features += feature
+                    positions.append(pos)
 
-        delete = deque()
-        for i in range(len(features)):
-            if features[i] == 0:
-                delete.append(i)
-
-        features, positions = cls.multi_delete(delete, features, positions)
+        # delete = deque()
+        # for i in range(len(features)):
+        #     if features[i] == 0:
+        #         delete.append(i)
+        #
+        # features, positions = cls.multi_delete(delete, features, positions)
 
         is_aligned = True if features else False
 
-        if not features:
-            features, positions = [0], [0]
+        # if not features:
+        #     features, positions = [0], [0]
 
         rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
                fwd_quality, is_aligned, alignment_score)
 
+        # todo remove these checks
+        assert(isinstance(features, list))
+        assert(isinstance(positions, list))
         return rec, features, positions
 
     def stack(self, other):
@@ -830,6 +855,8 @@ class ReadArray:
         return lists
 
     def mask_failing_records(self, n_poly_t_required):
+
+    def mask_failing_records_vectorized(self, n_poly_t_required, require_support=True):
         """
         generates a boolean mask for any records lacking cell barcodes or rmts, records
         that are not aligned, or records missing poly_t sequences
@@ -843,16 +870,31 @@ class ReadArray:
         --------
         np.ndarray((n,) dtype=bool)  # n = len(self._data)
         """
-        vbool = ((self.data['cell'] != 0) &
+
+        index = np.arange(self.data.shape[0], dtype=np.uint32)
+
+        # can also test dragging the index along here if not, it can be eliminated
+        fbool = ((self.data['cell'] != 0) &
                  (self.data['rmt'] != 0) &
                  (self.data['n_poly_t'] >= n_poly_t_required) &
-                 (self.data['is_aligned'])
+                 (self.data['is_aligned']) &
+                 (self.features.has_feature())  # this is basically instant now
                  )
-        no_feature = np.array([0])
-        has_feature = np.array([False if np.array_equal(v, no_feature) else True for v in
-                                self._features], dtype=np.bool)
 
-        return vbool & has_feature
+        index = index[fbool]
+
+        # get the selection of reads that pass filters
+        subdata = self.data[index]
+        for_sorting = np.vstack([subdata['cell'], subdata['rmt'].astype(np.int64)]).T
+
+        # perform an indirect sort
+        ind = np.lexsort(for_sorting, order=['cell', 'rmt'])
+        subdata = subdata[np.concatenate(([True], np.all(subdata[ind[1:]] ==
+                                                         subdata[ind[:-1]], axis=1)))]
+
+        return subdata  # all records that pass filters
+
+
 
     def mask_low_support_molecules(self, required_support=2):
         """
@@ -864,6 +906,20 @@ class ReadArray:
         # simple way to track seems like a tuple of ints; can use defaultdict to build?
 
         # then, to build boolean mask, run through the list a second time
+
+        # since cell and rmt define a unique molecule, need a unique mapping
+        # can do that by either bitshifting or by multiplying. can do it arraywise for a
+        # fast result if the latter: cantor pairing: (a + b) * (a + b + 1) / 2 + a
+        # can do it on uniques to speed up more if mapping in a dict
+
+        # then, get bincounts and make a mask from the values that have bincount >= 1
+
+        # finally, mask the original array to return the result.
+
+        # np.in1d provides the ability to intersect the big column of merged values with
+        # the non-unique ones.
+
+        data = self.data[['cell', 'rmt']].copy()
 
         # get counts
         n = self.data.shape[0]
@@ -898,6 +954,8 @@ class ReadArray:
         # imask = 0
         # mask = np.ones(len(self.data), dtype=np.bool)
         # while ifail < len(failing):
+
+
         #     if imask == failing[ifail]:
         #         mask[imask] = 0
         #         ifail += 1
