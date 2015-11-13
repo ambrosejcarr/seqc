@@ -1435,8 +1435,8 @@ class UniqueReadArray:
         # to get reads per cell, I discard the notion of molecular correction by diffing
         # on only cell and feature from the original sort
         rpc_diff = np.zeros(len(self), dtype=np.bool)
-        rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord])
-        rpc_diff[1:] |= np.diff(self.features[sort_ord])
+        rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
+        rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
         cell_index = np.where(rpc_diff > 0)
         ra_read_index = sort_ord[cell_index]
         rpc_count = np.diff(cell_index)
@@ -1446,8 +1446,8 @@ class UniqueReadArray:
         # considering the rmt. This has the effect of counting unique RMTs per molecule
         # and per cell.
         mpc_diff = np.zeros(len(self), dtype=np.bool)
-        mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx])
-        mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx])
+        mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(bool)
+        mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(bool)
         i = np.where(mpc_diff > 0)
         ra_cell_index = sort_ord[i]
         mpc_count = np.diff(i)
