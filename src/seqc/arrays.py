@@ -1402,7 +1402,7 @@ class UniqueReadArray:
          self._sort_reads and self._sort_molecules (molecules=True)
         """
         if molecules:
-            self._sort_reads = self.sort_molecules = np.lexsort((
+            self._sort_reads = self._sort_molecules = np.lexsort((
                 self.data['rmt'], self.features, self.data['cell']))
         else:
             self._sort_reads = np.lexsort((self.data['rmt'], self.data['cell']))
