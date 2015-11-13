@@ -20,7 +20,8 @@ import os
 # register numpy integers as Integrals
 numbers.Integral.register(np.integer)
 
-
+# todo | change jagged array slicing to return another jagged array
+# todo | change from_iterable to be able to construct from a jagged array slice output
 # todo test if id() is faster than .tobytes()
 # todo | it would save more memory to skip "empty" features and give them equal indices
 # todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
@@ -203,9 +204,9 @@ class JaggedArray:
         --------
         np.array
         """
-        if not dtype:
+        if dtype is None:
             dtype = self.data.dtype
-        if not index:
+        if index is None:
             index = self.index[self.is_unique(), 0]
 
         return self._data[index].astype(dtype)
@@ -876,7 +877,8 @@ class ReadArray:
         return lists
 
     def to_unique(self, n_poly_t_required):
-        """Create a UniqueReadArray containing only unique reads from self"""
+        """Create a UniqueReadArray containing copying only unique reads from self"""
+
         fbool = ((self.data['cell'] != 0) &
                  (self.data['rmt'] != 0) &
                  (self.data['n_poly_t'] >= n_poly_t_required) &
@@ -891,8 +893,6 @@ class ReadArray:
         data['positions'] = positions
 
         return UniqueReadArray(data)
-
-
 
     def mask_failing_records(self, n_poly_t_required):
         """old version o mask failing records"""
