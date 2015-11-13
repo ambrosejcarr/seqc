@@ -1364,11 +1364,11 @@ class UniqueReadArray:
         return '<UniqueReadArray object with %d items>' % len(self)
 
     def __len__(self):
-        return self._data.shape
+        return np.ravel(self._data.shape[0])[0]
 
     @property
     def shape(self):
-        return len(self)
+        return self._data.shape
 
     @property
     def data(self):
@@ -1422,7 +1422,7 @@ class UniqueReadArray:
         # TODO refactor once I've determined that this is working.
 
         # find boundaries between cell, rmt, and feature
-        all_diff = np.zeros(self.shape, dtype=np.bool)
+        all_diff = np.zeros(len(self), dtype=np.bool)
         all_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)  # diff cell
         all_diff[1:] |= np.diff(self.data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
         all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
@@ -1434,7 +1434,7 @@ class UniqueReadArray:
 
         # to get reads per cell, I discard the notion of molecular correction by diffing
         # on only cell and feature from the original sort
-        rpc_diff = np.zeros(self.shape, dtype=np.bool)
+        rpc_diff = np.zeros(len(self), dtype=np.bool)
         rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord])
         rpc_diff[1:] |= np.diff(self.features[sort_ord])
         cell_index = np.where(rpc_diff > 0)
@@ -1445,7 +1445,7 @@ class UniqueReadArray:
         # cell can be calculated by re-diffing on the reads per molecule without
         # considering the rmt. This has the effect of counting unique RMTs per molecule
         # and per cell.
-        mpc_diff = np.zeros(self.shape, dtype=np.bool)
+        mpc_diff = np.zeros(len(self), dtype=np.bool)
         mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx])
         mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx])
         i = np.where(mpc_diff > 0)
@@ -1465,14 +1465,16 @@ class UniqueReadArray:
         # reads per cell
         row, cells = map_to_unique_index(self.data['cell'][ra_read_index])
         col, genes = map_to_unique_index(self.features[ra_read_index])
+        shape = (len(cells), len(genes))
         rpc = {
-            'data': coo_matrix((rpc_count, (row, col))),
+            'data': coo_matrix((rpc_count, (row, col)), shape=shape),
             'row_id': cells,
             'col_id': genes}
         row, cells = map_to_unique_index(self.data['cell'][ra_cell_index])
         col, genes = map_to_unique_index(self.features[ra_cell_index])
+        shape = (len(cells), len(genes))
         mpc = {
-            'data': coo_matrix((mpc_count, (row, col))),
+            'data': coo_matrix((mpc_count, (row, col)), shape=shape),
             'row_id': cells,
             'col_id': genes}
 
