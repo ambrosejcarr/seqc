@@ -895,29 +895,10 @@ class ReadArray:
         return subdata  # all records that pass filters
 
 
-
     def mask_low_support_molecules(self, required_support=2):
         """
         mask any molecule supported by fewer than <required_support> reads
         """
-
-        # goal: track whether a given index has > molecule associated with it
-        # need to track molecule counts; defined as a combination of cell & rmt.
-        # simple way to track seems like a tuple of ints; can use defaultdict to build?
-
-        # then, to build boolean mask, run through the list a second time
-
-        # since cell and rmt define a unique molecule, need a unique mapping
-        # can do that by either bitshifting or by multiplying. can do it arraywise for a
-        # fast result if the latter: cantor pairing: (a + b) * (a + b + 1) / 2 + a
-        # can do it on uniques to speed up more if mapping in a dict
-
-        # then, get bincounts and make a mask from the values that have bincount >= 1
-
-        # finally, mask the original array to return the result.
-
-        # np.in1d provides the ability to intersect the big column of merged values with
-        # the non-unique ones.
 
         data = self.data[['cell', 'rmt']].copy()
 
