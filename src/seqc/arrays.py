@@ -1060,6 +1060,8 @@ class ReadArray:
         features = JaggedArray(fdata, findex)
         positions = JaggedArray(pdata, pindex)
 
+        f.close()
+
         return cls(data, features, positions)
 
     def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
