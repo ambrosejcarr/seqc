@@ -185,7 +185,7 @@ class JaggedArray:
         return a boolean vector indicating whether each entry in index is associated
         with a non-zero number of features
         """
-        return self.index[:, 0] == self.index[:, 1]
+        return self.index[:, 0] != self.index[:, 1]
 
     def is_unique(self):
         """
@@ -194,14 +194,14 @@ class JaggedArray:
         """
         return self.index[:, 0] + 1 == self.index[:, 1]
 
-    def to_unique(self, index=None, dtype=None):
+    def to_unique(self, bool_index=None, dtype=None):
         """
         return unique array features as a new np.ndarray.
 
         args:
         -----
-        index: If None, self.is_unique() is called to generate this index, otherwise it
-         is assumed that this has been precalculated
+        bool_index: If None, self.is_unique() is called to generate this index, otherwise
+         it is assumed that this has been precalculated
         dtype: data type of new array. If None, uses the datatype of the old array.
 
         returns:
@@ -210,8 +210,11 @@ class JaggedArray:
         """
         if dtype is None:
             dtype = self.data.dtype
-        if index is None:
+
+        if bool_index is None:
             index = self.index[self.is_unique(), 0]
+        else:
+            index = self.index[bool_index, 0]
 
         return self._data[index].astype(dtype)
 
