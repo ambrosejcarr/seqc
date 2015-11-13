@@ -182,12 +182,33 @@ class JaggedArray:
         """
         return self.index[:, 0] == self.index[:, 1]
 
-    def has_unique_feature(self):
+    def is_unique(self):
         """
         return a boolean vector indicating whether each entry in index is assocaited
         with a single, unique feature.
         """
         return self.index[:, 0] + 1 == self.index[:, 1]
+
+    def to_unique(self, index=None, dtype=None):
+        """
+        return unique array features as a new np.ndarray.
+
+        args:
+        -----
+        index: If None, self.is_unique() is called to generate this index, otherwise it
+         is assumed that this has been precalculated
+        dtype: data type of new array. If None, uses the datatype of the old array.
+
+        returns:
+        --------
+        np.array
+        """
+        if not dtype:
+            dtype = self.data.dtype
+        if not index:
+            index = self.index[self.is_unique(), 0]
+
+        return self._data[index].astype(dtype)
 
     @staticmethod
     def size_to_dtype(n):
@@ -854,9 +875,40 @@ class ReadArray:
                 del l[i]
         return lists
 
-    def mask_failing_records(self, n_poly_t_required):
+    def to_unique(self, n_poly_t_required):
+        """Create a UniqueReadArray containing only unique reads from self"""
+        fbool = ((self.data['cell'] != 0) &
+                 (self.data['rmt'] != 0) &
+                 (self.data['n_poly_t'] >= n_poly_t_required) &
+                 (self.data['is_aligned']) &
+                 (self.features.is_unique()))
 
-    def mask_failing_records_vectorized(self, n_poly_t_required, require_support=True):
+        features = self.features.to_unique(fbool)
+        positions = self.positions.to_unique(fbool)
+
+        data = self._data[fbool]
+        data['features'] = features
+        data['positions'] = positions
+
+        return UniqueReadArray(data)
+
+
+
+    def mask_failing_records(self, n_poly_t_required):
+        """old version o mask failing records"""
+        vbool = ((self.data['cell'] != 0) &
+                 (self.data['rmt'] != 0) &
+                 (self.data['n_poly_t'] >= n_poly_t_required) &
+                 (self.data['is_aligned']) &
+                 (self.features.is_unique()))
+
+        no_feature = np.array([0])
+        has_feature = np.array([False if np.array_equal(v, no_feature) else True for v in
+                                self._features], dtype=np.bool)
+
+        return self.data[vbool & has_feature]
+
+    def sort_mask_failing_records(self, n_poly_t_required, require_support=True):
         """
         generates a boolean mask for any records lacking cell barcodes or rmts, records
         that are not aligned, or records missing poly_t sequences
@@ -878,22 +930,24 @@ class ReadArray:
                  (self.data['rmt'] != 0) &
                  (self.data['n_poly_t'] >= n_poly_t_required) &
                  (self.data['is_aligned']) &
-                 (self.features.has_feature())  # this is basically instant now
+                 (self.features.is_unique())  # this is basically instant now
                  )
 
         index = index[fbool]
 
         # get the selection of reads that pass filters
         subdata = self.data[index]
+        subfeatures = self.features[index]  # todo I think I need to adjust jaggedarray indexing to return another jaggedarray...
+        # todo probably doable with np.diff() on the index to calculate the new array size.
         for_sorting = np.vstack([subdata['cell'], subdata['rmt'].astype(np.int64)]).T
 
         # perform an indirect sort
         ind = np.lexsort(for_sorting, order=['cell', 'rmt'])
         subdata = subdata[np.concatenate(([True], np.all(subdata[ind[1:]] ==
                                                          subdata[ind[:-1]], axis=1)))]
+        subfeatures = subfeatures[ind]
 
-        return subdata  # all records that pass filters
-
+        return subdata, subfeatures  # all records that pass filters
 
     def mask_low_support_molecules(self, required_support=2):
         """
@@ -1102,6 +1156,24 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
+    def to_sparse_counts_fast(self, collapse_molecules, n_poly_t_required,
+                                         support_required=2):
+
+        # pretend features is a subjagged array BUT features are unique now!
+        data, features = self.sort_mask_failing_records(
+            n_poly_t_required, require_support=True)
+
+        # create a unique() method.
+
+        # can sort, or group into subsections?
+        for_sort = np.vstack([data['cell'],
+                          data['rmt'].astype(np.int64),
+                          features.astype(np.int64)
+        ])
+
+        # data is now sorted; can take advantage of this to build index directly?
+        row, col, data = [], [], []
+
     def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required,
                                          support_required=2):
 
@@ -1236,6 +1308,51 @@ class ReadArray:
 
         # get record filter percentages
         metadata = {}
+
+
+class UniqueReadArray:
+    """
+    Comparable, but faster datastructure to ReadArray that stores only unique alignments,
+    in sorted order
+    """
+
+    def __init__(self, data: np.ndarray):
+        """
+        args:
+        -----
+        np.ndarray: np structured array containing data that conforms to the following
+         datatype:
+
+        _dtype = [
+            ('cell', np.uint64),
+            ('rmt', np.uint32),
+            ('n_poly_t', np.uint8),
+            ('valid_cell', np.bool),
+            ('dust_score', np.uint8),
+            ('rev_quality', np.uint8),
+            ('fwd_quality', np.uint8),
+            ('is_aligned', np.bool),
+            ('alignment_score', np.uint8),
+            ('feature', np.uint32),
+            ('position', np.uint32)]
+
+        """
+        self._data = data
+
+    @classmethod
+    def from_read_array(cls, ra, filter_records=True):
+        """
+        Construct a unique ReadArray. Note that this will copy data. Requires 2n memory
+
+        args:
+        -----
+        ra: ReadArray we are copying from
+        filter_records: If true, will eliminate any records that fail filters before
+         constructing the UniqueReadArray
+
+        Can think about ways to get counts via searchsorted
+        """
+
 
 
 
