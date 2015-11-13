@@ -1445,7 +1445,7 @@ class UniqueReadArray:
         # cell can be calculated by re-diffing on the reads per molecule without
         # considering the rmt. This has the effect of counting unique RMTs per molecule
         # and per cell.
-        mpc_diff = np.zeros(len(self), dtype=np.bool)
+        mpc_diff = np.zeros(len(ra_molecule_index), dtype=np.bool)
         mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
         mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
         i = np.where(mpc_diff > 0)
