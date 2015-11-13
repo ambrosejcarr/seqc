@@ -1414,7 +1414,7 @@ class UniqueReadArray:
             return self._molecule_counts
 
         # get sorted index
-        if not self._sort_molecules:
+        if self._sort_molecules is None:
             self._sort(molecules=True)
 
         sort_ord = self._sort_molecules
@@ -1428,8 +1428,8 @@ class UniqueReadArray:
         all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
 
         # get key_index (into original ReadArray) and reads per molecule couns
-        i = np.where(all_diff > 0)
-        ra_molecule_idx = sort_ord[i]
+        i = np.concatenate((np.where(all_diff)[0], [len(self)]))
+        ra_molecule_idx = sort_ord[i[:-1]]
         rpm_count = np.diff(i)  # todo use this somehow
 
         # to get reads per cell, I discard the notion of molecular correction by diffing
@@ -1437,9 +1437,9 @@ class UniqueReadArray:
         rpc_diff = np.zeros(len(self), dtype=np.bool)
         rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
         rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
-        cell_index = np.where(rpc_diff > 0)
-        ra_read_index = sort_ord[cell_index]
-        rpc_count = np.diff(cell_index)
+        i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
+        ra_read_index = sort_ord[i[:-1]]
+        rpc_count = np.ravel(np.diff(i))
 
         # because reads per molecule gives me a list of all molecules, molecules per
         # cell can be calculated by re-diffing on the reads per molecule without
@@ -1448,9 +1448,9 @@ class UniqueReadArray:
         mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
         mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
         mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
-        i = np.where(mpc_diff > 0)
-        ra_cell_index = sort_ord[i]
-        mpc_count = np.diff(i)
+        i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
+        ra_cell_index = sort_ord[i[:-1]]
+        mpc_count = np.ravel(np.diff(i))
 
         def map_to_unique_index(vector):
             """function to map a vector of gene or feature ids to an index"""
