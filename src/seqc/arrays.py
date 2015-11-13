@@ -896,8 +896,9 @@ class ReadArray:
         data = self._data[fbool]
         features = self.features.to_unique(fbool)
         positions = self.positions.to_unique(fbool)
+        append_fields(data, ['features', 'positions'], [features, positions])
 
-        return UniqueReadArray(data, features, positions)
+        return UniqueReadArray(data)
 
     def mask_failing_records(self, n_poly_t_required):
         """old version o mask failing records"""
@@ -1317,22 +1318,43 @@ class ReadArray:
         metadata = {}
 
 
-class UniqueReadArray(ReadArray):
+class UniqueReadArray:
     """
     Comparable, but faster datastructure to ReadArray that stores only unique alignments,
     in sorted order
     """
 
-    def __init__(self, data, features, positions):
+    def __init__(self, data):
         """
         args:
         -----
-        data: np structured array containing data that conforms to the following
-         datatype:
-        features: np.array column of features
-        positions: np.array column of positions
+        data: numpy structured array
         """
-        super().__init__(data, features, positions)
+        self._data = data
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            return UniqueReadArray(self.data[item])  # return array slice
+        else:
+            return self.data[item]  # return column
+
+    def __repr__(self):
+        return '<UniqueReadArray object with %d items>' % len(self)
+
+    def __len__(self):
+        return self._data.shape[0]
+
+    @property
+    def shape(self):
+        return tuple(len(self))
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def nbytes(self):
+        return self.data.nbytes
 
     @staticmethod
     def from_read_array(ra, n_poly_t_required):
