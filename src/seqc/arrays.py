@@ -885,14 +885,11 @@ class ReadArray:
                  (self.data['is_aligned']) &
                  (self.features.is_unique()))
 
+        data = self._data[fbool]
         features = self.features.to_unique(fbool)
         positions = self.positions.to_unique(fbool)
 
-        data = self._data[fbool]
-        data['features'] = features
-        data['positions'] = positions
-
-        return UniqueReadArray(data)
+        return UniqueReadArray(data, features, positions)
 
     def mask_failing_records(self, n_poly_t_required):
         """old version o mask failing records"""
@@ -1310,39 +1307,27 @@ class ReadArray:
         metadata = {}
 
 
-class UniqueReadArray:
+class UniqueReadArray(ReadArray):
     """
     Comparable, but faster datastructure to ReadArray that stores only unique alignments,
     in sorted order
     """
 
-    def __init__(self, data: np.ndarray):
+    def __init__(self, data, features, positions):
         """
         args:
         -----
-        np.ndarray: np structured array containing data that conforms to the following
+        data: np structured array containing data that conforms to the following
          datatype:
-
-        _dtype = [
-            ('cell', np.uint64),
-            ('rmt', np.uint32),
-            ('n_poly_t', np.uint8),
-            ('valid_cell', np.bool),
-            ('dust_score', np.uint8),
-            ('rev_quality', np.uint8),
-            ('fwd_quality', np.uint8),
-            ('is_aligned', np.bool),
-            ('alignment_score', np.uint8),
-            ('feature', np.uint32),
-            ('position', np.uint32)]
-
+        features: np.array column of features
+        positions: np.array column of positions
         """
-        self._data = data
+        super().__init__(data, features, positions)
 
-    @classmethod
-    def from_read_array(cls, ra, filter_records=True):
+    @staticmethod
+    def from_read_array(ra, n_poly_t_required):
         """
-        Construct a unique ReadArray. Note that this will copy data. Requires 2n memory
+        Construct a unique ReadArray. Note that this will copy data. Requires O(2n) memory
 
         args:
         -----
@@ -1352,8 +1337,7 @@ class UniqueReadArray:
 
         Can think about ways to get counts via searchsorted
         """
-
-
+        return ra.to_unique(n_poly_t_required)
 
 
 def outer_join(left, right):
