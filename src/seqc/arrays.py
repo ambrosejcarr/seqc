@@ -1138,7 +1138,7 @@ class UniqueReadArray:
 
         sort_ord = self._sorted
 
-        # TODO refactor once I've determined that this is working.
+        # todo could be some 1-off bugs. Mostly working.
 
         # find boundaries between cell, rmt, and feature
         all_diff = np.zeros(len(self), dtype=np.bool)
@@ -1159,6 +1159,7 @@ class UniqueReadArray:
         # to get reads per cell, I discard the notion of molecular correction by diffing
         # on only cell and feature from the original sort
         rpc_diff = np.zeros(len(self), dtype=np.bool)
+        rpc_diff[0] = True
         rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
         rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
         i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
@@ -1169,12 +1170,12 @@ class UniqueReadArray:
         # cell can be calculated by re-diffing on the reads per molecule without
         # considering the rmt. This has the effect of counting unique RMTs per molecule
         # and per cell.
-        # todo this is not yielding the right result; check interaction with above threshold!
         mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
+        mpc_diff[0] = True
         mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
         mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
         i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
-        ra_cell_index = sort_ord[i[:-1]]
+        ra_cell_index = sort_ord[ra_molecule_idx][i[:-1]]
         mpc_count = np.ravel(np.diff(i))
 
         def map_to_unique_index(vector):
