@@ -290,18 +290,26 @@ def resolve_alignments(index, arr, n, output_file):
         arr.save_h5(output_file + '.h5')
         raise
 
+# old method was causing problems
+# def save_counts_matrices(output_file, arr, n):
+#
+#     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
+#     mols, mrow, mcol = arr.to_sparse_counts(
+#         collapse_molecules=True, n_poly_t_required=n)
+#     reads, rrow, rcol = arr.to_sparse_counts(
+#         collapse_molecules=False, n_poly_t_required=n)
+#     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
+#                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
+#     with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
+#         pickle.dump(matrices, f)
+
 
 def save_counts_matrices(output_file, arr, n):
-
     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-    mols, mrow, mcol = arr.unique_features_to_sparse_counts(
-        collapse_molecules=True, n_poly_t_required=n)
-    reads, rrow, rcol = arr.unique_features_to_sparse_counts(
-        collapse_molecules=False, n_poly_t_required=n)
-    matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
-                'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
-    with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
-        pickle.dump(matrices, f)
+    uniq = arr.to_unique(n_poly_t_required=n)
+    del arr
+    experiment = uniq.to_experiment()
+    experiment.to_npz(output_file + '_sp_counts.npz')
 
 
 def select_cells():
@@ -416,7 +424,7 @@ if __name__ == "__main__":
         seqc.log.info('SEQC version: %s' % seqc.__version__)
         seqc.log.info('SEQC working directory: %s' % os.getcwd())
         seqc.log.info('Passed command line arguments: %s' %
-                          json.dumps(arg_copy, separators=(',', ': '), indent=4))
+                      json.dumps(arg_copy, separators=(',', ': '), indent=4))
 
         func = kwargs['func']
         func(**kwargs)
