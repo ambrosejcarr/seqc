@@ -1195,14 +1195,14 @@ class UniqueReadArray:
         row, cells = map_to_unique_index(self.data['cell'][ra_read_index])
         col, genes = map_to_unique_index(self.features[ra_read_index])
         shape = (len(cells), len(genes))
-        rpc = coo_matrix((rpc_count, (row, col)), shape=shape),
+        rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
         reads_per_cell = seqc.analyze.SparseCounts(rpc[0], cells, genes)
 
         # molecules per cell
         row, cells = map_to_unique_index(self.data['cell'][ra_cell_index])
         col, genes = map_to_unique_index(self.features[ra_cell_index])
         shape = (len(cells), len(genes))
-        mpc = coo_matrix((mpc_count, (row, col)), shape=shape)
+        mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
         molecules_per_cell = seqc.analyze.SparseCounts(mpc, cells, genes)
 
         self._experiment = seqc.analyze.Experiment(reads_per_cell, molecules_per_cell)
