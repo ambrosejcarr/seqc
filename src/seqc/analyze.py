@@ -62,7 +62,8 @@ class SparseCounts:
             raise TypeError('invalid input %s: sparse_counts must be of type coo_matrix '
                             ' not %s' % (repr(sparse_counts), type(sparse_counts)))
         self._counts = sparse_counts
-        if isinstance(index, np.ma.MaskedArray):  # weird bug, but this fixes it...
+        # weird bug with numpy generating masked arrays, but this fixes it...
+        if isinstance(index, np.ma.MaskedArray):
             index = np.ma.compressed(index)
         self._index = index
         self._columns = columns

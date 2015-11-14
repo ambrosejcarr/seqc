@@ -1138,7 +1138,10 @@ class UniqueReadArray:
 
         sort_ord = self._sorted
 
-        # todo could be some 1-off bugs. Mostly working.
+        # todo could be some 1-off bugs: Mostly working.
+        # todo I believe the first molecule ends up missing 1 read
+        # todo the final molecule may be restricted to 1 read.
+        # I see this as minor, will fix later in the process of refactoring this stuff.
 
         # find boundaries between cell, rmt, and feature
         all_diff = np.zeros(len(self), dtype=np.bool)
