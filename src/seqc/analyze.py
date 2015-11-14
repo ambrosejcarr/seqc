@@ -58,7 +58,12 @@ class SparseCounts:
     """
 
     def __init__(self, sparse_counts, index, columns):
+        if not isinstance(sparse_counts, coo_matrix):
+            raise TypeError('invalid input %s: sparse_counts must be of type coo_matrix '
+                            ' not %s' % (repr(sparse_counts), type(sparse_counts)))
         self._counts = sparse_counts
+        if isinstance(index, np.ma.MaskedArray):  # weird bug, but this fixes it...
+            index = np.ma.compressed(index)
         self._index = index
         self._columns = columns
 
@@ -499,6 +504,66 @@ class Experiment:
     def molecules(self):
         return self._molecules
 
+    @staticmethod
+    def from_read_array(ra):
+        ua = ra.to_unique()
+        return ua.to_experiment()
+
+    @staticmethod
+    def from_unique_read_array(ua):
+        return ua.to_experiment()
+
+    def to_npz(self, npz_file):
+        """
+        Save an .npz archive containing all information necessary to reconstruct the
+        SparseCounts object
+        """
+        if isinstance(self.reads.index, np.ma.MaskedArray):
+            self.reads._index = np.ma.compressed(self.reads.index)
+        if isinstance(self.molecules.index, np.ma.MaskedArray):
+            self.molecules._index = np.ma.compressed(self.molecules.index)
+
+        data = {
+            'rdata': self.reads.counts.data,
+            'rrow': self.reads.counts.row,
+            'rcol': self.reads.counts.col,
+            'r_columns': self.reads.columns,
+            'r_index': self.reads.index,
+            'mdata': self.molecules.counts.data,
+            'mrow': self.molecules.counts.row,
+            'mcol': self.molecules.counts.col,
+            'm_columns': self.reads.columns,
+            'm_index': self.reads.index}
+        print(data['m_index'])
+        print(data['r_index'])
+
+        for k, v in data.items():
+            print(k, type(v))
+        np.savez(npz_file, **data)
+
+    @classmethod
+    def from_npz(cls, npz_file):
+        """
+        Load a SparseCounts object from a .npz file.
+        """
+        npz_data = np.load(npz_file)
+        n = npz_data['r_index'].shape[0]
+        m = npz_data['r_columns'].shape[0]
+        data = coo_matrix((npz_data['rdata'], (npz_data['rrow'], npz_data['rcol'])),
+                          shape=(n, m), dtype=npz_data['rdata'].dtype)
+        index = npz_data['r_index']
+        columns = npz_data['r_columns']
+        reads = SparseCounts(data, index, columns)
+
+        n = npz_data['m_index'].shape[0]
+        m = npz_data['m_columns'].shape[0]
+        data = coo_matrix((npz_data['mdata'], (npz_data['mrow'], npz_data['mcol'])),
+                          shape=(n, m), dtype=npz_data['mdata'].dtype)
+        index = npz_data['m_index']
+        columns = npz_data['m_columns']
+        molecules = SparseCounts(data, index, columns)
+        return cls(reads, molecules)
+
     def plot_umi_correction(self, log=False):
         """
         Displays the impact of UMI correction on raw or log-transformed sc-RNA-seq data
@@ -591,7 +656,6 @@ class Experiment:
 
         return fig, dict(regression=ax1, residual=ax2, scaled_residual=ax3, fano=ax4)
 
-
     def plot_coverage_vs_gc_content(self):
         raise NotImplementedError
         # TODO stopped here.
@@ -602,5 +666,4 @@ class CompareExperiments:
     Some plotting methods require experiments themselves to be compareed; this class holds
     these values and implements related statistics and methods
     """
-
-
+    pass
