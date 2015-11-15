@@ -66,8 +66,8 @@ def _plot_fraction_mitochondrial_rna(cell_sums, mt_sums, fig=None, ax=None,
     xlabel = 'Library Size %s' % ctype
     ylabel = 'Mitochondrial fraction size'
     title = 'Mitochondrial fraction separates dying cells'
-    plot.scatter_density(cell_sums, mt_sums, fig=fig, ax=ax, xlabel=xlabel, ylabel=ylabel,
-                         title=title)
+    plot.scatter_density(cell_sums, mt_sums / cell_sums, fig=fig, ax=ax, xlabel=xlabel,
+                         ylabel=ylabel, title=title)
 
 
 def _discard_high_value_outliers():
@@ -303,6 +303,7 @@ class SparseCounts:
         return DenseCounts(df)
 
     def convert_ids(self, fgtf=None, scid_map=None):
+        # todo delete the 'zero' column corresponding to all the genes that got no alignments
         """
         Convert scids to gene identifiers either by parsing the gtf file (slow) or by
         directly mapping scids to genes (fast). In the latter case, the gtf_map must be
@@ -467,7 +468,7 @@ class DenseCounts:
         return _plot_cell_gc_content_bias(cell_counts, self.df.index, fig=fig, ax=ax,
                                           molecules=molecules, reads=reads)
 
-    def plot_tsne(self, markers=None, pca_d=30, new=False, fig=None, ax=None):
+    def plot_tsne(self, markers=None, pca_d=None, new=False, fig=None, ax=None):
         """Generate a tsne plot of self.
 
         by default, plot_tsne() will color cells by density. If an optional marker or set
@@ -493,7 +494,7 @@ class DenseCounts:
             sanitized = self.df.values.copy()
             sanitized[np.isnan(sanitized) | np.isinf(sanitized)] = 0
             sanitized = sanitized.astype(float)
-            self._tsne = bh_sne(sanitized, pca_d=30)
+            self._tsne = bh_sne(sanitized, pca_d=pca_d)
 
         # set title
         if isinstance(markers, Iterable) and not isinstance(markers, str):
