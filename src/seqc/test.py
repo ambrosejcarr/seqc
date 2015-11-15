@@ -1906,5 +1906,17 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     print('Returned None')
 
 
+class TestParallelConstructSam(unittest.TestCase):
+
+    def setUp(self):
+        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.samfile = data_dir + 'in_drop/Aligned.out.sam'
+
+    def test_parallel_construct_sam(self):
+        h5_name = 'test.h5'
+        n_processes = 7
+        chunk_size = 10000
+        seqc.parallel.process_parallel(self.samfile, h5_name, n_processes, chunk_size)
+
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')
