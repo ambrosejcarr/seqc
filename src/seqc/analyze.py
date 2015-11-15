@@ -14,8 +14,10 @@ except ImportError:
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
+from sklearn.mixture import GMM
 import pickle
 import matplotlib
+import seaborn as sns
 import os
 try:
     os.environ['DISPLAY']
@@ -87,6 +89,21 @@ class SparseCounts:
     @property
     def columns(self):
         return self._columns
+
+    def _select(self, mask, axis=1):
+        """return a new array containing only objects passing mask"""
+        if axis == 1:
+            csr = self.counts.tocsr()
+            selected_rows = csr[mask, :]
+            csc = selected_rows.tocsc()
+            selected_cols = np.ravel(csc.sum(axis=0) > 0)
+            selected = csc[:, selected_cols].tocoo()
+            index = self.index[selected_rows]
+            columns = self.columns[selected_cols]
+            return SparseCounts(selected, index, columns)
+        else:
+            raise NotImplementedError
+
 
     @classmethod
     def from_read_array(cls, read_array, collapse_molecules=True, n_poly_t_required=0):
@@ -483,6 +500,49 @@ class DenseCounts:
         npz_data = np.load(npz_file)
         return cls(npz_data['data'], index=npz_data['index'], columns=npz_data['columns'])
 
+    def convert_ids(self, fgtf=None, scid_map=None):
+        """
+        Convert scids to gene identifiers either by parsing the gtf file (slow) or by
+        directly mapping scids to genes (fast). In the latter case, the gtf_map must be
+        pre-processed and saved to the index folder.
+
+        see seqc.gtf.Reader.scid_to_gene(gtf, save=<output_file>) to save this gtf_map for
+        repeat-use.
+        """
+        raise NotImplementedError  # below code is from sparse counts.
+        if not any([fgtf, scid_map]):
+            raise ValueError('one of gtf or scid_map must be passed for conversion to'
+                             'occur')
+
+        # load the gene map (gmap)
+        if not scid_map:
+            r = gtf.Reader(fgtf)
+            gmap = r.scid_to_gene()
+        elif isinstance(scid_map, str):
+            # try to load pickle
+            if not os.path.isfile(scid_map):
+                raise FileNotFoundError('scid_map not found: %s' % scid_map)
+            with open(scid_map, 'rb') as f:
+                gmap = pickle.load(f)
+                if not isinstance(gmap, Mapping):
+                    raise TypeError('scid_map file object did not contain a '
+                                    'dictionary')
+        elif isinstance(scid_map, Mapping):
+            gmap = scid_map
+        else:
+            raise TypeError('scid_map must be the location of the scid_map pickle file '
+                            'or the loaded dictionary object, not type: %s' %
+                            type(scid_map))
+
+        # convert ids
+        new_ids = np.zeros(len(self._columns), dtype=object)
+        for i, val in enumerate(self._columns):
+            try:
+                new_ids[i] = gmap[val]
+            except KeyError:
+                new_ids[i] = None
+        self._columns = np.array(new_ids)
+
 
 class Experiment:
     """
@@ -537,13 +597,8 @@ class Experiment:
             'mdata': self.molecules.counts.data,
             'mrow': self.molecules.counts.row,
             'mcol': self.molecules.counts.col,
-            'm_columns': self.reads.columns,
-            'm_index': self.reads.index}
-        print(data['m_index'])
-        print(data['r_index'])
-
-        for k, v in data.items():
-            print(k, type(v))
+            'm_columns': self.molecules.columns,
+            'm_index': self.molecules.index}
         np.savez(npz_file, **data)
 
     @classmethod
@@ -661,9 +716,119 @@ class Experiment:
 
         return fig, dict(regression=ax1, residual=ax2, scaled_residual=ax3, fano=ax4)
 
-    def plot_coverage_vs_gc_content(self):
-        raise NotImplementedError
-        # TODO stopped here.
+    def plot_coverage_vs_rpm_ratio(self, min_ratio=2, min_mols=10):
+        """plot cell selection"""
+
+        # calculate cell sums
+        mol_counts = self.molecules.counts.sum(axis=1)
+        read_counts = self.reads.counts.sum(axis=1)
+
+        # convert to series
+        mol_counts = pd.Series(mol_counts.T.tolist()[0], index=self.molecules.index)
+        read_counts = pd.Series(read_counts.T.tolist()[0], index=self.reads.index)
+
+        # get ratios
+        ratios = read_counts / mol_counts
+
+        # filter out junk
+        barcodes = mol_counts.index[(mol_counts > min_mols) & (ratios > min_ratio)]
+
+        # set up plot
+        fig = plt.figure(figsize=(8, 4))
+        gs = plt.GridSpec(nrows=1, ncols=2)
+
+        ax1 = plt.subplot(gs[0, 0])
+        xlabel = 'log Molecule count per cell'
+        ylabel = 'Average Reads per Molecule'
+        title = 'Reads per Molecule vs. Library Size'
+        fig, ax1 = plot.scatter_density(np.log(mol_counts[barcodes]), ratios[barcodes],
+                                        fig=fig, ax=ax1, xlabel=xlabel, ylabel=ylabel,
+                                        title=title)
+        plt.ylim([0, 200])
+
+        # fit GMM
+        df = pd.DataFrame([np.log(mol_counts[barcodes]), ratios[barcodes]]).T
+        n_clusters = 3
+        gmm = GMM(n_components=n_clusters)
+        gmm.fit(df)
+        clusters = gmm.predict(df)
+
+        # Plot clusters
+        ax2 = plt.subplot(gs[0, 1])
+        colors = plot.qualitative_colors[:3]
+        # for i, c in enumerate(colors):
+        #     ax2.scatter(df.ix[clusters == i, 0], df.ix[clusters == i, 1],
+        #                 color=c, s=, edgecolor='none')
+        xlabel = 'log Molecule count per cell'
+        ylabel = 'Average Reads per Molecule'
+        title = 'Cluster Classification'
+        plot.scatter_colored_by_data(df.ix[:, 0], df.ix[:, 1], clusters, xlabel=xlabel,
+                                     ylabel=ylabel, title=title)
+        plt.ylim([0, 200])
+        return fig, (ax1, ax2)
+
+    def _select(self, mask, axis=1):
+        """return a new array containing only objects passing mask"""
+        mols = self.molecules._select(mask, axis=1)
+        reads = self.reads._select(mask, axis=1)
+        return Experiment(reads, mols)
+
+    def select_cells(self, min_ratio=2, min_mols=10):
+
+        # calculate cell sums
+        mol_counts = np.ravel(self.molecules.sum(axis=1))
+        read_counts = np.ravel(self.reads.sum(axis=1))
+
+        # get ratios
+        ratios = read_counts / mol_counts
+
+        # filter out junk
+        mask = (mol_counts > min_mols) & (ratios > min_ratio)
+
+        # fit GMM
+        train = np.vstack([np.log(mol_counts[mask]), ratios[mask]]).T
+        n_clusters = 3
+        gmm = GMM(n_components=n_clusters)
+        gmm.fit(train)
+        clusters = gmm.predict(train)
+
+        # Choose the "real" cell cluster
+        cell_cluster = np.where(gmm.means_[:, 0] == max(gmm.means_[:, 0]))[0][0]
+        indices = np.where(mask)
+        cell_indices = indices[clusters == cell_cluster]
+
+        # get a mask for the original counts arrays
+        counts_mask = np.zeros_like(mol_counts, dtype=np.bool)
+        counts_mask[cell_indices] = 1
+
+        # now, shrink the original array!
+        return self._select(mask, axis=1)
+
+    def plot_gc_content_vs_rpm_ratio(self, min_ratio=2, min_mols=10):
+
+        # calculate cell sums
+        mol_counts = np.ravel(self.molecules.counts.sum(axis=1))
+        read_counts = np.ravel(self.reads.counts.sum(axis=1))
+
+        # get ratios
+        ratios = read_counts / mol_counts
+
+        # filter out junk
+        mask = (mol_counts > min_mols) & (ratios > min_ratio)
+
+        cells = self.molecules.index[mask]
+        gc_content = np.array([three_bit.ThreeBit.gc_content(i) for i in cells])
+        ratios = ratios[mask]
+
+        xlabel = 'cell GC content'
+        ylabel = 'Average Reads per Molecule'
+        title = 'GC Content vs Cell Coverage'
+        f, ax = plot.scatter_density(gc_content, ratios, xlabel=xlabel, ylabel=ylabel,
+                                     title=title)
+        plt.ylim(0, 300)
+        return f, ax
+
+
 
 
 class CompareExperiments:
