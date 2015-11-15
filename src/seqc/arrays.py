@@ -1196,7 +1196,7 @@ class UniqueReadArray:
         col, genes = map_to_unique_index(self.features[ra_read_index])
         shape = (len(cells), len(genes))
         rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
-        reads_per_cell = seqc.analyze.SparseCounts(rpc[0], cells, genes)
+        reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
 
         # molecules per cell
         row, cells = map_to_unique_index(self.data['cell'][ra_cell_index])
