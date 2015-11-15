@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from scipy.stats import gaussian_kde
-import sklearn.decomposition.PCA
+from sklearn.decomposition import PCA as _PCA
 
 # set default style as ticks
 sns.set_style('ticks')
@@ -124,21 +124,19 @@ def scatter_colored_by_data(
     return fig, ax
 
 
-def bar(data, labels, fig=None, ax=None, xlabel='', ylabel='', title='', chromatic=False):
+def bar(data, labels, fig=None, ax=None, xlabel='', ylabel='', title=''):
     """
     bar chart, either in monochrome color or colored by bar size if chromatic=True
     """
+
+    # todo dimcheck on data to ensure 1d array/vector
+
     fig, ax = get_axes(fig=fig, ax=ax)
     height = data
-    ind = np.arange(data) + 0.5
+    ind = np.arange(data.shape[0]) + 0.5
     width = 1
-    if chromatic:
-        color = height
-        cmap_ = cmap
-    else:
-        color = qualitative_colors[0]
-        cmap_ = None
-    ax.bar(ind, height, width, facecolor=color, cmap=cmap_)
+    color = qualitative_colors[0]
+    ax.bar(ind, height, width, facecolor=color)
     ax.set_xticks(ind)
     ax.set_xticklabels(labels, rotation='horizontal')
     ax.set_xlabel(xlabel)
@@ -151,11 +149,14 @@ def bar(data, labels, fig=None, ax=None, xlabel='', ylabel='', title='', chromat
 class PCA():
 
     def __init__(self, data, n_components=30):
-        """Runs PCA on the rows of data. For Columnal PCA, pass data.T"""
+        """
+        Runs PCA where rows are samples and columns are features.
+        To automatically calculate the optimal number of components, pass 'mle'
+        """
         self._data = data
         self._n = n_components
 
-        self.pca = sklearn.decomposition.PCA(n_components=self._n)
+        self.pca = _PCA(n_components=self._n)
         self.pca.fit(self._data)
 
     def plot_components(self, c1, c2, fig=None, ax=None):
@@ -167,12 +168,14 @@ class PCA():
             xlabel=xlabel, ylabel=ylabel, title=title)
         return fig, ax
 
-    def plot_explained_variance(self):
+    def plot_explained_variance(self, fig=None, ax=None):
         xlabel = 'Component'
         ylabel = 'Explained Variance Ratio'
         title = 'PCA: Variance Explained by Component'
-        bar(self.pca.explained_variance_ratio_, np.arange(self._n), fig=None, ax=None,
-            chromatic=True, xlabel=xlabel, ylabel=ylabel, title=title)
+        fig, ax = bar(self.pca.explained_variance_ratio_, np.arange(self._n), fig=fig,
+                      ax=ax, xlabel=xlabel, ylabel=ylabel, title=title)
+        return fig, ax
+
 
 
 ########################### BELOW IS OLD PLOTTING STUFF #################################

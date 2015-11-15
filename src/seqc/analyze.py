@@ -17,7 +17,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.mixture import GMM
 import pickle
 import matplotlib
-import seaborn as sns
 import os
 try:
     os.environ['DISPLAY']
@@ -52,8 +51,26 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
     return fig, ax
 
 
-def _plot_fraction_mitochondrial_rna(mt_counts, cell_counts, fig=None, ax=None,
+def _plot_fraction_mitochondrial_rna(cell_sums, mt_sums, fig=None, ax=None,
                                      molecules=False, reads=False):
+    # determine y label:
+    if all([molecules, reads]):
+        raise ValueError('cell_counts must be either molecules or reads, not both')
+    elif molecules:
+        ctype = '(molecules)'
+    elif reads:
+        ctype = '(reads)'
+    else:
+        ctype = ''
+
+    xlabel = 'Library Size %s' % ctype
+    ylabel = 'Mitochondrial fraction size'
+    title = 'Mitochondrial fraction separates dying cells'
+    plot.scatter_density(cell_sums, mt_sums, fig=fig, ax=ax, xlabel=xlabel, ylabel=ylabel,
+                         title=title)
+
+
+def _discard_high_value_outliers():
     raise NotImplementedError
 
 
@@ -367,6 +384,19 @@ class SparseCounts:
         return _plot_cell_gc_content_bias(cell_sums, self.index, fig=fig, ax=ax,
                                           molecules=molecules, reads=reads)
 
+    def plot_fraction_mitochondrial(
+            self, fig=None, ax=None, molecules=False, reads=False):
+        cell_sums = self.counts.sum(axis=1)
+        csc = self.counts.tocsc()
+        mt_genes = np.array([True if g.startswith('MT-') else False
+                             for g in self.columns],
+                            dtype=np.bool)
+        mt_sums = csc[:, mt_genes].tocsr().sum(axis=1)
+
+        f, ax = _plot_fraction_mitochondrial_rna(
+            cell_sums, mt_sums, fig=fig, ax=ax, molecules=molecules, reads=reads)
+        return f, ax
+
     def to_npz(self, npz_file):
         """
         Save an .npz archive containing all information necessary to reconstruct the
@@ -488,6 +518,17 @@ class DenseCounts:
             plot.scatter_density(
                 x, y, fig=fig, ax=ax, xlabel=xlabel, ylabel=ylabel, title=title)
         return fig, ax
+
+    def plot_fraction_mitochondrial(
+            self, fig=None, ax=None, molecules=False, reads=False):
+        cell_sums = self.df.sum(axis=1)
+        mt_genes = np.array([True if g.startswith('MT-') else False
+                             for g in self.df.columns],
+                            dtype=np.bool)
+        mt_sums = self.df[mt_genes].sum(axis=1)
+        f, ax = _plot_fraction_mitochondrial_rna(
+            cell_sums, mt_sums, fig=fig, ax=ax, molecules=molecules, reads=reads)
+        return f, ax
 
     def to_npz(self, npz_file):
         """
@@ -832,7 +873,6 @@ class Experiment:
                                      title=title)
         plt.ylim(0, 300)
         return f, ax
-
 
 
 
