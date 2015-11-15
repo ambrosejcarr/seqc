@@ -437,7 +437,7 @@ class DenseCounts:
         return _plot_cell_gc_content_bias(cell_counts, self.df.index, fig=fig, ax=ax,
                                           molecules=molecules, reads=reads)
 
-    def plot_tsne(self, markers=None, new=False, fig=None, ax=None):
+    def plot_tsne(self, markers=None, pca_d=30, new=False, fig=None, ax=None):
         """Generate a tsne plot of self.
 
         by default, plot_tsne() will color cells by density. If an optional marker or set
@@ -446,6 +446,11 @@ class DenseCounts:
 
         the tSNE coordinates will only be generated (1) if plot_tsne() has never been
         called before for this object, or (2) if new=True.
+
+        tsne will automatically use PCA to reduce the dimensionality to 30. However,
+        it is recommended that you plot the PCA results and visually inspect the
+        explained variance to get the right number of components before setting this
+        parameter.
 
         returns:
         --------
@@ -458,7 +463,7 @@ class DenseCounts:
             sanitized = self.df.values.copy()
             sanitized[np.isnan(sanitized) | np.isinf(sanitized)] = 0
             sanitized = sanitized.astype(float)
-            self._tsne = bh_sne(sanitized)
+            self._tsne = bh_sne(sanitized, pca_d=30)
 
         # set title
         if isinstance(markers, Iterable) and not isinstance(markers, str):
