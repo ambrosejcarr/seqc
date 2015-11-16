@@ -2,6 +2,7 @@ __author__ = 'ambrose'
 
 import hashlib
 from memory_profiler import profile, memory_usage
+from numpy.lib.recfunctions import append_fields
 import unittest
 import os
 import pickle
@@ -1904,6 +1905,83 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     print(b2s(seq))
                 else:
                     print('Returned None')
+
+
+class TestCounting(unittest.TestCase):
+
+    def setUp(self):
+
+        # design a UniqueReadArray to test validity of method
+        dtype = seqc.arrays.ReadArray._dtype
+
+        # several fields don't matter; only using cell, rmt, features
+        def create_records(rmt, cell, feature, n):
+            n_poly_t = 5
+            valid_cell = True
+            dust_score = 0
+            rev_quality = 40
+            fwd_quality = 40
+            is_aligned = True
+            alignment_score = 100
+            records = [(cell, rmt, n_poly_t, valid_cell, dust_score, rev_quality,
+                        fwd_quality, is_aligned, alignment_score) for _ in range(n)]
+            positions = np.zeros(n)
+            features_ = np.array([feature] * n)
+            return records, features_, positions
+
+        def create_unique_read_array(rmts, cells, features):
+            assert len(rmts) == len(cells) == len(features)
+            # start with an easy case where the method should get things right
+            # use these ids
+
+            n = len(rmts)
+            i = 0
+            j = 0
+            udata = np.zeros((n,), dtype=dtype)
+            ufeatures = np.zeros(n, dtype=np.int32)
+            upositions = np.zeros(n, dtype=np.int32)
+            for (r, c, f) in zip(rmts, cells, features):
+                recs, feats, posn = create_records(r, c, f, 1)
+                for v in recs:
+                    udata[i] = v
+                    i += 1
+                ufeatures[j: j + len(feats)] = feats
+                upositions[j: j + len(posn)] = posn
+                j += len(feats)
+
+            # these are all unique; should fail when required support > 0 and return empty
+            # molecule and read arrays
+            return seqc.arrays.UniqueReadArray(udata, ufeatures, upositions)
+
+
+
+        rmts = [10] * 9 + [6] * 9 + [111] * 9
+        cells = [1, 2, 3] * 9
+        features = [7, 7, 7, 8, 8, 8, 9, 9, 9] * 3
+        self.simple_unique = create_unique_read_array(rmts, cells, features)
+        self.simple_duplicate = create_unique_read_array(rmts * 2, cells * 2, features * 2)
+
+    @unittest.skip('')
+    def test_print_data(self):
+        self.simple_unique._sort()
+        data = append_fields(self.simple_unique.data, 'features', self.simple_unique.features)
+        print(data[self.simple_unique._sorted][['cell', 'features', 'rmt']])
+
+    @unittest.skip('')
+    def test_counting_filter_too_high(self):
+
+        # test that sorting is working
+        # seems to be sorting cell, feature, rmt
+        self.assertRaises(ValueError, self.simple_unique.to_experiment, 1)
+
+    # @unittest.skip('')
+    def test_counting_simple(self):
+        exp = self.simple_unique.to_experiment(0)
+        data = np.array(exp.molecules.counts.todense())
+        # todo getting the features right, but not splitting by cell anymore
+        print(pd.DataFrame(data, exp.molecules.index, exp.molecules.columns))
+
+
 
 
 if __name__ == '__main__':

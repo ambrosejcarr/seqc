@@ -1115,7 +1115,7 @@ class UniqueReadArray:
         """
         self._sorted = np.lexsort((self.data['rmt'], self.features, self.data['cell']))
 
-    def to_experiment(self, required_support=1):
+    def to_experiment(self, required_support=0):
         """Generate an Experiment containing read and molecule SparseCount objects
 
         args:
@@ -1157,7 +1157,11 @@ class UniqueReadArray:
         i = np.concatenate((np.where(all_diff)[0], [len(self)]))
         rpm_count = np.diff(i)
         # filter which molecules we want to keep by thresholding ra_molecule_idx
-        ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support, [False]))]]  # filter counts < r_supp
+        ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support, [False]))]]
+
+        # make sure at least one molecule passes, otherwise raise.
+        if len(ra_molecule_idx) == 0:
+            raise ValueError('No molecules passed support filter')
 
         # to get reads per cell, I discard the notion of molecular correction by diffing
         # on only cell and feature from the original sort
