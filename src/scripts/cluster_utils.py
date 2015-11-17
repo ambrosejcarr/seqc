@@ -27,7 +27,6 @@ class ClusterServer(object):
         self.subnet = None
         self.zone = None
         self.ec2 = boto3.resource('ec2')
-        # self.inst_id = list()
         self.inst_id = None
         self.dir_name = None
         self.n_tb = None
@@ -36,12 +35,16 @@ class ClusterServer(object):
         # maybe keep track of all the volumes associated with it too
 
     def create_security_group(self, name):
-        sg = self.ec2.create_security_group(GroupName=name, Description=name)
-        sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22, ToPort=22)
-        sg.authorize_ingress(SourceSecurityGroupName=name)
-        self.sg = sg.id
-        print('created security group seqc (%s)' % sg.id)
+        try:
+            sg = self.ec2.create_security_group(GroupName=name, Description=name)
+            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22, ToPort=22)
+            sg.authorize_ingress(SourceSecurityGroupName=name)
+            self.sg = sg.id
+            print('created security group seqc (%s)' % sg.id)
+        except self.ec2.ClientError:
+            print('the cluster %s already exists!')
 
+    # TODO catch errors in cluster configuration
     def configure_cluster(self, config_file):
         config = configparser.ConfigParser()
         config.read(config_file)
@@ -53,26 +56,26 @@ class ClusterServer(object):
         self.zone = config['defaultcluster']['AVAILABILITY_ZONE']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
-        # deal with error checking here if any of these are none
 
-    def create_cluster(self):
-        if 'c4' in self.inst_type and not self.subnet:
-            print('You must specify a subnet-id for C4 instances!')
-            sys.exit(2)
-        # elif 'c3' in self.inst_type:
-        #     self.subnet = None
-        # handle error here in case args are missing
-        clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1, MaxCount=1,
-                                          KeyName=self.keyname, InstanceType=self.inst_type,
-                                          Placement={'AvailabilityZone': self.zone},
-                                          SecurityGroupIds=[self.sg])
-        # TODO deal with SubnetId=self.subnet for c3 and c4
+    def create_cluster(self, clust_type):
+        if 'c4' in self.inst_type:
+            if not self.subnet:
+                print('You must specify a subnet-id for C4 instances!')
+                sys.exit(2)
+            else:
+                clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1, MaxCount=1,
+                                                  KeyName=self.keyname, InstanceType=self.inst_type,
+                                                  Placement={'AvailabilityZone': self.zone},
+                                                  SecurityGroupIds=[self.sg], SubnetId=self.subnet)
+        elif 'c3' in self.inst_type:
+            clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1, MaxCount=1,
+                                              KeyName=self.keyname, InstanceType=self.inst_type,
+                                              Placement={'AvailabilityZone': self.zone},
+                                              SecurityGroupIds=[self.sg])
         instance = clust[0]
         print('created new instance %s' % instance)
         instance.wait_until_exists()
         instance.wait_until_running()
-        # does this work? check later
-        # self.inst_id.append(instance)
         self.inst_id = instance
 
     def cluster_is_running(self):
@@ -84,9 +87,6 @@ class ClusterServer(object):
             return True
         else:
             return False
-
-        # def restart_cluster(self, inst_id):
-        # instance = self.ec2.Instance(inst_id)
 
     def restart_cluster(self):
         if self.inst_id.state['Name'] == 'stopped':
@@ -201,12 +201,12 @@ class ClusterServer(object):
         print("creating logical RAID device...")
         all_dev = ' '.join(dev_names)
 
-        #check if this sleep is necessary for successful execution of mdadm function
+        # check if this sleep is necessary for successful execution of mdadm function
         time.sleep(5)
         self.serv.exec_command(
             "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid --raid-devices=%s %s" % (
                 self.n_tb, all_dev))
-        #grep for md0 as a check here in dev --> function
+        # grep for md0 as a check here in dev --> function
         out, err = self.serv.exec_command('ls /dev | grep "md0"')
         if not out:
             print('error with mdadm function')
@@ -215,7 +215,7 @@ class ClusterServer(object):
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount LABEL=my_raid /data")
 
-        #checking for proper raid mounting
+        # checking for proper raid mounting
         output, err = self.serv.exec_command('df -h | grep "/dev/md0"')
         if output:
             if output[0].endswith('/data'):
@@ -224,9 +224,9 @@ class ClusterServer(object):
             print("error occurred in mounting RAID array to /data")
 
     def git_pull(self):
-        #TODO replace this with public stuff
-        #works with normal public git repository
-        #install seqc on AMI to simplify
+        # TODO replace this with public stuff
+        # works with normal public git repository
+        # install seqc on AMI to simplify
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
         folder = self.dir_name
@@ -235,5 +235,5 @@ class ClusterServer(object):
         self.serv.exec_command(
             'sudo curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
-        #implement some sort of ls grep check system here
+        # implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
