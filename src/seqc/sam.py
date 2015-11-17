@@ -5,6 +5,7 @@ import os
 import seqc
 import tables as tb
 
+# todo test to_h5 on the cluster
 
 class ReadArrayH5Writer:
 
