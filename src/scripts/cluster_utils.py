@@ -125,16 +125,6 @@ class ClusterServer(object):
             # instance.wait_until_stopped()
             # print('Instance %s is now stopped' % inst_id)
 
-            # def terminate_cluster(self, inst_id):
-            #     instance = self.ec2.Instance(inst_id)
-            #     resp = instance.terminate()
-            #     instance.wait_until_terminated()
-            # terminating seems to be instantaneous, see if you want something like this here
-            # if resp['Terminating Instances'][0]['CurrentState']['Name'] == 'terminated':
-            #     print('Instance %s is now stopped' %inst_id)
-            # maybe also do some error handling
-            # print('Instance %s has successfully terminated' % inst_id)
-
     def terminate_cluster(self):
         if self.cluster_is_running():
             self.inst_id.terminate()
@@ -156,29 +146,23 @@ class ClusterServer(object):
         print('volume %s created successfully' % vol_id)
         return vol_id
 
-    # resp['Attachments']['DeleteOnTermination'] = True
-    # def attach_volume(self, inst_id, vol_id, dev_id):
+    #TODO deal with volume creation errors
     def attach_volume(self, vol_id, dev_id):
         """attaches a vol_id to inst_id at dev_id"""
         # instance = self.ec2.Instance(inst_id)
         vol = self.ec2.Volume(vol_id)
-        # instance.attach_volume(VolumeId=vol_id, Device=dev_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
-        # vol_state = vol.attachments[0]['State']
-        # while vol_state != 'attached':
         while vol.state != 'in-use':
             time.sleep(3)
             vol.reload()
-            # vol_state = vol.attachments[0]['State']
         resp = self.inst_id.modify_attribute(
             BlockDeviceMappings=[{'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id, 'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
             print('Something went wrong modifying the attribute of the Volume!')
+            sys.exit(2)
         # deal with error somehow
         print('volume %s attached to %s at %s' % (vol_id, self.inst_id.id, dev_id))
 
-    # should test this code out
-    # def create_raid(self, inst_id, vol_size):
     def connect_server(self):
         ssh_server = sshutils.SSHServer(self.inst_id.id, self.keypath)
         print('connecting to instance %s...' % self.inst_id.id)
