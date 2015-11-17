@@ -2,7 +2,7 @@
 ## AWS Configuration File ##
 ############################
 [global]
-DEFAULT_TEMPLATE=defaultcluster
+DEFAULT_TEMPLATE=c4
 
 #############################################
 ## AWS Credentials and Connection Settings ##
@@ -17,16 +17,22 @@ AWS_REGION_NAME = us-east-1c
 ###########################
 [key]
 KEY_NAME = eyc2120
-KEY_LOCATION= ~/.ssh/eyc2120.rsa
+KEY_LOCATION = ~/.ssh/rando.rsa
 
 ################################
 ## Defining Cluster Templates ##
 ################################
-[defaultcluster]
+[c3]
 CLUSTER_SIZE = 1
 NODE_IMAGE_ID = ami-b4631bde
 NODE_INSTANCE_TYPE = c3.8xlarge
-#SUBNET_ID=subnet-70d7ec36
+AVAILABILITY_ZONE = us-east-1c
+
+[c4]
+CLUSTER_SIZE = 1
+NODE_IMAGE_ID = ami-ea631b80
+NODE_INSTANCE_TYPE = c4.8xlarge
+SUBNET_ID=subnet-70d7ec36
 AVAILABILITY_ZONE = us-east-1c
 
 #######################
