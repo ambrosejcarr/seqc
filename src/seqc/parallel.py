@@ -21,8 +21,10 @@ def get(queue, pids=None):
                 if any_alive(pids):
                     sleep(1)
                     continue
+                else:
+                    break
             else:
-                yield StopIteration
+                break
 
 
 def put(data, queue, pids=None):
@@ -68,16 +70,14 @@ def join(processes):
 
 
 def process_parallel(
-        n_proc, read_func, process_func, write_func, read_kwargs=None,
+        n_proc, h5_name, read_func, process_func, write_func, read_kwargs=None,
         process_kwargs=None, write_kwargs=None):
-
     """
     args:
     -----
     """
 
     def read(read_func_, process_queue_, kwargs, pids):
-    # def read():
         """
         read chunks from file_iterator and places them on the processing queue.
         file iterator should take care of merging multiple files or cutting headers. It
@@ -89,11 +89,11 @@ def process_parallel(
         stack, allowing the processing threads to decompress or decode them into unicode
         strings
         """
-        print('frstart')
+
         while not all([pids['read'], pids['process'], pids['write']]):
             print('fp view of pids: %s' % repr(pids))
             sleep(1)
-        print('frdoing')
+
         for i, chunk in enumerate(read_func_(**kwargs)):
             put((i, chunk), process_queue_, pids['process'])
             seqc.log.info('Read chunk %d.' % i)
@@ -103,30 +103,30 @@ def process_parallel(
         Applies processing func to each chunk from the read iterator, terminating when the
         Queue is empty and the read process is dead.
         """
-        print('fpstart')
         while not all([pids['read'], pids['process'], pids['write']]):
-            print('fp view of pids: %s' % repr(pids))
             sleep(1)
-        print('fpdoing')
+
         for i, data in get(process_queue_, pids['read']):
             seqc.log.info('Processing chunk %d.' % i)
             processed_data = process_func_(data, **kwargs)
             put((i, processed_data), write_queue_, pids['write'])
 
-    def write(write_func_, write_queue_, kwargs, pids):
+    def write(write_func_, write_queue_, filename, kwargs, pids):
         """
         Calls writing_func on each chunk of data retrieved from writing_queue. Please note
         that the file will likely be opened and closed, so writing func should append, not
         write.
         """
-        print('fwstart')
         while not all([pids['read'], pids['process'], pids['write']]):
-            print('fp view of pids: %s' % repr(pids))
             sleep(1)
-        print('fwdoing')
+
+        # open file
+        h5writer = write_func_(filename)
+        h5writer.create(**kwargs)
         for i, data in get(write_queue_, pids['process']):
             seqc.log.info('Writing chunk %d.' % i)
-            write_func_(data, **kwargs)
+            h5writer.write(data)
+        h5writer.close()
 
     seqc.log.setup_logger()
 
@@ -165,11 +165,9 @@ def process_parallel(
 
     # create the write process
     write_process, write_pids = start_processes(
-        n_write, write, ([write_func, write_queue, write_kwargs, pids]))
+        n_write, write, ([write_func, write_queue, h5_name, write_kwargs, pids]))
     pids['write'] = write_pids
 
-    print(read_pids, process_pids, write_pids)
-    print(all([read_pids, process_pids, write_pids]))
     # wait for each process to finish
     join(read_process)
     join(processors)

@@ -6,6 +6,7 @@ import unittest
 import os
 import pickle
 import seqc
+import tables as tb
 from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
 from seqc import arrays
 from io import StringIO
@@ -1911,12 +1912,116 @@ class TestParallelConstructSam(unittest.TestCase):
     def setUp(self):
         data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
         self.samfile = data_dir + 'in_drop/Aligned.out.sam'
+        self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
 
+    @unittest.skip('')
     def test_parallel_construct_sam(self):
         h5_name = 'test.h5'
         n_processes = 7
         chunk_size = 10000
-        seqc.parallel.process_parallel(self.samfile, h5_name, n_processes, chunk_size)
+        seqc.sam.to_h5(self.samfile, h5_name, n_processes, chunk_size,
+                       self.gtf, fragment_length=1000)
+
+    @unittest.skip('')
+    def test_writing_non_parallel(self):
+        h5_name = 'test.h5'
+        n_processes = 7
+        chunk_size = 100000
+        # seqc.sam.to_h5(self.samfile, h5_name, n_processes, chunk_size,
+        #                self.gtf, fragment_length=1000)
+
+        filesize = os.stat(self.samfile).st_size
+
+        # get a bunch of records to check average size of a record
+        with open(self.samfile) as f:
+            records = []
+            for line in f:
+                if line.startswith('@'):
+                    continue
+                records.append(line)
+                if len(records) > 1000:
+                    break
+        average_record_size = np.mean([len(r) for r in records])
+
+        # estimate expected rows for the h5 database
+        expectedrows = filesize / average_record_size
+
+        # create a feature_converter object to convert genomic -> transcriptomic features
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+
+        # open all our tables
+        blosc5 = tb.Filters(complevel=5, complib='blosc')
+        h5f = tb.open_file(h5_name, mode='w', filters=blosc5,
+                           title='Data for ReadArray constructed from %s' % self.samfile)
+        try:
+            # description = tb.descr_from_dtype(_dtype)
+            a = tb.UInt32Atom()
+            # create the tables and arrays needed to store data
+            h5f.create_table(h5f.root, 'data', seqc.sam._DataTable, 'ReadArray.data',
+                             filters=blosc5, expectedrows=expectedrows)
+            h5f.create_earray(h5f.root, 'index', a, (0,), filters=blosc5,
+                              expectedrows=expectedrows)
+            h5f.create_earray(h5f.root, 'features', a, (0,), filters=blosc5,
+                              expectedrows=expectedrows)
+            h5f.create_earray(h5f.root, 'positions', a, (0,), filters=blosc5,
+                              expectedrows=expectedrows)
+
+            itersam = seqc.sam._iterate_chunk(self.samfile, n=chunk_size)
+            for chunk in itersam:
+                processed = seqc.sam._process_chunk(chunk, fc)
+                seqc.sam._write_chunk(processed, h5f)
+            # read_kwargs = dict(samfile=self.samfile, n=chunk_size)
+            # process_kwargs = dict(feature_converter=fc)
+            # write_kwargs = dict(h5_file=h5f)
+            # seqc.parallel.process_parallel(n_processes, sam._iterate_chunk,
+            #                                sam._process_chunk,
+            #                                sam._write_chunk, read_kwargs=read_kwargs,
+            #                                process_kwargs=process_kwargs,
+            #                                write_kwargs=write_kwargs)
+        finally:
+            h5f.close()
+
+    @unittest.skip('')
+    def test_writing_non_parallel_writeobj(self):
+        h5_name = 'test.h5'
+        chunk_size = 1000000
+
+        filesize = os.stat(self.samfile).st_size
+
+        # get a bunch of records to check average size of a record
+        with open(self.samfile) as f:
+            records = []
+            for line in f:
+                if line.startswith('@'):
+                    continue
+                records.append(line)
+                if len(records) > 1000:
+                    break
+        average_record_size = np.mean([len(r) for r in records])
+
+        # estimate expected rows for the h5 database
+        expectedrows = filesize / average_record_size
+
+        # create a feature_converter object to convert genomic -> transcriptomic features
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+
+        # open all our tables
+        h5f = seqc.sam.ReadArrayH5Writer(h5_name)
+        h5f.create(expectedrows)
+        itersam = seqc.sam._iterate_chunk(self.samfile, n=chunk_size)
+        for chunk in itersam:
+            processed = seqc.sam._process_chunk(chunk, fc)
+            h5f.write(processed)
+        h5f.close()
+
+    def test_writing_parallel_writeobj(self):
+        h5_name = 'test.h5'
+        n_processes = 7
+        chunk_size = 100000
+        seqc.sam.to_h5(self.samfile, h5_name, n_processes, chunk_size,
+                       self.gtf, fragment_length=1000)
+        nlines = self.samfile
+
 
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')

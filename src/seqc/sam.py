@@ -5,6 +5,72 @@ import os
 import seqc
 import tables as tb
 
+
+class ReadArrayH5Writer:
+
+    _filters = tb.Filters(complevel=5, complib='blosc')
+
+    class _DataTable(tb.IsDescription):
+        cell = tb.UInt64Col()
+        rmt = tb.UInt32Col()
+        n_poly_t = tb.UInt8Col()
+        valid_cell = tb.BoolCol()
+        dust_score = tb.UInt8Col()
+        rev_quality = tb.UInt8Col()
+        fwd_quality = tb.UInt8Col()
+        is_aligned = tb.BoolCol()
+        alignment_score = tb.UInt8Col()
+
+    def __init__(self, h5file):
+        self._filename = h5file
+        self._fobj = None
+        self._is_open = False
+
+    @property
+    def file(self):
+        return self._filename
+
+    def open(self, mode='w'):
+        if self._is_open:
+            return self._fobj
+        else:
+            self._fobj = tb.open_file(self._filename, mode=mode, filters=self._filters,
+                                      title='ReadArray data')
+            self._is_open = True
+            return self._fobj
+
+    def close(self):
+        if self._is_open:
+            self._fobj.close()
+        else:
+            return
+
+    def create(self, expectedrows):
+        if not self._is_open:
+            self.open()
+        a = tb.UInt32Atom()
+        # create the tables and arrays needed to store data
+        self._fobj.create_table(self._fobj.root, 'data', self._DataTable, 'ReadArray.data',
+                                filters=self._filters, expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'index', a, (0,), filters=self._filters,
+                                 expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'features', a, (0,),
+                                 filters=self._filters, expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'positions', a, (0,),
+                                 filters=self._filters, expectedrows=expectedrows)
+
+    def write(self, data):
+        data, index, features, positions = data
+        # dtable = self._fobj.root.data
+        # dtable.append(data)
+        # dtable.flush()
+        self._fobj.root.data.append(data)
+        self._fobj.root.data.flush()
+        self._fobj.root.index.append(np.ravel(index))
+        self._fobj.root.features.append(features)
+        self._fobj.root.positions.append(positions)
+
+
 _dtype = [
     ('cell', np.uint64),
     ('rmt', np.uint32),
@@ -17,23 +83,27 @@ _dtype = [
     ('alignment_score', np.uint8)]
 
 
-class _DataTable(tb.IsDescription):
-    cell = tb.UInt64Col()
-    rmt = tb.UInt32Col()
-    n_poly_t = tb.UInt8Col()
-    valid_cell = tb.BoolCol()
-    dust_score = tb.UInt8Col()
-    rev_quality = tb.UInt8Col()
-    fwd_quality = tb.UInt8Col()
-    is_aligned = tb.BoolCol()
-    alignment_score = tb.UInt8Col()
-
+# class _DataTable(tb.IsDescription):
+#     cell = tb.UInt64Col()
+#     rmt = tb.UInt32Col()
+#     n_poly_t = tb.UInt8Col()
+#     valid_cell = tb.BoolCol()
+#     dust_score = tb.UInt8Col()
+#     rev_quality = tb.UInt8Col()
+#     fwd_quality = tb.UInt8Col()
+#     is_aligned = tb.BoolCol()
+#     alignment_score = tb.UInt8Col()
+#
 
 def _iterate_chunk(samfile, n=int(1e9)):
     """open a sam file, yield chunks of size n bytes; default ~ 1GB"""
     with open(samfile, 'rb') as f:
-        yield f.read(n)
-
+        while True:
+            d = f.read(n)
+            if d:
+                yield d
+            else:
+                break
 
 def _average_quality(quality_string):
     """calculate the average quality of a sequencing read from ASCII quality string"""
@@ -118,7 +188,7 @@ def _process_chunk(chunk, feature_converter):
     j = 0  # index for: feature & position JaggedArrays
     s = 0  # index for: start of multialignment
     e = 1  # index for: end of multialignment
-    while e <= len(records):
+    while e < len(records):
         # get first unread record name
         name = records[s][0]
 
@@ -168,8 +238,9 @@ def _process_chunk(chunk, feature_converter):
 def _write_chunk(data, h5_file):
     """write a data chunk to the h5 file"""
     data, index, features, positions = data
-    h5_file.root.data.append(data)
-    h5_file.root.data.flush()
+    dtable = h5_file.root.data
+    dtable.append(data)
+    dtable.flush()
     h5_file.root.index.append(np.ravel(index))
     h5_file.root.features.append(features)
     h5_file.root.positions.append(positions)
@@ -206,34 +277,13 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     # create a feature_converter object to convert genomic -> transcriptomic features
     fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, fragment_length)
 
-    # open all our tables
-    blosc5 = tb.Filters(complevel=5, complib='blosc')
-    h5f = tb.open_file(h5_name, mode='w', filters=blosc5,
-                       title='Data for ReadArray constructed from %s' % samfile)
-    try:
-        # description = tb.descr_from_dtype(_dtype)
-        a = tb.UInt32Atom()
-        # create the tables and arrays needed to store data
-        h5f.create_table(h5f.root, 'data', _DataTable, 'ReadArray.data', filters=blosc5,
-                         expectedrows=expectedrows)
-        h5f.create_earray(h5f.root, 'index', a, (0,), filters=blosc5,
-                          expectedrows=expectedrows)
-        h5f.create_earray(h5f.root, 'features', a, (0,), filters=blosc5,
-                          expectedrows=expectedrows)
-        h5f.create_earray(h5f.root, 'positions', a, (0,), filters=blosc5,
-                          expectedrows=expectedrows)
-
-        read_kwargs = dict(samfile=samfile, n=chunk_size)
-        process_kwargs = dict(feature_converter=fc)
-        write_kwargs = dict(h5_file=h5f)
-        seqc.parallel.process_parallel(n_processes, _iterate_chunk, _process_chunk,
-                                       _write_chunk, read_kwargs=read_kwargs,
-                                       process_kwargs=process_kwargs,
-                                       write_kwargs=write_kwargs)
-    finally:
-        h5f.close()
+    read_kwargs = dict(samfile=samfile, n=chunk_size)
+    process_kwargs = dict(feature_converter=fc)
+    write_kwargs = dict(expectedrows=expectedrows)
+    seqc.parallel.process_parallel(
+        n_processes, h5_name, _iterate_chunk, _process_chunk, ReadArrayH5Writer,
+        read_kwargs=read_kwargs, process_kwargs=process_kwargs, write_kwargs=write_kwargs)
 
     return h5_name
-
 
 
