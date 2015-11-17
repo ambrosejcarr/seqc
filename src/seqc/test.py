@@ -1953,8 +1953,6 @@ class TestCounting(unittest.TestCase):
             # molecule and read arrays
             return seqc.arrays.UniqueReadArray(udata, ufeatures, upositions)
 
-
-
         rmts = [10] * 9 + [6] * 9 + [111] * 9
         cells = [1, 2, 3] * 9
         features = [7, 7, 7, 8, 8, 8, 9, 9, 9] * 3
@@ -1977,9 +1975,19 @@ class TestCounting(unittest.TestCase):
     # @unittest.skip('')
     def test_counting_simple(self):
         exp = self.simple_unique.to_experiment(0)
-        data = np.array(exp.molecules.counts.todense())
+        rdata = np.array(exp.reads.counts.todense())
+        mdata = np.array(exp.molecules.counts.todense())
         # todo getting the features right, but not splitting by cell anymore
-        print(pd.DataFrame(data, exp.molecules.index, exp.molecules.columns))
+        print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
+        print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
+
+    def test_counting_doublets(self):
+        exp = self.simple_duplicate.to_experiment(0)
+        rdata = np.array(exp.reads.counts.todense())
+        mdata = np.array(exp.molecules.counts.todense())
+        # todo getting the features right, but not splitting by cell anymore
+        print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
+        print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
 
 
 

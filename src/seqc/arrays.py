@@ -1156,6 +1156,7 @@ class UniqueReadArray:
         # calculations
         i = np.concatenate((np.where(all_diff)[0], [len(self)]))
         rpm_count = np.diff(i)
+
         # filter which molecules we want to keep by thresholding ra_molecule_idx
         ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support, [False]))]]
 
@@ -1165,12 +1166,13 @@ class UniqueReadArray:
 
         # to get reads per cell, I discard the notion of molecular correction by diffing
         # on only cell and feature from the original sort
+        # diff is working as intended
         rpc_diff = np.zeros(len(self), dtype=np.bool)
         rpc_diff[0] = True
         rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
         rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
         i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
-        ra_read_index = sort_ord[i[:-1]]
+        ra_rpc_idx = sort_ord[i[:-1]]
         rpc_count = np.ravel(np.diff(i))
 
         # because reads per molecule gives me a list of all molecules, molecules per
@@ -1182,7 +1184,7 @@ class UniqueReadArray:
         mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
         mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
         i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
-        ra_cell_index = sort_ord[ra_molecule_idx][i[:-1]]
+        ra_rpm_idx = ra_molecule_idx[i[:-1]]
         mpc_count = np.ravel(np.diff(i))
 
         def map_to_unique_index(vector):
@@ -1196,15 +1198,15 @@ class UniqueReadArray:
         # generate sparse matrices
 
         # reads per cell
-        row, cells = map_to_unique_index(self.data['cell'][ra_read_index])
-        col, genes = map_to_unique_index(self.features[ra_read_index])
+        row, cells = map_to_unique_index(self.data['cell'][ra_rpc_idx])
+        col, genes = map_to_unique_index(self.features[ra_rpc_idx])
         shape = (len(cells), len(genes))
         rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
         reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
 
         # molecules per cell
-        row, cells = map_to_unique_index(self.data['cell'][ra_cell_index])
-        col, genes = map_to_unique_index(self.features[ra_cell_index])
+        row, cells = map_to_unique_index(self.data['cell'][ra_rpm_idx])
+        col, genes = map_to_unique_index(self.features[ra_rpm_idx])
         shape = (len(cells), len(genes))
         mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
         molecules_per_cell = seqc.analyze.SparseCounts(mpc, cells, genes)
