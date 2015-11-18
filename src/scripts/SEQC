@@ -176,7 +176,6 @@ def process_input():
 
 def run_SEQC_remote(kwargs):
     """
-    todo:
     - add any additional arguments necessary to run your function to argparse. Talk to
       ajc about this once you have your list of args (before editing; argparse is complex)
     - write the function here that will call SEQC remotely.
@@ -190,10 +189,12 @@ def run_SEQC_remote(kwargs):
       could just call SEQC_REMOTE with this method! Note that code that follows is not
       tested.
 
+    """
 
     cmd = 'SEQC '
-
     # get the positional argument; doesn't need a '--' prefix
+    #TODO: determine the subparser_name
+
     positional = kwargs['subparser_name']
     cmd += positional + ' '
     del kwargs['subparser_name']  # we're going to iterate over all optional arguments
@@ -202,28 +203,23 @@ def run_SEQC_remote(kwargs):
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
         cmd += '--%s %s ' % (k, v)
-
-    # setup remote cluster
-
-    # call seqc
-    paramiko.call(cmd)  # obviously this isn't how it works, but you get the idea, I hope.
-
-    # shut down cluster
-    """
-
-    cmd = 'SEQC '
-    positional = kwargs['subparser']
     #finish parsing, then pass the finalized version of "cmd" to creating the remote cluster
+    #args --> cluster_name (assign?, size of raid array)
 
+    #set up remote cluster here, finishes all the way thru gitpull
     cluster = clustutils.ClusterServer()
-    cluster.configure_cluster('aws_config')
-    cluster.create_security_group('seqc2')
+    cluster.configure_cluster('aws_config') #i think we can hardcode this but check
+    cluster.create_security_group('seqc2') #kwargs[subparser_name]['clust_name'] or something?
     cluster.create_cluster()
-    print('sleeping to see if we can connect')
-    time.sleep(45)
     cluster.connect_server()
-    cluster.create_raid(50)
+    cluster.create_raid() #kwargs['subparser_name]['clust_name']['vol_size']
     cluster.git_pull()
+
+    #see if you want to bring exec_command into cluster_utils class?
+    #executes SEQC on cluster
+    cluster.serv.exec_command('SEQC_REMOTE(args)')
+
+    #TODO shut down cluster and have local command exit
 
 if __name__ == "__main__":
     kwargs = process_input()
@@ -232,6 +228,7 @@ if __name__ == "__main__":
         # log command line arguments for debugging
         arg_copy = copy(kwargs)
         del arg_copy['func']  # function is not serializable
+
         seqc.log.info('SEQC version: %s' % seqc.__version__)
         seqc.log.info('SEQC working directory: %s' % os.getcwd())
         seqc.log.info('Passed command line arguments: %s' %

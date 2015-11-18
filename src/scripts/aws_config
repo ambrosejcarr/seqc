@@ -2,7 +2,7 @@
 ## AWS Configuration File ##
 ############################
 [global]
-DEFAULT_TEMPLATE=c4
+DEFAULT_TEMPLATE=c3
 
 #############################################
 ## AWS Credentials and Connection Settings ##
@@ -17,7 +17,7 @@ AWS_REGION_NAME = us-east-1c
 ###########################
 [key]
 KEY_NAME = eyc2120
-KEY_LOCATION = ~/.ssh/rando.rsa
+KEY_LOCATION = ~/.ssh/eyc2120.rsa
 
 ################################
 ## Defining Cluster Templates ##

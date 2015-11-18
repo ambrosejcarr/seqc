@@ -6,7 +6,7 @@ import sys
 import os
 import configparser
 import random
-
+from botocore.exceptions import ClientError
 
 # instance.update() to refresh
 # workflow: 1) run code w/ paramters 2) this thing does everything and uploads file onto S3
@@ -47,8 +47,8 @@ class ClusterServer(object):
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
             print('created security group %s (%s)' % (name,sg.id))
-        #TODO ClientError instead of just Exception
-        except Exception:
+        #TODO how to catch this error gracefully??
+        except ClientError:
             print('the cluster %s already exists!' %name)
             sys.exit(2)
 
@@ -247,3 +247,6 @@ class ClusterServer(object):
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
         # implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
+
+    def cluster_main(self):
+
