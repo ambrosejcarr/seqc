@@ -291,12 +291,3 @@ def construct_gene_table(gtf):
                     interval_table[chromosome][strand] = IntervalTree()
                     interval_table[chromosome][strand].addi(start, end, gene_id)
     return interval_table
-
-
-
-if __name__ == "__main__":
-    if not len(argv) == 3:
-        print('usage: python convert_features.py gtf_file (string) insert_size (int)')
-        exit(1)
-    else:
-        construct_feature_table(argv[1], argv[2])
