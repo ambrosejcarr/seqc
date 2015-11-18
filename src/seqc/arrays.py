@@ -912,7 +912,7 @@ class ReadArray:
         # create group for feature-related data and store.
         store_carray(f, self.features.data, '/', 'features')
         store_carray(f, self.features.index, '/', 'index')
-        store_carray(f, self.positions, '/', 'positions')
+        store_carray(f, self.positions.data, '/', 'positions')
 
         f.close()
 

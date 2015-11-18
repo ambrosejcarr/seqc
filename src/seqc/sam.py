@@ -53,7 +53,7 @@ class ReadArrayH5Writer:
         # create the tables and arrays needed to store data
         self._fobj.create_table(self._fobj.root, 'data', self._DataTable, 'ReadArray.data',
                                 filters=self._filters, expectedrows=expectedrows)
-        self._fobj.create_earray(self._fobj.root, 'index', a, (0,), filters=self._filters,
+        self._fobj.create_earray(self._fobj.root, 'index', a, (0, 2), filters=self._filters,
                                  expectedrows=expectedrows)
         self._fobj.create_earray(self._fobj.root, 'features', a, (0,),
                                  filters=self._filters, expectedrows=expectedrows)
@@ -67,7 +67,7 @@ class ReadArrayH5Writer:
         # dtable.flush()
         self._fobj.root.data.append(data)
         self._fobj.root.data.flush()
-        self._fobj.root.index.append(np.ravel(index))
+        self._fobj.root.index.append(index)
         self._fobj.root.features.append(features)
         self._fobj.root.positions.append(positions)
 
