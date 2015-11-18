@@ -9,6 +9,9 @@ import seqc
 from copy import copy
 import sys
 import json
+import time
+import cluster_utils as clustutils
+import ssh_utils as sshutils
 from subprocess import call
 from multiprocessing import Process
 
@@ -191,7 +194,7 @@ def run_SEQC_remote(kwargs):
     cmd = 'SEQC '
 
     # get the positional argument; doesn't need a '--' prefix
-    positional = kwargs['suparser_name']
+    positional = kwargs['subparser_name']
     cmd += positional + ' '
     del kwargs['subparser_name']  # we're going to iterate over all optional arguments
 
@@ -207,7 +210,20 @@ def run_SEQC_remote(kwargs):
 
     # shut down cluster
     """
-    raise NotImplementedError
+
+    cmd = 'SEQC '
+    positional = kwargs['subparser']
+    #finish parsing, then pass the finalized version of "cmd" to creating the remote cluster
+
+    cluster = clustutils.ClusterServer()
+    cluster.configure_cluster('aws_config')
+    cluster.create_security_group('seqc2')
+    cluster.create_cluster()
+    print('sleeping to see if we can connect')
+    time.sleep(45)
+    cluster.connect_server()
+    cluster.create_raid(50)
+    cluster.git_pull()
 
 if __name__ == "__main__":
     kwargs = process_input()
