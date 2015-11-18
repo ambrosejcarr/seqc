@@ -229,7 +229,6 @@ def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_th
         seqc.log.info('Merging fastq files.')
         merged_fastq = seqc.fastq.merge_fastq(forward, reverse, processor, temp_dir, cb,
                                               n_threads)
-
     return merged_fastq
 
 
@@ -249,7 +248,7 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_f
 
         # copy alignment summary
         shutil.copyfile(temp_dir + 'Log.final.out', output_file + '_alignment_summary.txt')
-        return samfile
+    return samfile
 
 
 def process_samfile(samfile, output_file, n_threads, gtf, frag_len):
