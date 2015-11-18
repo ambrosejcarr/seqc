@@ -1,7 +1,5 @@
 __author__ = 'ambrose'
 
-
-# interfaces with ftp and s3 go here.
 from glob import glob
 import gzip
 import bz2
@@ -11,7 +9,6 @@ from threading import Thread
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
-
 import boto3
 import logging
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
