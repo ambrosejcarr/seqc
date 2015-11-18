@@ -5,6 +5,7 @@ import ssh_utils as sshutils
 import sys
 import os
 import configparser
+import random
 
 
 # instance.update() to refresh
@@ -35,16 +36,21 @@ class ClusterServer(object):
         self.sg = None
         self.serv = None
 
-    def create_security_group(self, name):
+    def create_security_group(self, name=None):
         """Creates a new security group for the cluster"""
+        if name == None:
+            name = 'seqc_' + str(random.randint(1, int(1e12)))
+            print('no name assigned, chose %s' %name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22, ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
-            print('created security group seqc (%s)' % sg.id)
-        except self.ec2.ClientError:
-            print('the cluster %s already exists!')
+            print('created security group %s (%s)' % (name,sg.id))
+        #TODO ClientError instead of just Exception
+        except Exception:
+            print('the cluster %s already exists!' %name)
+            sys.exit(2)
 
     # TODO catch errors in cluster configuration
     def configure_cluster(self, config_file):
@@ -62,7 +68,7 @@ class ClusterServer(object):
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
 
-    def create_cluster(self, clust_type):
+    def create_cluster(self):
         """creates a new AWS cluster with specifications from aws_config"""
         if 'c4' in self.inst_type:
             if not self.subnet:
@@ -134,22 +140,25 @@ class ClusterServer(object):
             # instance.wait_until_stopped()
             # print('Instance %s is now stopped' % inst_id)
 
+    #TODO test this function
     def terminate_cluster(self):
         """terminates a running cluster"""
         if self.cluster_is_running():
+            gname = self.inst_id.security_groups[0]['GroupName']
             self.inst_id.terminate()
             self.inst_id.wait_until_terminated()
             print('instance %s has successfully terminated' % self.inst_id)
 
             print('removing security group %s...' %self.inst_id.security_groups)
-            gname = self.inst_id.security_groups[0]['GroupName']
             boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=self.sg)
+            print('process complete!')
         else:
             print('instance %s is not running!' % self.inst_id)
 
     # should test out this code
-    def create_volume(self, vol_size):
+    def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
+        vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -185,9 +194,10 @@ class ClusterServer(object):
             print('connection successful!')
         self.serv = ssh_server
 
-    def create_raid(self, vol_size):
+    def create_raid(self):
         """creates a raid array of a specified number of volumes on /data"""
         dev_base = "/dev/xvd"
+        vol_size = 1024
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
         for i in range(int(self.n_tb)):
