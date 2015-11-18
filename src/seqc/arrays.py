@@ -910,16 +910,9 @@ class ReadArray:
         f.create_table(f.root, 'data', self._data)
 
         # create group for feature-related data and store.
-        feature_group = h5.create_group(
-            f, 'features', '/', 'Data for ReadArray._features')
-        store_carray(f, self._features._data, feature_group, 'data')
-        store_carray(f, self._features._index, feature_group, 'index')
-
-        # store position data
-        positions_group = h5.create_group(
-            f, 'positions', '/', 'Data for ReadArray._features')
-        store_carray(f, self._positions._data, positions_group, 'data')
-        store_carray(f, self._positions._index, positions_group, 'index')
+        store_carray(f, self.features.data, '/', 'features')
+        store_carray(f, self.features.index, '/', 'index')
+        store_carray(f, self.positions, '/', 'positions')
 
         f.close()
 
@@ -929,11 +922,11 @@ class ReadArray:
 
         data = f.root.data.read()
 
-        fdata = f.root.features.data.read()
-        findex = f.root.features.index.read()
+        fdata = f.root.features.read()
+        findex = f.root.index.read()
 
-        pdata = f.root.positions.data.read()
-        pindex = f.root.positions.index.read()
+        pdata = f.root.positions.read()
+        pindex = f.root.index.read()
 
         features = JaggedArray(fdata, findex)
         positions = JaggedArray(pdata, pindex)
@@ -1196,7 +1189,7 @@ class UniqueReadArray:
         col, genes = map_to_unique_index(self.features[ra_read_index])
         shape = (len(cells), len(genes))
         rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
-        reads_per_cell = seqc.analyze.SparseCounts(rpc[0], cells, genes)
+        reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
 
         # molecules per cell
         row, cells = map_to_unique_index(self.data['cell'][ra_cell_index])
