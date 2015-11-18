@@ -10,7 +10,9 @@ import configparser
 # instance.update() to refresh
 # workflow: 1) run code w/ paramters 2) this thing does everything and uploads file onto S3
 # 3) sends back to user
-# TODO: currently designed to work only with the instance created by the class method!!!
+
+#TODO check if any errors in the arguments here
+# maybe keep track of all the volumes associated with it too
 class ClusterServer(object):
     """Connects to AWS instance using paramiko and a private RSA key,
     allows for the creation/manipulation of EC2 instances and executions
@@ -32,9 +34,9 @@ class ClusterServer(object):
         self.n_tb = None
         self.sg = None
         self.serv = None
-        # maybe keep track of all the volumes associated with it too
 
     def create_security_group(self, name):
+        """Creates a new security group for the cluster"""
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22, ToPort=22)
@@ -46,18 +48,22 @@ class ClusterServer(object):
 
     # TODO catch errors in cluster configuration
     def configure_cluster(self, config_file):
+        """configures the newly created cluster according to aws_config"""
         config = configparser.ConfigParser()
         config.read(config_file)
+        template = config['global']['DEFAULT_TEMPLATE']
         self.keyname = config['key']['KEY_NAME']
         self.keypath = os.path.expanduser(config['key']['KEY_LOCATION'])
-        self.image_id = config['defaultcluster']['NODE_IMAGE_ID']
-        self.inst_type = config['defaultcluster']['NODE_INSTANCE_TYPE']
-        # self.subnet = config['defaultcluster']['SUBNET_ID']
-        self.zone = config['defaultcluster']['AVAILABILITY_ZONE']
+        self.image_id = config[template]['NODE_IMAGE_ID']
+        self.inst_type = config[template]['NODE_INSTANCE_TYPE']
+        if template == 'c4':
+            self.subnet = config[template]['SUBNET_ID']
+        self.zone = config[template]['AVAILABILITY_ZONE']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
 
     def create_cluster(self, clust_type):
+        """creates a new AWS cluster with specifications from aws_config"""
         if 'c4' in self.inst_type:
             if not self.subnet:
                 print('You must specify a subnet-id for C4 instances!')
@@ -79,6 +85,7 @@ class ClusterServer(object):
         self.inst_id = instance
 
     def cluster_is_running(self):
+        """checks whether a cluster is running"""
         if self.inst_id is None:
             print('No instance created!')
             sys.exit(2)
@@ -89,6 +96,7 @@ class ClusterServer(object):
             return False
 
     def restart_cluster(self):
+        """restarts a stopped cluster"""
         if self.inst_id.state['Name'] == 'stopped':
             self.inst_id.start()
             self.inst_id.wait_until_running()
@@ -112,6 +120,7 @@ class ClusterServer(object):
             # instance = self.ec2.Instance(inst_id)
 
     def stop_cluster(self):
+        """stops a running cluster"""
         if self.cluster_is_running():
             self.inst_id.stop()
             self.inst_id.wait_until_stopped()
@@ -126,15 +135,21 @@ class ClusterServer(object):
             # print('Instance %s is now stopped' % inst_id)
 
     def terminate_cluster(self):
+        """terminates a running cluster"""
         if self.cluster_is_running():
             self.inst_id.terminate()
             self.inst_id.wait_until_terminated()
             print('instance %s has successfully terminated' % self.inst_id)
+
+            print('removing security group %s...' %self.inst_id.security_groups)
+            gname = self.inst_id.security_groups[0]['GroupName']
+            boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=self.sg)
         else:
             print('instance %s is not running!' % self.inst_id)
 
     # should test out this code
     def create_volume(self, vol_size):
+        """creates a volume of size vol_size and returns the volume's id"""
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -149,7 +164,6 @@ class ClusterServer(object):
     #TODO deal with volume creation errors
     def attach_volume(self, vol_id, dev_id):
         """attaches a vol_id to inst_id at dev_id"""
-        # instance = self.ec2.Instance(inst_id)
         vol = self.ec2.Volume(vol_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
         while vol.state != 'in-use':
@@ -160,10 +174,10 @@ class ClusterServer(object):
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
             print('Something went wrong modifying the attribute of the Volume!')
             sys.exit(2)
-        # deal with error somehow
         print('volume %s attached to %s at %s' % (vol_id, self.inst_id.id, dev_id))
 
     def connect_server(self):
+        """connects to the aws instance"""
         ssh_server = sshutils.SSHServer(self.inst_id.id, self.keypath)
         print('connecting to instance %s...' % self.inst_id.id)
         ssh_server.connect()
@@ -172,6 +186,7 @@ class ClusterServer(object):
         self.serv = ssh_server
 
     def create_raid(self, vol_size):
+        """creates a raid array of a specified number of volumes on /data"""
         dev_base = "/dev/xvd"
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
@@ -208,6 +223,7 @@ class ClusterServer(object):
             print("error occurred in mounting RAID array to /data")
 
     def git_pull(self):
+        """installs the SEQC directory in /data/software"""
         # TODO replace this with public stuff
         # works with normal public git repository
         # install seqc on AMI to simplify
