@@ -5,7 +5,6 @@ import os
 import seqc
 import tables as tb
 
-# todo test to_h5 on the cluster
 
 class ReadArrayH5Writer:
 
@@ -83,18 +82,6 @@ _dtype = [
     ('is_aligned', np.bool),
     ('alignment_score', np.uint8)]
 
-
-# class _DataTable(tb.IsDescription):
-#     cell = tb.UInt64Col()
-#     rmt = tb.UInt32Col()
-#     n_poly_t = tb.UInt8Col()
-#     valid_cell = tb.BoolCol()
-#     dust_score = tb.UInt8Col()
-#     rev_quality = tb.UInt8Col()
-#     fwd_quality = tb.UInt8Col()
-#     is_aligned = tb.BoolCol()
-#     alignment_score = tb.UInt8Col()
-#
 
 def _iterate_chunk(samfile, n=int(1e9)):
     """open a sam file, yield chunks of size n bytes; default ~ 1GB"""
