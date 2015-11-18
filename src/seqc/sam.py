@@ -12,15 +12,15 @@ class ReadArrayH5Writer:
     _filters = tb.Filters(complevel=5, complib='blosc')
 
     class _DataTable(tb.IsDescription):
-        cell = tb.UInt64Col()
-        rmt = tb.UInt32Col()
-        n_poly_t = tb.UInt8Col()
-        valid_cell = tb.BoolCol()
-        dust_score = tb.UInt8Col()
-        rev_quality = tb.UInt8Col()
-        fwd_quality = tb.UInt8Col()
-        is_aligned = tb.BoolCol()
-        alignment_score = tb.UInt8Col()
+        cell = tb.UInt64Col(pos=0)
+        rmt = tb.UInt32Col(pos=1)
+        n_poly_t = tb.UInt8Col(pos=2)
+        valid_cell = tb.BoolCol(pos=3)
+        dust_score = tb.UInt8Col(pos=4)
+        rev_quality = tb.UInt8Col(pos=5)
+        fwd_quality = tb.UInt8Col(pos=6)
+        is_aligned = tb.BoolCol(pos=7)
+        alignment_score = tb.UInt8Col(pos=8)
 
     def __init__(self, h5file):
         self._filename = h5file
