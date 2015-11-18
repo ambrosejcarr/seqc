@@ -6,7 +6,10 @@ import pandas as pd
 from collections import defaultdict, Mapping, Iterable
 from scipy.sparse import coo_matrix
 from seqc import plot, gtf, three_bit
-from tsne import bh_sne
+try:
+    from tsne import bh_sne
+except ImportError:
+    bh_sne = None
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
