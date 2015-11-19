@@ -1,24 +1,120 @@
 __author__ = 'Ambrose J. Carr'
 
+# import warnings
+# with warnings.catch_warnings():
 from operator import itemgetter
 import numpy as np
 from copy import copy
 from numpy.lib.recfunctions import append_fields
 from itertools import islice
-from seqc.three_bit import ThreeBit
-from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
-from collections import deque, defaultdict
-from seqc import h5
-import seqc.analyze
+from collections import defaultdict
 from scipy.sparse import coo_matrix
 import numbers
 import tables as tb
 import pickle
 from types import *
 import os
+from scipy.special import gammaln
+from scipy.stats import chi2
+import seqc
 
 # register numpy integers as Integrals
 numbers.Integral.register(np.integer)
+
+
+def _multinomial_loglikelihood(x, probs):
+    """return the multinomial log-likelihood of probs given x log(L) = Mult(probs | x)"""
+    return (gammaln(np.sum(x) + 1) - np.sum(gammaln(x + 1))) + np.sum(x * np.log(probs))
+
+
+def _likelihood_ratio_test(current_model, best_model, df):
+    """likelihood ratio test, evaluated with a chi2 distribution with df=df
+
+    note: assumes input parameters are log-likelihoods"""
+    ratio = -2 * current_model + 2 * best_model
+    return chi2.cdf(ratio, df)
+
+
+class _UnionFind:
+    """Union-find data structure.
+
+    Each unionFind instance X maintains a family of disjoint sets of
+    hashable objects, supporting the following two methods:
+
+    - X[item] returns a name for the set containing the given item.
+      Each set is named by an arbitrarily-chosen one of its members; as
+      long as the set remains unchanged it will keep the same name. If
+      the item is not yet part of a set in X, a new singleton set is
+      created for it.
+
+    - X.union(item1, item2, ...) merges the sets containing each item
+      into a single larger set.  If any item is not yet part of a set
+      in X, it is added to X as one of the members of the merged set.
+    """
+
+    def __init__(self):
+        """Create a new empty union-find structure."""
+        self.weights = {}
+        self.parents = {}
+
+    def __getitem__(self, obj):
+        """Find and return the name of the set containing the object."""
+
+        # check for previously unknown object
+        if obj not in self.parents:
+            self.parents[obj] = obj
+            self.weights[obj] = 1
+            return obj
+
+        # find path of objects leading to the root
+        path = [obj]
+        root = self.parents[obj]
+        while root != path[-1]:
+            path.append(root)
+            root = self.parents[root]
+
+        # compress the path and return
+        for ancestor in path:
+            self.parents[ancestor] = root
+        return root
+
+    def __iter__(self):
+        """Iterate through all items ever found or unioned by this structure."""
+        return iter(self.parents)
+
+    def union(self, *objects):
+        """Find the sets containing the objects and merge them all."""
+        roots = [self[x] for x in objects]
+        heaviest = max([(self.weights[r], r) for r in roots])[1]
+        for r in roots:
+            if r != heaviest:
+                self.weights[heaviest] += self.weights[r]
+                self.parents[r] = heaviest
+
+    def union_all(self, iterable):
+        for i in iterable:
+            self.union(*i)
+
+    def find_all(self, vals):
+        vals = [self.find_component(v) for v in vals]
+        unique = set(vals)
+        reindex = dict(zip(unique, range(len(unique))))
+        set_membership = np.array([reindex[v] for v in vals])
+        sets = np.array(list(reindex.values()))
+        return set_membership, sets
+
+    def find_component(self, iterable):
+        """Return the set that obj belongs to
+
+        If the iterable contains items that have been unioned, then any entry in the
+         iterable will be sufficient to identify the set that obj belongs to. Use the
+         first entry, and return the set associated with iterable.
+
+        If the iterable has not been entered into the structure, this method can yield
+         incorrect results
+        """
+        return self[next(iter(iterable))]
+
 
 
 # todo | change jagged array slicing to return another jagged array
@@ -609,7 +705,8 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
+        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+               for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (rmt/cell pair)
@@ -660,7 +757,8 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
+        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+               for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (gene/rmt/cell)
@@ -753,7 +851,7 @@ class ReadArray:
                 continue
 
             # get disjoint set membership
-            uf = UnionFind()
+            uf = _UnionFind()
             uf.union_all(putative_features)
             set_membership, sets = uf.find_all(putative_features)
 
@@ -802,7 +900,7 @@ class ReadArray:
                     obs, exp = outer_join(obs_counter, exp_dict)
 
                     # calculate model probability
-                    model_likelihoods[i] = multinomial_loglikelihood(obs, exp)
+                    model_likelihoods[i] = _multinomial_loglikelihood(obs, exp)
                     df[i] = len(obs) - 1
 
                 likelihood_ordering = np.argsort(model_likelihoods)[::-1]
@@ -817,7 +915,7 @@ class ReadArray:
                     model = models[i]
                     lh = model_likelihoods[i]
                     degrees_freedom = df[i]
-                    p = likelihood_ratio_test(lh, top_likelihood, degrees_freedom)
+                    p = _likelihood_ratio_test(lh, top_likelihood, degrees_freedom)
                     if p < alpha:
                         passing_models.append(model)
                     else:
@@ -910,16 +1008,9 @@ class ReadArray:
         f.create_table(f.root, 'data', self._data)
 
         # create group for feature-related data and store.
-        feature_group = h5.create_group(
-            f, 'features', '/', 'Data for ReadArray._features')
-        store_carray(f, self._features._data, feature_group, 'data')
-        store_carray(f, self._features._index, feature_group, 'index')
-
-        # store position data
-        positions_group = h5.create_group(
-            f, 'positions', '/', 'Data for ReadArray._features')
-        store_carray(f, self._positions._data, positions_group, 'data')
-        store_carray(f, self._positions._index, positions_group, 'index')
+        store_carray(f, self.features.data, '/', 'features')
+        store_carray(f, self.features.index, '/', 'index')
+        store_carray(f, self.positions.data, '/', 'positions')
 
         f.close()
 
@@ -929,11 +1020,11 @@ class ReadArray:
 
         data = f.root.data.read()
 
-        fdata = f.root.features.data.read()
-        findex = f.root.features.index.read()
+        fdata = f.root.features.read()
+        findex = f.root.index.read()
 
-        pdata = f.root.positions.data.read()
-        pindex = f.root.positions.index.read()
+        pdata = f.root.positions.read()
+        pindex = f.root.index.read()
 
         features = JaggedArray(fdata, findex)
         positions = JaggedArray(pdata, pindex)
@@ -1290,286 +1381,3 @@ def outer_join(left, right):
             right_array[i] = 0.
 
     return left_array, right_array
-
-    # def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
-    #
-    #     # mask failing cells and molecules with < 2 reads supporting them.
-    #     read_mask = self.mask_failing_records(n_poly_t_required)
-    #     low_coverage_mask = self.mask_low_support_molecules()
-    #     unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
-    #     molecule_counts = defaultdict(dict)
-    #
-    #     # get a bytes-representation of each feature object
-    #     feature_map = {}
-    #
-    #     if collapse_molecules:
-    #         # get molecule counts
-    #
-    #         for i in unmasked_inds:
-    #             feature = self._features[i]
-    #             hashed = hash(self._features[i].tobytes())
-    #             feature_map[hashed] = feature
-    #             cell = self.data['cell'][i]
-    #             rmt = self.data['rmt'][i]
-    #             try:
-    #                 molecule_counts[hashed][cell].add(rmt)
-    #             except KeyError:
-    #                 molecule_counts[hashed][cell] = {rmt}
-    #
-    #         # convert to molecule counts
-    #         for f in molecule_counts.keys():
-    #             for c, rmts in molecule_counts[f].items():
-    #                 molecule_counts[f][c] = len(rmts)
-    #     else:
-    #         for i in unmasked_inds:
-    #             feature = self._features[i]
-    #             hashed = hash(self._features[i].tobytes())
-    #             feature_map[hashed] = feature
-    #             cell = self.data['cell'][i]
-    #             try:
-    #                 molecule_counts[hashed][cell] += 1
-    #             except KeyError:
-    #                 molecule_counts[hashed][cell] = 1
-    #
-    #     # convert to values, row, col form for scipy.coo
-    #     # pre-allocate arrays
-    #     size = sum(len(c) for c in molecule_counts.values())
-    #     values = np.empty(size, dtype=int)
-    #     row = np.empty(size, dtype=int)
-    #     col = np.empty(size, dtype=int)
-    #     i = 0
-    #     for hashed_feature in molecule_counts:
-    #         feature = feature_map[hashed_feature]
-    #         for cell, count in molecule_counts[hashed_feature].items():
-    #             values[i] = count
-    #             row[i] = cell
-    #             col[i] = feature[0]  # todo this is arbitrary, selecting feature[0] of x
-    #             i += 1
-    #
-    #     # get max count to shrink dtype if possible
-    #     maxcount = np.max(values)
-    #
-    #     # set dtype
-    #     if 0 < maxcount < 2 ** 8:
-    #         dtype = np.uint8
-    #     elif maxcount < 2 ** 16:
-    #         dtype = np.uint16
-    #     elif maxcount < 2 ** 32:
-    #         dtype = np.uint32
-    #     elif maxcount < 2 ** 64:
-    #         dtype = np.uint64
-    #     elif maxcount < 0:
-    #         raise ValueError('Negative count value encountered. These values are not'
-    #                          'defined and indicate a probable upstream bug')
-    #     else:
-    #         raise ValueError('Count values too large to fit in int64. This is very '
-    #                          'unlikely, and will often cause Memory errors. Please check '
-    #                          'input data.')
-    #
-    #     # map row and cell to integer values for indexing
-    #     unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
-    #     unq_col = np.unique(col)
-    #     row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
-    #     col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
-    #     row_ind = np.array([row_map[i] for i in row])
-    #     col_ind = np.array([col_map[i] for i in col])
-    #
-    #     # change dtype, set shape
-    #     values = values.astype(dtype)
-    #     shape = (unq_row.shape[0], unq_col.shape[0])
-    #
-    #     # return a sparse array
-    #     coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
-    #     return coo, unq_row, unq_col
-
-
-    # def to_sparse_counts(self, collapse_molecules, n_poly_t_required, support_required=2):
-    #     """Return a seqc.analyze.SparseCounts object
-    #
-    #     args:
-    #     -----
-    #     collapse_molecules: If True, returns molecule counts, else returns read counts
-    #     n_poly_t_required: Filter. The required number of T nucleotides at the 3' end of
-    #       a read for it to be included in the SparseCounts output
-    #     support_required: Filter. The number of reads that must be associated with a
-    #       molecule for it to be included.
-    #
-    #     returns:
-    #     --------
-    #     seqc.analyze.SparseCounts
-    #     """
-    #     # mask failing cells and molecules with < 2 reads supporting them.
-    #     read_mask = self.mask_failing_records(n_poly_t_required)
-    #     low_coverage_mask = self.mask_low_support_molecules(support_required)
-    #     unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
-    #     if unmasked_inds.shape[0] == 0:
-    #         raise ValueError('Zero reads passed filters. Cannot save sparse matrix')
-    #     molecule_counts = defaultdict(dict)
-    #
-    #     if collapse_molecules:
-    #         # get molecule counts
-    #
-    #         for i in unmasked_inds:
-    #             feature = self._features[i]
-    #             if len(feature) > 1:
-    #                 continue
-    #             cell = self.data['cell'][i]
-    #             rmt = self.data['rmt'][i]
-    #             try:
-    #                 molecule_counts[int(feature)][cell].add(rmt)
-    #             except KeyError:
-    #                 molecule_counts[int(feature)][cell] = {rmt}
-    #
-    #         # convert to molecule counts
-    #         for f in molecule_counts.keys():
-    #             for c, rmts in molecule_counts[f].items():
-    #                 molecule_counts[f][c] = len(rmts)
-    #     else:
-    #         for i in unmasked_inds:
-    #             feature = self._features[i]
-    #             if len(feature) > 1:
-    #                 continue
-    #             cell = self.data['cell'][i]
-    #             try:
-    #                 molecule_counts[int(feature)][cell] += 1
-    #             except KeyError:
-    #                 molecule_counts[int(feature)][cell] = 1
-    #
-    #     # convert to values, row, col form for scipy.coo
-    #     # pre-allocate arrays
-    #     size = sum(len(c) for c in molecule_counts.values())
-    #     values = np.empty(size, dtype=int)
-    #     row = np.empty(size, dtype=int)
-    #     col = np.empty(size, dtype=int)
-    #     i = 0
-    #     for feature in molecule_counts:
-    #         for cell, count in molecule_counts[feature].items():
-    #             values[i] = count
-    #             row[i] = cell
-    #             col[i] = feature
-    #             i += 1
-    #
-    #     # get max count to shrink dtype if possible
-    #     maxcount = np.max(values)
-    #
-    #     # set dtype
-    #     if 0 < maxcount < 2 ** 8:
-    #         dtype = np.uint8
-    #     elif maxcount < 2 ** 16:
-    #         dtype = np.uint16
-    #     elif maxcount < 2 ** 32:
-    #         dtype = np.uint32
-    #     elif maxcount < 2 ** 64:
-    #         dtype = np.uint64
-    #     elif maxcount < 0:
-    #         raise ValueError('Negative count value encountered. These values are not'
-    #                          'defined and indicate a probable upstream bug')
-    #     else:
-    #         raise ValueError('Count values too large to fit in int64. This is very '
-    #                          'unlikely, and will often cause Memory errors. Please check '
-    #                          'input data.')
-    #
-    #     # map row and cell to integer values for indexing
-    #     unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
-    #     unq_col = np.unique(col)
-    #     row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
-    #     col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
-    #     row_ind = np.array([row_map[i] for i in row])
-    #     col_ind = np.array([col_map[i] for i in col])
-    #
-    #     # change dtype, set shape
-    #     values = values.astype(dtype)
-    #     shape = (unq_row.shape[0], unq_col.shape[0])
-    #
-    #     # return a sparse array
-    #     coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
-    #     return seqc.analyze.SparseCounts(coo, unq_row, unq_col)
-
-    # def sort_mask_failing_records(self, n_poly_t_required, require_support=True):
-    #     """
-    #     generates a boolean mask for any records lacking cell barcodes or rmts, records
-    #     that are not aligned, or records missing poly_t sequences
-    #
-    #     args:
-    #     -----
-    #     n_poly_t_required: the number of 'T' nucleotides that must be present for the
-    #      record to be considered to have a poly-T tail.
-    #
-    #     returns:
-    #     --------
-    #     np.ndarray((n,) dtype=bool)  # n = len(self._data)
-    #     """
-    #
-    #     index = np.arange(self.data.shape[0], dtype=np.uint32)
-    #
-    #     # can also test dragging the index along here if not, it can be eliminated
-    #     fbool = ((self.data['cell'] != 0) &
-    #              (self.data['rmt'] != 0) &
-    #              (self.data['n_poly_t'] >= n_poly_t_required) &
-    #              (self.data['is_aligned']) &
-    #              (self.features.is_unique())  # this is basically instant now
-    #              )
-    #
-    #     index = index[fbool]
-    #
-    #     # get the selection of reads that pass filters
-    #     subdata = self.data[index]
-    #     subfeatures = self.features[index]  # todo I think I need to adjust jaggedarray indexing to return another jaggedarray...
-    #     # todo probably doable with np.diff() on the index to calculate the new array size.
-    #     for_sorting = np.vstack([subdata['cell'], subdata['rmt'].astype(np.int64)]).T
-    #
-    #     # perform an indirect sort
-    #     ind = np.lexsort(for_sorting, order=['cell', 'rmt'])
-    #     subdata = subdata[np.concatenate(([True], np.all(subdata[ind[1:]] ==
-    #                                                      subdata[ind[:-1]], axis=1)))]
-    #     subfeatures = subfeatures[ind]
-    #
-    #     return subdata, subfeatures  # all records that pass filters
-
-    # def mask_low_support_molecules(self, required_support=2):
-    #     """
-    #     mask any molecule supported by fewer than <required_support> reads
-    #     """
-    #
-    #     data = self.data[['cell', 'rmt']].copy()
-    #
-    #     # get counts
-    #     n = self.data.shape[0]
-    #     if required_support <= 1:
-    #         return np.ones(n, dtype=np.bool)
-    #
-    #     mol_counts = defaultdict(int)
-    #     for row in self.data:
-    #         # 0 = cell; 1 = rmt -- integer indexing is faster than row['cell'], row['rmt']
-    #         mol_counts[(row[0], row[1])] += 1
-    #
-    #     mol_counts = dict(mol_counts)  # defaultdict indexing can produce odd results
-    #
-    #     # build mask
-    #     mask = np.zeros(n, dtype=np.bool)
-    #     for i, row in enumerate(self.data):
-    #         if mol_counts[(row[0], row[1])] >= required_support:
-    #             mask[i] = 1
-    #
-    #     return mask
-        #
-        # # earlier failing code
-        # view = self.data[['cell', 'rmt']].copy()
-        # df = pd.DataFrame(view)
-        # grouped = df.groupby(['cell', 'rmt'])
-        # failing = []
-        # for idx, g in grouped:
-        #     if len(g) < required_support:
-        #         failing.extend(g.index)
-        # failing.sort()
-        # ifail = 0
-        # imask = 0
-        # mask = np.ones(len(self.data), dtype=np.bool)
-        # while ifail < len(failing):
-
-
-        #     if imask == failing[ifail]:
-        #         mask[imask] = 0
-        #         ifail += 1
-        #     imask += 1
-        # return mask

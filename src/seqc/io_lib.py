@@ -1,15 +1,15 @@
 __author__ = 'ambrose'
 
-
-# interfaces with ftp and s3 go here.
+# todo replace threading with processing
 from glob import glob
+import gzip
+import bz2
 import os
 import ftplib
 from threading import Thread
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
-
 import boto3
 import logging
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
@@ -409,3 +409,12 @@ class GEO:
         else:
             forward = [f.replace('.sra', '.fastq') for f in sra_files]
             return forward
+
+
+def open_file(filename):
+    if filename.endswith('.gz'):
+        return gzip.open(filename, 'rt')
+    elif filename.endswith('.bz2'):
+        return bz2.open(filename, 'rt')
+    else:
+        return open(filename)

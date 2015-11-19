@@ -9,21 +9,13 @@ import seqc
 from copy import copy
 import sys
 import json
-from subprocess import call
-from multiprocessing import Process
+
+# for htqc;  comment back in when dependencies are installed
+# from subprocess import call
+# from multiprocessing import Process
 
 
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
-# todo | merge all of the metadata into a dictionary that is written at the end of the
-# todo |   pipeline or when any errors occur
-# todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
-# todo | SLOWEST PIECES ARE:
-# todo | (1) post-process -- this can be sped up by generating in pieces, out of memory
-# todo |     pandas table using all 30 threads. This will drop the time ~ 30x; somewhat
-# todo |     tricky to generate the JaggedArrays; think on this!
-# todo | (2) disambiguation -- profile to check for slow part. One thing that will speed
-# todo |     up the process is sparsifying the arrays; eliminating zeros. Will reduce
-# todo |     overhead by a lot.
 def process_input():
 
     ################################# DEFINE ARGS ######################################
@@ -112,9 +104,6 @@ def process_input():
                         required=True, metavar='I')
     pindex.add_argument('-n', '--n-threads', type=int, default=4, help='number of threads'
                         ' to use when building index', metavar='N')
-    # todo | phiX is going to need an SCID! will this be automatically generated? Is it
-    # todo |  going to get fucked up by all the post-processing last 1kb stuff?
-    # todo | change p_coalignment to array
     pindex.add_argument('--phix', help='add phiX to the genome index and GTF file.',
                         action='store_true', default=False)
 
@@ -144,7 +133,8 @@ def process_input():
         # list star args if requested, then exit
         if arguments.list_default_star_args:
             printable_args = json.dumps(
-                seqc.align.STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
+                seqc.align.STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX',
+                                                       './$EXP_NAME/'),
                 separators=(',', ': '), indent=4)
             print(printable_args)
             sys.exit(2)
@@ -220,16 +210,19 @@ def set_up(output_file, index, barcodes):
 
     return temp_dir, gtf, cb, index
 
-def htqc(output_dir, forward, reverse, r, t):
-    seqc.log.info('getting QC')
-    def run_htqc():
-        call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
-        call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
-        call(["ht-stat-draw.pl", "--dir", output_dir])
-        os.remove(output_dir + "sample_1.fastq.gz")
-        os.remove(output_dir + "sample_2.fastq.gz")
-    p = Process(target=run_htqc, args=(), daemon=True)
-    p.start()
+# todo commented out until dependencies are installed automatically.
+# todo should be coded to pep8 standards
+# def htqc(output_dir, forward, reverse, r, t):
+#     seqc.log.info('getting QC')
+#     def run_htqc():
+#         call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
+#         call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
+#         call(["ht-stat-draw.pl", "--dir", output_dir])
+#         os.remove(output_dir + "sample_1.fastq.gz")
+#         os.remove(output_dir + "sample_2.fastq.gz")
+#     p = Process(target=run_htqc, args=(), daemon=True)
+#     p.start()
+
 
 def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_threads):
     if (forward or reverse) and not (samfile or merged_fastq):
@@ -238,7 +231,6 @@ def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_th
         seqc.log.info('Merging fastq files.')
         merged_fastq = seqc.fastq.merge_fastq(forward, reverse, processor, temp_dir, cb,
                                               n_threads)
-
     return merged_fastq
 
 
@@ -258,14 +250,16 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_f
 
         # copy alignment summary
         shutil.copyfile(temp_dir + 'Log.final.out', output_file + '_alignment_summary.txt')
-        return samfile
+    return samfile
 
 
-def process_samfile(samfile, gtf, frag_len):
+def process_samfile(samfile, output_file, n_threads, gtf, frag_len):
     seqc.log.info('Post-processing alignments')
-    fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, frag_len)
-    arr = seqc.arrays.ReadArray.from_samfile(samfile, fc)
-    return arr
+    h5_name = output_file + '.h5'
+    chunk_size = int(2e8)  # ~ 10GB of data in memory at any time
+    h5name = seqc.sam.to_h5(samfile, h5_name, n_threads, chunk_size, gtf, frag_len)
+    read_array = seqc.arrays.ReadArray.from_h5(h5name)
+    return read_array
 
 
 def correct_errors():
@@ -301,19 +295,6 @@ def resolve_alignments(index, arr, n, output_file):
         seqc.log.info('Caught error in resolve_alignments(), saving data')
         arr.save_h5(output_file + '.h5')
         raise
-
-# old method was causing problems
-# def save_counts_matrices(output_file, arr, n):
-#
-#     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-#     mols, mrow, mcol = arr.to_sparse_counts(
-#         collapse_molecules=True, n_poly_t_required=n)
-#     reads, rrow, rcol = arr.to_sparse_counts(
-#         collapse_molecules=False, n_poly_t_required=n)
-#     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
-#                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
-#     with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
-#         pickle.dump(matrices, f)
 
 
 def save_counts_matrices(output_file, arr, n):
@@ -362,24 +343,21 @@ def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name
 
     temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    htqc(temp_dir, forward, reverse, 1000, 1)
+    # htqc(temp_dir, forward, reverse, 1000, 1)
 
-    # removed output_file argument due to dust filtering
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb, n_threads)
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
                     output_file)
 
-    arr = process_samfile(samfile, gtf, frag_len)
+    arr = process_samfile(samfile, output_file, n_threads, gtf, frag_len)
 
     resolve_alignments(index, arr, n=0, output_file=output_file)
 
     store_results(output_file, arr)
 
     save_counts_matrices(output_file, arr, n=3)
-
-    # clean_up(temp_dir)
 
     run_complete()
 
@@ -389,24 +367,21 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
 
     temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
 
-    htqc(temp_dir, forward, reverse, 1000, 1)
+    # htqc(temp_dir, forward, reverse, 1000, 1)
 
-    # removed output_file argument due to dust filtering
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          temp_dir, cb, n_threads)
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
                     output_file)
 
-    arr = process_samfile(samfile, gtf, frag_len)
+    arr = process_samfile(samfile, output_file, n_threads, gtf, frag_len)
 
     resolve_alignments(index, arr, n=0, output_file=output_file)
 
     arr.save_h5(output_file + '.h5')
 
     save_counts_matrices(output_file, arr, n=0)
-
-    # clean_up(temp_dir)
 
     run_complete()
 

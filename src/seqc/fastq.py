@@ -10,9 +10,7 @@ import shutil
 import os
 import re
 from itertools import islice
-from seqc.three_bit import ThreeBit
-from seqc.barcodes import CellBarcodes
-import seqc.log
+import seqc
 import io
 import pickle
 
@@ -343,8 +341,8 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     seqc.log.setup_logger()
 
-    tbp = ThreeBit.default_processors(exp_type)
-    if not isinstance(cb, CellBarcodes):
+    tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
+    if not isinstance(cb, seqc.barcodes.CellBarcodes):
         with open(cb, 'rb') as fcb:
             cb = pickle.load(fcb)
 
@@ -379,37 +377,3 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
     merge_process.join()
 
     return '%s/merged_temp.fastq' % temp_dir
-
-# def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb):
-#     """direct threadless fastq processing"""
-#
-#     # open the files
-#     fout = '%s/merged_temp.fastq' % temp_dir.rstrip('/')
-#     merged_file = open(fout, 'w')
-#     try:
-#         for ffile, rfile in zip(forward, reverse):
-#
-#             if not isinstance(ffile, io.TextIOBase):
-#                 ffile = open_file(ffile)
-#             if not isinstance(rfile, io.TextIOBase):
-#                 rfile = open_file(rfile)
-#             try:
-#                 # initialize the processor
-#                 tbp = ThreeBit.default_processors(exp_type)
-#                 if not isinstance(cb, CellBarcodes):
-#                     with open(cb, 'rb') as f:
-#                         cb = pickle.load(f)
-#
-#                 for f, r in paired_fastq_records(ffile, rfile):
-#                     merged_record = process_record(f, r, tbp, cb)
-#                     # if not merged_record:
-#                     #     n_low_complexity += 1
-#                     # else:
-#                     merged_file.write(merged_record)
-#             finally:
-#                 ffile.close()
-#                 rfile.close()
-#     finally:
-#         merged_file.close()
-#
-#     return fout
