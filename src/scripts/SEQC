@@ -182,18 +182,9 @@ def process_input():
 
 def run_SEQC_remote(kwargs):
     """
-    - add any additional arguments necessary to run your function to argparse. Talk to
-      ajc about this once you have your list of args (before editing; argparse is complex)
-    - write the function here that will call SEQC remotely.
     - ideally we would call the function, have the local function EXIT, and then have the
       remote function proceed until complete, at which point it will upload data and
       optionally email the user. (it could also send debug information if it fails)
-    - you will have access to the kwargs dict, which will be dict[kwargs]: value
-      the kwarg can be reprocessed into what would need to be passed to the command line
-      by prepending '--'
-      e.g. something like the following should work to de-parse the parsed args. Then you
-      could just call SEQC_REMOTE with this method! Note that code that follows is not
-      tested.
 
     """
 
@@ -203,7 +194,6 @@ def run_SEQC_remote(kwargs):
     positional = kwargs['subparser_name']
     cmd += positional + ' '
     del kwargs['subparser_name']
-    print(kwargs)
 
     for k, v in kwargs.items():
         if isinstance(v, list):
@@ -214,14 +204,11 @@ def run_SEQC_remote(kwargs):
 
     # set up remote cluster here, finishes all the way thru gitpull
     cluster = clustutils.ClusterServer()
-    cluster.configure_cluster('aws_config')
-    cluster.create_security_group(clustname)
-    cluster.create_cluster()
-    cluster.connect_server()
-    cluster.create_raid()
-    cluster.git_pull()
+    cluster.cluster_setup(clustname)
 
     #running SEQC on the cluster
+    print(cmd)
+    # todo | debug remote code execution
     cluster.serv.exec_command(cmd)
 
     #shut down cluster after finished
