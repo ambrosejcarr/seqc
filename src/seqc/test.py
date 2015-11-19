@@ -1907,6 +1907,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     print('Returned None')
 
 
+@unittest.skip('')
 class TestParallelConstructSam(unittest.TestCase):
 
     def setUp(self):
