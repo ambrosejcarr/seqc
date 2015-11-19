@@ -508,7 +508,7 @@ class ReadArray:
 
     @property
     def shape(self):
-        return tuple(len(self))
+        return self._data.shape
 
     @property
     def data(self):
