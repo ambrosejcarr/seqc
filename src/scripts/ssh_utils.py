@@ -88,4 +88,6 @@ class SSHServer(object):
         stdin.flush()
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
+        print(data)
+        print(errs)
         return data, errs
