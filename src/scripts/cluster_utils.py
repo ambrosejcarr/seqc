@@ -247,6 +247,3 @@ class ClusterServer(object):
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
         # implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
-
-    def cluster_main(self):
-

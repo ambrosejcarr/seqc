@@ -125,6 +125,11 @@ def process_input():
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
 
+    # add a sub-parser for AWS cluster configuration
+    # todo | check if this works
+    pclust = subparsers.add_parser('cluster', help='remote cluster configuration')
+    pclust.add_argument('-n', '--name', default=None, help='name of cluster')
+
     #################################### PARSE ARGS #####################################
 
     arguments = parser.parse_args()
@@ -193,31 +198,33 @@ def run_SEQC_remote(kwargs):
 
     cmd = 'SEQC '
     # get the positional argument; doesn't need a '--' prefix
-    #TODO: determine the subparser_name
 
-    positional = kwargs['subparser_name']
+    #todo | check if this is the right way to do it
+    positional = kwargs['cluster']
     cmd += positional + ' '
-    del kwargs['subparser_name']  # we're going to iterate over all optional arguments
+    del kwargs['cluster']  # we're going to iterate over all optional arguments
 
     for k, v in kwargs:
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
         cmd += '--%s %s ' % (k, v)
+    print(cmd)
     #finish parsing, then pass the finalized version of "cmd" to creating the remote cluster
     #args --> cluster_name (assign?, size of raid array)
+    return cmd
 
     #set up remote cluster here, finishes all the way thru gitpull
-    cluster = clustutils.ClusterServer()
-    cluster.configure_cluster('aws_config') #i think we can hardcode this but check
-    cluster.create_security_group('seqc2') #kwargs[subparser_name]['clust_name'] or something?
-    cluster.create_cluster()
-    cluster.connect_server()
-    cluster.create_raid() #kwargs['subparser_name]['clust_name']['vol_size']
-    cluster.git_pull()
+    # cluster = clustutils.ClusterServer()
+    # cluster.configure_cluster('aws_config') #i think we can hardcode this but check
+    # cluster.create_security_group('seqc2') #kwargs[subparser_name]['clust_name'] or something?
+    # cluster.create_cluster()
+    # cluster.connect_server()
+    # cluster.create_raid() #kwargs['subparser_name]['clust_name']['vol_size']
+    # cluster.git_pull()
 
     #see if you want to bring exec_command into cluster_utils class?
     #executes SEQC on cluster
-    cluster.serv.exec_command('SEQC_REMOTE(args)')
+    # cluster.serv.exec_command('SEQC_REMOTE(args)')
 
     #TODO shut down cluster and have local command exit
 
