@@ -31,12 +31,10 @@ from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.authorizers import DummyAuthorizer
 
-# tests to add:
-# 1. test for processing of multi-aligned reads. Right now there is no test for lines
-#    92-102 of sam.py
-# 2. add a test for masking of filtered reads in qc.py for resolve_alignments() and
-#    error_correction() At the moment, the data generation doesn't produce any reads that
-#    get filtered.
+
+# this is the universal data dir for these tests
+_seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
+_data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
 
 
 class SRAGenerator:
@@ -2024,7 +2022,7 @@ class TestParallelConstructSam(unittest.TestCase):
                        self.gtf, fragment_length=1000)
         nlines = self.samfile
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestCounting(unittest.TestCase):
 
     def setUp(self):
@@ -2105,6 +2103,51 @@ class TestCounting(unittest.TestCase):
         print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
         print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
 
+
+class TestUniqueArrayCreation(unittest.TestCase):
+    """
+    suspicion -> unique array creation is breaking something in the pipeline;
+    could be an earlier method but lets check upstream so we know how each part is
+    working.
+
+    method: find the smallest real dataset that breaks it and use that to test.
+    """
+
+    def setUp(self):
+        # verify that Aligned.out.sam doesn't produce correct results.
+        self.samfile = _seqc_dir + '.test_download_index/Aligned.out.sam'
+        self.gtf = _data_dir + 'genome/mm38_chr19/annotations.gtf'
+
+    def test_num_unique_samfile(self):
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+        ra = seqc.arrays.ReadArray.from_samfile(self.samfile, fc)
+
+        # verify that the reads aren't all unique
+        # n_unique = 21984; n = 29999
+        n_unique = sum([1 for f in ra.features if f.shape == (1,)])
+        self.assertTrue(n_unique > 0, 'Zero unique reads.')
+        self.assertTrue(n_unique < ra.shape[0], 'All reads were unique.')
+
+        # determine if JaggedArray to_unique() is generating the right result
+        unique = ra.features.to_unique()
+        self.assertTrue(unique.shape[0] == n_unique, '%d != %d' %
+                        (unique.shape[0], n_unique))
+
+        # determine if ReadArray to_unique() is generating the right result
+        fbool = ra.features.is_unique()  # not yet tested explicitly, but implicitly working based on jagged.to_unique()
+        data = ra._data[fbool]
+        features = ra.features.to_unique(fbool)
+        positions = ra.positions.to_unique(fbool)
+        ua = seqc.arrays.UniqueReadArray(data, features, positions)
+        self.assertTrue(ua.shape[0] == n_unique, 'Incorrect number of unique reads: '
+                                                 '%d != %d' % (ua.shape[0], n_unique))
+
+        # check if other filters are causing it to fail
+        ua2 = ra.to_unique(3)
+        self.assertTrue(ua2.shape == ua.shape, 'Incongruent number of unique reads: '
+                                               '%d != %d' % (ua2.shape[0], ua.shape[0]))
+
+        self.assertTrue(ua2.shape[0] == 21984)  # double check that the number is right
 
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')
