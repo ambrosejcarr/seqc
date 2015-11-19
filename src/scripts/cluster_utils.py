@@ -197,12 +197,11 @@ class ClusterServer(object):
     def create_raid(self):
         """creates a raid array of a specified number of volumes on /data"""
         dev_base = "/dev/xvd"
-        vol_size = 1024
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
         for i in range(int(self.n_tb)):
             print("creating volume %s of %s..." % (i + 1, self.n_tb))
-            vol_id = self.create_volume(vol_size)
+            vol_id = self.create_volume()
             dev_id = dev_base + alphabet[i]
             dev_names.append(dev_id)
             self.attach_volume(vol_id, dev_id)
@@ -247,3 +246,11 @@ class ClusterServer(object):
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
         # implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
+
+    def cluster_setup(self, name):
+        self.configure_cluster('aws_config')
+        self.create_security_group(name)
+        self.create_cluster()
+        self.connect_server()
+        self.create_raid()
+        self.git_pull()
