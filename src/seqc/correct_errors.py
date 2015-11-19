@@ -1,5 +1,4 @@
 import random
-#import bin_rep
 from scipy.special import gammaincinv
 from itertools import permutations
 from sys import maxsize

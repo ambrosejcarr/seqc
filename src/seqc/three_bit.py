@@ -1,7 +1,5 @@
 __author__ = 'Ambrose J. Carr'
 
-# from copy import deepcopy
-
 
 class ThreeBit:
     """

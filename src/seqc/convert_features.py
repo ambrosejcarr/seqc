@@ -1,10 +1,9 @@
 __author__ = "Ambrose J. Carr"
 
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from intervaltree import IntervalTree
 import pickle
 import re
-from sys import argv, exit
 
 # define containers for Exons and Transcripts
 # Exon = namedtuple('Exon', ['start', 'end'])

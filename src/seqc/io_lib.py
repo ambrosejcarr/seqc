@@ -1,5 +1,6 @@
 __author__ = 'ambrose'
 
+# todo replace threading with processing
 from glob import glob
 import gzip
 import bz2

@@ -1,14 +1,13 @@
 __author__ = 'Ambrose J. Carr'
 
+# import warnings
+# with warnings.catch_warnings():
 from operator import itemgetter
 import numpy as np
 from copy import copy
 from numpy.lib.recfunctions import append_fields
 from itertools import islice
-from seqc.three_bit import ThreeBit
-from collections import deque, defaultdict
-from seqc import h5
-import seqc.analyze
+from collections import defaultdict
 from scipy.sparse import coo_matrix
 import numbers
 import tables as tb
@@ -17,6 +16,7 @@ from types import *
 import os
 from scipy.special import gammaln
 from scipy.stats import chi2
+import seqc
 
 # register numpy integers as Integrals
 numbers.Integral.register(np.integer)
@@ -705,7 +705,8 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
+        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+               for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (rmt/cell pair)
@@ -756,7 +757,8 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
+        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+               for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (gene/rmt/cell)

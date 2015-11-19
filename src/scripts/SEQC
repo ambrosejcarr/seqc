@@ -10,7 +10,7 @@ from copy import copy
 import sys
 import json
 
-# for htqc; comment back in when dependencies are installed
+# for htqc;  comment back in when dependencies are installed
 # from subprocess import call
 # from multiprocessing import Process
 

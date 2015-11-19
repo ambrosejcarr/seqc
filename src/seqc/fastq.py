@@ -10,9 +10,7 @@ import shutil
 import os
 import re
 from itertools import islice
-from seqc.three_bit import ThreeBit
-from seqc.barcodes import CellBarcodes
-import seqc.log
+import seqc
 import io
 import pickle
 
@@ -343,8 +341,8 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     seqc.log.setup_logger()
 
-    tbp = ThreeBit.default_processors(exp_type)
-    if not isinstance(cb, CellBarcodes):
+    tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
+    if not isinstance(cb, seqc.barcodes.CellBarcodes):
         with open(cb, 'rb') as fcb:
             cb = pickle.load(fcb)
 

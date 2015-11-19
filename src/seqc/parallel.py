@@ -4,7 +4,7 @@ from multiprocessing import Process, Queue, Manager
 from queue import Empty, Full
 from time import sleep
 import os
-import seqc.log
+import seqc
 
 
 def get(queue, pids=None):
