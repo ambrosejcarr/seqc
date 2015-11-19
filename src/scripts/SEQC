@@ -46,7 +46,8 @@ def process_input():
     # get a list of parsers, set-up pipeline function for each parser
     subparser_list = [parse_in_drop, parse_mars_seq, parse_cel_seq,
                       parse_avo_seq, parse_strt_seq, parse_drop_seq]
-    default_functions = [in_drop, mars_seq, cel_seq, avo_seq, strt_seq, drop_seq]
+    # default_functions = [in_drop, mars_seq, cel_seq, avo_seq, strt_seq, drop_seq]
+    default_functions = ['in_drop', 'mars_seq', 'cel_seq', 'avo_seq', 'strt_seq', 'drop_seq']
     for p, f in zip(subparser_list, default_functions):
         p.set_defaults(func=f)
 
@@ -197,25 +198,27 @@ def run_SEQC_remote(kwargs):
     """
 
     cmd = 'SEQC '
-    # get the positional argument; doesn't need a '--' prefix
 
-    #todo | check if this is the right way to do it
+    # get the positional argument; doesn't need a '--' prefix
     positional = kwargs['subparser_name']
     cmd += positional + ' '
     del kwargs['subparser_name']
+    print(kwargs)
 
-    for k, v in kwargs:
+    for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
         cmd += '--%s %s ' % (k, v)
 
-    #set up remote cluster here, finishes all the way thru gitpull
+    clustname = kwargs['cluster_name']
+
+    # set up remote cluster here, finishes all the way thru gitpull
     cluster = clustutils.ClusterServer()
-    cluster.configure_cluster('aws_config') #i think we can hardcode this but check
-    cluster.create_security_group('seqc2') #kwargs[subparser_name]['clust_name'] or something?
+    cluster.configure_cluster('aws_config')
+    cluster.create_security_group(clustname)
     cluster.create_cluster()
     cluster.connect_server()
-    cluster.create_raid() #kwargs['subparser_name]['clust_name']['vol_size']
+    cluster.create_raid()
     cluster.git_pull()
 
     #running SEQC on the cluster
