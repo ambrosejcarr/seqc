@@ -1,144 +1,111 @@
 __author__ = 'ambrose'
 
-from threading import Thread
-from queue import Queue, Full, Empty
-from time import sleep
 import numpy as np
-import collections
-from itertools import islice, tee
+import os
+import seqc
+import tables as tb
 
 
-def multi_delete(sorted_deque, *lists):
-    while sorted_deque:
-        i = sorted_deque.pop()
-        for l in lists:
-            del l[i]
-    return lists
+class ReadArrayH5Writer:
+
+    _filters = tb.Filters(complevel=5, complib='blosc')
+
+    class _DataTable(tb.IsDescription):
+        cell = tb.UInt64Col(pos=0)
+        rmt = tb.UInt32Col(pos=1)
+        n_poly_t = tb.UInt8Col(pos=2)
+        valid_cell = tb.BoolCol(pos=3)
+        dust_score = tb.UInt8Col(pos=4)
+        rev_quality = tb.UInt8Col(pos=5)
+        fwd_quality = tb.UInt8Col(pos=6)
+        is_aligned = tb.BoolCol(pos=7)
+        alignment_score = tb.UInt8Col(pos=8)
+
+    def __init__(self, h5file):
+        self._filename = h5file
+        self._fobj = None
+        self._is_open = False
+
+    @property
+    def file(self):
+        return self._filename
+
+    def open(self, mode='w'):
+        if self._is_open:
+            return self._fobj
+        else:
+            self._fobj = tb.open_file(self._filename, mode=mode, filters=self._filters,
+                                      title='ReadArray data')
+            self._is_open = True
+            return self._fobj
+
+    def close(self):
+        if self._is_open:
+            self._fobj.close()
+        else:
+            return
+
+    def create(self, expectedrows):
+        if not self._is_open:
+            self.open()
+        a = tb.UInt32Atom()
+        # create the tables and arrays needed to store data
+        self._fobj.create_table(self._fobj.root, 'data', self._DataTable, 'ReadArray.data',
+                                filters=self._filters, expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'index', a, (0, 2), filters=self._filters,
+                                 expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'features', a, (0,),
+                                 filters=self._filters, expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'positions', a, (0,),
+                                 filters=self._filters, expectedrows=expectedrows)
+
+    def write(self, data):
+        data, index, features, positions = data
+        # dtable = self._fobj.root.data
+        # dtable.append(data)
+        # dtable.flush()
+        self._fobj.root.data.append(data)
+        self._fobj.root.data.flush()
+        self._fobj.root.index.append(index)
+        self._fobj.root.features.append(features)
+        self._fobj.root.positions.append(positions)
 
 
-def mask_failing_cells(df_or_array, n_poly_t_required):
-    return ((df_or_array['cell'] != 0) &
-            (df_or_array['rmt'] != 0) &
-            (df_or_array['n_poly_t'] >= n_poly_t_required) &
-            (df_or_array['is_aligned'])
-            )
+_dtype = [
+    ('cell', np.uint64),
+    ('rmt', np.uint32),
+    ('n_poly_t', np.uint8),
+    ('valid_cell', np.bool),
+    ('dust_score', np.uint8),
+    ('rev_quality', np.uint8),
+    ('fwd_quality', np.uint8),
+    ('is_aligned', np.bool),
+    ('alignment_score', np.uint8)]
 
 
-# """
-# the sole purpose of the two classes below is to defeat the confounding way that numpy
-# treats tuples with len == 1 when constructing arrays by obscuring the existence of tuple
-# data by 1 level. Pass a tuple as a feature or it will break
-# """
-#
-#
-# class ObfuscatedTuple:
-#
-#     def __init__(self, tuple_):
-#         if not isinstance(tuple_, tuple):
-#             tuple_ = tuple(tuple_)
-#         self._tuple = tuple_
-#
-#     def __repr__(self):
-#         return '<ObfuscatedTuple: %s>' % self._tuple.__repr__()
-#
-#     def __lt__(self, other):
-#         return self._tuple.__lt__(other)
-#
-#     def __gt__(self, other):
-#         return self._tuple.__gt__(other)
-#
-#     def __eq__(self, other):
-#         return self._tuple.__eq__(other)
-#
-#     def __ne__(self, other):
-#         return self._tuple.__ne__(other)
-#
-#     def __le__(self, other):
-#         return self._tuple.__le__(other)
-#
-#     def __ge__(self, other):
-#         return self._tuple.__ge__(other)
-#
-#     def __len__(self):
-#         return len(self._tuple)
-#
-#     def __contains__(self, item):
-#         return self._tuple.__contains__(item)
-#
-#     def __iter__(self):
-#         return iter(self._tuple)
-#
-#     def __hash__(self):
-#         return hash(self._tuple)
-#
-#     def to_tuple(self):
-#         return self._tuple
+def _iterate_chunk(samfile, n=int(1e9)):
+    """open a sam file, yield chunks of size n bytes; default ~ 1GB"""
+    with open(samfile, 'rb') as f:
+        while True:
+            d = f.read(n)
+            if d:
+                yield d
+            else:
+                break
 
-
-class Peekable(collections.Iterator):
-
-    def __init__(self, it):
-        self.it, self.nextit = tee(iter(it))
-        self._advance()
-
-    def _advance(self):
-        self.peek = next(self.nextit, None)
-
-    def __next__(self):
-        self._advance()
-        return next(self.it)
-
-
-def average_quality(quality_string):
-    """calculate the average quality of a sequencing read from and ASCII quality string"""
+def _average_quality(quality_string):
+    """calculate the average quality of a sequencing read from ASCII quality string"""
     n_bases = len(quality_string)
     return (sum(ord(q) for q in quality_string) - n_bases * 33) // n_bases
 
 
-def translate_feature(reference_name, strand, true_position, feature_table,
-                      feature_positions):
-    rounded_position = true_position // 100 * 100
-    try:
-        potential_scids = feature_table[(strand, reference_name, rounded_position)]
-    except KeyError:
-        return 0
-
-    # only one feature in stranded libraries
-    for scid in potential_scids:
-        if any(s < true_position < e for (s, e) in feature_positions[scid]):
-            return scid  # todo | test if ever > 1 feature
-        else:
-            return 0
-
-
-def group_multialignments(alignments):
-    iterator = Peekable(alignments)
-
-    # get first non-header alignment
-    multialignment = next(iterator)
-    while multialignment.startswith('@'):
-        multialignment = next(iterator)
-    multialignment = [multialignment]
-
-    while True:
-        next_alignment = iterator.peek
-        if not next_alignment:
-            yield multialignment
-            break
-        if multialignment[0].split('\t')[0] == next_alignment.split('\t')[0]:
-            multialignment.append(next(iterator))
-        else:
-            yield multialignment
-            multialignment = [next(iterator)]
-
-
-def process_multialignment(alignments, feature_positions, feature_table):
-    """translate a sam record into a recarray row"""
+def _process_multialignment(alignments, feature_converter):
+    """translate a sam multi-alignment into a ReadArray row"""
 
     # all fields are identical except feature; get from first alignment
-    first = alignments[0].strip().split('\t')
+    first = alignments[0]
 
-    rev_quality = average_quality(first[10])
+    rev_quality = _average_quality(first[10])
     alignment_score = int(first[13].split(':')[-1])
 
     # parse data from name field, previously extracted from forward read
@@ -147,291 +114,164 @@ def process_multialignment(alignments, feature_positions, feature_table):
 
     # get all features and positions
     if len(alignments) == 1:
-        true_position = int(first[3])
+
+        # check if read is unaligned
         flag = int(first[1])
-        strand = '-' if (flag & 16) else '+'
-        reference_name = first[2]
-        features = [translate_feature(reference_name, strand, true_position,
-                                      feature_table, feature_positions)]
-        positions = [true_position]
+        if flag & 4:
+            is_aligned = False
+            rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
+                   fwd_quality, is_aligned, alignment_score)
+            features, positions = [], []
+            return rec, features, positions
+        else:  # single alignment
+            pos = int(first[3])
+            strand = '-' if (flag & 16) else '+'
+            reference_name = first[2]
+            features = feature_converter.translate(strand, reference_name, pos)
+            if features:
+                positions = [pos]
+            else:
+                positions = []
     else:
         features = []
         positions = []
         for alignment in alignments:
-            alignment = alignment.strip().split('\t')
-            true_position = int(alignment[3])
+            # alignment = alignment.strip().split('\t')
+            pos = int(alignment[3])
             flag = int(alignment[1])
             strand = '-' if (flag & 16) else '+'
             reference_name = alignment[2]
-            features.append(translate_feature(reference_name, strand, true_position,
-                                              feature_table, feature_positions))
-            positions.append(true_position)
+            feature = feature_converter.translate(strand, reference_name, pos)
+            if feature:
+                features += feature
+                positions.append(pos)
 
-    delete = collections.deque()
-    for i in range(len(features)):
-        if features[i] == 0:
-            delete.append(i)
-
-    features, positions = multi_delete(delete, features, positions)
-
-    positions = ObfuscatedTuple(positions)
-    features = ObfuscatedTuple(features)
     is_aligned = True if features else False
 
-    rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality, fwd_quality,
-           features, positions, is_aligned, alignment_score)
+    rec = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
+           fwd_quality, is_aligned, alignment_score)
 
-    return rec
-
-
-def create_structured_array(n):
-    """pre-allocate a recarray of size n for sam processing
-
-    note that the complete array will often not be utilized, since multimapping fastq
-    records will be compressed to a single recarray row"""
-
-    dtype = [
-        ('cell', np.int64),
-        ('rmt', np.int32),
-        ('n_poly_t', np.uint8),
-        ('valid_cell', np.bool),
-        ('trimmed_bases', np.uint8),
-        ('rev_quality', np.uint8),
-        ('fwd_quality', np.uint8),
-        ('is_aligned', np.bool),
-        ('alignment_score', np.uint8)
-    ]
-
-    # trade-off: 50-95% of features will be unique. Therefore, it makes more sense to
-    # store them as ints. lists have an overhead of ~ 64b; dictionaries have overhead of
-    # 288 bytes (?) so it looks like we should have a VL array.
-    # each record in the sam array corresponds to an entry in the VL array; we could know
-    # the fixed size. To use a VL array would require two pointer lists, each with int8
-    # size, and then the data itself.
-
-    return np.zeros((n,), dtype=dtype)
+    return rec, features, positions
 
 
-def process_alignments(samfile, n_threads, gtf, fragment_len):
+def _process_chunk(chunk, feature_converter):
+    """process the samfile chunk"""
+    # decode the data, discarding the first and last record which may be incomplete
+    records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')[1:-1]]
 
-    """create a record array containing alignment, barcode, and filtering information"""
+    # discard any headers
+    while records[0][0].startswith('@'):
+        records = records[1:]
 
-    def read(in_queue):
-        s = open(samfile)
-        iterator = Peekable(s)
+    # over-allocate a numpy structured array, we'll trim n records == number of
+    # reads that multi-aligned
+    n = len(records)
+    data = np.zeros((n,), dtype=_dtype)
+    index = np.zeros((n, 2), dtype=np.uint32)
+    features = np.zeros(n, dtype=np.uint32)
+    positions = np.zeros(n, dtype=np.uint32)
+
+    # process multi-alignments
+    i = 0  # index for: data array, features & positions JaggedArray index
+    j = 0  # index for: feature & position JaggedArrays
+    s = 0  # index for: start of multialignment
+    e = 1  # index for: end of multialignment
+    while e < len(records):
+        # get first unread record name
+        name = records[s][0]
+
+        # get record names until the name is different, this is a multialignment
         try:
-            while True:
-                try:
-                    # get data
-                    data = list(islice(iterator, int(1e6)))
-                    # make sure we haven't bisected a multialignment
-                    final_record = data[-1]
-                    while True:
-                        next_record = iterator.peek
-                        if not next_record:
-                            raise StopIteration
-                        if final_record.split('\t')[0] == next_record.split('\t')[0]:
-                            data.append(next(iterator))
-                        else:
-                            break
-                except StopIteration:
-                    if data:
-                        while True:  # put the final data chunk on the queue
-                            try:
-                                in_queue.put(data)
-                                break
-                            except Full:
-                                sleep(0.1)
-                                continue
-                    break
-
-                # put the read data on the queue
-                while True:
-                    try:
-                        in_queue.put(data)
-                        break
-                    except Full:
-                        sleep(0.1)
-                        continue
-        finally:
-            s.close()
-
-    def process(in_queue, out_queue, feature_positions, feature_table):
-        while True:
-            # get data and process it into records
-            try:
-                data = in_queue.get_nowait()
-
-                # process the alignment group
-                arr = create_structured_array(len(data))
-                for i, ma in enumerate(group_multialignments(data)):
-                    row = process_multialignment(ma, feature_positions, feature_table)
-                    arr[i] = row
-                arr = arr[0:i + 1]  # cut any unfilled rows
-            except Empty:  # wait a bit for the next set of data
-                if not read_thread.is_alive():
-                    break
-                else:
-                    sleep(0.1)
-                    continue
-
-            # put the data on the concatenation queue
-            while True:
-                try:
-                    out_queue.put(arr)
-                    break
-                except Full:
-                    sleep(0.1)
-                    continue
-
-    # create a feature table todo | load from index
-    feature_table_, feature_positions_ = construct_feature_table(gtf, fragment_len)
-
-    # read the files
-    alignment_groups = Queue()
-    read_thread = Thread(target=read, args=[alignment_groups])
-    read_thread.start()
-
-    # process the data
-    processed_alignments = Queue()
-    process_threads = [Thread(target=process,
-                              args=[alignment_groups, processed_alignments,
-                                    feature_positions_, feature_table_])
-                       for _ in range(n_threads - 3)]
-
-    for t in process_threads:
-        t.start()
-
-    # wait for each process to finish
-    read_thread.join()
-    for t in process_threads:
-        t.join()
-
-    # once all processing threads are dead, concatenate all of the arrays
-
-    # get the first array
-    while True:
-        try:
-            arr = processed_alignments.get_nowait()
-            break
-        except Empty:
-            if not any(t.is_alive() for t in process_threads):
-                raise ValueError('no processed input received')
+            while name == records[e][0]:
+                e += 1
+        except IndexError:
+            if e == len(records):
+                pass
             else:
-                sleep(0.1)
-                continue
+                print(e)
+                print(len(records))
+                print(records[e])
 
-    # concatenate all the other arrays
-    while True:
-        try:
-            next_arr = processed_alignments.get_nowait()
-            arr = np.hstack([arr, next_arr])
-        except Empty:
-            if not any(t.is_alive() for t in process_threads):
-                break
-            else:
-                sleep(0.1)
-                continue
-    return arr
+        multialignment = records[s:e]
+        s = e
+        e = s + 1
 
+        # process the multialignment
+        rec, feat, pos = _process_multialignment(multialignment, feature_converter)
 
-def process_fluidigm_data():
-    """best we can do with this data is reads per gene
+        # fill data array
+        data[i] = rec
 
-    process each gene with htseq-count
-    """
-
-
-def assess_outliers(samfile):
-    """
-    parse samfile, generate reads per cell, & molecules per cell lists and total
-    alignments.
-
-    Normalize two ways:
-     1: total input reads
-     2: aligned reads
-    """
-    raise NotImplementedError
-
-
-def iterate(samfile):
-    """iterate over the lines of a .sam or .bam file"""
-    if samfile.endswith('.bam'):
-
-        from subprocess import PIPE, Popen, check_output
-        import sys
-
-        samtools = check_output(['which', 'samtools'])
-        if not samtools:
-            print('Samtools binary not found on PATH. Exiting')
-            sys.exit(1)
+        # fill the JaggedArrays
+        if feat:
+            n_features = len(feat)
+            features[j:j + n_features] = feat
+            positions[j:j + n_features] = pos
+            index[i, :] = (j, j + n_features)
+            j += n_features
         else:
-            samtools = samtools.decode('UTF-8').strip()
-        args = [samtools, 'view', samfile]
-        p = Popen(args, stdout=PIPE, bufsize=256)
+            index[i, :] = (j, j)
 
-        while True:
-            line = p.stdout.readline()
+        i += 1
 
-            if not line:
+    # trim all of the arrays
+    data = data[:i]
+    index = index[:i]
+    features = features[:j]
+    positions = positions[:j]
+
+    return data, index, features, positions
+
+
+def _write_chunk(data, h5_file):
+    """write a data chunk to the h5 file"""
+    data, index, features, positions = data
+    dtable = h5_file.root.data
+    dtable.append(data)
+    dtable.flush()
+    h5_file.root.index.append(np.ravel(index))
+    h5_file.root.features.append(features)
+    h5_file.root.positions.append(positions)
+
+
+def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
+    """Process a samfile in parallel, dump results into an h5 database.
+
+    Note that this method uses several shortcuts that have minor adverse consequences for
+    the resulting data. We deem them worthwhile, but it is important to be aware.
+
+    (1) it reads in large chunks. Thus, reads on the edge may be: (i) discarded, or (ii)
+        improperly broken into multiple alignments despite being a part of a single
+        multialignment
+
+    """
+    # get file size
+    filesize = os.stat(samfile).st_size
+
+    # get a bunch of records to check average size of a record
+    with open(samfile) as f:
+        records = []
+        for line in f:
+            if line.startswith('@'):
+                continue
+            records.append(line)
+            if len(records) > 1000:
                 break
+    average_record_size = np.mean([len(r) for r in records])
 
-            yield line.decode('UTF-8')
+    # estimate expected rows for the h5 database
+    expectedrows = filesize / average_record_size
 
-    elif samfile.endswith('.sam'):
-        with open(samfile, 'r') as f:
-            for line in f:
-                if line.startswith('@'):
-                    continue
-                else:
-                    yield line
-    else:
-        raise ValueError('file extension not recognized')
+    # create a feature_converter object to convert genomic -> transcriptomic features
+    fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, fragment_length)
+
+    read_kwargs = dict(samfile=samfile, n=chunk_size)
+    process_kwargs = dict(feature_converter=fc)
+    write_kwargs = dict(expectedrows=expectedrows)
+    seqc.parallel.process_parallel(
+        n_processes, h5_name, _iterate_chunk, _process_chunk, ReadArrayH5Writer,
+        read_kwargs=read_kwargs, process_kwargs=process_kwargs, write_kwargs=write_kwargs)
+
+    return h5_name
 
 
-def iterate_chunk(samfile, n):
-    """read n gigabytes of sequencing information at a time."""
-
-    if samfile.endswith('.bam'):
-
-        from subprocess import PIPE, Popen, check_output
-        import sys
-
-        samtools = check_output(['which', 'samtools'])
-        if not samtools:
-            print('Samtools binary not found on PATH. Exiting')
-            sys.exit(1)
-        else:
-            samtools = samtools.decode('UTF-8').strip()
-        args = [samtools, 'view', samfile]
-        p = Popen(args, stdout=PIPE, bufsize=-1)
-
-        while True:
-            lines = p.stdout.readlines(n * 1048576)
-
-            if not lines:
-                break
-            lines = [line.decode('UTF-8') for line in lines]
-
-            yield lines
-
-    elif samfile.endswith('.sam'):
-            with open(samfile, 'r') as f:
-                first_lines = f.readlines(n * 1048576)
-                first_lines = [line for line in first_lines if not
-                               line.startswith('@')]
-
-                while True:
-                    lines = f.readlines(n * 1048576)
-
-                    if first_lines:
-                        lines = first_lines + lines
-                        first_lines = None
-
-                    if not lines:
-                        break
-
-                    yield lines
-
-    else:
-        raise ValueError('file extension not recognized')
