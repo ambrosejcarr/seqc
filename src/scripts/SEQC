@@ -208,13 +208,8 @@ def run_SEQC_remote(kwargs):
             cmd += '--%s %s ' % (edit_k, v)
 
     # set up remote cluster here, finishes all the way thru gitpull
-    # cluster = clustutils.ClusterServer()
-    # cluster.cluster_setup(clustname)
-
-    # todo | weird formatting
-    #you don't want all the possible args --> maybe filter to check and see which ones are None
-    #also need to get rid of cluster-name and --func
-    #also don't know if you need to fix that thing where you do "_" instead of "-"
+    cluster = clustutils.ClusterServer()
+    cluster.cluster_setup(clustname)
 
     #running SEQC on the cluster
     print(cmd)
