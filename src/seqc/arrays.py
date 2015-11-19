@@ -116,7 +116,6 @@ class _UnionFind:
         return self[next(iter(iterable))]
 
 
-
 # todo | change jagged array slicing to return another jagged array
 # todo | change from_iterable to be able to construct from a jagged array slice output
 # todo test if id() is faster than .tobytes()
@@ -947,6 +946,7 @@ class ReadArray:
                 del l[i]
         return lists
 
+    # todo could be a bug here.
     def to_unique(self, n_poly_t_required):
         """Create a UniqueReadArray containing copying only unique reads from self"""
 

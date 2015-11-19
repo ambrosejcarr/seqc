@@ -8,7 +8,7 @@ import os
 import pickle
 import seqc
 import tables as tb
-from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
+from seqc import three_bit, fastq, align, sam, convert_features, barcodes, io_lib
 from seqc import arrays
 from io import StringIO
 from itertools import product
@@ -2024,7 +2024,7 @@ class TestParallelConstructSam(unittest.TestCase):
                        self.gtf, fragment_length=1000)
         nlines = self.samfile
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestCounting(unittest.TestCase):
 
     def setUp(self):
@@ -2095,7 +2095,6 @@ class TestCounting(unittest.TestCase):
         exp = self.simple_unique.to_experiment(0)
         rdata = np.array(exp.reads.counts.todense())
         mdata = np.array(exp.molecules.counts.todense())
-        # todo getting the features right, but not splitting by cell anymore
         print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
         print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
 
@@ -2103,7 +2102,6 @@ class TestCounting(unittest.TestCase):
         exp = self.simple_duplicate.to_experiment(0)
         rdata = np.array(exp.reads.counts.todense())
         mdata = np.array(exp.molecules.counts.todense())
-        # todo getting the features right, but not splitting by cell anymore
         print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
         print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
 
