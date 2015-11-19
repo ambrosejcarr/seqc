@@ -91,7 +91,6 @@ def process_parallel(
         """
 
         while not all([pids['read'], pids['process'], pids['write']]):
-            print('fp view of pids: %s' % repr(pids))
             sleep(1)
 
         for i, chunk in enumerate(read_func_(**kwargs)):
