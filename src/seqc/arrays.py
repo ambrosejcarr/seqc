@@ -6,7 +6,6 @@ from copy import copy
 from numpy.lib.recfunctions import append_fields
 from itertools import islice
 from seqc.three_bit import ThreeBit
-from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
 from collections import deque, defaultdict
 from seqc import h5
 import seqc.analyze
@@ -16,9 +15,106 @@ import tables as tb
 import pickle
 from types import *
 import os
+from scipy.special import gammaln
+from scipy.stats import chi2
 
 # register numpy integers as Integrals
 numbers.Integral.register(np.integer)
+
+
+def _multinomial_loglikelihood(x, probs):
+    """return the multinomial log-likelihood of probs given x log(L) = Mult(probs | x)"""
+    return (gammaln(np.sum(x) + 1) - np.sum(gammaln(x + 1))) + np.sum(x * np.log(probs))
+
+
+def _likelihood_ratio_test(current_model, best_model, df):
+    """likelihood ratio test, evaluated with a chi2 distribution with df=df
+
+    note: assumes input parameters are log-likelihoods"""
+    ratio = -2 * current_model + 2 * best_model
+    return chi2.cdf(ratio, df)
+
+
+class _UnionFind:
+    """Union-find data structure.
+
+    Each unionFind instance X maintains a family of disjoint sets of
+    hashable objects, supporting the following two methods:
+
+    - X[item] returns a name for the set containing the given item.
+      Each set is named by an arbitrarily-chosen one of its members; as
+      long as the set remains unchanged it will keep the same name. If
+      the item is not yet part of a set in X, a new singleton set is
+      created for it.
+
+    - X.union(item1, item2, ...) merges the sets containing each item
+      into a single larger set.  If any item is not yet part of a set
+      in X, it is added to X as one of the members of the merged set.
+    """
+
+    def __init__(self):
+        """Create a new empty union-find structure."""
+        self.weights = {}
+        self.parents = {}
+
+    def __getitem__(self, obj):
+        """Find and return the name of the set containing the object."""
+
+        # check for previously unknown object
+        if obj not in self.parents:
+            self.parents[obj] = obj
+            self.weights[obj] = 1
+            return obj
+
+        # find path of objects leading to the root
+        path = [obj]
+        root = self.parents[obj]
+        while root != path[-1]:
+            path.append(root)
+            root = self.parents[root]
+
+        # compress the path and return
+        for ancestor in path:
+            self.parents[ancestor] = root
+        return root
+
+    def __iter__(self):
+        """Iterate through all items ever found or unioned by this structure."""
+        return iter(self.parents)
+
+    def union(self, *objects):
+        """Find the sets containing the objects and merge them all."""
+        roots = [self[x] for x in objects]
+        heaviest = max([(self.weights[r], r) for r in roots])[1]
+        for r in roots:
+            if r != heaviest:
+                self.weights[heaviest] += self.weights[r]
+                self.parents[r] = heaviest
+
+    def union_all(self, iterable):
+        for i in iterable:
+            self.union(*i)
+
+    def find_all(self, vals):
+        vals = [self.find_component(v) for v in vals]
+        unique = set(vals)
+        reindex = dict(zip(unique, range(len(unique))))
+        set_membership = np.array([reindex[v] for v in vals])
+        sets = np.array(list(reindex.values()))
+        return set_membership, sets
+
+    def find_component(self, iterable):
+        """Return the set that obj belongs to
+
+        If the iterable contains items that have been unioned, then any entry in the
+         iterable will be sufficient to identify the set that obj belongs to. Use the
+         first entry, and return the set associated with iterable.
+
+        If the iterable has not been entered into the structure, this method can yield
+         incorrect results
+        """
+        return self[next(iter(iterable))]
+
 
 
 # todo | change jagged array slicing to return another jagged array
@@ -753,7 +849,7 @@ class ReadArray:
                 continue
 
             # get disjoint set membership
-            uf = UnionFind()
+            uf = _UnionFind()
             uf.union_all(putative_features)
             set_membership, sets = uf.find_all(putative_features)
 
@@ -802,7 +898,7 @@ class ReadArray:
                     obs, exp = outer_join(obs_counter, exp_dict)
 
                     # calculate model probability
-                    model_likelihoods[i] = multinomial_loglikelihood(obs, exp)
+                    model_likelihoods[i] = _multinomial_loglikelihood(obs, exp)
                     df[i] = len(obs) - 1
 
                 likelihood_ordering = np.argsort(model_likelihoods)[::-1]
@@ -817,7 +913,7 @@ class ReadArray:
                     model = models[i]
                     lh = model_likelihoods[i]
                     degrees_freedom = df[i]
-                    p = likelihood_ratio_test(lh, top_likelihood, degrees_freedom)
+                    p = _likelihood_ratio_test(lh, top_likelihood, degrees_freedom)
                     if p < alpha:
                         passing_models.append(model)
                     else:
