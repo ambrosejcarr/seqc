@@ -64,6 +64,9 @@ def process_input():
                        type=int, default=None)
         r.add_argument('-o', '--output-file', metavar='O', default=None,
                        help='stem of filename in which to store output')
+        #cluster name argument for running on the cluster
+        r.add_argument('-c', '--cluster-name', metavar='C', help='name of cluster',
+                       default=None)
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
@@ -115,6 +118,8 @@ def process_input():
                         required=True, metavar='I')
     pindex.add_argument('-n', '--n-threads', type=int, default=4, help='number of threads'
                         ' to use when building index', metavar='N')
+    pindex.add_argument('-c', '--cluster-name', metavar='C', help='name of cluster',
+                       default=None)
     # todo | phiX is going to need an SCID! will this be automatically generated? Is it
     # todo |  going to get fucked up by all the post-processing last 1kb stuff?
     # todo | change p_coalignment to array
@@ -124,11 +129,6 @@ def process_input():
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
-
-    # add a sub-parser for AWS cluster configuration
-    # todo | check if this works
-    pclust = subparsers.add_parser('cluster', help='remote cluster configuration')
-    pclust.add_argument('-n', '--name', default=None, help='name of cluster')
 
     #################################### PARSE ARGS #####################################
 
@@ -200,31 +200,28 @@ def run_SEQC_remote(kwargs):
     # get the positional argument; doesn't need a '--' prefix
 
     #todo | check if this is the right way to do it
-    positional = kwargs['cluster']
+    positional = kwargs['subparser_name']
     cmd += positional + ' '
-    del kwargs['cluster']  # we're going to iterate over all optional arguments
+    del kwargs['subparser_name']
 
     for k, v in kwargs:
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
         cmd += '--%s %s ' % (k, v)
-    print(cmd)
-    #finish parsing, then pass the finalized version of "cmd" to creating the remote cluster
-    #args --> cluster_name (assign?, size of raid array)
-    return cmd
 
     #set up remote cluster here, finishes all the way thru gitpull
-    # cluster = clustutils.ClusterServer()
-    # cluster.configure_cluster('aws_config') #i think we can hardcode this but check
-    # cluster.create_security_group('seqc2') #kwargs[subparser_name]['clust_name'] or something?
-    # cluster.create_cluster()
-    # cluster.connect_server()
-    # cluster.create_raid() #kwargs['subparser_name]['clust_name']['vol_size']
-    # cluster.git_pull()
+    cluster = clustutils.ClusterServer()
+    cluster.configure_cluster('aws_config') #i think we can hardcode this but check
+    cluster.create_security_group('seqc2') #kwargs[subparser_name]['clust_name'] or something?
+    cluster.create_cluster()
+    cluster.connect_server()
+    cluster.create_raid() #kwargs['subparser_name]['clust_name']['vol_size']
+    cluster.git_pull()
 
-    #see if you want to bring exec_command into cluster_utils class?
-    #executes SEQC on cluster
-    # cluster.serv.exec_command('SEQC_REMOTE(args)')
+    #running SEQC on the cluster
+    cluster.serv.exec_command(cmd)
+
+    #shut down cluster after finished
 
     #TODO shut down cluster and have local command exit
 
