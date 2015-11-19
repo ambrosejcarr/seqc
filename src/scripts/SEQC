@@ -192,16 +192,21 @@ def run_SEQC_remote(kwargs):
 
     # get the positional argument; doesn't need a '--' prefix
     positional = kwargs['subparser_name']
+    clustname = kwargs['cluster_name']
+
     cmd += positional + ' '
     del kwargs['subparser_name']
+    del kwargs['func'] #you don't want --func in the cmd that will be sent to the cluster
+    del kwargs['cluster_name'] #also don't want this on cmd
 
     for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
-        cmd += '--%s %s ' % (k, v)
-
-    clustname = kwargs['cluster_name']
-    print(kwargs)
+        #added
+        if v is not None:
+            edit_k = '-'.join(k.split('_'))
+            # cmd += '--%s %s ' % (k, v)
+            cmd += '--%s %s ' % (edit_k, v)
 
     # set up remote cluster here, finishes all the way thru gitpull
     # cluster = clustutils.ClusterServer()
