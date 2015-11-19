@@ -202,8 +202,7 @@ def run_SEQC_remote(kwargs):
     for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
-        #added
-        if v is not None:
+        if v:
             edit_k = '-'.join(k.split('_'))
             # cmd += '--%s %s ' % (k, v)
             cmd += '--%s %s ' % (edit_k, v)
