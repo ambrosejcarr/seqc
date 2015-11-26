@@ -188,7 +188,7 @@ def set_up(output_file, index, barcodes):
     # obtain gtf file from index argument
     gtf = index + 'annotations.gtf'
     if not os.path.isfile(gtf):
-        raise FileNotFoundError('no file named "annotations.gtf" found in index')
+        raise FileNotFoundError('no file named "annotations.gtf" found in index: %s' % index)
 
     # get cell barcode files
     if not barcodes:
