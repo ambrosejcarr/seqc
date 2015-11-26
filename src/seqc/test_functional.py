@@ -134,7 +134,7 @@ def seqc_raw_fastq_input(args):
 if __name__ == "__main__":
     seqc.log.setup_logger()
     try:
-        nose2.main(exit=False, module=__name__, verbosity=3)
+        nose2.main(exit=False, module=__name__, verbosity=5)
     except:
         seqc.log.exception()
         raise

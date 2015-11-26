@@ -167,8 +167,6 @@ class SRAGenerator:
             raise ChildProcessError(err)
 
 
-
-
 def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save=None):
     """generate N observations split between k ambiguous molecular models"""
     with open(expectations, 'rb') as f:
@@ -234,207 +232,6 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
             pickle.dump(arrays_, f)
 
     return arrays_
-
-
-class GenerateFastq(object):
-
-    def __init__(self):
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        if os.path.isfile(data_dir + 'genome/mm38_chr19/chr19seq.p'):
-            with open(data_dir + 'genome/mm38_chr19/chr19seq.p', 'rb') as f:
-                self.sequence = pickle.load(f)
-        else:
-            self.prepare_chr19()
-            with open(data_dir + 'genome/mm38_chr19/chr19seq.p', 'rb') as f:
-                self.sequence = pickle.load(f)
-
-    def generate_reverse_fastq(self, n, read_length):
-        """generate an n-record in-drop fastq file with data from chromosome 19"""
-        # TODO | incorporate error rates.
-        names = range(n)
-        name2 = '+'
-        quality = 'I' * read_length
-        seqs = self.generate_sequence_records(n, read_length)
-        records = []
-        for name, seq in zip(names, seqs):
-            records.append('\n'.join(['@%d' % name, seq, name2, quality]))
-        reverse_fastq = StringIO('\n'.join(records) + '\n')
-        return reverse_fastq
-
-    @staticmethod
-    def generate_forward_in_drop_fastq(n, read_length, barcodes_, umi_len):
-        with open(barcodes_, 'rb') as f:
-            barcodes_ = list(pickle.load(f))
-        names = range(n)
-        name2 = '+'
-        quality = 'I' * read_length
-        records = []
-        alphabet = np.array(['A', 'C', 'G', 'T'])
-        for name in names:
-            cb = random.choice(barcodes_)
-            umi = ''.join(np.random.choice(alphabet, umi_len))
-            poly_a = (read_length - len(cb) - len(umi)) * 'T'
-            records.append('\n'.join(['@%d' % name, cb + umi + poly_a, name2, quality]))
-        forward_fastq = StringIO('\n'.join(records) + '\n')
-        return forward_fastq
-
-    @staticmethod
-    def generate_forward_drop_seq_fastq(n):
-        names = range(n)
-        name2 = '+'
-        quality = 'I' * 20
-        records = []
-        alphabet = np.array(['A', 'C', 'G', 'T'])
-        for name in names:
-            cb = ''.join(np.random.choice(alphabet, 12))
-            umi = ''.join(np.random.choice(alphabet, 8))
-            records.append('\n'.join(['@%d' % name, cb + umi, name2, quality]))
-        forward_fastq = StringIO('\n'.join(records) + '\n')
-        return forward_fastq
-
-    def generate_sequence_records(self, n, read_length):
-        """generate a sequencing read from chr19"""
-        idx = np.random.randint(len(self.sequence), size=n)
-        sequences = []
-        for i in idx:
-            p = random.randint(0, max(len(self.sequence[i]) - read_length, 0))
-            seq = self.sequence[i][p: p + read_length]
-            # if the sequence isn't long enough, prepend 'A' nucleotides to fill length
-            if len(seq) < read_length:
-                seq = (read_length - len(seq)) * 'A' + seq
-            sequences.append(seq)
-        return sequences
-
-    @classmethod
-    def prepare_chr19(cls):
-        """prepare a pickled chr19file for quick data synthesis
-
-        Additionally, prepares a chr19 fasta, gtf, and cdna file for use with resolve_alignments
-        """
-
-        prefix = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/genome/mm38_chr19/'
-        if all(os.path.isfile(prefix + f) for f in ['mm38_chr19_cdna.fa', 'chr19seq.p',
-                                                    'mm38_chr19.gtf']):
-            return  # all necessary files already present
-
-        # get cDNA file
-        link = ('ftp://ftp.ensembl.org/pub/release-76/fasta/mus_musculus/cdna/'
-                'Mus_musculus.GRCm38.cdna.all.fa.gz')
-
-        # create prefix directory if it does not exist
-        if not os.path.isdir(prefix):
-            os.makedirs(prefix)
-
-        # get the cdna file
-        ip, *path, fa_name = link.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
-        path = '/'.join(path)
-
-        # check if file already exists
-        if os.path.isfile(prefix + fa_name):
-            pass  # file is already present, nothing to do.
-        else:
-            ftp = ftplib.FTP(ip)
-            try:
-                ftp.login()
-                ftp.cwd(path)
-                with open(prefix + fa_name, 'wb') as fout:
-                    ftp.retrbinary('RETR %s' % fa_name, fout.write)
-            finally:
-                ftp.close()
-
-        # get the gtf file
-        link = ('ftp://ftp.ensembl.org/pub/release-76/gtf/mus_musculus/'
-                'Mus_musculus.GRCm38.76.gtf.gz')
-        ip, *path, gtf_name = link.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
-        path = '/'.join(path)
-
-        if os.path.isfile(prefix + gtf_name):
-            pass  # file is already present, nothing to do.
-        else:
-            ftp = ftplib.FTP(ip)
-            try:
-                ftp.login()
-                ftp.cwd(path)
-                with open(prefix + gtf_name, 'wb') as fout:
-                    ftp.retrbinary('RETR %s' % gtf_name, fout.write)
-            finally:
-                ftp.close()
-
-        # get the genomic fasta data
-        link = ('ftp://ftp.ensembl.org/pub/release-76/fasta/mus_musculus/dna/'
-                'Mus_musculus.GRCm38.dna.primary_assembly.fa.gz')
-        ip, *path, genome_name = link.split('/')[2:]  # [2:] -- eliminate leading 'ftp://'
-        path = '/'.join(path)
-
-        if os.path.isfile(prefix + genome_name):
-            pass  # file is already present, nothing to do.
-        else:
-            ftp = ftplib.FTP(ip)
-            try:
-                ftp.login()
-                ftp.cwd(path)
-                with open(prefix + genome_name, 'wb') as fout:
-                    ftp.retrbinary('RETR %s' % genome_name, fout.write)
-            finally:
-                ftp.close()
-
-        # read the complete gtf
-        with gzip.open(prefix + gtf_name, 'rt') as f:
-            data = f.readlines()
-
-        # get the chr19 specific data and write it to file for coalignment probabilities
-        with open(prefix + 'mm38_chr19.gtf', 'w') as f:
-            chr19 = [line for line in data if line.split('\t')[0] == '19']
-            f.write(''.join(chr19))
-
-        # get the chr19 transcript names to reduce the fasta file
-        chr19_transcripts = []
-        pattern = r'(.*?; transcript_id ")(.*?)("; .*)'
-        for line in chr19:
-            if line.split('\t')[2] == 'transcript':
-                tx_id = re.match(pattern, line).group(2)
-                chr19_transcripts.append(tx_id)
-        chr19_transcripts = set(chr19_transcripts)
-
-        # reduce the fasta file for coalignment probabilities
-        with gzip.open(prefix + fa_name, 'rt') as fin:
-            fa_data = fin.read().strip('>').split('>')
-
-        # track relevant fasta records
-        chr19_fa_records = []
-        with open(prefix + 'mm38_chr19_cdna.fa', 'w') as fout:
-            fout.write('>')
-            for record in fa_data:
-                if record.split()[0] in chr19_transcripts:
-                    chr19_fa_records.append(''.join(record.split('\n')[1:]))
-                    fout.write('>' + record)
-
-        # finally, pickle a reduced fasta for synthetic data generation
-        records = dict(zip(range(len(chr19_fa_records)), chr19_fa_records))
-
-        # dump the processed file
-        with open(prefix + 'chr19seq.p', 'wb') as f:
-            pickle.dump(records, f)
-
-    @staticmethod
-    def prepare_barcodes(fout, barcode_files, spacer=None):
-        barcodes_ = []
-        for file_ in barcode_files:
-            with open(file_, 'r') as f:
-                barcodes_.append([l.strip() for l in f.readlines()])
-
-        if len(barcodes_) == 1:
-            barcodes_ = set(barcodes_)
-            with open(fout, 'wb') as f:
-                pickle.dump(barcodes_, f)
-        else:
-            try:
-                barcodes_ = set(spacer.join(pair) for pair in product(*barcodes_))
-            except AttributeError:
-                raise ValueError('must pass spacer argument for experiments with multiple'
-                                 'barcodes')
-            with open(fout, 'wb') as f:
-                pickle.dump(barcodes_, f)
 
 
 class DummyFTPClient(threading.Thread):
@@ -537,7 +334,7 @@ class DummyFTPClient(threading.Thread):
         self.client.close()
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestJaggedArray(unittest.TestCase):
 
     def generate_input_iterable(self, n):
@@ -552,40 +349,6 @@ class TestJaggedArray(unittest.TestCase):
         self.assertTrue(jarr._data.dtype == np.uint32)
         self.assertTrue(jarr._data.shape == (data_size,))
         print(jarr[10])
-
-
-@unittest.skip('')
-class TestGenerateFastq(unittest.TestCase):
-
-    def setUp(self):
-        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.in_drop_barcodes = (
-            self.data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p')
-        if not os.path.isfile(self.in_drop_barcodes):
-            cb1 = self.data_dir + 'in_drop/barcodes/cb1.txt'
-            cb2 = self.data_dir + 'in_drop/barcodes/cb2.txt'
-            GenerateFastq.prepare_barcodes(
-                self.in_drop_barcodes, [cb1, cb2], spacer='GAGTGATTGCTTGTGACGCCTT')
-
-    def test_generate_seqs(self):
-        gfq = GenerateFastq()
-        sequences = gfq.generate_sequence_records(5, 100)
-        self.assertTrue(all(len(s) == 100 for s in sequences))
-
-    def test_generate_reverse_fastq_stringio(self):
-        gfq = GenerateFastq()
-        fq_records = gfq.generate_reverse_fastq(5, 100)
-        data = fq_records.readlines()
-        self.assertTrue(len(data) == 20)
-
-    def test_generate_forward_fastq_stringio(self):
-        gfq = GenerateFastq()
-        fq_records = gfq.generate_forward_in_drop_fastq(
-            5, 100, self.in_drop_barcodes, 6)
-        data = fq_records.readlines()
-        self.assertTrue(len(data) == 20)
-        self.assertTrue(all(l.startswith('@') for l in data[::4]))
-        self.assertTrue(all(l == '+\n' for l in data[2::4]))
 
 
 @unittest.skip('')

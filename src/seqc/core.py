@@ -242,7 +242,7 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_f
 
         # align fastq files
         seqc.log.info('Aligning merged fastq file')
-        seqc.align.STAR.align(merged_fastq, index, n_threads, temp_dir, **star_args)
+        seqc.align.STAR.align(merged_fastq, index, n_threads, temp_dir, **kwargs)
         samfile = temp_dir + 'Aligned.out.sam'
 
         # copy alignment summary
