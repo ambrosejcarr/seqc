@@ -167,105 +167,6 @@ class SRAGenerator:
             raise ChildProcessError(err)
 
 
-def generate_in_drop_fastq_data(n, prefix):
-    data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-    gfq = GenerateFastq()
-    fwd_len = 50
-    rev_len = 100
-    barcodes_ = data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p'
-    umi_len = 6
-    forward = gfq.generate_forward_in_drop_fastq(n, fwd_len, barcodes_, umi_len)
-    forward = forward.read()  # consume the StringIO object
-    reverse = gfq.generate_reverse_fastq(n, rev_len)
-    reverse = reverse.read()  # consume the StringIO object
-    with open(prefix + '_r1.fastq', 'w') as f:
-        f.write(forward)
-    with open(prefix + '_r2.fastq', 'w') as r:
-        r.write(reverse)
-
-
-def generate_drop_seq_fastq_data(n, prefix):
-    gfq = GenerateFastq()
-    rev_len = 100
-    forward = gfq.generate_forward_drop_seq_fastq(n)
-    forward = forward.read()  # consume the StringIO object
-    reverse = gfq.generate_reverse_fastq(n, rev_len)
-    reverse = reverse.read()  # consume the StringIO object
-    with open(prefix + '_r1.fastq', 'w') as f:
-        f.write(forward)
-    with open(prefix + '_r2.fastq', 'w') as r:
-        r.write(reverse)
-
-
-def generate_in_drop_read_array(expectations, cell_barcodes, n, k, save=None):
-
-    """generate N observations split between k ambiguous molecular models"""
-    with open(expectations, 'rb') as f:
-        expectations = pickle.load(f)
-
-    # split the data between two cell barcodes and 2 rmts
-    with open(cell_barcodes, 'rb') as f:
-        cb = pickle.load(f)
-    cells = np.random.choice(list(cb.perfect_codes), 2)
-
-    # get two random rmts
-    rmts = [''.join(np.random.choice(list('ACGT'), 6)) for _ in range(2)]
-    rmts = [three_bit.ThreeBit.str2bin(r) for r in rmts]
-
-    n_poly_t = 5
-    valid_cell = 1
-    trimmed_bases = 0
-    fwd_quality = 40
-    rev_quality = 40
-    alignment_score = 50
-    is_aligned = True
-
-    # get all the expectations that are not unique
-    non_unique = {}
-    for e, prob_dict in expectations.items():
-        if len(prob_dict) > 1:
-            non_unique[e] = prob_dict
-
-    # get total number of models
-    non_unique = pd.Series(non_unique)
-
-    # select models
-    models = np.random.choice(non_unique.index, size=k)
-
-    # reads per model
-    rpm = np.round(n / k)
-
-    # create a container for the data
-    arrays_ = []
-    features = []
-    # create the data
-    for m in models:
-        cell = random.choice(cells)
-        rmt = random.choice(rmts)
-        m_features, probs = zip(*non_unique[m].items())
-
-        counts = np.random.multinomial(rpm, probs)
-        arr = sam.create_structured_array(sum(counts))
-
-        i = 0
-        for f, c in zip(m_features, counts):
-            for _ in range(c):
-                arr[i] = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
-                          fwd_quality, is_aligned, alignment_score)
-                features.append(f)
-                i += 1
-        arrays_.append(arr)
-
-    read_data = np.hstack(arrays_)
-    jagged_features = arrays.JaggedArray.from_iterable(features)
-    jagged_positions = arrays.JaggedArray.from_iterable(features)  # this is a dummy obj
-    ra = arrays.ReadArray(read_data, jagged_features, jagged_positions)
-
-    if isinstance(save, str):
-        with open(save, 'wb') as f:
-            pickle.dump(ra, f)
-
-    return ra
 
 
 def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save=None):
@@ -1108,7 +1009,7 @@ class TestAlign(unittest.TestCase):
         star = align.STAR(self.in_drop_temp_dir, 7, self.index, 'mm38')
         samfile = star.align(self.in_drop_fastq)
         self.assertEqual(samfile, self.in_drop_temp_dir + 'Aligned.out.sam')
-
+ew
     def test_align_drop_seq(self):
         star = align.STAR(self.drop_seq_temp_dir, 7, self.index, 'mm38')
         samfile = star.align(self.drop_seq_fastq)

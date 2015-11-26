@@ -13,6 +13,8 @@ from itertools import islice
 import seqc
 import io
 import pickle
+import random
+from io import StringIO
 
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
@@ -377,3 +379,121 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
     merge_process.join()
 
     return '%s/merged_temp.fastq' % temp_dir
+
+
+class GenerateFastq:
+
+    # define some general constants
+    _alphabet = ['A', 'C', 'G', 'T']
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def _forward_in_drop(cls, n, barcodes_):
+        with open(barcodes_, 'rb') as f:
+            barcodes_ = pickle.load(f)
+        read_length = 50
+        names = range(n)
+        name2 = '+'
+        quality = 'I' * read_length
+        records = []
+        umi_len = 6
+        codes = list(barcodes_.perfect_codes)
+        for name in names:
+            # for now, translate barcode back into string code
+            cb = random.choice(codes)
+            c1, c2 = seqc.three_bit.ThreeBitInDrop.split_cell(cb)
+            c1, c2 = [seqc.three_bit.ThreeBit.bin2str(c) for c in [c1, c2]]
+            w1 = 'GAGTGATTGCTTGTGACGCCTT'
+            cb = ''.join([c1, w1, c2])
+            umi = ''.join(np.random.choice(cls._alphabet, umi_len))
+            poly_a = (read_length - len(cb) - len(umi)) * 'T'
+            records.append('\n'.join(['@%d' % name, cb + umi + poly_a, name2, quality]))
+        forward_fastq = StringIO('\n'.join(records) + '\n')
+        return forward_fastq
+
+    @classmethod
+    def _forward_drop_seq(cls, n, *args):  # args is for unused barcodes parameters
+        names = range(n)
+        name2 = '+'
+        quality = 'I' * 20
+        records = []
+        for name in names:
+            cb = ''.join(np.random.choice(cls._alphabet, 12))
+            umi = ''.join(np.random.choice(cls._alphabet, 8))
+            records.append('\n'.join(['@%d' % name, cb + umi, name2, quality]))
+        forward_fastq = StringIO('\n'.join(records) + '\n')
+        return forward_fastq
+
+    @staticmethod
+    def _reverse(n: int, read_length: int, fasta: str, gtf: str, tag_type='gene_id'):
+
+        # read gtf
+        reader = seqc.gtf.Reader(gtf)
+        intervals = []
+        for r in reader.iter_exons():
+            end = int(r.end) - read_length
+            start = int(r.start)
+            if end > start:
+                intervals.append((r.attribute[tag_type], start, end))
+
+        # pick intervals
+        exon_selections = np.random.randint(0, len(intervals), (n,))
+
+        # fasta information:
+        with open(fasta) as f:
+            fasta = f.readlines()[1:]
+            fasta = ''.join(fasta)
+
+        # generate sequences
+        sequences = []
+        tags = []
+        for i in exon_selections:
+            tag, start, end = intervals[i]
+            # get position within interval
+            start = random.randint(start, end)
+            end = start + read_length
+            seq = fasta[start:end]
+            sequences.append(seq)
+            tags.append(tag)
+
+        prefixes = range(n)
+        name2 = '+'
+        quality = 'I' * read_length
+        records = []
+        for name, tag, seq in zip(prefixes, tags, sequences):
+            records.append('\n'.join(['@%d:%s' % (name, tag), seq, name2, quality]))
+        reverse_fastq = StringIO('\n'.join(records) + '\n')
+        return reverse_fastq
+
+    @classmethod
+    def in_drop(cls, n, prefix_, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
+                *args, **kwargs):
+
+        if not replicates >= 0:
+            raise ValueError('Cannot generate negative replicates')
+
+        fwd_len = 50
+        rev_len = 100
+        forward = cls._forward_in_drop(n, barcodes)
+        forward = forward.read()  # consume the StringIO object
+        reverse = cls._reverse(n, rev_len, fasta, gtf, tag_type=tag_type)
+        reverse = reverse.read()  # consume the StringIO object
+        with open(prefix_ + '_r1.fastq', 'w') as f:
+            f.write(''.join([forward] * (replicates + 1)))
+        with open(prefix_ + '_r2.fastq', 'w') as r:
+            r.write(''.join([reverse] * (replicates + 1)))
+
+    @classmethod
+    def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_id', replicates=3, *args,
+                 **kwargs):
+        rev_len = 100
+        forward = cls._forward_drop_seq(n)
+        forward = forward.read()  # consume the StringIO object
+        reverse = cls._reverse(n, rev_len, fasta, gtf, tag_type=tag_type)
+        reverse = reverse.read()  # consume the StringIO object
+        with open(prefix + '_r1.fastq', 'w') as f:
+            f.write(''.join([forward] * (replicates + 1)))
+        with open(prefix + '_r2.fastq', 'w') as r:
+            r.write(''.join([reverse] * (replicates + 1)))
