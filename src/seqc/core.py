@@ -234,8 +234,9 @@ def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_th
 def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file):
     if merged_fastq and not samfile:
         # process any additional arguments for star passed from the command line
+
+        kwargs = {}
         if star_args:
-            kwargs = {}
             for arg in star_args:
                 k, v = arg.split('=')
                 kwargs['--' + k] = v
