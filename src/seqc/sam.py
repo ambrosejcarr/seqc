@@ -1,9 +1,12 @@
 __author__ = 'ambrose'
 
 import numpy as np
+import pickle
 import os
 import seqc
 import tables as tb
+from collections import defaultdict
+from scipy.sparse import coo_matrix
 
 
 class ReadArrayH5Writer:
@@ -275,3 +278,219 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     return h5_name
 
 
+class GenerateSam:
+
+    @staticmethod
+    def in_drop(n, prefix, fasta, gtf, index, barcodes, tag_type='gene_id', replicates=3,
+                n_threads=7, *args, **kwargs):
+        """generate an in-drop .sam file"""
+
+        with open(barcodes, 'rb') as f:
+            cb = pickle.load(f)
+
+        output_dir = '/'.join(prefix.split('/')[:-1]) + '/'
+        forward, reverse = seqc.fastq.GenerateFastq.in_drop(
+            n, prefix, fasta, gtf, barcodes, tag_type=tag_type, replicates=replicates)
+
+        # merge the generated fastq file
+        merged = seqc.fastq.merge_fastq(forward, reverse, 'in-drop', output_dir, cb,
+                                        n_threads)
+
+        # generate alignments from merged fastq
+        sam = seqc.align.STAR.align(merged, index, n_threads, output_dir)
+        return sam
+
+
+    @staticmethod
+    def drop_seq(n, prefix, fasta, gtf, index, tag_type='gene_id', replicates=3,
+                 n_threads=7, *args, **kwargs):
+        """generate a drop-seq .sam file"""
+
+        output_dir = '/'.join(prefix.split('/')[:-1]) + '/'
+        forward, reverse = seqc.fastq.GenerateFastq.drop_seq(
+            n, prefix, fasta, gtf, tag_type=tag_type, replicates=replicates)
+
+        # merge the generated fastq file
+        merged = seqc.fastq.merge_fastq(forward, reverse, 'drop-seq', output_dir,
+                                        n_threads)
+
+
+        # generate alignments from merged fastq
+        sam = seqc.align.STAR.align(merged, index, n_threads, output_dir)
+        return sam
+
+
+def to_count_single_file(sam_file, gtf_file):
+    """cannot separate file due to operating system limitations. Instead, implement
+    a mimic of htseq-count that uses the default 'union' approach to counting, given the
+    same gtf file; for fluidigm/SMART data"""
+
+    # get conversion table, all possible genes for the count matrix
+    gt = seqc.convert_features.GeneTable(gtf_file)
+    all_genes = gt.all_genes()
+
+    # map genes to ids
+    n_genes = len(all_genes)
+    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
+    cell_to_int_id = {'no_cell': 0}
+    cell_number = 1
+    read_count = defaultdict(int)
+
+    # add metadata fields to mimic htseq output; remember to remove these in the final
+    # analysis
+    gene_to_int_id['ambiguous'] = n_genes
+    gene_to_int_id['no_feature'] = n_genes + 1
+    gene_to_int_id['not_aligned'] = n_genes + 2
+
+    # estimate the average read length
+    with open(sam_file, 'r') as f:
+        sequences = []
+        line = f.readline()
+        while line.startswith('@'):
+            line = f.readline()
+        while len(sequences) < 100:
+            sequences.append(f.readline().strip().split('\t')[9])
+        read_length = round(np.mean([len(s) for s in sequences]))
+
+    # pile up counts
+    with open(sam_file) as f:
+        for record in f:
+
+            # discard headers
+            if record.startswith('@'):
+                continue
+            record = record.strip().split('\t')
+
+            # get cell id, discard if no cell, add new cell if not found.
+            cell = record[0].split(':')[0]
+            if cell == 0:
+                int_cell_id = 0
+            else:
+                try:
+                    int_cell_id = cell_to_int_id[cell]
+                except KeyError:
+                    cell_to_int_id[cell] = cell_number
+                    int_cell_id = cell_number
+                    cell_number += 1
+
+            # get start, end, chrom, strand
+            flag = int(record[1])
+            if flag & 4:
+                int_gene_id = n_genes + 2  # not aligned
+            else:
+                chromosome = record[2]
+                if flag & 16:
+                    strand = '-'
+                    end = int(record[3])
+                    start = end - read_length
+                else:
+                    strand = '+'
+                    start = int(record[3])
+                    end = start + read_length
+
+                try:
+                    genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                except KeyError:
+                    continue  # todo include these non-chromosome scaffolds instead of
+                    # discarding
+                if len(genes) == 1:
+                    int_gene_id = gene_to_int_id[genes[0]]
+                if len(genes) == 0:
+                    int_gene_id = n_genes + 1
+                if len(genes) > 1:
+                    int_gene_id = n_genes
+            read_count[(int_cell_id, int_gene_id)] += 1
+
+    # create sparse matrix
+    cell_row, gene_col = zip(*read_count.keys())
+    data = list(read_count.values())
+    m = cell_number
+    n = n_genes + 3
+
+    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
+    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
+                          dtype=object)
+    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
+
+    return coo, gene_index, cell_index
+
+
+def to_count_multiple_files(sam_files, gtf_file):
+    """count genes in each cell; fluidigm data"""
+    gt = seqc.convert_features.GeneTable(gtf_file)
+    all_genes = gt.all_genes()
+
+    # map genes to ids
+    n_genes = len(all_genes)
+    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
+    cell_number = 1
+    read_count = defaultdict(int)
+
+    # add metadata fields to mimic htseq output; remember to remove these in the final
+    # analysis
+    gene_to_int_id['ambiguous'] = n_genes
+    gene_to_int_id['no_feature'] = n_genes + 1
+    gene_to_int_id['not_aligned'] = n_genes + 2
+
+    for sam_file in sam_files:
+    # pile up counts
+
+        # estimate the average read length
+        with open(sam_file, 'r') as f:
+            sequences = []
+            line = f.readline()
+            while line.startswith('@'):
+                line = f.readline()
+            while len(sequences) < 100:
+                sequences.append(f.readline().strip().split('\t')[9])
+            read_length = round(np.mean([len(s) for s in sequences]))
+
+        with open(sam_file) as f:
+            for record in f:
+
+                # discard headers
+                if record.startswith('@'):
+                    continue
+                record = record.strip().split('\t')
+
+                # get start, end, chrom, strand
+                flag = int(record[1])
+                if flag & 4:
+                    int_gene_id = n_genes + 2  # not aligned
+                else:
+                    chromosome = record[2]
+                    if flag & 16:
+                        strand = '-'
+                        end = int(record[3])
+                        start = end - read_length
+                    else:
+                        strand = '+'
+                        start = int(record[3])
+                        end = start + read_length
+
+                    try:
+                        genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                    except KeyError:
+                        continue  # todo count these weird non-chromosome scaffolds
+                        # right now, we just throw them out...
+                    if len(genes) == 1:
+                        int_gene_id = gene_to_int_id[genes[0]]
+                    if len(genes) == 0:
+                        int_gene_id = n_genes + 1
+                    if len(genes) > 1:
+                        int_gene_id = n_genes
+                read_count[(cell_number, int_gene_id)] += 1
+        cell_number += 1
+
+    # create sparse matrix
+    cell_row, gene_col = zip(*read_count.keys())
+    data = list(read_count.values())
+    m = cell_number
+    n = n_genes + 3
+
+    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
+    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
+                          dtype=object)
+    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
+
+    return coo, gene_index, cell_index
