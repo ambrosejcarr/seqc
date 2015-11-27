@@ -120,8 +120,6 @@ class _UnionFind:
 # todo | change from_iterable to be able to construct from a jagged array slice output
 # todo test if id() is faster than .tobytes()
 # todo | it would save more memory to skip "empty" features and give them equal indices
-# todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
-# todo | returning array([]); this would also reduce downstream complexity.
 class JaggedArray:
 
     def __init__(self, data, index):

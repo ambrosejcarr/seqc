@@ -50,100 +50,6 @@ def parse_args():
     args = vars(p.parse_args())
     return args
 
-def sam_to_count_single_file(sam_file, gtf_file):
-    """cannot separate file due to operating system limitations. Instead, implement
-    a mimic of htseq-count that uses the default 'union' approach to counting, given the
-    same gtf file"""
-
-    # get conversion table, all possible genes for the count matrix
-    gt = seqc.convert_features.GeneTable(gtf_file)
-    all_genes = gt.all_genes()
-
-    # map genes to ids
-    n_genes = len(all_genes)
-    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
-    cell_to_int_id = {'no_cell': 0}
-    cell_number = 1
-    read_count = defaultdict(int)
-
-    # add metadata fields to mimic htseq output; remember to remove these in the final
-    # analysis
-    gene_to_int_id['ambiguous'] = n_genes
-    gene_to_int_id['no_feature'] = n_genes + 1
-    gene_to_int_id['not_aligned'] = n_genes + 2
-
-    # estimate the average read length
-    with open(sam_file, 'r') as f:
-        sequences = []
-        line = f.readline()
-        while line.startswith('@'):
-            line = f.readline()
-        while len(sequences) < 100:
-            sequences.append(f.readline().strip().split('\t')[9])
-        read_length = round(np.mean([len(s) for s in sequences]))
-
-    # pile up counts
-    with open(sam_file) as f:
-        for record in f:
-
-            # discard headers
-            if record.startswith('@'):
-                continue
-            record = record.strip().split('\t')
-
-            # get cell id, discard if no cell, add new cell if not found.
-            cell = record[0].split(':')[0]
-            if cell == 0:
-                int_cell_id = 0
-            else:
-                try:
-                    int_cell_id = cell_to_int_id[cell]
-                except KeyError:
-                    cell_to_int_id[cell] = cell_number
-                    int_cell_id = cell_number
-                    cell_number += 1
-
-            # get start, end, chrom, strand
-            flag = int(record[1])
-            if flag & 4:
-                int_gene_id = n_genes + 2  # not aligned
-            else:
-                chromosome = record[2]
-                if flag & 16:
-                    strand = '-'
-                    end = int(record[3])
-                    start = end - read_length
-                else:
-                    strand = '+'
-                    start = int(record[3])
-                    end = start + read_length
-
-                try:
-                    genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
-                except KeyError:
-                    continue  # todo include these non-chromosome scaffolds instead of
-                    # discarding
-                if len(genes) == 1:
-                    int_gene_id = gene_to_int_id[genes[0]]
-                if len(genes) == 0:
-                    int_gene_id = n_genes + 1
-                if len(genes) > 1:
-                    int_gene_id = n_genes
-            read_count[(int_cell_id, int_gene_id)] += 1
-
-    # create sparse matrix
-    cell_row, gene_col = zip(*read_count.keys())
-    data = list(read_count.values())
-    m = cell_number
-    n = n_genes + 3
-
-    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
-    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
-                          dtype=object)
-    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
-
-    return coo, gene_index, cell_index
-
 
 def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
          experiment_type, experiment_name, index=None, index_bucket=None, index_key=None,
@@ -187,7 +93,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
     # create the matrix
     log_info('Creating counts matrix')
     gtf_file = index + 'annotations.gtf'
-    coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
+    coo, rowind, colind = seqc.sam.to_count_single_file(sam_file, gtf_file)
 
     log_info('Saving counts matrix')
     numpy_archive = experiment_name + '.npz'

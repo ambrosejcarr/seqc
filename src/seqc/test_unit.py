@@ -36,6 +36,73 @@ from pyftpdlib.authorizers import DummyAuthorizer
 _seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 _data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
 
+# set of dtypes
+_data_types = ['in_drop', 'drop_seq']
+
+# universal file patterns
+_samfile_pattern = _seqc_dir + 'test/%s/.seqc_test/Aligned.out.sam'
+_forward_pattern = _seqc_dir + 'test/%s/fastq/test_seqc_r1.fastq'
+_reverse_pattern = _seqc_dir + 'test/%s/fastq/test_seqc_r2.fastq'
+_barcode_pattern = _seqc_dir + 'test/%s/barcodes/barcodes.p'
+_h5_name_pattern = _seqc_dir + 'test/%s/test_seqc.h5'
+
+# universal index files
+_gtf = _seqc_dir + 'test/genome/annotations.gtf'
+_fasta = _seqc_dir + 'test/genome/mm38_chr19.fa'
+_index = _seqc_dir + 'test/genome/'
+
+# config parameters
+_n_threads = 7
+
+# define a few tests to check if these files are present; if not, generate them.
+
+def check_fastq(data_type: str):
+    """check if the required fastq files are present, else generate them"""
+
+    # replace any dashes with underscores
+    data_type = data_type.replace('-', '_')
+
+    # get forward and reverse file ids
+    forward = _forward_pattern % data_type
+    reverse = _reverse_pattern % data_type
+
+    if not all(os.path.isfile(f) for f in [forward, reverse]):
+        gen_func = getattr(seqc.fastq.GenerateFastq, data_type)
+        gen_func(10000, _seqc_dir + 'test/%s/fastq/test_seqc', _fasta, _gtf)
+
+    return forward, reverse
+
+
+def check_sam(data_type: str):
+    """check if the required sam files are present, else generate them"""
+
+    # replace any dashes with underscores
+    data_type = data_type.replace('-', '_')
+
+    # get sam pattern
+    samfile = _samfile_pattern % data_type
+
+    # generation params
+    n = 10000
+    prefix = _seqc_dir + 'test/%s/fastq/test_seqc'
+
+    if not os.path.isfile(samfile):
+        gen_func = getattr(seqc.sam.GenerateSam, data_type)
+        gen_func(n=n, prefix=prefix, fasta=_fasta, gtf=_gtf, index=_index)
+
+    return samfile
+
+
+def check_index():
+    """ensure that there is an index present. If not, download it."""
+    gfiles = ['Genome', 'SA', 'SAindex', 'annotations.gtf']
+    if not os.path.isdir(_index) or not all(os.path.isfile(_index + f) for f in gfiles):
+        index_bucket = 'dplab-data'
+        index_prefix = 'genomes/mm38_chr19/'
+        seqc.io_lib.S3.download_files(
+            bucket=index_bucket, key_prefix=index_prefix, output_prefix=_index,
+            cut_dirs=2)
+
 
 class SRAGenerator:
 
@@ -334,7 +401,8 @@ class DummyFTPClient(threading.Thread):
         self.client.close()
 
 
-# @unittest.skip('')
+# todo keep
+@unittest.skip('')
 class TestJaggedArray(unittest.TestCase):
 
     def generate_input_iterable(self, n):
@@ -342,7 +410,7 @@ class TestJaggedArray(unittest.TestCase):
             yield [random.randint(0, 5) for _ in range(random.randint(0, 5))]
 
     def test_jagged_array(self):
-        n = int(1e6)
+        n = int(1e3)
         data = list(self.generate_input_iterable(n))
         data_size = sum(len(i) for i in data)
         jarr = arrays.JaggedArray.from_iterable(data_size, data)
@@ -351,6 +419,7 @@ class TestJaggedArray(unittest.TestCase):
         print(jarr[10])
 
 
+# todo keep
 @unittest.skip('')
 class TestThreeBitInDrop(unittest.TestCase):
 
@@ -459,6 +528,7 @@ class TestThreeBitInDrop(unittest.TestCase):
         self.assertEqual(cell, 0)
 
 
+# todo keep
 @unittest.skip('')
 class TestThreeBitGeneral(unittest.TestCase):
 
@@ -532,6 +602,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         self.assertEqual(result, expected_result)
 
 
+# todo keep; speed up
 @unittest.skip('')
 class TestThreeBitCellBarcodes(unittest.TestCase):
 
@@ -599,190 +670,10 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         self.assertEqual({'TN'}, set(errors))
 
 
+# todo re-write
 @unittest.skip('')
 class TestFastq(unittest.TestCase):
-
-    def setUp(self):
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.gfq = GenerateFastq()
-        self.fwd_len = 50
-        self.rev_len = 100
-        self.in_drop_string_barcodes = (
-            data_dir + 'in_drop/barcodes/concatenated_string_in_drop_barcodes.p')
-        self.umi_len = 6
-        self.in_drop_temp_dir = data_dir + 'test_seqc_merge_in_drop_fastq'
-        self.drop_seq_temp_dir = data_dir + 'test_seqc_merge_drop_seq_fastq'
-        self.in_drop_processor = 'in-drop'
-        self.drop_seq_processor = 'drop-seq'
-        for d in [self.drop_seq_temp_dir, self.in_drop_temp_dir]:
-            if not os.path.isdir(d):
-                os.makedirs(d)
-        self.in_drop_cell_barcode_pickle = data_dir + 'in_drop/barcodes/cb_3bit.p'
-        self.drop_seq_cell_barcode_pickle = data_dir + 'drop_seq/barcodes/cb_3bit.p'
-
-    def test_remove_homopolymer(self):
-        non_polymer = 'CGTACGATCGATAGCTAG'
-        testseq = ('A' * 9) + non_polymer + ('T' * 12)
-        testrecord = ['@name', testseq, '+name', 'I' * len(testseq)]
-        r, trimmed_bases = fastq.remove_homopolymer(testrecord)
-        self.assertEqual(non_polymer + '\n', r[1])
-        self.assertTrue(len(non_polymer + '\n') == len(r[3]))
-        self.assertEqual(trimmed_bases, 21)
-
-    def test_process_record(self):
-        n = 10000
-        _ = self.gfq.generate_forward_in_drop_fastq(
-            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len)
-        _ = self.gfq.generate_reverse_fastq(n, self.rev_len)
-
-    def test_merge_in_drop_record(self):
-        tbp = three_bit.ThreeBit.default_processors(self.in_drop_processor)
-        with open(self.in_drop_cell_barcode_pickle, 'rb') as f:
-            cb = pickle.load(f)
-        n = 1
-        forward = self.gfq.generate_forward_in_drop_fastq(
-            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len).readlines()
-        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len).readlines()
-        fq = fastq.process_record(forward, reverse, tbp, cb)
-        self.assertEqual(len(fq.split()), 4)
-
-    def test_merge_drop_seq_record(self):
-        tbp = three_bit.ThreeBit.default_processors(self.drop_seq_processor)
-        with open(self.drop_seq_cell_barcode_pickle, 'rb') as f:
-            cb = pickle.load(f)
-        n = 1
-        forward = self.gfq.generate_forward_drop_seq_fastq(n).readlines()
-        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len).readlines()
-        fq = fastq.process_record(forward, reverse, tbp, cb)
-        self.assertEqual(len(fq.split()), 4)
-
-    # @unittest.skip('Takes a long time')
-    def test_merge_in_drop_fastq(self):
-        # takes approximately 6.35 minutes per million reads, of which 37% is
-        # accorded to the estimation of sequence quality
-        n = 10000
-        forward = self.gfq.generate_forward_in_drop_fastq(
-            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len)
-        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
-        _ = fastq.merge_fastq(
-            [forward], [reverse], self.in_drop_processor, self.in_drop_temp_dir,
-            self.in_drop_cell_barcode_pickle)
-
-    # @unittest.skip('Takes a long time')
-    def test_merge_drop_seq_fastq(self):
-        # takes approximately 6.35 minutes per million reads, of which 37% is
-        # accorded to the estimation of sequence quality
-        n = 10000
-        forward = self.gfq.generate_forward_drop_seq_fastq(n)
-        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
-        _ = fastq.merge_fastq(
-            [forward], [reverse], self.drop_seq_processor, self.drop_seq_temp_dir,
-            self.drop_seq_cell_barcode_pickle)
-
-    @unittest.skip('this is not currently working.')
-    def test_merge_in_drop_fastq_threaded(self):
-        n = 10000
-        n_threads = 7
-        forward = self.gfq.generate_forward_in_drop_fastq(
-            n, self.fwd_len, self.in_drop_string_barcodes, self.umi_len)
-        reverse = self.gfq.generate_reverse_fastq(n, self.rev_len)
-
-        _ = fastq.merge_fastq_threaded(
-            forward, reverse, n_threads, self.in_drop_processor, self.in_drop_temp_dir,
-            self.in_drop_cell_barcode_pickle)
-
-
-@unittest.skip('')
-class TestTranslateFeature(unittest.TestCase):
-    """
-    I'm reasonably confident that this is working as intended, but the tests in this suite
-    are not strong enough. Specifically, there is no test to determine if multialignments
-    are working properly, and the data synthesis process is not working as it should.
-    instead of looking at transcripts, we should look at exons for data generation, but
-    need to constrain our search only to exons within fragment_length (1000bp) of the
-    3' end of each transcript
-    """
-
-    def setUp(self):
-        self.genome_dir = ('/'.join(seqc.__file__.split('/')[:-2]) +
-                           '/data/genome/mm38_chr19/')
-        self.gtf = self.genome_dir + 'annotations.gtf'
-        self.fragment_len = 1000
-
-    @unittest.skip('run only when new table and positions must be generated')
-    def test_construct_tables(self):
-        """saves speed for repeat testing"""
-        ft, fp = convert_features.construct_feature_table(self.gtf, self.fragment_len)
-        with open(self.genome_dir + 'feature_table_and_positions.pckl', 'wb') as f:
-            pickle.dump((ft, fp), f)
-
-    # @unittest.skip('')
-    def test_translate_known_feature(self):
-        with open(self.genome_dir + 'feature_table_and_positions.pckl', 'rb') as f:
-            ft, fp = pickle.load(f)
-
-        # pick a few random features
-        with open(self.gtf, 'r') as f:
-            gtf_data = [l.strip().split('\t') for l in f.readlines()]
-            gtf_data = [l for l in gtf_data if l[2] == 'transcript']
-
-        # generate some alignments to that feature
-        pattern = re.compile(r'(^.*?scseq_id "SC)(.*?)(";.*?$)')
-        random_features = [random.choice(gtf_data) for _ in range(1000)]
-        fake_alignments = []
-        for f in random_features:
-            reference = f[0]
-            strand = f[6]
-            if strand == '+':
-                end = int(f[4])
-                # must be consistent with fragment length
-                pos = random.randint(end - self.fragment_len, end)
-            else:
-                end = int(f[3])
-                pos = np.random.randint(end, end + self.fragment_len)
-
-            scid = int(re.match(pattern, f[-1]).group(2))
-            fake_alignments.append(((reference, strand, pos, ft, fp), scid))
-
-        # test if translate_feature recovers them
-        n_successful = 0
-        for a, scid in fake_alignments:
-            try:
-                pred_scid = sam.translate_feature(*a)
-            except KeyError:
-                pred_scid = 0
-            if scid == pred_scid:
-                n_successful += 1
-        message = 'fails because not all positions in the transcript are found in exons'
-        self.assertEqual(n_successful, 1000, message)
-
-
-@unittest.skip('')
-class TestAlign(unittest.TestCase):
-
-    def setUp(self):
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.in_drop_temp_dir = data_dir + 'test_seqc_merge_in_drop_fastq/'
-        self.drop_seq_temp_dir = data_dir + 'test_seqc_merge_drop_seq_fastq/'
-        self.in_drop_fastq = self.in_drop_temp_dir + 'merged_temp.fastq'
-        self.drop_seq_fastq = self.drop_seq_temp_dir + 'merged_temp.fastq'
-        self.index = data_dir + 'genome/mm38_chr19/'
-
-    def test_align_in_drop(self):
-        star = align.STAR(self.in_drop_temp_dir, 7, self.index, 'mm38')
-        samfile = star.align(self.in_drop_fastq)
-        self.assertEqual(samfile, self.in_drop_temp_dir + 'Aligned.out.sam')
-ew
-    def test_align_drop_seq(self):
-        star = align.STAR(self.drop_seq_temp_dir, 7, self.index, 'mm38')
-        samfile = star.align(self.drop_seq_fastq)
-        self.assertEqual(samfile, self.drop_seq_temp_dir + 'Aligned.out.sam')
-
-    def test_align_drop_seq_multiple_files(self):
-        star = align.STAR(self.drop_seq_temp_dir, 7, self.index, 'mm38')
-        samfiles = star.align_multiple_files([self.drop_seq_fastq, self.drop_seq_fastq,
-                                              self.drop_seq_fastq])
-        print(samfiles)
+    pass
 
 
 # todo import these tests from scseq/seqdb
@@ -791,44 +682,9 @@ class TestIndexGeneration(unittest.TestCase):
     pass
 
 
-@unittest.skip('')
-class TestSEQC(unittest.TestCase):
-
-    def test_set_up(self):
-        exp_name = 'test_set_up'
-        temp_dir = '.' + exp_name
-        if not os.path.isdir(temp_dir):
-            os.makedirs(temp_dir)
-        if not temp_dir.endswith('/'):
-            temp_dir += '/'
-
-        self.assertEqual('.%s/' % exp_name, temp_dir)
-        os.rmdir('.%s/' % exp_name)
-
-
-@unittest.skip('')
-class TestSamProcessing(unittest.TestCase):
-
-    def setUp(self):
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.in_drop_samfile = data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
-        self.drop_seq_samfile = (
-            data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam')
-        self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
-
-    def test_process_in_drop_alignments(self):
-        n_threads = 4
-        arr = sam.process_alignments(self.in_drop_samfile, n_threads, self.gtf,
-                                     fragment_len=1000)
-        print(arr)
-
-    def test_process_drop_seq_alignments(self):
-        n_threads = 4
-        arr = sam.process_alignments(self.drop_seq_samfile, n_threads, self.gtf,
-                                     fragment_len=1000)
-        print(arr)
-
-
+# todo
+# contains memory and time profiling examples for other unit tests; final is a
+# relevant test
 @unittest.skip('')
 class TestSamToReadArray(unittest.TestCase):
 
@@ -984,117 +840,22 @@ class TestSamToReadArray(unittest.TestCase):
     def test_create_ra_object(self):
         samfile = ('/Users/ambrose/PycharmProjects/SEQC/src/data/test_ra_memory_usage/'
                    'merged_temp/Aligned.out.sam')
-        ft, fp = convert_features.construct_feature_table(self.gtf, 1000)
-        res = arrays.ReadArray.from_samfile(samfile, ft, fp)
-        res.save_h5(self.h5name)
+        fc = convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+        res = arrays.ReadArray.from_samfile(samfile, fc)
 
-    def test_profile_counts_creation(self):
-        ra = arrays.ReadArray.from_h5(self.h5name)
-        pr = cProfile.Profile()
-        pr.enable()
-        ra.to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
-        pr.disable()
-        p = Stats(pr)
-        p.strip_dirs()
-        p.sort_stats('cumtime')
-        p.print_stats()
-
-    # def tearDown(self):
-    #     if os.path.isfile(self.h5name):
-    #         os.remove(self.h5name)
+    # def test_profile_counts_creation(self):
+    #     ra = arrays.ReadArray.from_h5(self.h5name)
+    #     pr = cProfile.Profile()
+    #     pr.enable()
+    #     ra.to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
+    #     pr.disable()
+    #     p = Stats(pr)
+    #     p.strip_dirs()
+    #     p.sort_stats('cumtime')
+    #     p.print_stats()
 
 
-@unittest.skip('')
-class TestPeekable(unittest.TestCase):
-
-    def test_peekable_string(self):
-        iterable = 'ACGTACGT'
-        pk = sam.Peekable(iterable)
-        self.assertEqual(pk.peek, 'A')
-        first = next(pk)
-        self.assertEqual(first, 'A')
-
-    def test_peekable_fileobj(self):
-        fileobj = StringIO('1\n2\n3\n4\n')
-        pk = sam.Peekable(fileobj)
-        first = next(pk)
-        self.assertTrue(first == '1\n')
-        self.assertTrue(pk.peek == '2\n')
-
-
-@unittest.skip('')
-class TestUnionFind(unittest.TestCase):
-
-    def setUp(self):
-        # get all combinations of single and multiple features with and without overlaps
-        self.f1 = sam.ObfuscatedTuple((1, 2, 3))  # multiple features, overlaps
-        self.f2 = sam.ObfuscatedTuple((1, 2))
-        self.f3 = sam.ObfuscatedTuple((1,))  # one feature, overlaps
-        self.f4 = sam.ObfuscatedTuple((3, 4))
-        self.f5 = sam.ObfuscatedTuple((4,))
-        self.f6 = sam.ObfuscatedTuple((6, 7))  # multiple features, no overlaps
-        self.f7 = sam.ObfuscatedTuple((11,))  # one feature, no overlaps
-
-    def test_union_find_on_single_feature_group(self):
-        """This works with the new object because of its __iter__() method"""
-        arr = np.array([self.f7], dtype=np.object)
-        uf = qc.UnionFind()
-        uf.union_all(arr)
-        set_membership, sets = uf.find_all(arr)
-        self.assertTrue(np.all(sets == np.array([0])))
-        self.assertTrue(np.all(set_membership == np.array([0])))
-
-    def test_union_find_on_multiple_feature_group(self):
-        arr = np.array([self.f6], dtype=np.object)
-        uf = qc.UnionFind()
-        uf.union_all(arr)
-        set_membership, sets = uf.find_all(arr)
-        self.assertTrue(np.all(sets == np.array([0])))
-        self.assertTrue(np.all(set_membership == np.array([0])))
-
-    def test_union_find_on_multiple_feature_group_no_repitition_with_overlaps(self):
-        arr = np.array([self.f1, self.f2, self.f3, self.f4, self.f5, self.f6, self.f7],
-                       dtype=np.object)
-        uf = qc.UnionFind()
-        uf.union_all(arr)
-        set_membership, sets = uf.find_all(arr)
-        self.assertEqual(sorted(sets), [0, 1, 2])
-        # there aren't guaranteed set associations -- all will have same number if they're
-        # in the same component, but that number could be any of the sets 0, 1, 2
-        s1 = set_membership[0]
-        s2 = set_membership[-2]
-        s3 = set_membership[-1]
-        prediction = np.array([s1, s1, s1, s1, s1, s2, s3])
-        # only 3 sets should be present, they should be 0, 1, and 2
-        self.assertEqual(sorted(np.unique(set_membership)), [0, 1, 2])
-
-        # they should find the right membership
-
-        self.assertTrue(np.all(set_membership == prediction),
-                        '%s != %s' % (repr(set_membership), repr(prediction)))
-
-    def test_union_find_on_multiple_feature_group_with_repitition_with_overlaps(self):
-        arr = np.array([self.f1, self.f2, self.f3, self.f3, self.f4, self.f4, self.f5,
-                        self.f6, self.f7, self.f7], dtype=np.object)
-        uf = qc.UnionFind()
-        uf.union_all(arr)
-        set_membership, sets = uf.find_all(arr)
-        self.assertEqual(sorted(sets), [0, 1, 2])
-        # there aren't guaranteed set associations -- all will have same number if they're
-        # in the same component, but that number could be any of the sets 0, 1, 2
-        s1 = set_membership[0]
-        s2 = set_membership[-3]
-        s3 = set_membership[-1]
-        prediction = np.array([s1, s1, s1, s1, s1, s1, s1, s2, s3, s3])
-        # only 3 sets should be present, they should be 0, 1, and 2
-        self.assertEqual(sorted(np.unique(set_membership)), [0, 1, 2])
-
-        # they should find the right membership
-
-        self.assertTrue(np.all(set_membership == prediction),
-                        '%s != %s' % (repr(set_membership), repr(prediction)))
-
-
+# todo rewrite for standard locations
 @unittest.skip('')
 class TestResolveAlignments(unittest.TestCase):
     """this may need more tests for more sophisticated input data."""
@@ -1103,27 +864,12 @@ class TestResolveAlignments(unittest.TestCase):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
         self.expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment.pckl'
 
-    @unittest.skip('only run this if new disambiguation input is needed')
-    def test_create_test_data(self):
-        cell_barcodes = self.data_dir + 'in_drop/barcodes/cb_3bit.p'
-        save = self.data_dir + 'in_drop/disambiguation_input.p'
-        self.data = generate_in_drop_disambiguation_data(
-            self.expectations, cell_barcodes, 1000, 10, save=save)
-
     @unittest.skip('only run this if new ra disambiguation input is needed')
     def test_generate_disambiguation_read_array(self):
         cell_barcodes = self.data_dir + 'in_drop/barcodes/cb_3bit.p'
         save = self.data_dir + 'in_drop/disambiguation_ra_input.p'
         _ = generate_in_drop_read_array(self.expectations, cell_barcodes, 1000, 10,
                                         save=save)
-
-    @unittest.skip('')
-    def test_disambiguation(self):
-        arr_pickle = self.data_dir + 'in_drop/disambiguation_input.p'
-        with open(arr_pickle, 'rb') as f:
-            arr = pickle.load(f)
-        res, data = qc.disambiguate(arr, self.expectations)
-        self.assertTrue(np.all(res == 4))  # 4 == complete disambiguation.
 
     # @unittest.skip('')
     def test_ra_disambiguate(self):
@@ -1138,62 +884,21 @@ class TestResolveAlignments(unittest.TestCase):
 
 
 @unittest.skip('')
-class TestErrorCorrection(unittest.TestCase):
-
-    def setUp(self):
-        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.expectations = self.data_dir + 'genome/mm38_chr19/p_coalignment.pckl'
-
-    def test_create_cell_barcodes(self):
-        cell_barcodes = self.data_dir + 'in_drop/barcodes/cb_3bit.p'
-        save = self.data_dir + 'in_drop/disambiguation_input.p'
-        data = generate_in_drop_disambiguation_data(
-            self.expectations, cell_barcodes, 10000, 2, save=save)
-
-        # mutate the first base to 'N' in 5% of cases
-        for i in range(data.shape[0]):
-            if np.random.uniform(0, 1) < 0.05:
-                cell = data['cell'][i]
-                data['cell'][i] = cell & 0b111
-
-        res, err_rate = qc.correct_errors(data, cell_barcodes, 1, 0.2)
-        self.assertTrue(~np.all(res == 0))
-        print(err_rate)
-
-    def test_error_correction(self):
-        pass
-
-
-@unittest.skip('')
-class TestSaveCountsMatrices(unittest.TestCase):
-
-    def setUp(self):
-        self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-
-    def test_save_counts_matrices(self):
-
-        with open(self.data_dir + 'in_drop/disambiguation_input.p', 'rb') as f:
-            arr = pickle.load(f)
-        _ = qc.counts_matrix(arr, True)
-        _ = qc.counts_matrix(arr, False)
-
-
-@unittest.skip('')
 class TestGeneTable(unittest.TestCase):
 
     def setUp(self):
         self.genome_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/genome/'
 
     def test_gene_table(self):
-        gt = convert_features.GeneTable(self.genome_dir + 'mm38_chr19/annotations.gtf')
+        gt = convert_features.GeneTable(_gtf)
         chromosome = 'chr19'
         start = 4007800
         end = 4007900
         strand = '-'
         genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
-        print(genes)
 
 
+# todo rewrite; keep
 @unittest.skip('')
 class TestSamToCount(unittest.TestCase):
 
@@ -1203,26 +908,26 @@ class TestSamToCount(unittest.TestCase):
     def test_sam_to_count_single_file(self):
         samfile = self.data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
-        coo, gene_index, ci = qc.sam_to_count_single_file(samfile, gtf, 100)
+        coo, gene_index, ci = seqc.sam.to_count_single_file(samfile, gtf, 100)
         print(repr(coo))
         print(len(gene_index))
 
         samfile = self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
-        coo, gene_index, ci = qc.sam_to_count_single_file(samfile, gtf, 100)
+        coo, gene_index, ci = seqc.sam.to_count_single_file(samfile, gtf, 100)
         print(repr(coo))
         print(len(gene_index))
 
     def test_sam_to_count_multiple_files(self):
         samfile = self.data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
-        coo, gene_index, ci = qc.sam_to_count_multiple_files([samfile, samfile], gtf, 100)
+        coo, gene_index, ci = seqc.sam.to_count_multiple_files([samfile, samfile], gtf, 100)
         print(repr(coo))
         print(len(gene_index))
 
         samfile = self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
-        coo, gene_index, ci = qc.sam_to_count_multiple_files([samfile, samfile], gtf, 100)
+        coo, gene_index, ci = seqc.sam.to_count_multiple_files([samfile, samfile], gtf, 100)
         print(repr(coo))
         print(len(gene_index))
 
@@ -1358,32 +1063,11 @@ class TestGenerateSRA(unittest.TestCase):
         SRAGenerator.fastq_load(file_directory, run_xml, exp_xml, output_path)
 
 
-@unittest.skip('')
+# @unittest.skip('')
 class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
-    """This is a longer, functional test which will run on 10,000 fastq records"""
 
     def setUp(self):
-        # dummy up some fastq data
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.working_directory = data_dir + '.test_process_single_seqc_exp/'
-        if not os.path.isdir(self.working_directory):
-            os.mkdir(self.working_directory)
-        # generate_in_drop_fastq_data(10000, self.cwd + 'testdata')
-
-        # create an SRA file
-        # todo this is a nightmare, so I'm skipping this step for now
-
-        # unpack SRA file; will do when create SRA doesn't fail.
-
-        # expect unpacked fastq files to be SRRxxxx_1.fastq and SRRxxxx_2.fastq if
-        # paired-end or SRRxxxx.fastq if single-ended
-
-        fastq_stem = '/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/'
-        self.forward = [fastq_stem + 'sample_data_r1.fastq']
-        self.reverse = [fastq_stem + 'sample_data_r2.fastq']
-
-        self.index = data_dir + 'genome/mm38_chr19/'
-
+        self.forward, self.reverse = check_fastq('in_drop')
         self.s3_bucket = 'dplab-home'
         self.s3_key = 'ajc2205/test_in_drop.npz'
 
@@ -1391,14 +1075,9 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
     def test_process_single_file_no_sra_download(self):
 
         # set some variables
-        index = self.index
-        working_directory = self.working_directory
         index_bucket = None
         index_key = None
-        S3 = io_lib.S3
-        STAR = align.STAR
-        n_threads = 7
-        sam_to_count_single_file = qc.sam_to_count_single_file
+
         experiment_name = 'test_in_drop'
         s3_bucket = self.s3_bucket
         s3_key = self.s3_key
@@ -1433,7 +1112,6 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         # upload the matrix to amazon s3
         S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
-    # @unittest.skip('')
     def test_process_multiple_file_no_sra_download(self):
         # set some variables
         index = self.index
@@ -1447,8 +1125,7 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         experiment_name = 'test_in_drop'
         s3_bucket = self.s3_bucket
         s3_key = self.s3_key
-        _ = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
-             'in_drop_barcodes.p')
+        cell_barcodes = _barcode_pattern % dtype
 
         # potential issue: reverse should never map..
         forward = [self.forward[0]] * 3
@@ -1478,13 +1155,7 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         # upload the matrix to amazon s3
         S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
-    def tearDown(self):
-        shutil.rmtree(self.working_directory)
-        io_lib.S3.remove_file(self.s3_bucket, self.s3_key)
-        os.remove('test_in_drop.npz')
 
-
-@unittest.skip('')
 class TestGroupForErrorCorrection(unittest.TestCase):
 
     def setUp(self):
@@ -1569,14 +1240,12 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                 else:
                     print('Returned None')
 
+def test_parallel_construct_sam():
 
+
+# todo keep; rewrite to use check_sam()
 @unittest.skip('')
 class TestParallelConstructSam(unittest.TestCase):
-
-    def setUp(self):
-        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
-        self.samfile = data_dir + 'in_drop/Aligned.out.sam'
-        self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
 
     @unittest.skip('')
     def test_parallel_construct_sam(self):
@@ -1686,7 +1355,7 @@ class TestParallelConstructSam(unittest.TestCase):
                        self.gtf, fragment_length=1000)
         nlines = self.samfile
 
-@unittest.skip('')
+
 class TestCounting(unittest.TestCase):
 
     def setUp(self):
@@ -1739,35 +1408,33 @@ class TestCounting(unittest.TestCase):
         self.simple_unique = create_unique_read_array(rmts, cells, features)
         self.simple_duplicate = create_unique_read_array(rmts * 2, cells * 2, features * 2)
 
-    @unittest.skip('')
     def test_print_data(self):
         self.simple_unique._sort()
         data = append_fields(self.simple_unique.data, 'features', self.simple_unique.features)
-        print(data[self.simple_unique._sorted][['cell', 'features', 'rmt']])
+        # print(data[self.simple_unique._sorted][['cell', 'features', 'rmt']])
 
-    @unittest.skip('')
     def test_counting_filter_too_high(self):
 
         # test that sorting is working
         # seems to be sorting cell, feature, rmt
         self.assertRaises(ValueError, self.simple_unique.to_experiment, 1)
 
-    # @unittest.skip('')
     def test_counting_simple(self):
         exp = self.simple_unique.to_experiment(0)
         rdata = np.array(exp.reads.counts.todense())
         mdata = np.array(exp.molecules.counts.todense())
-        print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
-        print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
+        # print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
+        # print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
 
     def test_counting_doublets(self):
         exp = self.simple_duplicate.to_experiment(0)
         rdata = np.array(exp.reads.counts.todense())
         mdata = np.array(exp.molecules.counts.todense())
-        print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
-        print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
+        # print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
+        # print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
 
 
+@unittest.skip('')
 class TestUniqueArrayCreation(unittest.TestCase):
     """
     suspicion -> unique array creation is breaking something in the pipeline;
@@ -1777,14 +1444,10 @@ class TestUniqueArrayCreation(unittest.TestCase):
     method: find the smallest real dataset that breaks it and use that to test.
     """
 
-    def setUp(self):
-        # verify that Aligned.out.sam doesn't produce correct results.
-        self.samfile = _seqc_dir + '.test_download_index/Aligned.out.sam'
-        self.gtf = _data_dir + 'genome/mm38_chr19/annotations.gtf'
-
     def test_num_unique_samfile(self):
-        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
-        ra = seqc.arrays.ReadArray.from_samfile(self.samfile, fc)
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(_gtf, 1000)
+        # todo fix this to use check_sam()
+        ra = seqc.arrays.ReadArray.from_samfile(samfile, fc)
 
         # verify that the reads aren't all unique
         # n_unique = 21984; n = 29999
@@ -1814,4 +1477,5 @@ class TestUniqueArrayCreation(unittest.TestCase):
         self.assertTrue(ua2.shape[0] == 21984)  # double check that the number is right
 
 if __name__ == '__main__':
-    unittest.main(failfast=True, warnings='ignore')
+    import nose2
+    nose2.main()

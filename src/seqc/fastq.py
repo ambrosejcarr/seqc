@@ -484,6 +484,7 @@ class GenerateFastq:
             f.write(''.join([forward] * (replicates + 1)))
         with open(prefix_ + '_r2.fastq', 'w') as r:
             r.write(''.join([reverse] * (replicates + 1)))
+        return prefix_ + '_r1.fastq', prefix_ + '_r2.fastq'
 
     @classmethod
     def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_id', replicates=3, *args,
@@ -497,3 +498,4 @@ class GenerateFastq:
             f.write(''.join([forward] * (replicates + 1)))
         with open(prefix + '_r2.fastq', 'w') as r:
             r.write(''.join([reverse] * (replicates + 1)))
+        return prefix + '_r1.fastq', prefix + '_r2.fastq'

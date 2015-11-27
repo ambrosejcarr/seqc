@@ -48,86 +48,6 @@ def parse_args():
     args = vars(p.parse_args())
     return args
 
-def sam_to_count_multiple_files(sam_files, gtf_file):
-    """count genes in each cell"""
-    gt = seqc.convert_features.GeneTable(gtf_file)
-    all_genes = gt.all_genes()
-
-    # map genes to ids
-    n_genes = len(all_genes)
-    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
-    cell_number = 1
-    read_count = defaultdict(int)
-
-    # add metadata fields to mimic htseq output; remember to remove these in the final
-    # analysis
-    gene_to_int_id['ambiguous'] = n_genes
-    gene_to_int_id['no_feature'] = n_genes + 1
-    gene_to_int_id['not_aligned'] = n_genes + 2
-
-    for sam_file in sam_files:
-    # pile up counts
-
-        # estimate the average read length
-        with open(sam_file, 'r') as f:
-            sequences = []
-            line = f.readline()
-            while line.startswith('@'):
-                line = f.readline()
-            while len(sequences) < 100:
-                sequences.append(f.readline().strip().split('\t')[9])
-            read_length = round(np.mean([len(s) for s in sequences]))
-
-        with open(sam_file) as f:
-            for record in f:
-
-                # discard headers
-                if record.startswith('@'):
-                    continue
-                record = record.strip().split('\t')
-
-                # get start, end, chrom, strand
-                flag = int(record[1])
-                if flag & 4:
-                    int_gene_id = n_genes + 2  # not aligned
-                else:
-                    chromosome = record[2]
-                    if flag & 16:
-                        strand = '-'
-                        end = int(record[3])
-                        start = end - read_length
-                    else:
-                        strand = '+'
-                        start = int(record[3])
-                        end = start + read_length
-
-                    try:
-                        genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
-                    except KeyError:
-                        continue  # todo count these weird non-chromosome scaffolds
-                        # right now, we just throw them out...
-                    if len(genes) == 1:
-                        int_gene_id = gene_to_int_id[genes[0]]
-                    if len(genes) == 0:
-                        int_gene_id = n_genes + 1
-                    if len(genes) > 1:
-                        int_gene_id = n_genes
-                read_count[(cell_number, int_gene_id)] += 1
-        cell_number += 1
-
-    # create sparse matrix
-    cell_row, gene_col = zip(*read_count.keys())
-    data = list(read_count.values())
-    m = cell_number
-    n = n_genes + 3
-
-    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
-    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
-                          dtype=object)
-    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
-
-    return coo, gene_index, cell_index
-
 
 def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
          index_bucket=None, index=None, working_directory='./', paired_end=False):
@@ -172,7 +92,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
     # create the matrix
     log_info('Creating counts matrix')
     gtf_file = index + 'annotations.gtf'
-    coo, rowind, colind = sam_to_count_multiple_files(sam_files, gtf_file)
+    coo, rowind, colind = seqc.sam.to_count_multiple_files(sam_files, gtf_file)
 
     log_info('Saving counts matrix')
     numpy_archive = experiment_name + '.npz'
