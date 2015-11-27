@@ -7,11 +7,16 @@ import bz2
 import os
 import ftplib
 from threading import Thread
+import threading
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
 import boto3
 import logging
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+from pyftpdlib.authorizers import DummyAuthorizer
+
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
@@ -418,3 +423,104 @@ def open_file(filename):
         return bz2.open(filename, 'rt')
     else:
         return open(filename)
+
+
+
+class DummyFTPClient(threading.Thread):
+    """A threaded FTP server used for running tests.
+
+    This is basically a modified version of the FTPServer class which
+    wraps the polling loop into a thread.
+
+    The instance returned can be used to start(), stop() and
+    eventually re-start() the server.
+
+    The instance can also launch a client using ftplib to navigate and download files.
+    it will serve files from home.
+    """
+    handler = FTPHandler
+    server_class = FTPServer
+
+    def __init__(self, addr=None, home=None):
+
+        try:
+            host = socket.gethostbyname('localhost')
+        except socket.error:
+            host = 'localhost'
+
+        threading.Thread.__init__(self)
+        self.__serving = False
+        self.__stopped = False
+        self.__lock = threading.Lock()
+        self.__flag = threading.Event()
+        if addr is None:
+            addr = (host, 0)
+
+        if not home:
+            home = os.getcwd()
+
+        authorizer = DummyAuthorizer()
+        authorizer.add_anonymous(home, perm='erl')
+        # authorizer.add_anonymous(home, perm='elr')
+        self.handler.authorizer = authorizer
+        # lower buffer sizes = more "loops" while transfering data
+        # = less false positives
+        self.handler.dtp_handler.ac_in_buffer_size = 4096
+        self.handler.dtp_handler.ac_out_buffer_size = 4096
+        self.server = self.server_class(addr, self.handler)
+        self.host, self.port = self.server.socket.getsockname()[:2]
+        self.client = None
+
+    def __repr__(self):
+        status = [self.__class__.__module__ + "." + self.__class__.__name__]
+        if self.__serving:
+            status.append('active')
+        else:
+            status.append('inactive')
+        status.append('%s:%s' % self.server.socket.getsockname()[:2])
+        return '<%s at %#x>' % (' '.join(status), id(self))
+
+    def generate_local_client(self):
+        self.client = ftplib.FTP()
+        self.client.connect(self.host, self.port)
+        self.client.login()
+        return self.client
+
+    @property
+    def running(self):
+        return self.__serving
+
+    def start(self, timeout=0.001):
+        """Start serving until an explicit stop() request.
+        Polls for shutdown every 'timeout' seconds.
+        """
+        if self.__serving:
+            raise RuntimeError("Server already started")
+        if self.__stopped:
+            # ensure the server can be started again
+            DummyFTPClient.__init__(self, self.server.socket.getsockname(), self.handler)
+        self.__timeout = timeout
+        threading.Thread.start(self)
+        self.__flag.wait()
+
+    def run(self):
+        logging.basicConfig(filename='testing.log', level=logging.DEBUG)
+        self.__serving = True
+        self.__flag.set()
+        while self.__serving:
+            self.__lock.acquire()
+            self.server.serve_forever(timeout=self.__timeout, blocking=False)
+            self.__lock.release()
+        self.server.close_all()
+
+    def stop(self):
+        """Stop serving (also disconnecting all currently connected
+        clients) by telling the serve_forever() loop to stop and
+        waits until it does.
+        """
+        if not self.__serving:
+            raise RuntimeError("Server not started yet")
+        self.__serving = False
+        self.__stopped = True
+        self.join()
+        self.client.close()

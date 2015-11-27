@@ -4,6 +4,7 @@ from setuptools import setup
 from warnings import warn
 import os
 import shutil
+import nose2
 
 # pip3 cannot install external dependencies for python; warn user if external dependencies
 # are missing; do this at the end so that the users are more likely to see it.
@@ -27,6 +28,7 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
+      test_suite=nose2.collector.collector,
       # note: requires numpy > 1.10.0
       packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[

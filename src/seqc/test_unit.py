@@ -26,11 +26,8 @@ import random
 import gzip
 import ftplib
 import shutil
-import threading
-from pyftpdlib.handlers import FTPHandler
-from pyftpdlib.servers import FTPServer
-from pyftpdlib.authorizers import DummyAuthorizer
 
+################################ STATE CONFIGURATION ####################################
 
 # this is the universal data dir for these tests
 _seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -54,7 +51,8 @@ _index = _seqc_dir + 'test/genome/'
 # config parameters
 _n_threads = 7
 
-# define a few tests to check if these files are present; if not, generate them.
+############################### SETUP FILE GENERATION ###################################
+
 
 def check_fastq(data_type: str):
     """check if the required fastq files are present, else generate them"""
@@ -104,301 +102,11 @@ def check_index():
             cut_dirs=2)
 
 
-class SRAGenerator:
+##################################### UNIT TESTS ########################################
 
-    @classmethod
-    def make_run_xml(cls, forward_fastq_files, experiment_alias, forward_checksum_results,
-                     fout_stem=None, data_block=None, reverse_fastq_files=None,
-                     reverse_checksum_results=None):
-        """data_block should be a member name if the experiment is a pooled experiment,
-        and this run is a demultiplexed member"""
-
-        if not fout_stem:
-            fout_stem = experiment_alias + '_run.xml'
-
-        if reverse_fastq_files:
-            input_files = [forward_fastq_files, reverse_fastq_files,
-                           forward_checksum_results, reverse_checksum_results]
-        else:
-            input_files = [forward_fastq_files, forward_checksum_results]
-        if not len(set(len(f) for f in input_files)) == 1:
-            raise ValueError('Input files must be of equal length')
-        n = len(input_files[0])
-
-        run_set = ET.Element('RUN_SET')
-        run_set.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-        run_set.set('xsi:noNamespaceSchemaLocation',
-                    'ftp://ftp.sra.ebi.ac.uk/meta/xsd/sra_1_5/SRA.run.xsd')
-        run = ET.SubElement(run_set, 'RUN', alias='RUN NAME',
-                            center_name='Columbia University')
-        experiment_ref = ET.SubElement(run, 'EXPERIMENT_REF')
-        experiment_ref.set('alias', experiment_alias)
-
-        if data_block:
-            data_block_field = ET.SubElement(run, 'DATA_BLOCK')
-            data_block_field.set('member_name', data_block)
-
-        files = ET.SubElement(run, 'FILES')
-        for i in range(n):
-            forward_file = ET.SubElement(files, 'FILE')
-            forward_file.set('filename', forward_fastq_files[i])
-            forward_file.set('filetype', 'fastq')
-            forward_file.set('checksum_method', 'MD5')
-            forward_file.set('checksum', forward_checksum_results[i])
-            if reverse_fastq_files:
-                reverse_file = ET.SubElement(files, 'FILE')
-                reverse_file.set('filename', reverse_fastq_files[i])
-                reverse_file.set('filetype', 'fastq')
-                reverse_file.set('checksum_method', 'MD5')
-                reverse_file.set('checksum', reverse_checksum_results[i])
-        tree = ET.ElementTree(run_set)
-        tree.write(fout_stem + '_run.xml', method='xml')
-        return fout_stem + '_run.xml'
-
-    @classmethod
-    def make_experiment_xml(
-            cls, reference_alias, sample_alias, platform_name='ILLUMINA',
-            single_or_paired_end='SINGLE', instrument_model='Illumina HiSeq 2500',
-            fout_stem='SRA'):
-
-        if not single_or_paired_end in ['SINGLE', 'PAIRED']:
-            raise ValueError('single_or_paired_end must be one of "SINGLE" or "PAIRED"')
-
-        valid_platform_names = ['LS454', 'ILLUMINA', 'COMPLETE_GENOMICS', 'PACBIO_SMRT',
-                                'ION_TORRNET', 'OXFORD_NANOPORE', 'CAPILLARY']
-        if not platform_name in valid_platform_names:
-            raise ValueError('platform_name must be one of %s' %
-                             repr(valid_platform_names))
-
-        exp_set = ET.Element('EXPERIMENT_SET')
-        exp_set.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-        exp_set.set('xsi:noNamespaceSchemaLocation',
-                    'ftp://ftp.sra.ebi.ac.uk/meta/xsd/sra_1_5/SRA.experiment.xsd')
-        exp = ET.SubElement(exp_set, 'EXPERIMENT')
-        exp.set("alias", "DUMMY EXPERIMENT FOR TESTING")
-        exp.set("center_name", "Columbia University")
-        title = ET.SubElement(exp, 'TITLE')
-        title.text = 'EXPERIMENT TITLE'
-        study_ref = ET.SubElement(exp, 'STUDY_REF')
-        study_ref.set('refname', '%s' % reference_alias)
-        design = ET.SubElement(exp, 'DESIGN')
-        design_description = ET.SubElement(design, 'DESIGN_DESCRIPTION')
-        design_description.text = 'DETAILS ABOUT SETUP AND GOALS'
-        sample_descriptor = ET.SubElement(design, 'SAMPLE_DESCRIPTOR')
-        sample_descriptor.set('refname', '%s' % sample_alias)
-        library_descriptor = ET.SubElement(design, 'LIBRARY_DESCRIPTOR')
-        library_name = ET.SubElement(library_descriptor, 'LIBRARY_NAME')
-        library_name.text = 'DUMMY NAME'
-        library_strategy = ET.SubElement(library_descriptor, 'LIBRARY_STRATEGY')
-        library_strategy.text = 'RNA-Seq'
-        library_source = ET.SubElement(library_descriptor, 'LIBRARY_SOURCE')
-        library_source.text = 'TRANSCRIPTOMIC'
-        library_selection = ET.SubElement(library_descriptor, 'LIBRARY_SELECTION')
-        library_selection.text = 'Oligo-dT'
-        library_layout = ET.SubElement(library_descriptor, 'LIBRARY_LAYOUT')
-        library_layout.text = single_or_paired_end
-        platform = ET.SubElement(exp, 'PLATFORM')
-        specific_platform = ET.SubElement(platform, platform_name)
-        instrument = ET.SubElement(specific_platform, 'INSTRUMENT_MODEL')
-        instrument.text = instrument_model
-        tree = ET.ElementTree(exp_set)
-        tree.write(fout_stem + '_experiment.xml', method='xml')
-        return fout_stem + '_experiment.xml'
-
-    # @classmethod
-    # def create_xml_for_fastq_data(cls, forward_fastq, reverse_fastq=None):
-    #     if reverse_fastq:
-    #         single_or_paired_end = 'PAIRED'
-    #     else:
-    #         single_or_paired_end = 'SINGLE'
-
-    @staticmethod
-    def md5sum(fname):
-
-        def hashfile(afile, hasher, blocksize=65536):
-            buf = afile.read(blocksize)
-            while len(buf) > 0:
-                hasher.update(buf)
-                buf = afile.read(blocksize)
-            return hasher.digest()
-
-        return hashfile(open(fname, 'rb'), hashlib.md5())
-
-    @staticmethod
-    def fastq_load(file_directory, run_xml, experiment_xml, output_path):
-        cmd = ['fastq-load', '-r', run_xml, '-e', experiment_xml, '-o', output_path, '-i',
-               file_directory]
-        p = Popen(cmd, stderr=PIPE)
-        _, err = p.communicate()
-        if err:
-            raise ChildProcessError(err)
+class TestFastq
 
 
-def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save=None):
-    """generate N observations split between k ambiguous molecular models"""
-    with open(expectations, 'rb') as f:
-        expectations = pickle.load(f)
-
-    # split the data between two cell barcodes and 2 rmts
-    with open(cell_barcodes, 'rb') as f:
-        cb = pickle.load(f)
-    cells = np.random.choice(list(cb.perfect_codes), 2)
-
-    # get two random rmts
-    rmts = [''.join(np.random.choice(list('ACGT'), 6)) for _ in range(2)]
-    rmts = [three_bit.ThreeBit.str2bin(r) for r in rmts]
-
-    n_poly_t = 5
-    valid_cell = 1
-    trimmed_bases = 0
-    fwd_quality = 40
-    rev_quality = 40
-    alignment_score = 50
-    is_aligned = True
-
-    # get all the expectations that are not unique
-    non_unique = {}
-    for e, prob_dict in expectations.items():
-        if len(prob_dict) > 1:
-            non_unique[e] = prob_dict
-
-    # get total number of models
-    non_unique = pd.Series(non_unique)
-
-    # select models
-    models = np.random.choice(non_unique.index, size=k)
-
-    # reads per model
-    rpm = np.round(n / k)
-
-    # create a container for the data
-    arrays_ = []
-
-    # create the data
-    for m in models:
-        cell = random.choice(cells)
-        rmt = random.choice(rmts)
-        features, probs = zip(*non_unique[m].items())
-        counts = np.random.multinomial(rpm, probs)
-        arr = sam.create_structured_array(sum(counts))
-
-        i = 0
-        for f, c in zip(features, counts):
-            for _ in range(c):
-                arr[i] = (cell, rmt, n_poly_t, valid_cell, trimmed_bases, rev_quality,
-                          fwd_quality, sam.ObfuscatedTuple(f),
-                          sam.ObfuscatedTuple(tuple([0] * len(f))), is_aligned,
-                          alignment_score)
-                i += 1
-        arrays_.append(arr)
-
-    arrays_ = np.hstack(arrays_)
-
-    if isinstance(save, str):
-        with open(save, 'wb') as f:
-            pickle.dump(arrays_, f)
-
-    return arrays_
-
-
-class DummyFTPClient(threading.Thread):
-    """A threaded FTP server used for running tests.
-
-    This is basically a modified version of the FTPServer class which
-    wraps the polling loop into a thread.
-
-    The instance returned can be used to start(), stop() and
-    eventually re-start() the server.
-
-    The instance can also launch a client using ftplib to navigate and download files.
-    it will serve files from home.
-    """
-    handler = FTPHandler
-    server_class = FTPServer
-
-    def __init__(self, addr=None, home=None):
-
-        try:
-            host = socket.gethostbyname('localhost')
-        except socket.error:
-            host = 'localhost'
-
-        threading.Thread.__init__(self)
-        self.__serving = False
-        self.__stopped = False
-        self.__lock = threading.Lock()
-        self.__flag = threading.Event()
-        if addr is None:
-            addr = (host, 0)
-
-        if not home:
-            home = os.getcwd()
-
-        authorizer = DummyAuthorizer()
-        authorizer.add_anonymous(home, perm='erl')
-        # authorizer.add_anonymous(home, perm='elr')
-        self.handler.authorizer = authorizer
-        # lower buffer sizes = more "loops" while transfering data
-        # = less false positives
-        self.handler.dtp_handler.ac_in_buffer_size = 4096
-        self.handler.dtp_handler.ac_out_buffer_size = 4096
-        self.server = self.server_class(addr, self.handler)
-        self.host, self.port = self.server.socket.getsockname()[:2]
-        self.client = None
-
-    def __repr__(self):
-        status = [self.__class__.__module__ + "." + self.__class__.__name__]
-        if self.__serving:
-            status.append('active')
-        else:
-            status.append('inactive')
-        status.append('%s:%s' % self.server.socket.getsockname()[:2])
-        return '<%s at %#x>' % (' '.join(status), id(self))
-
-    def generate_local_client(self):
-        self.client = ftplib.FTP()
-        self.client.connect(self.host, self.port)
-        self.client.login()
-        return self.client
-
-    @property
-    def running(self):
-        return self.__serving
-
-    def start(self, timeout=0.001):
-        """Start serving until an explicit stop() request.
-        Polls for shutdown every 'timeout' seconds.
-        """
-        if self.__serving:
-            raise RuntimeError("Server already started")
-        if self.__stopped:
-            # ensure the server can be started again
-            DummyFTPClient.__init__(self, self.server.socket.getsockname(), self.handler)
-        self.__timeout = timeout
-        threading.Thread.start(self)
-        self.__flag.wait()
-
-    def run(self):
-        logging.basicConfig(filename='testing.log', level=logging.DEBUG)
-        self.__serving = True
-        self.__flag.set()
-        while self.__serving:
-            self.__lock.acquire()
-            self.server.serve_forever(timeout=self.__timeout, blocking=False)
-            self.__lock.release()
-        self.server.close_all()
-
-    def stop(self):
-        """Stop serving (also disconnecting all currently connected
-        clients) by telling the serve_forever() loop to stop and
-        waits until it does.
-        """
-        if not self.__serving:
-            raise RuntimeError("Server not started yet")
-        self.__serving = False
-        self.__stopped = True
-        self.join()
-        self.client.close()
 
 
 # todo keep
@@ -1239,8 +947,6 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     print(b2s(seq))
                 else:
                     print('Returned None')
-
-def test_parallel_construct_sam():
 
 
 # todo keep; rewrite to use check_sam()
