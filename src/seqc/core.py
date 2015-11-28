@@ -44,7 +44,7 @@ def create_parser():
                        'not exist', default=None)
         r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
                        type=int, default=None)
-        r.add_argument('-o', '--output-file', metavar='O', default=None,
+        r.add_argument('-o', '--output-prefix', metavar='O', default=None,
                        help='stem of filename in which to store output')
 
         # for all experiments except drop-seq, barcodes are a required input argument
@@ -126,7 +126,6 @@ def parse_args(parser, args=None):
                   'be provided: -b/--build, -t/--test')
             sys.exit(2)
     else:
-
         # list star args if requested, then exit
         if arguments.list_default_star_args:
             printable_args = json.dumps(
@@ -144,41 +143,41 @@ def parse_args(parser, args=None):
                   'provided: -f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
                   arguments.subparser_name)
             sys.exit(2)
-        required = [arguments.output_file, arguments.index, arguments.n_threads]
+        required = [arguments.output_prefix, arguments.index, arguments.n_threads]
         if not arguments.subparser_name == 'drop-seq':
             if not all(required + [arguments.barcodes]):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
-                      '-n/--n-threads, -o/--output-file, -b/--barcodes')
+                      '-n/--n-threads, -o/--output-prefix, -b/--barcodes')
                 sys.exit(2)
         else:
             if not all(required):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
-                      '-n/--n-threads, -o/--output-file')
+                      '-n/--n-threads, -o/--output-prefix')
 
     return vars(arguments)
 
 
-def set_up(output_file, index, barcodes):
+def set_up(output_prefix, index, barcodes):
     """
     create temporary directory for run, find gtf in index, and create or load a
     serialized barcode object
     """
 
     # temporary directory should be made in the same directory as the output prefix
-    *stem, final_dir = output_file.split('/')
-    temp_dir = '/'.join(stem + ['.' + final_dir])
+    *stem, final_prefix = output_prefix.split('/')
+    output_dir = '/'.join(stem + ['.' + final_prefix])
 
     # create temporary directory based on experiment name
-    if not os.path.isdir(temp_dir):
-        os.makedirs(temp_dir)
-    if not temp_dir.endswith('/'):
-        temp_dir += '/'
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+    if not output_dir.endswith('/'):
+        output_dir += '/'
 
     # check that index exists. If index is an aws link, download the index
     if index.startswith('s3://'):
         seqc.log.info('AWS s3 link provided for index. Downloading index.')
         bucket, prefix = seqc.io_lib.S3.split_link(index)
-        index = temp_dir + 'index/'
+        index = output_dir + 'index/'
         cut_dirs = prefix.count('/')
         seqc.io_lib.S3.download_files(bucket, prefix, index, cut_dirs)
 
@@ -194,18 +193,18 @@ def set_up(output_file, index, barcodes):
         if barcodes.startswith('s3://'):
             seqc.log.info('AWS s3 link provided for barcodes. Downloading barcodes')
             bucket, key = seqc.io_lib.S3.split_link(barcodes)
-            output_file = temp_dir + 'barcodes.p'
+            output_prefix = output_dir + 'barcodes.p'
             try:
-                barcodes = seqc.io_lib.S3.download_file(bucket, key, output_file)
+                barcodes = seqc.io_lib.S3.download_file(bucket, key, output_prefix)
             except FileExistsError:
-                barcodes = output_file
+                barcodes = output_prefix
                 pass  # already have the file in this location from a previous run
 
         # now, we should definitely have the binary file. Load it.
         with open(barcodes, 'rb') as f:
             cb = pickle.load(f)
 
-    return temp_dir, gtf, cb, index
+    return output_dir, gtf, cb, index
 
 # todo commented out until dependencies are installed automatically.
 # todo should be coded to pep8 standards
@@ -231,7 +230,7 @@ def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_th
     return merged_fastq
 
 
-def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_file):
+def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_prefix):
     if merged_fastq and not samfile:
         # process any additional arguments for star passed from the command line
 
@@ -247,13 +246,13 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_f
         samfile = temp_dir + 'Aligned.out.sam'
 
         # copy alignment summary
-        shutil.copyfile(temp_dir + 'Log.final.out', output_file + '_alignment_summary.txt')
+        shutil.copyfile(temp_dir + 'Log.final.out', output_prefix + '_alignment_summary.txt')
     return samfile
 
 
-def process_samfile(samfile, output_file, n_threads, gtf, frag_len):
+def process_samfile(samfile, output_prefix, n_threads, gtf, frag_len):
     seqc.log.info('Post-processing alignments')
-    h5_name = output_file + '.h5'
+    h5_name = output_prefix + '.h5'
     chunk_size = int(2e8)  # ~ 10GB of data in memory at any time
     h5name = seqc.sam.to_h5(samfile, h5_name, n_threads, chunk_size, gtf, frag_len)
     read_array = seqc.arrays.ReadArray.from_h5(h5name)
@@ -281,7 +280,7 @@ def correct_errors():
     raise NotImplementedError
 
 
-def resolve_alignments(index, arr, n, output_file):
+def resolve_alignments(index, arr, n, output_prefix):
     seqc.log.info('Resolving ambiguous alignments.')
     try:
         # todo
@@ -291,16 +290,16 @@ def resolve_alignments(index, arr, n, output_file):
         arr.resolve_alignments(expectations, required_poly_t=n)
     except:
         seqc.log.info('Caught error in resolve_alignments(), saving data')
-        arr.save_h5(output_file + '.h5')
+        arr.save_h5(output_prefix + '.h5')
         raise
 
 
-def save_counts_matrices(output_file, arr, n):
+def save_counts_matrices(output_prefix, arr, n):
     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     uniq = arr.to_unique(n_poly_t_required=n)
     del arr
     experiment = uniq.to_experiment()
-    experiment.to_npz(output_file + '_sp_counts.npz')
+    experiment.to_npz(output_prefix + '_sp_counts.npz')
 
 
 def select_cells():
@@ -317,11 +316,11 @@ def select_cells():
     raise NotImplementedError
 
 
-def store_results(output_file, arr):
-    if not output_file.endswith('.h5'):
-        output_file += '.h5'
-    seqc.log.info('Storing processed data in %s' % output_file)
-    arr.save_h5(output_file)
+def store_results(output_prefix, arr):
+    if not output_prefix.endswith('.h5'):
+        output_prefix += '.h5'
+    seqc.log.info('Storing processed data in %s' % output_prefix)
+    arr.save_h5(output_prefix)
 
 
 def run_complete():
@@ -336,10 +335,10 @@ def clean_up(temp_dir):
         shutil.rmtree('_STARtmp')
 
 
-def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
+def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
             n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
+    temp_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
@@ -347,23 +346,23 @@ def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name
                          temp_dir, cb, n_threads)
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
-                    output_file)
+                    output_prefix)
 
-    arr = process_samfile(samfile, output_file, n_threads, gtf, frag_len)
+    arr = process_samfile(samfile, output_prefix, n_threads, gtf, frag_len)
 
-    resolve_alignments(index, arr, n=0, output_file=output_file)
+    resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
 
-    store_results(output_file, arr)
+    store_results(output_prefix, arr)
 
-    save_counts_matrices(output_file, arr, n=3)
+    save_counts_matrices(output_prefix, arr, n=3)
 
     run_complete()
 
 
-def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
+def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
              n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
+    temp_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
@@ -371,15 +370,15 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
                          temp_dir, cb, n_threads)
 
     samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
-                    output_file)
+                    output_prefix)
 
-    arr = process_samfile(samfile, output_file, n_threads, gtf, frag_len)
+    arr = process_samfile(samfile, output_prefix, n_threads, gtf, frag_len)
 
-    resolve_alignments(index, arr, n=0, output_file=output_file)
+    resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
 
-    arr.save_h5(output_file + '.h5')
+    arr.save_h5(output_prefix + '.h5')
 
-    save_counts_matrices(output_file, arr, n=0)
+    save_counts_matrices(output_prefix, arr, n=0)
 
     run_complete()
 
