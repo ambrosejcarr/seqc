@@ -338,14 +338,14 @@ def clean_up(temp_dir):
 def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
             n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
+    output_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
-                         temp_dir, cb, n_threads)
+                         output_dir, cb, n_threads)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
+    samfile = align(merged_fastq, samfile, star_args, output_dir, n_threads, index,
                     output_prefix)
 
     arr = process_samfile(samfile, output_prefix, n_threads, gtf, frag_len)
@@ -362,14 +362,14 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
 def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
              n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    temp_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
+    output_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
-                         temp_dir, cb, n_threads)
+                         output_dir, cb, n_threads)
 
-    samfile = align(merged_fastq, samfile, star_args, temp_dir, n_threads, index,
+    samfile = align(merged_fastq, samfile, star_args, output_dir, n_threads, index,
                     output_prefix)
 
     arr = process_samfile(samfile, output_prefix, n_threads, gtf, frag_len)
