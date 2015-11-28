@@ -6,6 +6,8 @@ import os
 import shutil
 import nose2
 
+__version__ = '0.1.4'
+
 # pip3 cannot install external dependencies for python; warn user if external dependencies
 # are missing; do this at the end so that the users are more likely to see it.
 
@@ -23,7 +25,7 @@ elif os.path.isfile('/usr/local/hdf5/lib/libhdf5.so'):
     h5fail = False
 
 setup(name='seqc',
-      version='0.1',
+      version=__version__,
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',

@@ -1,6 +1,6 @@
 __author__ = 'ambrose'
 
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 # supress warnings after importing seqc
 import warnings

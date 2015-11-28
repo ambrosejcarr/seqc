@@ -157,6 +157,88 @@ def parse_args(parser, args=None):
     return vars(arguments)
 
 
+def fix_output_paths(output_prefix: str) -> (str, str):
+    """
+    Returns an output prefix and output directory with absolute paths
+
+    args:
+    -----
+    output_prefix: str; prefix for all seqc output files; there will also be a
+      folder created with the same name to house some output files with non-unique names
+
+    returns:
+    --------
+    absolute_output_prefix, absolute_output_directory
+    """
+
+    if output_prefix.endswith('/'):
+        raise ValueError('Invalid output_prefix: "%s". output prefix must be a prefix,'
+                         'not a directory name' % output_prefix)
+
+    output_prefix = os.path.expanduser(output_prefix)
+    output_prefix = os.path.abspath(output_prefix)
+
+    # create the directory tree if it doesn't already exist
+    output_directory = output_prefix + '/'
+    if not os.path.isdir(output_directory):
+        os.makedirs(output_directory)
+
+    return output_prefix, output_directory
+
+
+def check_index(index: str, output_dir: str='') -> (str, str):
+    """
+    Checks the provided index parameter.
+
+    If index resembles a file path, makes sure it is present. If it resembles an amazon
+    s3 link, downloads the index to output_dir. Checks the provided index for critical
+    files that are necessary to run SEQC.
+
+    args:
+    -----
+    index: str; either file path or s3 link pointing to the seqc index directory
+    output_dir: str or None; directory where downloaded index should be placed.
+
+    returns:
+    --------
+    index, gtf
+    """
+
+    if not index.endswith('/'):
+        index += '/'
+
+    critical_index_files = ['SA', 'SAindex', 'Genome', 'annotations.gtf',
+                            'p_coalignment.pckl']
+
+    if not index.startswith('s3://'):  # index is a file path
+        if not os.path.isdir(index):
+            raise ValueError('provided index: "%s" is neither an s3 link or a valid '
+                             'filepath' % index)
+        else:
+            pass  # index points to a valid folder
+
+    else:  # index is an aws link
+        try:
+            seqc.log.info('AWS s3 link provided for index. Downloading index.')
+            bucket, prefix = seqc.io_lib.S3.split_link(index)
+            index = output_dir + 'index/'  # set index directory based on s3 download
+            cut_dirs = prefix.count('/')
+            seqc.io_lib.S3.download_files(bucket, prefix, index, cut_dirs)
+        except FileNotFoundError:  # index does not exist in the specified location
+            raise FileNotFoundError('No index file or folder was identified at the '
+                                    'specified s3 index location: %s' % index)
+
+    # check that the index contains the necessary files to run SEQC
+    for f in critical_index_files:
+        if not os.path.isfile(index + f):
+            raise FileNotFoundError('Index is missing critical file "%s". Please '
+                                    'regenerate the index.')
+
+    # obtain gtf file from index argument
+    gtf = index + 'annotations.gtf'
+
+    return index, gtf
+
 def set_up(output_prefix, index, barcodes):
     """
     create temporary directory for run, find gtf in index, and create or load a

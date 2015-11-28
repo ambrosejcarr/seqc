@@ -26,8 +26,9 @@ class S3:
     """A series of methods to upload and download files from amazon s3"""
 
     @staticmethod
-    def download_file(bucket, key, fout=None, overwrite=False):
+    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False):
         """download the file key located in bucket, sending output to filename fout"""
+
         if not overwrite:
             if os.path.isfile(fout):
                 raise FileExistsError('file "%s" already exists. Set overwrite=True to '
@@ -48,12 +49,17 @@ class S3:
             os.makedirs(dirs)
 
         # download the file
-        client = boto3.client('s3')
-        client.download_file(bucket, key, fout)
+        try:
+            client = boto3.client('s3')
+            client.download_file(bucket, key, fout)
+        except FileNotFoundError:
+            raise FileNotFoundError('No file was found at the specified s3 location: '
+                                    '"%s".' % bucket + '/' + key)
 
         return fout
 
     # todo return all downloaded filenames
+    # todo implement glob-based filtering
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
                        overwrite=False):

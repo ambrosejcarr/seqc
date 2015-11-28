@@ -8,8 +8,7 @@ import os
 import pickle
 import seqc
 import tables as tb
-from seqc import three_bit, fastq, align, sam, convert_features, barcodes, io_lib
-from seqc import arrays
+import seqc
 from io import StringIO
 from itertools import product
 from xml.etree import ElementTree as ET
@@ -105,6 +104,8 @@ def check_index():
 ##################################### UNIT TESTS ########################################
 
 
+### FASTQ TESTS ###
+
 class FastqRevcompTest(unittest.TestCase):
 
     def test_revcomp_palindrome(self):
@@ -134,23 +135,23 @@ class FastqTruncateSequenceLengthTest(unittest.TestCase):
         self.fname = 'fastq_truncateSequenceLengthTest.fastq'
 
     def test_truncate_sequence_length_wrong_input_raises_type_error(self):
-        self.assertRaises(TypeError, fastq.truncate_sequence_length, self.fastq_file,
+        self.assertRaises(TypeError, seqc.fastq.truncate_sequence_length, self.fastq_file,
                           '10', self.fname)
-        self.assertRaises(TypeError, fastq.truncate_sequence_length, self.fastq_file,
+        self.assertRaises(TypeError, seqc.fastq.truncate_sequence_length, self.fastq_file,
                           self.n, (self.fname,))
-        self.assertRaises(TypeError, fastq.truncate_sequence_length, [self.fastq_file],
-                          self.n, self.fname)
+        self.assertRaises(TypeError, seqc.fastq.truncate_sequence_length,
+                          [self.fastq_file], self.n, self.fname)
 
     def test_truncate_sequence_length_produces_correct_length(self):
-        fastq.truncate_sequence_length(self.fastq_file, self.n, self.fname)
+        seqc.fastq.truncate_sequence_length(self.fastq_file, self.n, self.fname)
         with open(self.fname, 'r') as f:
-            for r in fastq.iter_records(f):
+            for r in seqc.fastq.iter_records(f):
                 self.assertEqual(len(r[1]), self.n + 1)  # + 1 for '\n'
 
     def test_truncate_sequence_length_produces_well_formed_fastq(self):
-        fastq.truncate_sequence_length(self.fastq_file, self.n, self.fname)
+        seqc.fastq.truncate_sequence_length(self.fastq_file, self.n, self.fname)
         with open(self.fname, 'r') as f:
-            for r in fastq.iter_records(f):
+            for r in seqc.fastq.iter_records(f):
                 self.assertEqual(r[0][0], '@')
                 self.assertEqual(r[2][0], '+')
 
@@ -168,19 +169,19 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
         self.fname = 'fastq_estimateSequenceLengthTest.fastq'
 
     def write_simple_fastq(self, n, length):
-        fastq_data = fastq.GenerateFastq.simple_fastq(n, length).read()
+        fastq_data = seqc.fastq.GenerateFastq.simple_fastq(n, length).read()
         with open(self.fname, 'w') as f:
             f.write(fastq_data)
 
     def test_estimate_sequence_length_wrong_input_raises_type_error(self):
         self.write_simple_fastq(10, 100)
-        self.assertRaises(TypeError, fastq.estimate_sequence_length,
+        self.assertRaises(TypeError, seqc.fastq.estimate_sequence_length,
                           open(self.fname, 'rb'))
 
     def test_estimate_sequence_length_small_input_file(self):
         """should produce the exact correct result"""
         self.write_simple_fastq(10, 95)
-        mean, std, (counts, freqs) = fastq.estimate_sequence_length(self.fname)
+        mean, std, (counts, freqs) = seqc.fastq.estimate_sequence_length(self.fname)
         self.assertEqual(mean, 95)
         self.assertEqual(std, 0)
         self.assertEqual(np.array([95]), counts)
@@ -189,6 +190,26 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
     def tearDown(self):
         if os.path.isfile(self.fname):
             os.remove(self.fname)
+
+
+### IO_LIB TESTS ###
+
+class S3Test(unittest.TestCase):
+
+    def setUp(self):
+        self.bucket = 'dplab-data'
+        self.testfile_key = 'genomes/mm38/chrStart.txt'
+        self.testfile_download_name = 'test_s3_download.txt'
+
+    def test_download_incorrect_filepath_raises_file_not_found_error(self):
+        self.assertRaises(FileNotFoundError, seqc.io_lib.S3.download_file, self.bucket,
+                          'foobar', self.testfile_download_name, overwrite=False)
+
+    def test_download_files_gets_expected_data(self):
+        pass  # todo implement
+
+    def test_download_files_does_not_overwrite(self):
+        pass  # todo implement; can use os.stat to check modification time.
 
 
 # todo all fastq functions below estimate_sequence_length are missing tests()
@@ -205,7 +226,7 @@ class TestJaggedArray(unittest.TestCase):
         n = int(1e3)
         data = list(self.generate_input_iterable(n))
         data_size = sum(len(i) for i in data)
-        jarr = arrays.JaggedArray.from_iterable(data_size, data)
+        jarr = seqc.arrays.JaggedArray.from_iterable(data_size, data)
         self.assertTrue(jarr._data.dtype == np.uint32)
         self.assertTrue(jarr._data.shape == (data_size,))
         print(jarr[10])
@@ -216,7 +237,7 @@ class TestJaggedArray(unittest.TestCase):
 class TestThreeBitInDrop(unittest.TestCase):
 
     def setUp(self):
-        self.tb = three_bit.ThreeBit.default_processors('in-drop')
+        self.tb = seqc.three_bit.ThreeBit.default_processors('in-drop')
         # note: don't test with palindromic sequences, these can produce unexpected
         # errors, given the rotation occuring in the method.
         c11 = 'TAAAAAAA'
