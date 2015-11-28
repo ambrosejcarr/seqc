@@ -20,18 +20,52 @@ from io import StringIO
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
 
 
-def revcomp(s):
-    return ''.join(_revcomp[n] for n in s[::-1])
+def revcomp(s: str) -> str:
+    """
+    returns the reverse-complement of s
+
+    :param s: str; nucleotide sequence to be reverse complemented
+
+    :return: str; reverse complemented input string s
+    """
+    if not isinstance(s, str):
+        raise TypeError('Nucleotide sequence "s" must be string, not %s' % type(s))
+    try:
+        return ''.join(_revcomp[n] for n in s[::-1])
+    except KeyError:
+        raise ValueError('%s contains invalid nucleotide character. Supported characters '
+                         'are A, C, G, T and N.' % s)
 
 
-def truncate_sequence_length(reverse_fastq, n, fname):
+def truncate_sequence_length(reverse_fastq: str, n: int, fname: str) -> None:
     """
     truncate the read length of a fastq file, often to equalize comparisons between
     different sequencing experiments
+
+    :param reverse_fastq: open file or str; fastq file to be truncated
+    :param n: integer; number of bases to remain in truncated output file
+    :param fname: str; name of the output file
+
+    :return: None
     """
+
+    # check n, fname types
+    if not isinstance(n, int):
+        raise TypeError('n must be an integer, not %s' % type(n))
+    if not isinstance(fname, str):
+        raise TypeError('fname must be a string, not %s' % type(fname))
     if not fname.endswith('.fastq'):
         fname += '.fastq'
-    fin = open_file(reverse_fastq)
+
+    # check fastq type
+    if isinstance(reverse_fastq, io.TextIOBase):
+        fin = reverse_fastq
+    elif isinstance(reverse_fastq, str):
+        fin = open_file(reverse_fastq)
+    else:
+        raise TypeError('reverse_fastq must be a string, not %s' % type(reverse_fastq))
+
+    # truncate the file
     try:
         with open(fname, 'w') as fout:
             for record in iter_records(fin):
@@ -43,9 +77,27 @@ def truncate_sequence_length(reverse_fastq, n, fname):
         fin.close()
 
 
-def sequence_length_description(fastq):
-    """get the sequence length of a fastq file"""
-    with open(fastq, 'r') as fin:
+def estimate_sequence_length(fastq: str) -> (int, int, (np.array, np.array)):
+    """
+    Rapidly estimate the mean, and standard deviation of the sequence length of a
+    potentially large fastq file. Also returns the observed lengths and their frequencies.
+
+    :param fastq: str or file object; fastq file whose sequence length is to be estimated
+
+    :return: (int, int, (np.array, np.array); mean, standard deviation, (observed sizes,
+      frequencies)
+    """
+
+    # check fastq type
+    if isinstance(fastq, io.TextIOBase):
+        fin = fastq
+    elif isinstance(fastq, str):
+        fin = open_file(fastq)
+    else:
+        raise TypeError('reverse_fastq must be a string, not %s' % type(fastq))
+
+    # estimate sequence length from first 2500 records in the file
+    try:
         i = 0
         records = iter_records(fin)
         data = np.empty(2500, dtype=int)
@@ -57,6 +109,9 @@ def sequence_length_description(fastq):
                 break
             data[i] = len(seq) - 1
             i += 1
+    finally:
+        fin.close()
+
     return np.mean(data), np.std(data), np.unique(data, return_counts=True)
 
 
@@ -499,3 +554,23 @@ class GenerateFastq:
         with open(prefix + '_r2.fastq', 'w') as r:
             r.write(''.join([reverse] * (replicates + 1)))
         return prefix + '_r1.fastq', prefix + '_r2.fastq'
+
+    @classmethod
+    def simple_fastq(cls, n, length):
+        sequences = np.random.choice(list('ACGT'), n * length)
+        sequences = np.reshape(sequences, (n, length))
+        qualities = np.random.choice(np.arange(30, 40), n * length)
+        qualities = np.reshape(qualities, (n, length))
+
+        fastq_data = ''
+        for i in range(n):
+            name = '@simple_fastq:i\n'
+            seq = ''.join(sequences[i, :]) + '\n'
+            name2 = '+\n'
+            qual = ''.join(chr(s) for s in qualities[i, :]) + '\n'
+            fastq_data += ''.join([name, seq, name2, qual])
+
+        fastq_data = StringIO(fastq_data)
+        fastq_data.seek(0)
+
+        return fastq_data

@@ -104,10 +104,94 @@ def check_index():
 
 ##################################### UNIT TESTS ########################################
 
-class TestFastq
+
+class FastqRevcompTest(unittest.TestCase):
+
+    def test_revcomp_palindrome(self):
+        s = 'ACGT'
+        rc = seqc.fastq.revcomp(s)
+        self.assertEqual(s, rc)
+
+    def test_revcomp_asymetric(self):
+        s = 'ACCGGTT'
+        rc = seqc.fastq.revcomp(s)
+        self.assertEqual(rc, 'AACCGGT')
+
+    def test_revcomp_raises_value_error(self):
+        s = 'AAGAGAV'  # V should raise
+        self.assertRaises(ValueError, seqc.fastq.revcomp, s)
+
+    def test_revcomp_wrong_input_type(self):
+        s = list('AAGAGA')
+        self.assertRaises(TypeError, seqc.fastq.revcomp, s)
 
 
+class FastqTruncateSequenceLengthTest(unittest.TestCase):
 
+    def setUp(self):
+        self.fastq_file = seqc.fastq.GenerateFastq.simple_fastq(10, 100)
+        self.n = 50
+        self.fname = 'fastq_truncateSequenceLengthTest.fastq'
+
+    def test_truncate_sequence_length_wrong_input_raises_type_error(self):
+        self.assertRaises(TypeError, fastq.truncate_sequence_length, self.fastq_file,
+                          '10', self.fname)
+        self.assertRaises(TypeError, fastq.truncate_sequence_length, self.fastq_file,
+                          self.n, (self.fname,))
+        self.assertRaises(TypeError, fastq.truncate_sequence_length, [self.fastq_file],
+                          self.n, self.fname)
+
+    def test_truncate_sequence_length_produces_correct_length(self):
+        fastq.truncate_sequence_length(self.fastq_file, self.n, self.fname)
+        with open(self.fname, 'r') as f:
+            for r in fastq.iter_records(f):
+                self.assertEqual(len(r[1]), self.n + 1)  # + 1 for '\n'
+
+    def test_truncate_sequence_length_produces_well_formed_fastq(self):
+        fastq.truncate_sequence_length(self.fastq_file, self.n, self.fname)
+        with open(self.fname, 'r') as f:
+            for r in fastq.iter_records(f):
+                self.assertEqual(r[0][0], '@')
+                self.assertEqual(r[2][0], '+')
+
+        # make sure final quality string ends with '\n'
+        self.assertEqual(r[3][-1], '\n')
+
+    def tearDown(self):
+        if os.path.isfile(self.fname):
+            os.remove(self.fname)
+
+
+class FastqEstimateSequenceLengthTest(unittest.TestCase):
+
+    def setUp(self):
+        self.fname = 'fastq_estimateSequenceLengthTest.fastq'
+
+    def write_simple_fastq(self, n, length):
+        fastq_data = fastq.GenerateFastq.simple_fastq(n, length).read()
+        with open(self.fname, 'w') as f:
+            f.write(fastq_data)
+
+    def test_estimate_sequence_length_wrong_input_raises_type_error(self):
+        self.write_simple_fastq(10, 100)
+        self.assertRaises(TypeError, fastq.estimate_sequence_length,
+                          open(self.fname, 'rb'))
+
+    def test_estimate_sequence_length_small_input_file(self):
+        """should produce the exact correct result"""
+        self.write_simple_fastq(10, 95)
+        mean, std, (counts, freqs) = fastq.estimate_sequence_length(self.fname)
+        self.assertEqual(mean, 95)
+        self.assertEqual(std, 0)
+        self.assertEqual(np.array([95]), counts)
+        self.assertEqual(np.array([10]), freqs)
+
+    def tearDown(self):
+        if os.path.isfile(self.fname):
+            os.remove(self.fname)
+
+
+# todo all fastq functions below estimate_sequence_length are missing tests()
 
 # todo keep
 @unittest.skip('')
@@ -771,7 +855,7 @@ class TestGenerateSRA(unittest.TestCase):
         SRAGenerator.fastq_load(file_directory, run_xml, exp_xml, output_path)
 
 
-# @unittest.skip('')
+@unittest.skip('')
 class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
 
     def setUp(self):
@@ -864,6 +948,7 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
 
+@unittest.skip('')
 class TestGroupForErrorCorrection(unittest.TestCase):
 
     def setUp(self):
@@ -1062,6 +1147,7 @@ class TestParallelConstructSam(unittest.TestCase):
         nlines = self.samfile
 
 
+@unittest.skip('')
 class TestCounting(unittest.TestCase):
 
     def setUp(self):
@@ -1184,4 +1270,5 @@ class TestUniqueArrayCreation(unittest.TestCase):
 
 if __name__ == '__main__':
     import nose2
+    # unittest.main()
     nose2.main()
