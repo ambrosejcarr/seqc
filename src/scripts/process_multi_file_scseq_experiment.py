@@ -60,7 +60,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
     if not index:  # download the index
         log_info('Downloading index from S3')
         index_dir = working_directory + 'index/'
-        seqc.io_lib.S3.download_files(bucket=index_bucket, key_prefix=index_key,
+        seqc.io.S3.download_files(bucket=index_bucket, key_prefix=index_key,
                           output_prefix=index_dir, cut_dirs=False)
         index = index_dir + index_key.lstrip('/')
     if not os.path.isdir(index):
@@ -69,7 +69,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
 
     # download the data
     log_info('Downloading SRA data')
-    files = seqc.io_lib.GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
+    files = seqc.io.GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
                              clobber=False)
 
     # todo right now there is no clobber, but this could be added later
@@ -101,7 +101,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
 
     # upload the matrix to amazon s3
     log_info('Uploading counts matrix to S3')
-    seqc.io_lib.S3.upload_file(numpy_archive, s3_bucket, s3_key)
+    seqc.io.S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
 
 if __name__ == "__main__":

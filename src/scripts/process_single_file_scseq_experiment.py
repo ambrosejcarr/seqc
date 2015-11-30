@@ -62,7 +62,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
     if not index:  # download the index
         log_info('Downloading Index from S3')
         index_dir = working_directory + 'index/'
-        seqc.io_lib.S3.download_files(bucket=index_bucket, key_prefix=index_key,
+        seqc.io.S3.download_files(bucket=index_bucket, key_prefix=index_key,
                           output_prefix=index_dir, cut_dirs=False)
         index = index_dir + index_key.lstrip('/')
     if not os.path.isdir(index):
@@ -71,13 +71,13 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     # download the data
     log_info('Downloading SRA Data')
-    files = seqc.io_lib.GEO.download_srp(
+    files = seqc.io.GEO.download_srp(
         srp, working_directory, min(n_threads, 10), verbose=False,
                              clobber=False)
 
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
-    forward, reverse = seqc.io_lib.GEO.extract_fastq(files, n_threads, working_directory,
+    forward, reverse = seqc.io.GEO.extract_fastq(files, n_threads, working_directory,
                                                      verbose=False)
 
     # merge fastq files
@@ -102,7 +102,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     log_info('Uploading counts matrix to S3')
     # upload the matrix to amazon s3
-    seqc.io_lib.S3.upload_file(numpy_archive, s3_bucket, s3_key)
+    seqc.io.S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
     log_info('Run completed')
 

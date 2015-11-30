@@ -171,6 +171,9 @@ def fix_output_paths(output_prefix: str) -> (str, str):
     absolute_output_prefix, absolute_output_directory
     """
 
+    seqc.util.check_type(output_prefix, str, 'Output prefix must be type str not %s' %
+                         type(output_prefix))
+
     if output_prefix.endswith('/'):
         raise ValueError('Invalid output_prefix: "%s". output prefix must be a prefix,'
                          'not a directory name' % output_prefix)
@@ -204,6 +207,10 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     index, gtf
     """
 
+    seqc.util.check_type(index, str, 'Index must be type str, not %s.' % type(index))
+    seqc.util.check_type(output_dir, str, 'Index must be type str, not %s.' %
+                         type(output_dir))
+
     if not index.endswith('/'):
         index += '/'
 
@@ -220,13 +227,15 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     else:  # index is an aws link
         try:
             seqc.log.info('AWS s3 link provided for index. Downloading index.')
-            bucket, prefix = seqc.io_lib.S3.split_link(index)
+            bucket, prefix = seqc.io.S3.split_link(index)
             index = output_dir + 'index/'  # set index directory based on s3 download
             cut_dirs = prefix.count('/')
-            seqc.io_lib.S3.download_files(bucket, prefix, index, cut_dirs)
+            seqc.io.S3.download_files(bucket, prefix, index, cut_dirs)
         except FileNotFoundError:  # index does not exist in the specified location
             raise FileNotFoundError('No index file or folder was identified at the '
                                     'specified s3 index location: %s' % index)
+        except FileExistsError:
+            pass  # file is already present.
 
     # check that the index contains the necessary files to run SEQC
     for f in critical_index_files:
@@ -238,6 +247,44 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     gtf = index + 'annotations.gtf'
 
     return index, gtf
+
+
+def check_and_load_barcodes(
+        barcodes: str='', output_dir='') -> seqc.barcodes.CellBarcodes:
+    """
+    check if barcodes points to a valid s3 link or file object. If it does, load and
+    return the CellBarcodes object.
+    """
+
+    seqc.util.check_type(barcodes, str, 'barcodes must be type str, not %s' % barcodes)
+
+    # get cell barcode files
+    if not barcodes:
+        return seqc.barcodes.DropSeqCellBarcodes()
+    elif barcodes.startswith('s3://'):
+        seqc.log.info('AWS s3 link provided for barcodes. Downloading barcodes')
+        bucket, key = seqc.io.S3.split_link(barcodes)
+        output_prefix = output_dir + 'barcodes.p'
+        try:
+            barcodes = seqc.io.S3.download_file(bucket, key, output_prefix)
+        except FileExistsError:
+            barcodes = output_prefix
+            pass  # already have the file in this location from a previous run
+        except FileNotFoundError:
+            raise FileNotFoundError('No barcode file was identified at the '
+                                    'specified s3 barcodes location: %s' % barcodes)
+    elif not os.path.isfile(barcodes):
+        raise FileNotFoundError('No barcode file was found at %s' % barcodes)
+
+    with open(barcodes, 'rb') as f:
+        cb = pickle.load(f)
+
+    if not isinstance(cb, seqc.barcodes.CellBarcodes):
+        raise TypeError('specified barcodes file %s did not contain a CellBarcodes '
+                        'object' % barcodes)
+
+    return cb
+
 
 def set_up(output_prefix, index, barcodes):
     """
@@ -258,10 +305,10 @@ def set_up(output_prefix, index, barcodes):
     # check that index exists. If index is an aws link, download the index
     if index.startswith('s3://'):
         seqc.log.info('AWS s3 link provided for index. Downloading index.')
-        bucket, prefix = seqc.io_lib.S3.split_link(index)
+        bucket, prefix = seqc.io.S3.split_link(index)
         index = output_dir + 'index/'
         cut_dirs = prefix.count('/')
-        seqc.io_lib.S3.download_files(bucket, prefix, index, cut_dirs)
+        seqc.io.S3.download_files(bucket, prefix, index, cut_dirs)
 
     # obtain gtf file from index argument
     gtf = index + 'annotations.gtf'
@@ -274,10 +321,10 @@ def set_up(output_prefix, index, barcodes):
     else:
         if barcodes.startswith('s3://'):
             seqc.log.info('AWS s3 link provided for barcodes. Downloading barcodes')
-            bucket, key = seqc.io_lib.S3.split_link(barcodes)
+            bucket, key = seqc.io.S3.split_link(barcodes)
             output_prefix = output_dir + 'barcodes.p'
             try:
-                barcodes = seqc.io_lib.S3.download_file(bucket, key, output_prefix)
+                barcodes = seqc.io.S3.download_file(bucket, key, output_prefix)
             except FileExistsError:
                 barcodes = output_prefix
                 pass  # already have the file in this location from a previous run
@@ -420,7 +467,13 @@ def clean_up(temp_dir):
 def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
             n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    output_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
+    # output_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
+    output_prefix, output_dir = fix_output_paths(output_prefix)
+
+    index, gtf = check_index(index, output_dir)
+
+    cb = check_and_load_barcodes(barcodes, output_dir)
+
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
@@ -444,7 +497,11 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
 def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
              n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    output_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
+    output_prefix, output_dir = fix_output_paths(output_prefix)
+
+    index, gtf = check_index(index, output_dir)
+
+    cb = check_and_load_barcodes(barcodes, output_dir)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 

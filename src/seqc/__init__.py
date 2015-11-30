@@ -14,7 +14,7 @@ from . import convert_features
 from . import fastq
 from . import gtf
 from . import h5
-from . import io_lib
+from . import io
 from . import log
 from . import parallel
 from . import plot
@@ -24,3 +24,4 @@ from . import sa_preprocess
 from . import sa_postprocess
 from . import three_bit
 from . import core
+from . import util

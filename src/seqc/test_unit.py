@@ -1,32 +1,39 @@
 __author__ = 'ambrose'
 
-import hashlib
-from memory_profiler import profile, memory_usage
+
 from numpy.lib.recfunctions import append_fields
+import nose2
+from nose2.tools import params
 import unittest
 import os
 import pickle
-import seqc
 import tables as tb
 import seqc
 from io import StringIO
-from itertools import product
-from xml.etree import ElementTree as ET
-from subprocess import Popen, PIPE
-import cProfile
-from pstats import Stats
-import xml.dom.minidom
-import logging
-import socket
-import re
 import numpy as np
-import pandas as pd
+import xml.dom.minidom
 import random
-import gzip
-import ftplib
 import shutil
+# from memory_profiler import profile, memory_usage
+# from itertools import product
+# from xml.etree import ElementTree as ET
+# from subprocess import Popen, PIPE
+# import cProfile
+# from pstats import Stats
+# import hashlib
+# import logging
+# import socket
+# import re
+# import pandas as pd
+# import gzip
+# import ftplib
+
 
 ################################ STATE CONFIGURATION ####################################
+
+# todo
+# create two test suites; one that is full and uses the longer tests and one short.
+# currently, the short suite runs, long tests are skipped with @unittest.skip()
 
 # this is the universal data dir for these tests
 _seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -40,12 +47,15 @@ _samfile_pattern = _seqc_dir + 'test/%s/.seqc_test/Aligned.out.sam'
 _forward_pattern = _seqc_dir + 'test/%s/fastq/test_seqc_r1.fastq'
 _reverse_pattern = _seqc_dir + 'test/%s/fastq/test_seqc_r2.fastq'
 _barcode_pattern = _seqc_dir + 'test/%s/barcodes/barcodes.p'
+_barcode_link_pattern = 's3://dplab-data/barcodes/%s/barcodes.p'
 _h5_name_pattern = _seqc_dir + 'test/%s/test_seqc.h5'
 
 # universal index files
 _gtf = _seqc_dir + 'test/genome/annotations.gtf'
 _fasta = _seqc_dir + 'test/genome/mm38_chr19.fa'
 _index = _seqc_dir + 'test/genome/'
+_index_link = 's3://dplab-data/genome/mm38_chr19/'
+
 
 # config parameters
 _n_threads = 7
@@ -96,7 +106,7 @@ def check_index():
     if not os.path.isdir(_index) or not all(os.path.isfile(_index + f) for f in gfiles):
         index_bucket = 'dplab-data'
         index_prefix = 'genomes/mm38_chr19/'
-        seqc.io_lib.S3.download_files(
+        seqc.io.S3.download_files(
             bucket=index_bucket, key_prefix=index_prefix, output_prefix=_index,
             cut_dirs=2)
 
@@ -192,17 +202,23 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
             os.remove(self.fname)
 
 
-### IO_LIB TESTS ###
+### IO TESTS ###
 
-class S3Test(unittest.TestCase):
+class IoS3Test(unittest.TestCase):
 
     def setUp(self):
         self.bucket = 'dplab-data'
         self.testfile_key = 'genomes/mm38/chrStart.txt'
         self.testfile_download_name = 'test_s3_download.txt'
 
+    def test_wrong_input_type_raises_type_error(self):
+        self.assertRaises(TypeError, seqc.io.S3.download_file, self.bucket, 10,
+                          self.testfile_download_name)
+        self.assertRaises(TypeError, seqc.io.S3.download_file, self.bucket,
+                          self.testfile_key, StringIO('1010'))
+
     def test_download_incorrect_filepath_raises_file_not_found_error(self):
-        self.assertRaises(FileNotFoundError, seqc.io_lib.S3.download_file, self.bucket,
+        self.assertRaises(FileNotFoundError, seqc.io.S3.download_file, self.bucket,
                           'foobar', self.testfile_download_name, overwrite=False)
 
     def test_download_files_gets_expected_data(self):
@@ -210,6 +226,112 @@ class S3Test(unittest.TestCase):
 
     def test_download_files_does_not_overwrite(self):
         pass  # todo implement; can use os.stat to check modification time.
+
+
+### CORE TESTS ###
+
+class CoreFixOutputPathsTest(unittest.TestCase):
+
+    def setUp(self):
+        self.target_prefix = os.path.expanduser('~') + '/testing_seqc/test_seqc'
+        self.target_dir = os.path.expanduser('~') + '/testing_seqc/test_seqc/'
+
+
+    def test_fix_output_paths_wrong_input_raises(self):
+        self.assertRaises(TypeError, seqc.core.fix_output_paths, ('~/any_directory/',))
+
+    def test_fix_output_paths_correctly_returns_abspaths(self):
+
+        self.assertFalse(os.path.isdir(self.target_dir))
+
+        # change to user directory
+        cwd = os.getcwd()
+        os.chdir(os.path.expanduser('~'))
+        test_paths = ('testing_seqc/test_seqc', 'testing_seqc/../testing_seqc/test_seqc',
+                      './testing_seqc/test_seqc', '~/testing_seqc/test_seqc')
+        for p in test_paths:
+            prefix, dir_ = seqc.core.fix_output_paths(p)
+            self.assertEqual(dir_, self.target_dir)
+            self.assertEqual(prefix, self.target_prefix)
+
+        # get back to current working directory
+        os.chdir(cwd)
+
+    def tearDown(self):
+        if os.path.isdir(self.target_dir):
+            shutil.rmtree(self.target_dir)
+
+
+class CoreCheckIndex(unittest.TestCase):
+
+    def setUp(self):
+        self.test_dir = 'test_seqc/'
+
+    def test_check_index_wrong_input_raises(self):
+        self.assertRaises(TypeError, seqc.core.check_index, ('index',), self.test_dir)
+
+    @unittest.skip('Test downloads a large file, takes minutes')
+    def test_check_index_downloads_when_not_present_and_creates_directory(self):
+
+        # make sure these files are present in the downloaded directory
+        critical_index_files = ['SA', 'SAindex', 'Genome', 'annotations.gtf',
+                                'p_coalignment.pckl']
+
+        # make sure directory deoesn't already exist
+        self.assertFalse(os.path.isdir('test_seqc/'))
+
+        # download index and check integrity
+        index = seqc.core.check_index(_index_link, 'test_seqc/')
+        self.assertTrue(os.path.isdir('test_seqc'))
+        for f in critical_index_files:
+            self.assertTrue(os.path.isfile(f))
+
+        # make sure correct directory was passed as index
+        self.assertEqual(os.path.abspath('test_seqc/index/'), index)
+
+    @unittest.skip('hangs; need to debug this')
+    def test_download_non_index_file_raises_file_not_found_error(self):
+        self.assertFalse(os.path.isdir('test_seqc/'))
+        self.assertRaises(FileNotFoundError, seqc.core.check_index,
+                          's3://dplab-data/seqc/test_seqc/', self.test_dir)
+
+    def tearDown(self):
+        if os.path.isdir(self.test_dir):
+            shutil.rmtree(self.test_dir)
+
+
+class CheckLoadBarcodesTest(unittest.TestCase):
+    """nose2 test generator"""
+
+    def setUp(self):
+        self.output_dir = 'test_seqc/'
+
+    def test_load_barcodes_wrong_input_type_raises(self):
+        self.assertRaises(TypeError, seqc.core.check_and_load_barcodes,
+                          10, self.output_dir)
+
+
+    @params(*_data_types)
+    @unittest.skip('Downloads from s3, takes time, bandwidth')
+    def test_load_barcodes_from_aws_link(self, dtype):
+        barcode_link = _barcode_link_pattern % dtype
+        self.assertFalse(os.path.isdir('test_seqc/'))
+        barcodes = seqc.core.check_and_load_barcodes(barcode_link, self.output_dir)
+        self.assertIsInstance(barcodes, seqc.barcodes.CellBarcodes)
+
+    @params(*_data_types)
+    @unittest.skip('This function takes a long time to load the serialized object. Think '
+                   'about improving its run time.')
+    def test_load_barcodes_local(self, dtype):
+        if dtype == 'drop_seq':
+            return  # None should be passed, not a link that does not target a file obj.
+
+        barcode_file = _barcode_pattern % dtype
+        barcodes = seqc.core.check_and_load_barcodes(barcode_file)
+        barcodes = self.assertIsInstance(barcodes, seqc.barcodes.CellBarcodes)
+
+    def test_load_pickle_containing_non_barcode_data(self):
+        pass # todo implement
 
 
 # todo all fastq functions below estimate_sequence_length are missing tests()
@@ -481,12 +603,6 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
 
         errors = cb.map_errors(error_code)
         self.assertEqual({'TN'}, set(errors))
-
-
-# todo re-write
-@unittest.skip('')
-class TestFastq(unittest.TestCase):
-    pass
 
 
 # todo import these tests from scseq/seqdb
@@ -1288,6 +1404,7 @@ class TestUniqueArrayCreation(unittest.TestCase):
                                                '%d != %d' % (ua2.shape[0], ua.shape[0]))
 
         self.assertTrue(ua2.shape[0] == 21984)  # double check that the number is right
+
 
 if __name__ == '__main__':
     import nose2

@@ -30,7 +30,7 @@ def test_seqc_raw_fastq_input():
             bucket = 'dplab-data'
             key_prefix = 'genomes/mm38_chr19/'
             output_prefix = index
-            seqc.io_lib.S3.download_files(bucket=bucket, key_prefix=key_prefix,
+            seqc.io.S3.download_files(bucket=bucket, key_prefix=key_prefix,
                                           output_prefix=output_prefix, cut_dirs=2)
 
         forward = output_dir + 'fastq/seqc_test_r1.fastq'
@@ -58,7 +58,7 @@ def test_seqc_raw_fastq_input():
                 seqc.log.info('Downloading %s barcode files' % data_type)
                 bucket = 'dplab-data'
                 key = 'barcodes/%s/barcodes.p' % data_type
-                seqc.io_lib.S3.download_file(bucket=bucket, key=key, fout=barcodes)
+                seqc.io.S3.download_file(bucket=bucket, key=key, fout=barcodes)
 
         # define some genome files
         gtf = index + 'annotations.gtf'
