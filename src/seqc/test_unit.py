@@ -300,7 +300,7 @@ class CoreCheckIndex(unittest.TestCase):
             shutil.rmtree(self.test_dir)
 
 
-class CheckLoadBarcodesTest(unittest.TestCase):
+class CoreCheckLoadBarcodesTest(unittest.TestCase):
     """nose2 test generator"""
 
     def setUp(self):
@@ -309,7 +309,6 @@ class CheckLoadBarcodesTest(unittest.TestCase):
     def test_load_barcodes_wrong_input_type_raises(self):
         self.assertRaises(TypeError, seqc.core.check_and_load_barcodes,
                           10, self.output_dir)
-
 
     @params(*_data_types)
     @unittest.skip('Downloads from s3, takes time, bandwidth')
@@ -333,6 +332,12 @@ class CheckLoadBarcodesTest(unittest.TestCase):
     def test_load_pickle_containing_non_barcode_data(self):
         pass # todo implement
 
+
+### CONVERT FEATURES TESTS ###
+
+class ConvertFeaturesTranslateGeneTest(unittest.TestCase):
+
+    def setUp(self):
 
 # todo all fastq functions below estimate_sequence_length are missing tests()
 

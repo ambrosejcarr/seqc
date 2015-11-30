@@ -467,13 +467,11 @@ def clean_up(temp_dir):
 def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
             n_threads, frag_len, star_args, barcodes, **kwargs):
 
-    # output_dir, gtf, cb, index = set_up(output_prefix, index, barcodes)
     output_prefix, output_dir = fix_output_paths(output_prefix)
 
     index, gtf = check_index(index, output_dir)
 
     cb = check_and_load_barcodes(barcodes, output_dir)
-
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
