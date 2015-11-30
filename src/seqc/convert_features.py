@@ -2,6 +2,7 @@ __author__ = "Ambrose J. Carr"
 
 from collections import defaultdict
 from intervaltree import IntervalTree
+import seqc
 import pickle
 import re
 
@@ -290,3 +291,83 @@ def construct_gene_table(gtf):
                     interval_table[chromosome][strand] = IntervalTree()
                     interval_table[chromosome][strand].addi(start, end, gene_id)
     return interval_table
+
+
+class ConvertGeneCoordinates:
+    """Converts alignments in chromosome coordinates to gene coordinates"""
+
+    def __init__(self, dict_of_interval_trees):
+
+        # check input type is dict
+        err_msg = ('dict_of_interval_trees must be type dict, not %s' %
+                   type(dict_of_interval_trees))
+        seqc.util.check_type(dict_of_interval_trees, dict, err_msg)
+
+        # check that input dictionary isn't empty
+        if not dict_of_interval_trees:
+            raise ValueError('Cannot create an empty ConvertGeneCoordinates object. '
+                             'Please pass a non-empty dict_of_interval_trees input.')
+
+        # check type of individual trees
+        err_msg = 'dict_of_interval_trees must contain only IntervalTree leaves, not %s'
+        for chrom in dict_of_interval_trees:
+            for strand in dict_of_interval_trees[chrom]:
+                if not isinstance(dict_of_interval_trees[chrom][strand], IntervalTree):
+                    raise TypeError(err_msg % type(dict_of_interval_trees[chrom][strand]))
+
+        # set self.data
+        self._data = dict_of_interval_trees
+
+    def translate(self, strand: str, chromosome: str, position: int) -> tuple:
+        """
+        translate an alignment in chromosome coordinates to gene coordinates
+
+        args:
+        -----
+        strand (+, -): the strand of the record to be translated
+        chromosome: the chromosome of the record to be translated
+        position: the position of the record to be translated
+
+        returns:
+        --------
+        records: all genes that overlap the given position
+
+        """
+        pass
+
+    @classmethod
+    def from_gtf(cls, gtf: str, fragment_length: str=1000) -> object:
+        """
+        construct a ConvertGeneCoordinates object from a gtf file
+
+        args;
+        -----
+        gtf: str file identifier corresponding to the gtf file to construct the
+         ConvertGeneCoordinates object from.
+
+        returns:
+        --------
+        gene_converter: a ConvertGeneCoordinates object built from gtf
+
+        """
+        data = defaultdict(dict)
+        gtf_reader = seqc.gtf.Reader(gtf)
+
+        # todo | this is too simple. Need to make it get only the last n bases of each
+        # todo | transcript, for each gene. Create intervals for any non-contiguous
+        # todo | sequence for these areas.
+        for record in gtf_reader.iter_transcripts():
+            try:
+                data[record.seqname][record.strand].addi(
+                    record.start, record.end, record.attribute['gene_id'])
+            except KeyError:
+                data[record.seqname][record.strand] = IntervalTree()
+                data[record.seqname][record.strand].addi(
+                    record.start, record.end, record.attribute['gene_id'])
+
+        return cls(data)
+
+
+
+
+

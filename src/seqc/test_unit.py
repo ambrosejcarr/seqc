@@ -335,9 +335,54 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
 
 ### CONVERT FEATURES TESTS ###
 
-class ConvertFeaturesTranslateGeneTest(unittest.TestCase):
+class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
 
-    def setUp(self):
+    test_dir = 'test_seqc/'
+    gtf = 'test_seqc/test.gtf'
+
+    @classmethod
+    def setUpClass(cls):
+
+        # create the test_dir if it doesn't exist
+        if not os.path.isdir(cls.test_dir):
+            os.mkdir(cls.test_dir)
+
+        # create a very small gtf file for testing
+        i = 0
+        with open(_gtf, 'r') as fin:
+            with open(cls.gtf, 'w') as fout:
+                while i < 100:
+                    fout.write(fin.readline())
+                    i += 1
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.test_dir):
+            shutil.rmtree(cls.test_dir)
+
+    def test_convert_features_empty_input_raises(self):
+        self.assertRaises(ValueError, seqc.convert_features.ConvertGeneCoordinates,
+                          {})
+
+    def test_convert_features_wrong_input_type_raises(self):
+        self.assertRaises(TypeError, seqc.convert_features.ConvertGeneCoordinates,
+                          {'chr1': 'this_should_be_intervaltree_not_string'})
+
+    def test_convert_features_from_gtf(self):
+        cgc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(self.gtf)
+
+        # test that the method returns the correct object type
+        print(type(cgc))
+        self.assertIsInstance(cgc, seqc.convert_features.ConvertFeatureCoordinates)
+
+        # make sure that the object gets all of the genes in the test file
+        pass
+
+
+    def test_convert_features_reads_all_gene_records(self):
+        pass
+
+
 
 # todo all fastq functions below estimate_sequence_length are missing tests()
 

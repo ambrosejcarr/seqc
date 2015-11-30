@@ -4,6 +4,7 @@ import gzip
 from collections import defaultdict, namedtuple
 import pickle
 
+# todo do a simple check that the file is in fact a gtf file.
 
 class Reader:
 
