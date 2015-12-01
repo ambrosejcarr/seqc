@@ -35,6 +35,8 @@ class ClusterServer(object):
         self.n_tb = None
         self.sg = None
         self.serv = None
+        self.aws_id = None
+        self.aws_key = None
 
     def create_security_group(self, name=None):
         """Creates a new security group for the cluster"""
@@ -67,6 +69,8 @@ class ClusterServer(object):
         self.zone = config[template]['AVAILABILITY_ZONE']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
+        self.aws_id = config['aws_info']['AWS_ACCESS_KEY_ID']
+        self.aws_key = config['aws_info']['AWS_SECRET_ACCESS_KEY']
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from aws_config"""
@@ -149,16 +153,16 @@ class ClusterServer(object):
             self.inst_id.wait_until_terminated()
             print('instance %s has successfully terminated' % self.inst_id)
 
-            print('removing security group %s...' %self.inst_id.security_groups)
+            print('removing security group %s...' %gname)
             boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=self.sg)
-            print('process complete!')
+            print('termination complete!')
         else:
             print('instance %s is not running!' % self.inst_id)
 
     # should test out this code
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 1024
+        vol_size = 50 #1024 --> just testing
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -218,6 +222,9 @@ class ClusterServer(object):
         out, err = self.serv.exec_command('ls /dev | grep "md0"')
         if not out:
             print('error with mdadm function')
+            print(err)
+            sys.exit(2)
+
 
         self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
         self.serv.exec_command("sudo mkdir -p /data")
@@ -230,6 +237,8 @@ class ClusterServer(object):
                 print("successfully created RAID array in /data!")
         else:
             print("error occurred in mounting RAID array to /data")
+            print(err)
+            sys.exit(2)
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
@@ -239,18 +248,31 @@ class ClusterServer(object):
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
         folder = self.dir_name
+        print('installing seqc.tar.gz...')
         self.serv.exec_command("sudo mkdir %s" % folder)
+        self.serv.exec_command("sudo chown -c ubuntu /data")
+        self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
+        #see if this does anything
         location = folder + "seqc.tar.gz"
         self.serv.exec_command(
-            'sudo curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
+            'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
         # implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
+        print('successfully installed seqc.tar.gz in %s on the cluster!' %folder)
+
+    def set_credentials(self):
+        self.serv.exec_command('aws configure set aws_access_key_id %s' %self.aws_id)
+        self.serv.exec_command('aws configure set aws_secret_access_key %s' %self.aws_key)
+        self.serv.exec_command('aws configure set region %s' %self.zone[:-1])
 
     def cluster_setup(self, name):
+        print('setting up cluster %s...' %name)
         self.configure_cluster('aws_config')
         self.create_security_group(name)
         self.create_cluster()
         self.connect_server()
         self.create_raid()
         self.git_pull()
+        self.set_credentials()
+        print('sucessfully set up the remote cluster environment!')

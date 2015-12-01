@@ -16,7 +16,7 @@ class SSHServer(object):
     def connect(self):
         max_attempts = 5
         print('warming up the instance for connection, please wait...')
-        time.sleep(45) #give instance time to warm up
+        # time.sleep(45) #give instance time to warm up
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         dns = self.instance.public_dns_name
         for attempt in range(max_attempts):
@@ -78,6 +78,7 @@ class SSHServer(object):
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.put(localfile, remotefile)
+        print('successfully placed %s in %s!' %(localfile,remotefile))
         ftp.close()
 
     def exec_command(self, args):
@@ -88,6 +89,6 @@ class SSHServer(object):
         stdin.flush()
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
-        print(data)
-        print(errs)
+        # print(data)
+        # print(errs)
         return data, errs

@@ -14,6 +14,7 @@ import cluster_utils as clustutils
 import ssh_utils as sshutils
 from subprocess import call
 from multiprocessing import Process
+import seqc.io_lib as iolib
 
 
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
@@ -196,29 +197,53 @@ def run_SEQC_remote(kwargs):
 
     cmd += positional + ' '
     del kwargs['subparser_name']
-    del kwargs['func'] #you don't want --func in the cmd that will be sent to the cluster
-    del kwargs['cluster_name'] #also don't want this on cmd
+    del kwargs['func']
+    del kwargs['cluster_name']
 
     for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
         if v:
             edit_k = '-'.join(k.split('_'))
-            # cmd += '--%s %s ' % (k, v)
             cmd += '--%s %s ' % (edit_k, v)
+    #cmd += '"'
+    print(cmd)
 
-    # set up remote cluster here, finishes all the way thru gitpull
+    # set up remote cluster here, finishes all the way through gitpull
     cluster = clustutils.ClusterServer()
     cluster.cluster_setup(clustname)
+    #this is the end of cluster setup!
+    cluster.serv.connect()
+    # s = sshutils.SSHServer('i-68f996d8','/Users/kristyc/.ssh/eyc2120.rsa')
+    # s.connect()
 
+    #downloading files here
+    # cluster.serv.exec_command('cd /data/software; sudo chown ubuntu /data/; sudo chown ubuntu /data/software')
+    cluster.serv.put_file('/Users/kristyc/Downloads/short_f1.fastq','shortf1.fastq')
+    cluster.serv.put_file('/Users/kristyc/Downloads/short_r1.fastq','short_r1.fastq')
+    cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
+    cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
+    #and then do all the genome and barcode downloading stuff
     #running SEQC on the cluster
-    print(cmd)
-    # todo | debug remote code execution
-    # cluster.serv.exec_command(cmd)
+    # cmd = 'SEQC in-drop -f f1.fastq -r r1.fastq -i s3://dplab-data/genomes/hg38/ -n 30 -o /data/software/qq -b s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p'
+    # print('executing "%s" on the remote cluster...' %cmd)
+    # out,err = cluster.serv.exec_command(cmd)
+    # out,err = s.exec_command(cmd)
+    # todo | do this in a more elegant way
+    # print('output: ')
+    # print(out)
+    # print('error: ')
+    # print(err)
 
     #shut down cluster after finished
-
-    #TODO shut down cluster and have local command exit
+    # todo | have local program exit while process still runs remotely
+    # print('shutting down cluster...')
+    # if out:
+    #     cluster.terminate_cluster()
+    #     sys.exit("process complete -- program exiting")
+    # elif err:
+    #     cluster.terminate_cluster()
+    #     sys.exit("process complete -- program exiting")
 
 if __name__ == "__main__":
     kwargs = process_input()
@@ -240,17 +265,3 @@ if __name__ == "__main__":
     except:
         seqc.log.exception()
         raise
-
-
-# old method was causing problems
-# def save_counts_matrices(output_file, arr, n):
-#
-#     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
-#     mols, mrow, mcol = arr.to_sparse_counts(
-#         collapse_molecules=True, n_poly_t_required=n)
-#     reads, rrow, rcol = arr.to_sparse_counts(
-#         collapse_molecules=False, n_poly_t_required=n)
-#     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
-#                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
-#     with open(output_file + '_read_and_mol_matrices.p', 'wb') as f:
-#         pickle.dump(matrices, f)

@@ -376,7 +376,7 @@ def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name
 
     store_results(output_file, arr)
 
-    save_counts_matrices(output_file, arr, n=3)
+    #save_counts_matrices(output_file, arr, n=3)
 
     # clean_up(temp_dir)
 
@@ -403,7 +403,7 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
 
     arr.save_h5(output_file + '.h5')
 
-    save_counts_matrices(output_file, arr, n=0)
+    #save_counts_matrices(output_file, arr, n=0)
 
     # clean_up(temp_dir)
 
