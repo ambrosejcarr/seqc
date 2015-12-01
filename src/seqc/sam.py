@@ -237,6 +237,10 @@ def _write_chunk(data, h5_file):
     h5_file.root.positions.append(positions)
 
 
+class EmptyAligmentFile(Exception):
+    pass
+
+
 def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     """Process a samfile in parallel, dump results into an h5 database.
 
@@ -248,6 +252,16 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
         multialignment
 
     """
+    # check that samefile is non-empty:
+    with open(samfile, 'r') as f:
+        empty = True
+        for line in f:
+            if not line.startswith('@'):
+                empty = False
+                break
+    if empty:
+        raise EmptyAligmentFile('Alignment may have failed. Sam file has no alignments.')
+
     # get file size
     filesize = os.stat(samfile).st_size
 
