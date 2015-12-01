@@ -223,17 +223,12 @@ def run_SEQC_remote(kwargs):
     cluster.serv.put_file('/Users/kristyc/Downloads/short_r1.fastq','short_r1.fastq')
     cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
     cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
-    #and then do all the genome and barcode downloading stuff
+
     #running SEQC on the cluster
     # cmd = 'SEQC in-drop -f f1.fastq -r r1.fastq -i s3://dplab-data/genomes/hg38/ -n 30 -o /data/software/qq -b s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p'
-    # print('executing "%s" on the remote cluster...' %cmd)
-    # out,err = cluster.serv.exec_command(cmd)
-    # out,err = s.exec_command(cmd)
-    # todo | do this in a more elegant way
-    # print('output: ')
-    # print(out)
-    # print('error: ')
-    # print(err)
+    cmdstring = "SEQC in-drop --forward short_f1.fastq --index s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p --output-file /data/software/qq"
+    print('executing %s on the remote cluster...' %cmd)
+    cluster.serv.exec_command('python3 notify.py -l %s' %cmd)
 
     #shut down cluster after finished
     # todo | have local program exit while process still runs remotely
