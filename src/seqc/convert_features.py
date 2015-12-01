@@ -292,10 +292,7 @@ class ConvertGeneCoordinates:
 
     def __init__(self, dict_of_interval_trees):
 
-        # check input type is dict
-        err_msg = ('dict_of_interval_trees must be type dict, not %s' %
-                   type(dict_of_interval_trees))
-        seqc.util.check_type(dict_of_interval_trees, dict, err_msg)
+        seqc.util.check_type(dict_of_interval_trees, dict, 'dict_of_interval_trees')
 
         # check that input dictionary isn't empty
         if not dict_of_interval_trees:
@@ -304,10 +301,10 @@ class ConvertGeneCoordinates:
 
         # check type of individual trees
         err_msg = 'dict_of_interval_trees must contain only IntervalTree leaves, not %s'
-        for chrom in dict_of_interval_trees:
-            for strand in dict_of_interval_trees[chrom]:
-                if not isinstance(dict_of_interval_trees[chrom][strand], IntervalTree):
-                    raise TypeError(err_msg % type(dict_of_interval_trees[chrom][strand]))
+        for tree in dict_of_interval_trees.values():
+            if not isinstance(tree, IntervalTree):
+                    raise TypeError('all dictionary values must be IntervalTrees not %s'
+                                    % type(tree))
 
         # set self.data
         self._data = dict_of_interval_trees

@@ -33,7 +33,7 @@ def create_parser():
         p.set_defaults(func=f)
 
     # set barcode default for drop_seq:
-    parse_drop_seq.set_defaults(barcodes=[])
+    parse_drop_seq.set_defaults(barcodes='')
 
     # set required arguments for all parsers
     for i, p in enumerate(subparser_list):
