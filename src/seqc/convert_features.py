@@ -6,12 +6,6 @@ import seqc
 import pickle
 import re
 
-# define containers for Exons and Transcripts
-# Exon = namedtuple('Exon', ['start', 'end'])
-#
-# Transcript = namedtuple('Transcript',
-#                         ['start', 'end', 'strand', 'feature', 'exons', 'scid'])
-
 
 class Exon:
     """

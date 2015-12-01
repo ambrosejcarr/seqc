@@ -6,22 +6,57 @@ from memory_profiler import memory_usage
 import os
 
 
-def check_type(arg, type_, message):
+def check_type(arg, type_, arg_name):
     """utility function to raise a TypeError if an object of incorrect type is given
 
     args:
     -----
     arg:  argument to type-check
     type_: the type to check against
-    message: the error message, if the type is found to be incorrect
+    arg_name: the name of the argument being checked
 
     returns:
     --------
     None
     """
     if not isinstance(arg, type_):
-        if message:
-            raise TypeError(message)
+        raise TypeError('argument "%s" must be %s, not %s.' %
+                        (arg_name, repr(type_), repr(type(arg))))
+
+
+
+def check_dir(directory: str, arg_name: str) -> None:
+    """utility function to raise a FileNotFoundError if directory is not a directory
+
+    args:
+    -----
+    directory: string ostensibly pointing to a directory
+    arg_name: the name of the argument that is being checked
+
+    returns:
+    --------
+    None
+    """
+    if not os.path.isdir(directory):
+        raise FileNotFoundError('argument "%s": %s, is not a directory.' %
+                                arg_name, directory)
+
+
+def check_file(filename: str, arg_name: str) -> None:
+    """utility function to raise a FileNotFoundError if directory is not a directory
+
+    args:
+    -----
+    filename: string ostensibly pointing to a file
+    arg_name: the name of the argument that is being checked
+
+    returns:
+    --------
+    None
+    """
+    if not os.path.isfile(filename):
+        raise FileNotFoundError('argument "%s": %s, is not a file.' %
+                                (arg_name, filename))
 
 
 def time_profile(func, filename=None):

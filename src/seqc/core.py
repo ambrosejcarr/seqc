@@ -171,8 +171,7 @@ def fix_output_paths(output_prefix: str) -> (str, str):
     absolute_output_prefix, absolute_output_directory
     """
 
-    seqc.util.check_type(output_prefix, str, 'Output prefix must be type str not %s' %
-                         type(output_prefix))
+    seqc.util.check_type(output_prefix, str, 'output_prefix')
 
     if output_prefix.endswith('/'):
         raise ValueError('Invalid output_prefix: "%s". output prefix must be a prefix,'
@@ -207,9 +206,8 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     index, gtf
     """
 
-    seqc.util.check_type(index, str, 'Index must be type str, not %s.' % type(index))
-    seqc.util.check_type(output_dir, str, 'Index must be type str, not %s.' %
-                         type(output_dir))
+    seqc.util.check_type(index, str, 'index')
+    seqc.util.check_type(output_dir, str, 'output_dir')
 
     if not index.endswith('/'):
         index += '/'
@@ -256,7 +254,7 @@ def check_and_load_barcodes(
     return the CellBarcodes object.
     """
 
-    seqc.util.check_type(barcodes, str, 'barcodes must be type str, not %s' % barcodes)
+    seqc.util.check_type(barcodes, str, 'barcodes')
 
     # get cell barcode files
     if not barcodes:
