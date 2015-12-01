@@ -543,6 +543,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
 
 ### CONVERT FEATURES TESTS ###
 
+@unittest.skip('')
 class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
 
     test_dir = 'test_seqc/'

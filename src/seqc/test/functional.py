@@ -40,7 +40,7 @@ def test_seqc_raw_fastq_input():
         ########################### correct special barcode cases ###########################
 
         if data_type == 'drop_seq':
-            barcodes = None
+            barcodes = ''
 
         # get barcode data
         if barcodes:  # skip for types lacking barcode files

@@ -377,7 +377,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     def merge(out_queue):
         # set a destination file to write everythign into
-        seed = open('%s/merged_temp.fastq' % temp_dir, 'wb')
+        seed = open('%s/merged.fastq' % temp_dir, 'wb')
 
         # merge all remaining files into it.
         while True:
@@ -433,7 +433,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
         p.join()
     merge_process.join()
 
-    return '%s/merged_temp.fastq' % temp_dir
+    return '%s/merged.fastq' % temp_dir
 
 
 class GenerateFastq:
