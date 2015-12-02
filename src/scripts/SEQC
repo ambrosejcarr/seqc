@@ -168,12 +168,12 @@ def process_input():
         if not arguments.subparser_name == 'drop-seq':
             if not all(required + [arguments.barcodes]):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
-                      '-n/--n-threads, -o/--output-file, -b/--barcodes')
+                      '-n/--n-threads, -o/--output-prefix, -b/--barcodes')
                 sys.exit(2)
         else:
             if not all(required):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
-                      '-n/--n-threads, -o/--output-file')
+                      '-n/--n-threads, -o/--output-prefix')
 
     return vars(arguments)
 
@@ -227,7 +227,7 @@ def run_SEQC_remote(kwargs):
     # cmdstring = "SEQC in-drop --forward short_f1.fastq --index
     # s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads
     # 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p
-    # --output-file /data/software/qq"
+    # --output-prefix /data/software/qq"
     print('executing %s on the remote cluster...' %cmd)
     cluster.serv.exec_command('cd /data/software; python3 notify.py -l %s' %cmd)
 
