@@ -33,6 +33,7 @@ class Sample:
         self._exon_data = None
 
     def sample_genes(self, fragment_length: int=1000) -> np.array:
+        pass  # todo this is where I stopped 15/12/02
 
 class Reader:
     """GTF reader optimized for utility and simplicity"""

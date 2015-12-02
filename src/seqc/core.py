@@ -46,6 +46,11 @@ def create_parser():
                        type=int, default=None)
         r.add_argument('-o', '--output-prefix', metavar='O', default=None,
                        help='stem of filename in which to store output')
+        r.add_argument('-c', '--cluster-name', metavar='C', default=None,
+                       help='optional name for aws cluster')
+        r.add_argument('-k', '--aws-upload-key', metavar='K', default=None,
+                       help='upload processed results to this AWS folder. Required if '
+                            '--remote is passed')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
@@ -100,10 +105,21 @@ def create_parser():
                         ' to use when building index', metavar='N')
     pindex.add_argument('--phix', help='add phiX to the genome index and GTF file.',
                         action='store_true', default=False)
+    pindex.add_argument('-c', '--cluster-name', metavar='C', default=None,
+                        help='optional name for aws cluster')
+    pindex.add_argument('-k', '--aws-upload-key', metavar='K', default=None,
+                        help='upload constructed index to this AWS folder. Required if '
+                             '--remote is passed')
 
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
+    # allow indication of remote run.
+    parser.add_argument('--remote', default=False, action='store_true',
+                        help='run the requested SEQC command remotely')
+    parser.add_argument('--email-status', default='', metavar='E',
+                        help='email results to this address')
+
 
     return parser
 
@@ -154,7 +170,89 @@ def parse_args(parser, args=None):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
                       '-n/--n-threads, -o/--output-prefix')
 
+    if arguments.remote:
+        if not arguments.aws_upload_key:
+            print('SEQC: %s: error: if requesting a remote run with --remote, '
+                  '-k/--aws-upload-key must be specified. Otherwise results are '
+                  'discarded when the cluster is terminated.' % arguments.subparser_name)
+            sys.exit(2)
+        if not arguments.email_status:
+            print('SEQC: %s: error: if requesting a remote run with --remote, '
+                  '--email-status must specify the email address that updates or errors '
+                  'should be sent to.')
+            sys.exit(2)
+
     return vars(arguments)
+
+
+def run_remote(kwargs: dict) -> None:
+    """
+    todo document me!
+
+    args:
+    -----
+
+    returns:
+    --------
+    None
+    """
+    cmd = 'SEQC '
+
+    # get the positional argument; doesn't need a '--' prefix
+    positional = kwargs['subparser_name']
+    clustname = kwargs['cluster_name']
+
+    cmd += positional + ' '
+    del kwargs['subparser_name']
+    del kwargs['func']
+    del kwargs['cluster_name']
+
+    for k, v in kwargs.items():
+        if isinstance(v, list):
+            v = ' '.join(v)  # lists of input files should be merged with whitespace
+        if v:
+            edit_k = '-'.join(k.split('_'))
+            cmd += '--%s %s ' % (edit_k, v)
+    print(cmd)
+
+    # set up remote cluster here, finishes all the way through gitpull
+    cluster = seqc.cluster_utils.ClusterServer()
+    cluster.cluster_setup(clustname)
+    cluster.serv.connect()
+    seqc.log.info('Remote server set-up complete.')
+
+    # todo
+    # figure out how to download files from basespace here; hard-coded inputs right now
+    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/'
+                          'short_f1.fastq','shortf1.fastq')
+    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/'
+                          'short_r1.fastq','short_r1.fastq')
+    # cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/notify.py',
+    #                       'notify.py')
+    # cluster.serv.exec_command('mv notify.py /data/software/notify.py')
+    cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
+    cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
+    seqc.log.info('Remote file download complete.')
+
+    #running SEQC on the cluster
+    # cmdstring = "SEQC in-drop --forward short_f1.fastq --index
+    # s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads
+    # 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p
+    # --output-prefix /data/software/qq"
+    seqc.log.info('Beginning remote run.')
+    cluster.serv.exec_command('nohup %s > dev/null 2>&1 &' % cmd)
+    seqc.log.info('Terminating local client. Email will be sent when remote run '
+                  'completes')
+
+    #shut down cluster after finished
+    # todo | have local program exit while process still runs remotely
+    # print('shutting down cluster...')
+    # if out:
+    #     cluster.terminate_cluster()
+    #     sys.exit("process complete -- program exiting")
+    # elif err:
+    #     cluster.terminate_cluster()
+    #     sys.exit("process complete -- program exiting")
 
 
 def fix_output_paths(output_prefix: str) -> (str, str):

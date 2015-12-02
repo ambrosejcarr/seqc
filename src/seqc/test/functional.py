@@ -111,24 +111,74 @@ def test_seqc_raw_fastq_input():
 
 
 def seqc_raw_fastq_input(args):
-    parser = seqc.core.create_parser()
-    kwargs = seqc.core.parse_args(parser, args)
-    seqc.log.setup_logger('seqc_test.log')
-    try:
-        # log command line arguments for debugging
+    """
+    This function should be an exact mimic of the __main__ section in the SEQC script
+    EXCEPT you must pass args to seqc.core.parse_args(parser, args) because there are
+    no sys.argv values to extract.
+    """
+
+    def initialize_logging():
         arg_copy = copy(kwargs)
         del arg_copy['func']  # function is not serializable
+
         seqc.log.info('SEQC version: %s' % seqc.__version__)
         seqc.log.info('SEQC working directory: %s' % os.getcwd())
         seqc.log.info('Passed command line arguments: %s' %
                       json.dumps(arg_copy, separators=(',', ': '), indent=4))
 
-        func = kwargs['func']
-        func(**kwargs)
+    parser = seqc.core.create_parser()
+    kwargs = seqc.core.parse_args(parser, args)
+    seqc.log.setup_logger()
 
-    except:
-        seqc.log.exception()
-        raise
+    if kwargs['remote']:
+        try:
+            # log command line arguments for debugging
+            initialize_logging()
+            seqc.log.info('Starting REMOTE run')
+
+            # run remotely
+            del kwargs['remote']
+            seqc.core.run_remote(kwargs)
+        except:
+            seqc.log.exception()
+            raise
+
+    elif kwargs['email_status']:
+        try:
+            # log command line arguments for debugging
+            arg_copy = copy(kwargs)
+            initialize_logging()
+
+            # run locally
+            func = kwargs['func']
+            func(**kwargs)
+            seqc.cluster_utils.upload_results(
+                kwargs['output_prefix'], kwargs['email_status'], kwargs['aws_upload_key'])
+        except:
+            seqc.log.exception()
+            email_body = b'Process interrupted -- see attached error message'
+            seqc.cluster_utils.email_user(attachment='seqc.log', email_body=email_body,
+                                          email_address=kwargs['email_status'])
+            sys.exit(1)
+        finally:
+            # todo add cluster cleanup here
+            # Note that this finally loop is executed regardless
+            # of whether cluster SETUP has succeeded; there may not be any cluster.
+            # Program accordingly.
+            pass
+
+    else:  # not email_status and not remote
+        try:
+            # log command line arguments for debugging
+            arg_copy = copy(kwargs)
+            initialize_logging()
+
+            # run locally
+            func = kwargs['func']
+            func(**kwargs)
+        except:
+            seqc.log.exception()
+            raise
 
 
 if __name__ == "__main__":
