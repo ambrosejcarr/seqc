@@ -252,7 +252,6 @@ class Reader:
                                           strand=first_exon_set[0].strand)]
 
         for exons in self.iter_exon_sets():
-            # todo may need to consume the iterator here. e.g. list(exons)
             tx = self._take_final_n(exons, n, exons[0].strand)
             if tx.attribute['gene_id'] == transcripts[0].attribute['gene_id']:
                 transcripts.append(tx)

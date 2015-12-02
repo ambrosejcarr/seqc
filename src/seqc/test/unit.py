@@ -299,7 +299,7 @@ class GTFReaderTest(unittest.TestCase):
         n_transcripts = sum(1 for tx in rd.iter_transcripts())
         self.assertEqual(n_transcripts, 17)
 
-    def test_reader_iter_transcripts_returns_all_genes(self):
+    def test_reader_iter_genes_returns_all_genes(self):
         # 4 lines are genes;
         # awk '{if($3=="gene"){print $0}}' test_seqc/test_data.gtf | wc -l
         rd = seqc.gtf.Reader(self.gtf)
@@ -401,6 +401,10 @@ class GTFReaderTest(unittest.TestCase):
                 last_interval = (start, end if end - start < 500 else start + 500, repr(exons))
             else:
                 raise ValueError
+
+    def test_reader_iter_genes_final_n_returns_correct_number_genes(self):
+        rd = seqc.gtf.Reader(self.gtf)
+        self.assertEqual(len(list(rd.iter_genes_final_nbases(1000))), 4)
 
     @params(10, 1000, int(1e9))
     def test_reader_merge_transcripts_final_n(self, n):
@@ -543,7 +547,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
 
 ### CONVERT FEATURES TESTS ###
 
-@unittest.skip('')
+# @unittest.skip('')
 class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
 
     test_dir = 'test_seqc/'
@@ -560,7 +564,7 @@ class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
         i = 0
         with open(config.gtf, 'rb') as fin:
             with open(cls.gtf, 'wb') as fout:
-                while i < 100:
+                while i < 203:
                     fout.write(fin.readline())
                     i += 1
 
@@ -569,28 +573,44 @@ class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
 
-    def test_convert_features_empty_input_raises(self):
+    def test_convert_gene_features_empty_input_raises(self):
         self.assertRaises(ValueError, seqc.convert_features.ConvertGeneCoordinates,
-                          {})
+                          {}, {})
 
-    def test_convert_features_wrong_input_type_raises(self):
+    def test_convert_gene_features_wrong_input_type_raises(self):
         self.assertRaises(TypeError, seqc.convert_features.ConvertGeneCoordinates,
-                          {'chr1': 'this_should_be_intervaltree_not_string'})
+                          {'chr1': 'this_should_be_intervaltree_not_string'}, {})
 
-    def test_convert_features_from_gtf(self):
+    def test_convert_gene_features_from_gtf_reads_all_genes(self):
         cgc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(self.gtf)
 
         # test_data that the method returns the correct object type
-        print(type(cgc))
         self.assertIsInstance(cgc, seqc.convert_features.ConvertGeneCoordinates)
 
-        # make sure that the object gets all of the genes in the test_data file
+        # make sure the interval tree is properly constructed; should have 4 genes
+        genes = set()
+        for key in cgc._data:
+            for iv in cgc._data[key]:
+                genes.add(iv.data)
+        self.assertEqual(4, len(genes))
+
+    def test_convert_gene_features_translate(self):
+
+        # todo test that method always returns list
+
+        # todo test that method does not return when values are outside of final n bases
+
+        # todo test that method returns correct gene when values are within final n bases
+        pass
+
+    def test_convert_gene_features_save_and_load(self):
         pass  # todo implement
 
-
-    def test_convert_features_reads_all_gene_records(self):
+    def test_convert_gene_features_ids_are_deterministic(self):
         pass  # todo implement
 
+    def test_convert_gene_features_map_reverses_id_conversion(self):
+        pass # todo implement
 
 
 # todo all fastq functions below estimate_sequence_length are missing tests()
