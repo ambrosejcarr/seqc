@@ -224,14 +224,14 @@ def run_remote(kwargs: dict) -> None:
     # todo
     # figure out how to download files from basespace here; hard-coded inputs right now
     cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/'
-                          'short_f1.fastq','shortf1.fastq')
+                          'short_f1.fastq','short_f1.fastq')
     cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/'
                           'short_r1.fastq','short_r1.fastq')
     # cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/notify.py',
     #                       'notify.py')
     # cluster.serv.exec_command('mv notify.py /data/software/notify.py')
-    cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
-    cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
+    cluster.serv.exec_command('mv short_f1.fastq /data/software/short_f1.fastq')
+    cluster.serv.exec_command('mv short_r1.fastq /data/software/short_r1.fastq')
     seqc.log.info('Remote file download complete.')
 
     #running SEQC on the cluster
