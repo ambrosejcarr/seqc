@@ -344,7 +344,7 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     # check that the index contains the necessary files to run SEQC
     for f in critical_index_files:
         if not os.path.isfile(index + f):
-            raise FileNotFoundError('Index is missing critical file "%s". Please '
+            raise FileNotFoundError('Index is missing critical file %s. Please '
                                     'regenerate the index.' %index+f)
 
     # obtain gtf file from index argument
