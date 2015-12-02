@@ -2,19 +2,16 @@
 __author__ = 'Ambrose J. Carr'
 
 import argparse
-import pickle
 import os
-import shutil
-import seqc
 from copy import copy
 import sys
 import json
-import time
-import cluster_utils as clustutils
-import ssh_utils as sshutils
-from subprocess import call
-from multiprocessing import Process
-import seqc.io_lib as iolib
+import seqc
+# import cluster_utils as clustutils
+# import ssh_utils as sshutils
+# from subprocess import call
+# from multiprocessing import Process
+# import seqc.io_lib as iolib
 
 
 # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
@@ -188,7 +185,6 @@ def run_SEQC_remote(kwargs):
       optionally email the user. (it could also send debug information if it fails)
 
     """
-
     cmd = 'SEQC '
 
     # get the positional argument; doesn't need a '--' prefix
@@ -210,7 +206,7 @@ def run_SEQC_remote(kwargs):
     print(cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
-    cluster = clustutils.ClusterServer()
+    cluster = seqc.cluster_utils.ClusterServer()
     cluster.cluster_setup(clustname)
     #this is the end of cluster setup!
     cluster.serv.connect()
@@ -218,7 +214,8 @@ def run_SEQC_remote(kwargs):
     # s.connect()
 
     #downloading files here
-    # cluster.serv.exec_command('cd /data/software; sudo chown ubuntu /data/; sudo chown ubuntu /data/software')
+    # cluster.serv.exec_command('cd /data/software; sudo chown ubuntu /data/;
+    # sudo chown ubuntu /data/software')
     cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/short_f1.fastq','shortf1.fastq')
     cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/short_r1.fastq','short_r1.fastq')
     cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/notify.py','notify.py')
@@ -227,7 +224,10 @@ def run_SEQC_remote(kwargs):
     cluster.serv.exec_command('mv notify.py /data/software/notify.py')
 
     #running SEQC on the cluster
-    # cmdstring = "SEQC in-drop --forward short_f1.fastq --index s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p --output-file /data/software/qq"
+    # cmdstring = "SEQC in-drop --forward short_f1.fastq --index
+    # s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads
+    # 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p
+    # --output-file /data/software/qq"
     print('executing %s on the remote cluster...' %cmd)
     cluster.serv.exec_command('cd /data/software; python3 notify.py -l %s' %cmd)
 
@@ -242,7 +242,8 @@ def run_SEQC_remote(kwargs):
     #     sys.exit("process complete -- program exiting")
 
 if __name__ == "__main__":
-    kwargs = process_input()
+    parser = seqc.core.create_parser()
+    kwargs = seqc.core.parse_args(parser)
     seqc.log.setup_logger()
     try:
         # log command line arguments for debugging

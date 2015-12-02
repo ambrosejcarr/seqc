@@ -1,16 +1,15 @@
 __author__ = 'ambrose'
 
 
+import seqc
 import numpy as np
 import pandas as pd
 from collections import defaultdict, Mapping, Iterable
 from scipy.sparse import coo_matrix
-from seqc import plot, gtf, three_bit
 try:
     from tsne import bh_sne
 except ImportError:
-    bh_sne = None  # cluster doesn't have tsne
-
+    bh_sne = None
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
@@ -45,9 +44,9 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
     title = 'Cell Sequencing Coverage vs. GC Content'
 
     # get gc content of sequences
-    gc_content = np.array([three_bit.ThreeBit.gc_content(s) for s in sequences])
-    fig, ax = plot.scatter_density(gc_content, cell_counts, fig=fig, ax=ax, xlabel=xlabel,
-                                   ylabel=ylabel, title=title)
+    gc_content = np.array([seqc.three_bit.ThreeBit.gc_content(s) for s in sequences])
+    fig, ax = seqc.plot.scatter_density(gc_content, cell_counts, fig=fig, ax=ax,
+                                        xlabel=xlabel, ylabel=ylabel, title=title)
     return fig, ax
 
 
@@ -66,8 +65,8 @@ def _plot_fraction_mitochondrial_rna(cell_sums, mt_sums, fig=None, ax=None,
     xlabel = 'Library Size %s' % ctype
     ylabel = 'Mitochondrial fraction size'
     title = 'Mitochondrial fraction separates dying cells'
-    plot.scatter_density(cell_sums, mt_sums / cell_sums, fig=fig, ax=ax, xlabel=xlabel,
-                         ylabel=ylabel, title=title)
+    seqc.plot.scatter_density(cell_sums, mt_sums / cell_sums, fig=fig, ax=ax,
+                              xlabel=xlabel, ylabel=ylabel, title=title)
 
 
 def _discard_high_value_outliers():
@@ -318,7 +317,7 @@ class SparseCounts:
 
         # load the gene map (gmap)
         if not scid_map:
-            r = gtf.Reader(fgtf)
+            r = seqc.gtf.Reader(fgtf)
             gmap = r.scid_to_gene()
         elif isinstance(scid_map, str):
             # try to load pickle
@@ -361,7 +360,7 @@ class SparseCounts:
         cellsums = self.counts.sum(axis=1)
         if log:
             cellsums = np.log(cellsums)
-        f, ax = plot.get_axes()
+        f, ax = seqc.plot.get_axes()
         if not xlabel:
             xlabel = 'observations per cell'
         if not ylabel:
@@ -369,11 +368,11 @@ class SparseCounts:
         if not title:
             title = 'distribution of observations per cell'
         if smooth:
-            plot.kde(cellsums, fig=f, ax=ax, xlabel=xlabel, ylabel=ylabel,
-                     title=title)
+            seqc.plot.kde(cellsums, fig=f, ax=ax, xlabel=xlabel, ylabel=ylabel,
+                          title=title)
         else:
-            plot.histogram(cellsums, fig=f, ax=ax, xlabel=xlabel, ylabel=ylabel,
-                           title=title)
+            seqc.plot.histogram(cellsums, fig=f, ax=ax, xlabel=xlabel, ylabel=ylabel,
+                                title=title)
         return f, ax
 
     def plot_gc_bias(self, fig=None, ax=None, molecules=False, reads=False):
@@ -507,16 +506,16 @@ class DenseCounts:
         xlabel = 'tSNE dimension 0'
         ylabel = 'tSNE dimension 1'
 
-        # if no markers passed, plot density scatter
+        # if no markers passed, seqc.plot density scatter
         if markers:
             x, y = self._tsne[:, 0], self._tsne[:, 1]
             sum_expression = self.df[markers].sum(axis=1)
-            plot.scatter_colored_by_data(
+            seqc.plot.scatter_colored_by_data(
                 x, y, sum_expression, fig=fig, ax=ax, xlabel=xlabel, ylabel=ylabel,
                 title=title)
         else:
             x, y = self._tsne[:, 0], self._tsne[:, 1]
-            plot.scatter_density(
+            seqc.plot.scatter_density(
                 x, y, fig=fig, ax=ax, xlabel=xlabel, ylabel=ylabel, title=title)
         return fig, ax
 
@@ -703,33 +702,33 @@ class Experiment:
         f = np.linspace(xmin, xmax, 1000)
         fline = beta[0] + beta[1] * f + beta[2] * f ** 2 + beta[3] * f ** 3
 
-        sx, sy, colors = plot.density_coloring(x, y)
+        sx, sy, colors = seqc.plot.density_coloring(x, y)
         ax1 = plt.subplot(gs[0, 0])
         xlabel = 'Molecules  / Gene'
         ylabel = 'Reads / Gene'
         title = 'Polynomial Regression'
-        plot.scatter_colored_by_data(sx, sy, colors, ax=ax1, xlabel=xlabel, ylabel=ylabel,
-                                     title=title)
+        seqc.plot.scatter_colored_by_data(sx, sy, colors, ax=ax1, xlabel=xlabel,
+                                          ylabel=ylabel, title=title)
 
         # plot # 2: Regression Residuals
         # -----
         ax2 = plt.subplot(gs[0, 1])
         residuals = y - y_hat
-        sx, s_residuals, colors = plot.density_coloring(x, residuals)
+        sx, s_residuals, colors = seqc.plot.density_coloring(x, residuals)
         ylabel = 'Residual'
         title = 'Residuals'
-        plot.scatter_colored_by_data(sx, s_residuals, colors, ax=ax2, xlabel=xlabel,
-                                     ylabel=ylabel, title=title)
+        seqc.plot.scatter_colored_by_data(sx, s_residuals, colors, ax=ax2, xlabel=xlabel,
+                                          ylabel=ylabel, title=title)
 
         # plot # 3: Scaled Residuals
         # -----
         ax3 = plt.subplot(gs[1, 0])
         scaled_residuals = np.abs(y - y_hat) / y
-        sx, s_scaled_residuals, colors = plot.density_coloring(x, scaled_residuals)
+        sx, s_scaled_residuals, colors = seqc.plot.density_coloring(x, scaled_residuals)
         ylabel = 'Residual / Reads per Gene'
         title = 'Normalized Residuals'
-        plot.scatter_colored_by_data(sx, s_scaled_residuals, colors, ax=ax3,
-                                     xlabel=xlabel, ylabel=ylabel, title=title)
+        seqc.plot.scatter_colored_by_data(sx, s_scaled_residuals, colors, ax=ax3,
+                                          xlabel=xlabel, ylabel=ylabel, title=title)
         # adjust axes
         cmax = np.max(sx)
         ymax = np.max(scaled_residuals)
@@ -746,12 +745,12 @@ class Experiment:
         mols_fano = (np.var(self.molecules[:, idx], axis=0) /
                      np.mean(self.molecules[:, idx], axis=0))
 
-        x, y, colors = plot.density_coloring(read_fano, mols_fano)
+        x, y, colors = seqc.plot.density_coloring(read_fano, mols_fano)
         xlabel = r'Fano ($\frac{\sigma^2}{\mu}$) Molecules / Gene'
         ylabel = r'Fano ($\frac{\sigma^2}{\mu}$) Reads / Gene'
         title = 'Normalied Variance of Reads \nvs. Molecules per Gene'
-        plot.scatter_colored_by_data(x, y, colors, ax=ax4, xlabel=xlabel, ylabel=ylabel,
-                                     title=title)
+        seqc.plot.scatter_colored_by_data(x, y, colors, ax=ax4, xlabel=xlabel,
+                                          ylabel=ylabel, title=title)
         # plot x = y
         cmin, cmax = np.min(np.hstack([x, y])), np.max(np.hstack([x, y]))
         x_y = np.linspace(cmin, cmax, 1000)
@@ -759,7 +758,7 @@ class Experiment:
         plt.xlim((cmin, cmax))
         plt.ylim((cmin, cmax))
 
-        plot.clean_figure(fig)
+        seqc.plot.clean_figure(fig)
 
         return fig, dict(regression=ax1, residual=ax2, scaled_residual=ax3, fano=ax4)
 
@@ -788,7 +787,7 @@ class Experiment:
         xlabel = 'log Molecule count per cell'
         ylabel = 'Average Reads per Molecule'
         title = 'Reads per Molecule vs. Library Size'
-        fig, ax1 = plot.scatter_density(np.log(mol_counts[barcodes]), ratios[barcodes],
+        fig, ax1 = seqc.plot.scatter_density(np.log(mol_counts[barcodes]), ratios[barcodes],
                                         fig=fig, ax=ax1, xlabel=xlabel, ylabel=ylabel,
                                         title=title)
         plt.ylim([0, 200])
@@ -802,15 +801,15 @@ class Experiment:
 
         # Plot clusters
         ax2 = plt.subplot(gs[0, 1])
-        colors = plot.qualitative_colors[:3]
+        colors = seqc.plot.qualitative_colors[:3]
         # for i, c in enumerate(colors):
         #     ax2.scatter(df.ix[clusters == i, 0], df.ix[clusters == i, 1],
         #                 color=c, s=, edgecolor='none')
         xlabel = 'log Molecule count per cell'
         ylabel = 'Average Reads per Molecule'
         title = 'Cluster Classification'
-        plot.scatter_colored_by_data(df.ix[:, 0], df.ix[:, 1], clusters, xlabel=xlabel,
-                                     ylabel=ylabel, title=title)
+        seqc.plot.scatter_colored_by_data(df.ix[:, 0], df.ix[:, 1], clusters,
+                                          xlabel=xlabel, ylabel=ylabel, title=title)
         plt.ylim([0, 200])
         return fig, (ax1, ax2)
 
@@ -864,17 +863,16 @@ class Experiment:
         mask = (mol_counts > min_mols) & (ratios > min_ratio)
 
         cells = self.molecules.index[mask]
-        gc_content = np.array([three_bit.ThreeBit.gc_content(i) for i in cells])
+        gc_content = np.array([seqc.three_bit.ThreeBit.gc_content(i) for i in cells])
         ratios = ratios[mask]
 
         xlabel = 'cell GC content'
         ylabel = 'Average Reads per Molecule'
         title = 'GC Content vs Cell Coverage'
-        f, ax = plot.scatter_density(gc_content, ratios, xlabel=xlabel, ylabel=ylabel,
-                                     title=title)
+        f, ax = seqc.plot.scatter_density(gc_content, ratios, xlabel=xlabel,
+                                          ylabel=ylabel, title=title)
         plt.ylim(0, 300)
         return f, ax
-
 
 
 class CompareExperiments:

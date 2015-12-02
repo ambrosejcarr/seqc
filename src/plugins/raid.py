@@ -73,7 +73,9 @@ class RaidAutomator(ClusterSetup):
         all_dev = ' '.join(dev_names)
 
         #writing names to file for future volume cleanup
-        with open('vol_names.txt','w') as f:
+        home = os.path.expanduser("~")
+        fpath = home + "/.starcluster/plugins/vol_names.txt"
+            with open(fpath,'w') as f:
             for x in vol_names:
                 f.write('%s\n' %x)
 

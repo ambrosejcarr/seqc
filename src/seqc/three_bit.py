@@ -1,7 +1,5 @@
 __author__ = 'Ambrose J. Carr'
 
-# from copy import deepcopy
-
 
 class ThreeBit:
     """
@@ -71,18 +69,18 @@ class ThreeBit:
     
     @staticmethod
     def rmt_from_int(seq):
-        '''Extract the rmt (6 chrs) from an encoded sequecne'''
-        return seq&0o777777
+        """Extract the rmt (6 chrs) from an encoded sequecne"""
+        return seq & 0o777777
 
     @staticmethod
     def c2_from_int(seq):
-        '''Extract barcode2 from a sequence'''
-        return (seq&0o77777777000000)>>(6*3)
+        """Extract barcode2 from a sequence"""
+        return (seq & 0o77777777000000) >> (6 * 3)
 
     @staticmethod
     def c1_from_int(seq):
-        '''Extract barcode1 from a sequence'''
-        return seq>>((8+6)*3)
+        """Extract barcode1 from a sequence"""
+        return seq >> ((8 + 6) * 3)
 
     @staticmethod
     def gc_content(s):
@@ -90,7 +88,7 @@ class ThreeBit:
         gc = 0
         length = 0
         while s > 0:
-            len += 1
+            length += 1
             masked = s & 111
             if masked == 0b100 or masked == 0b100:
                 gc += 1

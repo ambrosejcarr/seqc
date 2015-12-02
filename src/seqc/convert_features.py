@@ -1,16 +1,11 @@
 __author__ = "Ambrose J. Carr"
 
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from intervaltree import IntervalTree
+from more_itertools import first
+import seqc
 import pickle
 import re
-from sys import argv, exit
-
-# define containers for Exons and Transcripts
-# Exon = namedtuple('Exon', ['start', 'end'])
-#
-# Transcript = namedtuple('Transcript',
-#                         ['start', 'end', 'strand', 'feature', 'exons', 'scid'])
 
 
 class Exon:
@@ -197,7 +192,7 @@ class ConvertFeatureCoordinates:
                         feature_table[key].add(transcript.scid)
                     break  # move on to next set of exons
 
-    def translate(self, strand, chromosome, position):
+    def translate(self, strand: str, chromosome: str, position: int) -> list:
         """
         translate a strand, chromosome, and position into all associated SCIDs, which
         correspond to groups of overlapping transcripts.
@@ -293,10 +288,124 @@ def construct_gene_table(gtf):
     return interval_table
 
 
+class ConvertGeneCoordinates:
+    """Converts alignments in chromosome coordinates to gene coordinates"""
 
-if __name__ == "__main__":
-    if not len(argv) == 3:
-        print('usage: python convert_features.py gtf_file (string) insert_size (int)')
-        exit(1)
-    else:
-        construct_feature_table(argv[1], argv[2])
+    def __init__(self, dict_of_interval_trees, id_map):
+        """
+        see from_gtf() method for in-depth documentation
+        """
+
+        seqc.util.check_type(dict_of_interval_trees, dict, 'dict_of_interval_trees')
+        seqc.util.check_type(id_map, dict, 'id_map')
+
+        # check that input dictionary isn't empty
+        if not dict_of_interval_trees:
+            raise ValueError('Cannot create an empty ConvertGeneCoordinates object. '
+                             'Please pass a non-empty dict_of_interval_trees input.')
+
+        # check type of individual trees
+        err_msg = 'dict_of_interval_trees must contain only IntervalTree leaves, not %s'
+        for tree in dict_of_interval_trees.values():
+            if not isinstance(tree, IntervalTree):
+                    raise TypeError('all dictionary values must be IntervalTrees not %s'
+                                    % type(tree))
+
+        # set self.data; self.id_map
+        self._data = dict_of_interval_trees
+        self._id_map = id_map
+
+    def translate(self, strand: str, chromosome: str, position: int) -> list:
+        """
+        translate an alignment in chromosome coordinates to gene coordinates
+
+        Note that there are some cases where genomic coordinates do not map to single
+        genes due to double utilization of exons. In this case, the method returns None.
+
+        args:
+        -----
+        strand (+, -): the strand of the record to be translated
+        chromosome: the chromosome of the record to be translated
+        position: the position of the record to be translated
+
+        returns:
+        --------
+        records: 1-item list of gene overlapping the given position. If not unique,
+         returns [].
+
+        """
+        ivs = self._data[(chromosome, strand)].search(position)
+        if len(ivs) == 1:
+            return [first(ivs).data]
+        else:
+            return []
+
+    def int2str_id(self, identifier: int) -> str:
+        """accessory function to convert integer ids back into string gene names"""
+        return self._id_map[identifier]
+
+    @staticmethod
+    def str2int_id(identifier: str) -> int:
+        """accessory function to convert string ids into integers"""
+        return hash(identifier)
+
+    def pickle(self, fname: str) -> None:
+        """Serialize self and save it to disk as fname"""
+        with open(fname, 'wb') as f:
+            pickle.dump({'dict_of_interval_trees': self._data, 'id_map': self._id_map}, f)
+
+    @classmethod
+    def from_pickle(cls, fname: str) -> None:
+        """load a ConvertGeneCoordinates object from a serialized file"""
+        with open(fname, 'rb') as f:
+            data = pickle.load(f)
+        return cls(**data)
+
+    @classmethod
+    def from_gtf(cls, gtf: str, fragment_length: int=1000) -> object:
+        """
+        construct a ConvertGeneCoordinates object from a gtf file. Also creates a map
+        of integer ids to genes, which can be saved with using pickle
+
+        # todo improve this
+        The map of strings to ints can be done by assigning sequential integers to values
+        as they are detected. This means that runs using different gtf files will
+        obtain different integer values. Hashing is another option, but the methods I've
+        looked up cannot generate integers compatible with uint32, which is preferred
+        downstream. A superior method would deterministically map gene ids to
+        uint32s.
+
+        Current methods use python hash, require the gene field be int64, and that
+        a map be saved.
+
+        args;
+        -----
+        gtf: str file identifier corresponding to the gtf file to construct the
+         ConvertGeneCoordinates object from.
+
+        returns:
+        --------
+        ConvertGeneCoordinates object built from gtf
+
+        """
+        data = {}
+        id_map = {}
+        gtf_reader = seqc.gtf.Reader(gtf)
+
+        for record in gtf_reader.iter_genes_final_nbases(fragment_length):
+
+            # check if gene is in map
+            gene = record.attribute['gene_id']
+            int_id = hash(gene)
+            if not int_id in id_map:
+                id_map[int_id] = gene
+
+            for iv in record.intervals:
+                try:
+                    data[(record.seqname, record.strand)].addi(
+                        iv[0], iv[1], int_id)
+                except KeyError:
+                    data[record.seqname, record.strand] = IntervalTree()
+                    data[record.seqname, record.strand].addi(
+                        iv[0], iv[1], int_id)
+        return cls(data, id_map)

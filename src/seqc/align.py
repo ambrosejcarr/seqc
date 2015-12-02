@@ -1,16 +1,14 @@
 __author__ = 'ambrose'
 
-from subprocess import Popen, PIPE, call, check_output, CalledProcessError
+
 import os
-from shutil import rmtree, copyfileobj
-from collections import defaultdict
-from seqc.sa_preprocess import prepare_fasta
-from seqc.sa_postprocess import ordering_out_stacks, create_gtf_reduced
-from seqc.log import info
-import seqc
 import ftplib
 import gzip
 import bz2
+from subprocess import Popen, PIPE, call, check_output, CalledProcessError
+from shutil import rmtree, copyfileobj
+from collections import defaultdict
+import seqc
 
 
 # download links for supported genomes on GEO
@@ -267,23 +265,25 @@ class STAR:
 
         # label the fasta file
         labeled_fasta = index + '%s_cdna_all_labeled.fa' % '_'.join(organism)
-        prepare_fasta.standard_run(names['gtf'], names['cdna'], labeled_fasta)
+        seqc.sa_preprocess.prepare_fasta.standard_run(names['gtf'], names['cdna'],
+                                                      labeled_fasta)
 
         # locate and execute the julia script
         julia_script = ('/'.join(seqc.__file__.split('/')[:-2]) +
                         '/scripts/complete_sa.jl')
 
         # process with julia script
-        info('Generating co-alignment suffix array.')
+        seqc.log.info('Generating co-alignment suffix array.')
         call(['julia', julia_script, labeled_fasta, index, '50'])
 
         # complete processing
         scid_to_tx = index + 'scid_to_feature.txt'
-        ordering_out_stacks.standard_run(
+        seqc.sa_postprocess.ordering_out_stacks.standard_run(
             index + 'jelly_output_stack_50.txt', scid_to_tx, labeled_fasta,
             index + 'p_coalignment_array.p')
-        create_gtf_reduced.create_gtf(names['gtf'], scid_to_tx, index +
-                                      'annotations.gtf')
+        seqc.sa_postprocess.create_gtf_reduced.create_gtf(
+            names['gtf'], scid_to_tx, index + 'annotations.gtf')
+
 
     @classmethod
     def _generate_coalignment(cls, index, organism, phix=True):
@@ -306,7 +306,7 @@ class STAR:
 
         # label the fasta with transcript ids
         labeled_fasta = index + organism + '_cdna_all_labeled.fa'
-        prepare_fasta.standard_run(gtf, merged_cdna, labeled_fasta)
+        seqc.sa_preprocess.prepare_fasta.standard_run(gtf, merged_cdna, labeled_fasta)
 
         # find julia script
         julia_script = ('/'.join(seqc.__file__.split('/')[:-2]) +
@@ -317,10 +317,11 @@ class STAR:
 
         # complete processing
         scid_to_tx = index + 'scid_to_feature.txt'
-        ordering_out_stacks.standard_run(
+        seqc.sa_postprocess.ordering_out_stacks.standard_run(
             index + 'jelly_output_stack_50.txt', scid_to_tx, labeled_fasta,
             index + 'p_coalignment_array.p')
-        create_gtf_reduced.create_gtf(gtf, scid_to_tx, index + 'annotations.gtf')
+        seqc.sa_postprocess.create_gtf_reduced.create_gtf(
+            gtf, scid_to_tx, index + 'annotations.gtf')
 
     @classmethod
     def _build_multiorganism_index(cls, index, organism, n_threads, phix=True):
@@ -346,7 +347,7 @@ class STAR:
             cls._generate_coalignment(index, organism)  # organism -> list of organisms
 
         # make index
-        info('Beginning to generate STAR index.')
+        seqc.log.info('Beginning to generate STAR index.')
         star_args = [
             'STAR',
             '--genomeDir', index,
@@ -359,7 +360,7 @@ class STAR:
         _, err = star.communicate()
         if err:
             raise ChildProcessError(err)
-        info('Finished successfully. Run Complete.')
+        seqc.log.info('Finished successfully. Run Complete.')
 
     @classmethod
     def _build_index(cls, index, organism, n_threads, phix=True):
@@ -383,7 +384,7 @@ class STAR:
             cls._generate_coalignment(index, organism, phix=phix)
 
         # make index
-        info('Beginning to generate STAR index.')
+        seqc.log.info('Beginning to generate STAR index.')
         star_args = [
             'STAR',
             '--genomeDir', index,
@@ -396,7 +397,7 @@ class STAR:
         out, err = star.communicate()
         if err:
             raise ChildProcessError(err)
-        info('Finished successfully. Run Complete.')
+        seqc.log.info('Finished successfully. Run Complete.')
 
     @classmethod
     def build_index(cls, index, organism, n_threads, phix=True, **kwargs):
@@ -410,7 +411,7 @@ class STAR:
                      'Genome', 'scid_to_feature.txt']
         for_removal = []  # container for all the files we're downloading.
 
-        info("Downloading genome files.")
+        seqc.log.info("Downloading genome files.")
         if not all(os.path.isfile(index + f) for f in all_files):
             for org in organism:
                 for file_type, name in _file_names[org].items():

@@ -1,8 +1,30 @@
 __author__ = 'ambrose'
 
-__version__ = '0.1.2'
+__version__ = '0.1.4'
 
-from seqc import (
-    align, arrays, barcodes, convert_features, fastq, h5, io_lib, plot, qc, sam,
-    three_bit, log, gtf, analyze
-)
+# supress warnings after importing seqc
+import warnings
+warnings.filterwarnings("ignore")
+
+from . import align
+from . import arrays
+from . import analyze
+from . import barcodes
+from . import convert_features
+from . import fastq
+from . import gtf
+from . import h5
+from . import io
+from . import log
+from . import parallel
+from . import plot
+from . import sam
+from . import sa_process
+from . import sa_preprocess
+from . import sa_postprocess
+from . import three_bit
+from . import core
+from . import util
+from . import sra
+from . import cluster_utils
+from . import ssh_utils
