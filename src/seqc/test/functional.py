@@ -6,6 +6,8 @@ import os
 from copy import copy
 import json
 
+import logging
+logging.getLogger('nose2').setLevel(logging.CRITICAL)
 
 def test_seqc_raw_fastq_input():
     for data_type in ['drop_seq', 'in_drop']:
