@@ -247,7 +247,7 @@ def run_remote(kwargs: dict) -> None:
     seqc.log.info('Beginning remote run.')
     print('cmd: %s' %cmd)
     cluster.serv.exec_command(cmd)
-    #cluster.serv.exec_command('nohup %s > dev/null 2>&1 &' % cmd)
+    #cluster.serv.exec_command('nohup %s > /dev/null 2>&1 &' % cmd)
     # cluster.serv.exec_command('nohup %s > /data/software/nohup.txt' % cmd)
     # seqc.log.info('Terminating local client. Email will be sent when remote run '
     #               'completes')
@@ -345,7 +345,7 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     for f in critical_index_files:
         if not os.path.isfile(index + f):
             raise FileNotFoundError('Index is missing critical file "%s". Please '
-                                    'regenerate the index.')
+                                    'regenerate the index.' %index+f)
 
     # obtain gtf file from index argument
     gtf = index + 'annotations.gtf'
