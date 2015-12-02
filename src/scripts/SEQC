@@ -220,7 +220,7 @@ if __name__ == "__main__":
                 kwargs['output_prefix'], kwargs['email_status'], kwargs['aws_upload_key'])
         except:
             seqc.log.exception()
-            email_body = b'Process interrupted -- see attached error message'
+            email_body = 'Process interrupted -- see attached error message'
             seqc.cluster_utils.email_user(attachment='seqc.log', email_body=email_body,
                                           email_address=kwargs['email_status'])
             sys.exit(1)

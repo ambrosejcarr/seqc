@@ -295,9 +295,9 @@ def email_user(attachment, email_body, email_address: str) -> None:
     """
     seqc.log.exception()
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
-    email_process = Popen(email_args, stdin=email_body)
+    message = Popen(['echo',email_body],stdout=PIPE,stderr=PIPE)
+    email_process = Popen(email_args, stdin=message.stdout,stdout=PIPE,stderr=PIPE)
     email_process.communicate()
-
 
 def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> None:
     """
