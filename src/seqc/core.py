@@ -218,7 +218,7 @@ def run_remote(kwargs: dict) -> None:
         if v:
             edit_k = '-'.join(k.split('_'))
             cmd += '--%s %s ' % (edit_k, v)
-    print(cmd)
+    print('cmd: %s' %cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
     cluster = seqc.cluster_utils.ClusterServer()
@@ -245,9 +245,12 @@ def run_remote(kwargs: dict) -> None:
     # 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p
     # --output-prefix /data/software/qq"
     seqc.log.info('Beginning remote run.')
-    cluster.serv.exec_command('nohup %s > dev/null 2>&1 &' % cmd)
-    seqc.log.info('Terminating local client. Email will be sent when remote run '
-                  'completes')
+    print('cmd: %s' %cmd)
+    cluster.serv.exec_command(cmd)
+    #cluster.serv.exec_command('nohup %s > dev/null 2>&1 &' % cmd)
+    # cluster.serv.exec_command('nohup %s > /data/software/nohup.txt' % cmd)
+    # seqc.log.info('Terminating local client. Email will be sent when remote run '
+    #               'completes')
 
     #shut down cluster after finished
     # todo | have local program exit while process still runs remotely

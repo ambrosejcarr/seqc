@@ -256,9 +256,10 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
         #see if this does anything
         location = folder + "seqc.tar.gz"
+        # todo | get rid of "nuke_sc" branch here, just for testing
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/nuke_sc | sudo tee %s > /dev/null' % location)
         # implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
         print('successfully installed seqc.tar.gz in %s on the cluster!' %folder)
@@ -271,7 +272,6 @@ class ClusterServer(object):
     def cluster_setup(self, name):
         print('setting up cluster %s...' % name)
         config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/aws.config'
-        print(config_file)
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
