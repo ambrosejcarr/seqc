@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 from subprocess import Popen, PIPE, check_output
-import seqc.io_lib as iolib
+import seqc
 import argparse
 
 
@@ -35,7 +35,7 @@ def main(cmdstring):
         makedir = check_output(['mkdir', 'upload'])
         fin = check_output(['xargs', 'cp', '-t', 'upload'], stdin=output.stdout)
         zipped = check_output(['tar', '-czf', 'seqc_out.tar.gz', 'upload'])
-        iolib.S3.upload_file('seqc_out.tar.gz', 'dplab-data', 'seqc/test_seqc/')
+        seqc.io.S3.upload_file('seqc_out.tar.gz', 'dplab-data', 'seqc/test_seqc/')
 
         # in the case that .npz file exists, which should be always
         if res:
