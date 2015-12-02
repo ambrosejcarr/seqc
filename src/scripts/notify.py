@@ -18,12 +18,15 @@ def main(cmdstring):
         with open('errors.txt', 'w') as f:
             for x in errmsg:
                 f.write(x + '\n')
-        ps = Popen(['echo', "Process interrupted -- see attached error message"], stdout=PIPE, stderr=PIPE)
-        output = Popen(['mutt', '-a', 'errors.txt', '-s', 'Remote Process', '--', 'kristy.choi24@gmail.com'],
-                   stdin=ps.stdout, stdout=PIPE, stderr=PIPE)
+        ps = Popen(['echo', "Process interrupted -- see attached error message"],
+                   stdout=PIPE, stderr=PIPE)
+        output = Popen(['mutt', '-a', 'errors.txt', '-s', 'Remote Process', '--',
+                        'kristy.choi24@gmail.com'],
+                        stdin=ps.stdout, stdout=PIPE, stderr=PIPE)
     else:
         ps = Popen(['find', '.', '-type', 'f'], stdout=PIPE, stderr=PIPE)
-        output = Popen(['grep', '-E', 'out.sam$|.h5$|merged|.npz$'], stdin=ps.stdout, stdout=PIPE, stderr=PIPE)
+        output = Popen(['grep', '-E', 'out.sam$|.h5$|merged|.npz$'], stdin=ps.stdout,
+                       stdout=PIPE, stderr=PIPE)
 
         # get name of .npz file here
         pp = Popen(['find', '.', '-type', 'f'], stdout=PIPE, stderr=PIPE)
@@ -40,17 +43,20 @@ def main(cmdstring):
         # in the case that .npz file exists, which should be always
         if res:
             ms = Popen(['echo',
-                    "seqc run complete -- see attached .npz file. The rest of the output is available as seqc_out.tar.gz in "
+                    "seqc run complete -- see attached .npz file. The rest of the output is "
+                    "available as seqc_out.tar.gz in "
                     "your specified S3 bucket."], stdout=PIPE, stderr=PIPE)
-            msgout = Popen(['mutt', '-a', res, '-s', 'Remote Process', '--', 'kristy.choi24@gmail.com'], stdin=ms.stdout,
+            msgout = Popen(['mutt', '-a', res, '-s', 'Remote Process', '--',
+                            'kristy.choi24@gmail.com'], stdin=ms.stdout,
                        stdout=PIPE, stderr=PIPE)
         else:
             # just for now when we don't have the .npz file
-            ms = Popen(['echo', "seqc run complete! The rest of the output is available as seqc_out.tar.gz in "
+            ms = Popen(['echo', "seqc run complete! The rest of the output is available as "
+                                "seqc_out.tar.gz in "
                             "your specified S3 bucket."], stdout=PIPE, stderr=PIPE)
-            msgout = Popen(['mutt', '-s', 'Remote Process', '--', 'kristy.choi24@gmail.com'], stdin=ms.stdout, stdout=PIPE,
-                       stderr=PIPE)
-
+            msgout = Popen(['mutt', '-s', 'Remote Process', '--', 'kristy.choi24@gmail.com'],
+                           stdin=ms.stdout, stdout=PIPE,
+                           stderr=PIPE)
 
 if __name__ == "__main__":
     #process cmdstring

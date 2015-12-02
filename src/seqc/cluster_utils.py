@@ -6,6 +6,7 @@ import os
 import configparser
 import random
 import seqc
+from subprocess import Popen, PIPE
 from botocore.exceptions import ClientError
 
 # instance.update() to refresh
@@ -278,3 +279,65 @@ class ClusterServer(object):
         self.git_pull()
         self.set_credentials()
         print('sucessfully set up the remote cluster environment!')
+
+
+def email_user(attachment, email_body, email_address: str) -> None:
+    """
+    todo document me!
+
+    args:
+    -----
+
+    returns:
+    --------
+    None
+    """
+    seqc.log.exception()
+    email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
+    email_process = Popen(email_args, stdin=email_body)
+    email_process.communicate()
+
+
+def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> None:
+    """
+    todo document me!
+
+    args:
+    -----
+
+    returns:
+    --------
+    None
+    """
+    prefix, directory = seqc.core.fix_output_paths(output_prefix)
+
+    # todo
+    # at some point, script should write a metadata summary and upload that in place of
+    # the alignment summary
+
+    samfile = directory + 'Aligned.out.sam'
+    h5_archive = prefix + '.h5'
+    merged_fastq = directory + 'merged.fastq'
+    counts = prefix + '_sp_counts.npz'
+    id_map = prefix + '_gene_id_map.p'
+    summary = prefix + 'alignment_summary.txt'
+    files = [samfile, h5_archive, merged_fastq, counts, id_map, summary]
+
+    # gzip everything and upload to aws_upload_key
+    archive_name = prefix + '.tar.gz'
+    gzip_args = ['tar', '-czf', archive_name] + files
+    gzip = Popen(gzip_args)
+    gzip.communicate()
+    bucket, key = seqc.io.S3.split_link(aws_upload_key)
+    seqc.io.S3.upload_file(archive_name, bucket, key)
+
+    # gzip small files for email
+    attachment = prefix + '_counts_and_metadata.tar.gz'
+    gzip_args = ['tar', '-czf', attachment, counts, id_map, summary]
+    gzip = Popen(gzip_args)
+    gzip.communicate()
+
+    # email results to user
+    body = ('SEQC run complete -- see attached .npz file. The rest of the output is '
+            'available as %s in your specified S3 bucket.' % archive_name)
+    email_user(attachment, body, email_address)

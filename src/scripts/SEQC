@@ -14,239 +14,174 @@ import seqc
 # import seqc.io_lib as iolib
 
 
-# todo | add ability to fetch data from geo (provide additional alt. input argument -g)
-# todo | merge all of the metadata into a dictionary that is written at the end of the
-# todo |   pipeline or when any errors occur
-# todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
-# todo | SLOWEST PIECES ARE:
-# todo | (1) post-process -- this can be sped up by generating in pieces, out of memory
-# todo |     pandas table using all 30 threads. This will drop the time ~ 30x; somewhat
-# todo |     tricky to generate the JaggedArrays; think on this!
-# todo | (2) disambiguation -- profile to check for slow part. One thing that will speed
-# todo |     up the process is sparsifying the arrays; eliminating zeros. Will reduce
-# todo |     overhead by a lot.
-def process_input():
+# # todo | add ability to fetch data from geo (provide additional alt. input argument -g)
+# # todo | merge all of the metadata into a dictionary that is written at the end of the
+# # todo |   pipeline or when any errors occur
+# # todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
+# # todo | SLOWEST PIECES ARE:
+# # todo | (1) post-process -- this can be sped up by generating in pieces, out of memory
+# # todo |     pandas table using all 30 threads. This will drop the time ~ 30x; somewhat
+# # todo |     tricky to generate the JaggedArrays; think on this!
+# # todo | (2) disambiguation -- profile to check for slow part. One thing that will speed
+# # todo |     up the process is sparsifying the arrays; eliminating zeros. Will reduce
+# # todo |     overhead by a lot.
+# def process_input():
+#
+#     ################################# DEFINE ARGS ######################################
+#
+#     parser = argparse.ArgumentParser()
+#
+#     # add subparsers for each library construction method
+#     subparsers = parser.add_subparsers(help='library construction method types',
+#                                        dest='subparser_name')
+#     parse_in_drop = subparsers.add_parser('in-drop', help='in-drop help')
+#     parse_drop_seq = subparsers.add_parser('drop-seq', help='drop-seq help')
+#     parse_mars_seq = subparsers.add_parser('mars-seq', help='mars-seq help')
+#     parse_cel_seq = subparsers.add_parser('cel-seq', help='cel-seq help')
+#     parse_avo_seq = subparsers.add_parser('avo-seq', help='avo-seq help')
+#     parse_strt_seq = subparsers.add_parser('strt-seq', help='strt-seq help')
+#
+#     # get a list of parsers, set-up pipeline function for each parser
+#     subparser_list = [parse_in_drop, parse_mars_seq, parse_cel_seq,
+#                       parse_avo_seq, parse_strt_seq, parse_drop_seq]
+#     # default_functions = [in_drop, mars_seq, cel_seq, avo_seq, strt_seq, drop_seq]
+#     default_functions = ['in_drop', 'mars_seq', 'cel_seq', 'avo_seq', 'strt_seq', 'drop_seq']
+#     for p, f in zip(subparser_list, default_functions):
+#         p.set_defaults(func=f)
+#
+#     # set barcode default for drop_seq:
+#     parse_drop_seq.set_defaults(barcodes=[])
+#
+#     # set required arguments for all parsers
+#     for i, p in enumerate(subparser_list):
+#         r = p.add_argument_group('Required Arguments')
+#         # todo needs to take input from user on what organism it should be
+#         r.add_argument('-i', '--index', metavar='I', help='local or s3 location of star '
+#                        'alignment index folder. This folder will be created if it does '
+#                        'not exist', default=None)
+#         r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
+#                        type=int, default=None)
+#         r.add_argument('-o', '--output-file', metavar='O', default=None,
+#                        help='stem of filename in which to store output')
+#         #cluster name argument for running on the cluster
+#         r.add_argument('-c', '--cluster-name', metavar='C', default=None,
+#                        help='optional name for aws cluster')
+#
+#         # for all experiments except drop-seq, barcodes are a required input argument
+#         if i < 5:
+#             r.add_argument('-b', '--barcodes', metavar='B', default=None,
+#                            help='local or s3 location of serialized barcode object.')
+#
+#         i = p.add_argument_group(
+#             title='Input Files',
+#             description='pass one input file type: sam (-s), raw fastq (-f, [-r]), or '
+#                         'processed fastq (-m)')
+#
+#         i.add_argument('-f', '--forward', help='forward fastq file(s)', metavar='F',
+#                        nargs='*', default=None)
+#         i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
+#                        nargs='*', default=None)
+#         i.add_argument('-s', '--samfile', metavar='S', nargs='?', default=None,
+#                        help='sam file(s) containing aligned, pre-processed reads')
+#         i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
+#                        help='fastq file containing merged, pre-processed records')
+#
+#         # disambiguation arguments
+#         d = p.add_argument_group('Optional arguments for disambiguation')
+#         d.add_argument('-l', '--frag-len', metavar='L', type=int, default=1000,
+#                        help='the number of bases from the 3 prime end to '
+#                        'consider when determining trancript overlaps')
+#
+#         # alignment arguments
+#         a = p.add_argument_group('Optional arguments for STAR aligner')
+#         a.add_argument('--star-args', metavar='SA', nargs='+', default={},
+#                        help='additional arguments for STAR. Pass as arg=value without '
+#                             'leading "--". e.g. runMode=alignReads')
+#         a.add_argument('--list-default-star-args', default=False, action='store_true',
+#                        help='list SEQDB default args for the STAR aligner')
+#
+#     if len(sys.argv) == 1:
+#         parser.print_help()
+#         sys.exit(2)
+#
+#     # add a sub-parser for building the index
+#     pindex = subparsers.add_parser('index', help='SEQC index functions')
+#     pindex.add_argument('-b', '--build', action='store_true', default=False,
+#                         help='build a SEQC index')
+#     pindex.add_argument('-t', '--test', action='store_true', default=False,
+#                         help='test a SEQC index')
+#     pindex.add_argument('-o', '--organism', required=True, nargs='+', metavar='O',
+#                         help='build index for these organism(s)')
+#     pindex.add_argument('-i', '--index', help='name of folder where index should be '
+#                         'built or containing the index to be verified',
+#                         required=True, metavar='I')
+#     pindex.add_argument('-n', '--n-threads', type=int, default=4, help='number of threads'
+#                         ' to use when building index', metavar='N')
+#     pindex.add_argument('-c', '--cluster-name', metavar='C', default=None,
+#                         help='optional name for aws cluster')
+#
+#     # todo | phiX is going to need an SCID! will this be automatically generated? Is it
+#     # todo |  going to get fucked up by all the post-processing last 1kb stuff?
+#     # todo | change p_coalignment to array
+#     pindex.add_argument('--phix', help='add phiX to the genome index and GTF file.',
+#                         action='store_true', default=False)
+#
+#     # allow user to check version
+#     parser.add_argument('-v', '--version', help='print version and exit',
+#                         action='store_true', default=False)
+#
+#     #################################### PARSE ARGS #####################################
+#
+#     arguments = parser.parse_args()
+#
+#     if arguments.version:
+#         print('SEQC version: %s' % seqc.__version__)
+#         exit(2)
+#
+#     if arguments.subparser_name == 'index':
+#         if arguments.build and not arguments.test:
+#             arguments.func = seqc.align.STAR.build_index
+#         elif arguments.test and not arguments.build:
+#             arguments.func = seqc.align.STAR.test_index
+#         else:
+#             print('SEQC index: error: one but not both of the following arguments must '
+#                   'be provided: -b/--build, -t/--test')
+#             sys.exit(2)
+#     else:
+#
+#         # list star args if requested, then exit
+#         if arguments.list_default_star_args:
+#             printable_args = json.dumps(
+#                 seqc.align.STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
+#                 separators=(',', ': '), indent=4)
+#             print(printable_args)
+#             sys.exit(2)
+#
+#         # check that at least one input argument was passed:
+#         check = [arguments.forward, arguments.reverse, arguments.samfile,
+#                  arguments.merged_fastq]
+#         if not any(check):
+#             print('SEQC %s: error: one or more of the following arguments must be '
+#                   'provided: -f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
+#                   arguments.subparser_name)
+#             sys.exit(2)
+#         required = [arguments.output_file, arguments.index, arguments.n_threads]
+#         if not arguments.subparser_name == 'drop-seq':
+#             if not all(required + [arguments.barcodes]):
+#                 print('SEQC %s: error: the following arguments are required: -i/--index, '
+#                       '-n/--n-threads, -o/--output-prefix, -b/--barcodes')
+#                 sys.exit(2)
+#         else:
+#             if not all(required):
+#                 print('SEQC %s: error: the following arguments are required: -i/--index, '
+#                       '-n/--n-threads, -o/--output-prefix')
+#
+#     return vars(arguments)
 
-    ################################# DEFINE ARGS ######################################
-
-    parser = argparse.ArgumentParser()
-
-    # add subparsers for each library construction method
-    subparsers = parser.add_subparsers(help='library construction method types',
-                                       dest='subparser_name')
-    parse_in_drop = subparsers.add_parser('in-drop', help='in-drop help')
-    parse_drop_seq = subparsers.add_parser('drop-seq', help='drop-seq help')
-    parse_mars_seq = subparsers.add_parser('mars-seq', help='mars-seq help')
-    parse_cel_seq = subparsers.add_parser('cel-seq', help='cel-seq help')
-    parse_avo_seq = subparsers.add_parser('avo-seq', help='avo-seq help')
-    parse_strt_seq = subparsers.add_parser('strt-seq', help='strt-seq help')
-
-    # get a list of parsers, set-up pipeline function for each parser
-    subparser_list = [parse_in_drop, parse_mars_seq, parse_cel_seq,
-                      parse_avo_seq, parse_strt_seq, parse_drop_seq]
-    # default_functions = [in_drop, mars_seq, cel_seq, avo_seq, strt_seq, drop_seq]
-    default_functions = ['in_drop', 'mars_seq', 'cel_seq', 'avo_seq', 'strt_seq', 'drop_seq']
-    for p, f in zip(subparser_list, default_functions):
-        p.set_defaults(func=f)
-
-    # set barcode default for drop_seq:
-    parse_drop_seq.set_defaults(barcodes=[])
-
-    # set required arguments for all parsers
-    for i, p in enumerate(subparser_list):
-        r = p.add_argument_group('Required Arguments')
-        # todo needs to take input from user on what organism it should be
-        r.add_argument('-i', '--index', metavar='I', help='local or s3 location of star '
-                       'alignment index folder. This folder will be created if it does '
-                       'not exist', default=None)
-        r.add_argument('-n', '--n-threads', help='number of threads to run', metavar='N',
-                       type=int, default=None)
-        r.add_argument('-o', '--output-file', metavar='O', default=None,
-                       help='stem of filename in which to store output')
-        #cluster name argument for running on the cluster
-        r.add_argument('-c', '--cluster-name', metavar='C', help='name of cluster',
-                       default=None)
-
-        # for all experiments except drop-seq, barcodes are a required input argument
-        if i < 5:
-            r.add_argument('-b', '--barcodes', metavar='B', default=None,
-                           help='local or s3 location of serialized barcode object.')
-
-        i = p.add_argument_group(
-            title='Input Files',
-            description='pass one input file type: sam (-s), raw fastq (-f, [-r]), or '
-                        'processed fastq (-m)')
-
-        i.add_argument('-f', '--forward', help='forward fastq file(s)', metavar='F',
-                       nargs='*', default=None)
-        i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
-                       nargs='*', default=None)
-        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default=None,
-                       help='sam file(s) containing aligned, pre-processed reads')
-        i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
-                       help='fastq file containing merged, pre-processed records')
-
-        # disambiguation arguments
-        d = p.add_argument_group('Optional arguments for disambiguation')
-        d.add_argument('-l', '--frag-len', metavar='L', type=int, default=1000,
-                       help='the number of bases from the 3 prime end to '
-                       'consider when determining trancript overlaps')
-
-        # alignment arguments
-        a = p.add_argument_group('Optional arguments for STAR aligner')
-        a.add_argument('--star-args', metavar='SA', nargs='+', default={},
-                       help='additional arguments for STAR. Pass as arg=value without '
-                            'leading "--". e.g. runMode=alignReads')
-        a.add_argument('--list-default-star-args', default=False, action='store_true',
-                       help='list SEQDB default args for the STAR aligner')
-
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(2)
-
-    # add a sub-parser for building the index
-    pindex = subparsers.add_parser('index', help='SEQC index functions')
-    pindex.add_argument('-b', '--build', action='store_true', default=False,
-                        help='build a SEQC index')
-    pindex.add_argument('-t', '--test', action='store_true', default=False,
-                        help='test a SEQC index')
-    pindex.add_argument('-o', '--organism', required=True, nargs='+', metavar='O',
-                        help='build index for these organism(s)')
-    pindex.add_argument('-i', '--index', help='name of folder where index should be '
-                        'built or containing the index to be verified',
-                        required=True, metavar='I')
-    pindex.add_argument('-n', '--n-threads', type=int, default=4, help='number of threads'
-                        ' to use when building index', metavar='N')
-    pindex.add_argument('-c', '--cluster-name', metavar='C', help='name of cluster',
-                       default=None)
-    # todo | phiX is going to need an SCID! will this be automatically generated? Is it
-    # todo |  going to get fucked up by all the post-processing last 1kb stuff?
-    # todo | change p_coalignment to array
-    pindex.add_argument('--phix', help='add phiX to the genome index and GTF file.',
-                        action='store_true', default=False)
-
-    # allow user to check version
-    parser.add_argument('-v', '--version', help='print version and exit',
-                        action='store_true', default=False)
-
-    #################################### PARSE ARGS #####################################
-
-    arguments = parser.parse_args()
-
-    if arguments.version:
-        print('SEQC version: %s' % seqc.__version__)
-        exit(2)
-
-    if arguments.subparser_name == 'index':
-        if arguments.build and not arguments.test:
-            arguments.func = seqc.align.STAR.build_index
-        elif arguments.test and not arguments.build:
-            arguments.func = seqc.align.STAR.test_index
-        else:
-            print('SEQC index: error: one but not both of the following arguments must '
-                  'be provided: -b/--build, -t/--test')
-            sys.exit(2)
-    else:
-
-        # list star args if requested, then exit
-        if arguments.list_default_star_args:
-            printable_args = json.dumps(
-                seqc.align.STAR.default_alignment_args('$FASTQ', '$N_THREADS', '$INDEX', './$EXP_NAME/'),
-                separators=(',', ': '), indent=4)
-            print(printable_args)
-            sys.exit(2)
-
-        # check that at least one input argument was passed:
-        check = [arguments.forward, arguments.reverse, arguments.samfile,
-                 arguments.merged_fastq]
-        if not any(check):
-            print('SEQC %s: error: one or more of the following arguments must be '
-                  'provided: -f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
-                  arguments.subparser_name)
-            sys.exit(2)
-        required = [arguments.output_file, arguments.index, arguments.n_threads]
-        if not arguments.subparser_name == 'drop-seq':
-            if not all(required + [arguments.barcodes]):
-                print('SEQC %s: error: the following arguments are required: -i/--index, '
-                      '-n/--n-threads, -o/--output-prefix, -b/--barcodes')
-                sys.exit(2)
-        else:
-            if not all(required):
-                print('SEQC %s: error: the following arguments are required: -i/--index, '
-                      '-n/--n-threads, -o/--output-prefix')
-
-    return vars(arguments)
-
-
-def run_SEQC_remote(kwargs):
-    """
-    - ideally we would call the function, have the local function EXIT, and then have the
-      remote function proceed until complete, at which point it will upload data and
-      optionally email the user. (it could also send debug information if it fails)
-
-    """
-    cmd = 'SEQC '
-
-    # get the positional argument; doesn't need a '--' prefix
-    positional = kwargs['subparser_name']
-    clustname = kwargs['cluster_name']
-
-    cmd += positional + ' '
-    del kwargs['subparser_name']
-    del kwargs['func']
-    del kwargs['cluster_name']
-
-    for k, v in kwargs.items():
-        if isinstance(v, list):
-            v = ' '.join(v)  # lists of input files should be merged with whitespace
-        if v:
-            edit_k = '-'.join(k.split('_'))
-            cmd += '--%s %s ' % (edit_k, v)
-    #cmd += '"'
-    print(cmd)
-
-    # set up remote cluster here, finishes all the way through gitpull
-    cluster = seqc.cluster_utils.ClusterServer()
-    cluster.cluster_setup(clustname)
-    #this is the end of cluster setup!
-    cluster.serv.connect()
-    # s = sshutils.SSHServer('i-68f996d8','/Users/kristyc/.ssh/eyc2120.rsa')
-    # s.connect()
-
-    #downloading files here
-    # cluster.serv.exec_command('cd /data/software; sudo chown ubuntu /data/;
-    # sudo chown ubuntu /data/software')
-    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/short_f1.fastq','shortf1.fastq')
-    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/short_r1.fastq','short_r1.fastq')
-    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/notify.py','notify.py')
-    cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
-    cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
-    cluster.serv.exec_command('mv notify.py /data/software/notify.py')
-
-    #running SEQC on the cluster
-    # cmdstring = "SEQC in-drop --forward short_f1.fastq --index
-    # s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads
-    # 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p
-    # --output-prefix /data/software/qq"
-    print('executing %s on the remote cluster...' %cmd)
-    cluster.serv.exec_command('cd /data/software; python3 notify.py -l %s' %cmd)
-
-    #shut down cluster after finished
-    # todo | have local program exit while process still runs remotely
-    # print('shutting down cluster...')
-    # if out:
-    #     cluster.terminate_cluster()
-    #     sys.exit("process complete -- program exiting")
-    # elif err:
-    #     cluster.terminate_cluster()
-    #     sys.exit("process complete -- program exiting")
 
 if __name__ == "__main__":
-    parser = seqc.core.create_parser()
-    kwargs = seqc.core.parse_args(parser)
-    seqc.log.setup_logger()
-    try:
-        # log command line arguments for debugging
+
+    def initialize_logging():
         arg_copy = copy(kwargs)
         del arg_copy['func']  # function is not serializable
 
@@ -255,10 +190,56 @@ if __name__ == "__main__":
         seqc.log.info('Passed command line arguments: %s' %
                       json.dumps(arg_copy, separators=(',', ': '), indent=4))
 
-        # func = kwargs['func']
-        # func(**kwargs)
-        run_SEQC_remote(kwargs)
+    parser = seqc.core.create_parser()
+    kwargs = seqc.core.parse_args(parser)
+    seqc.log.setup_logger()
 
-    except:
-        seqc.log.exception()
-        raise
+    if kwargs['remote']:
+        try:
+            # log command line arguments for debugging
+            initialize_logging()
+            seqc.log.info('Starting REMOTE run')
+
+            # run remotely
+            del kwargs['remote']
+            seqc.core.run_remote(kwargs)
+        except:
+            seqc.log.exception()
+            raise
+
+    elif kwargs['email_status']:
+        try:
+            # log command line arguments for debugging
+            arg_copy = copy(kwargs)
+            initialize_logging()
+
+            # run locally
+            func = kwargs['func']
+            func(**kwargs)
+            seqc.cluster_utils.upload_results(
+                kwargs['output_prefix'], kwargs['email_status'], kwargs['aws_upload_key'])
+        except:
+            seqc.log.exception()
+            email_body = b'Process interrupted -- see attached error message'
+            seqc.cluster_utils.email_user(attachment='seqc.log', email_body=email_body,
+                                          email_address=kwargs['email_status'])
+            sys.exit(1)
+        finally:
+            # todo add cluster cleanup here
+            # Note that this finally loop is executed regardless
+            # of whether cluster SETUP has succeeded; there may not be any cluster.
+            # Program accordingly.
+            pass
+
+    else:  # not email_status and not remote
+        try:
+            # log command line arguments for debugging
+            arg_copy = copy(kwargs)
+            initialize_logging()
+
+            # run locally
+            func = kwargs['func']
+            func(**kwargs)
+        except:
+            seqc.log.exception()
+            raise
