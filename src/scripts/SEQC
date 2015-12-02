@@ -219,16 +219,17 @@ def run_SEQC_remote(kwargs):
 
     #downloading files here
     # cluster.serv.exec_command('cd /data/software; sudo chown ubuntu /data/; sudo chown ubuntu /data/software')
-    cluster.serv.put_file('/Users/kristyc/Downloads/short_f1.fastq','shortf1.fastq')
-    cluster.serv.put_file('/Users/kristyc/Downloads/short_r1.fastq','short_r1.fastq')
+    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/short_f1.fastq','shortf1.fastq')
+    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/short_r1.fastq','short_r1.fastq')
+    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/notify.py','notify.py')
     cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
     cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
+    cluster.serv.exec_command('mv notify.py /data/software/notify.py')
 
     #running SEQC on the cluster
-    # cmd = 'SEQC in-drop -f f1.fastq -r r1.fastq -i s3://dplab-data/genomes/hg38/ -n 30 -o /data/software/qq -b s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p'
-    cmdstring = "SEQC in-drop --forward short_f1.fastq --index s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p --output-file /data/software/qq"
+    # cmdstring = "SEQC in-drop --forward short_f1.fastq --index s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p --output-file /data/software/qq"
     print('executing %s on the remote cluster...' %cmd)
-    cluster.serv.exec_command('python3 notify.py -l %s' %cmd)
+    cluster.serv.exec_command('cd /data/software; python3 notify.py -l %s' %cmd)
 
     #shut down cluster after finished
     # todo | have local program exit while process still runs remotely
