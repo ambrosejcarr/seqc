@@ -166,12 +166,12 @@ def _process_chunk(chunk, feature_converter):
     while records[0][0].startswith('@'):
         records = records[1:]
 
-    # over-allocate a numpy structured array, we'll trim n records == number of
-    # reads that multi-aligned
+    # over-allocate a numpy structured array, we'll trim n == number of
+    # reads that multi-aligned records at the end
     n = len(records)
     data = np.zeros((n,), dtype=_dtype)
     index = np.zeros((n, 2), dtype=np.uint32)
-    features = np.zeros(n, dtype=np.uint32)
+    features = np.zeros(n, dtype=np.int64)  # changed feature storage for hashed genes
     positions = np.zeros(n, dtype=np.uint32)
 
     # process multi-alignments
@@ -280,7 +280,11 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     expectedrows = filesize / average_record_size
 
     # create a feature_converter object to convert genomic -> transcriptomic features
-    fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, fragment_length)
+    # todo this is where the conversion method is defined; swapped genes in here.
+    # fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, fragment_length)
+    fc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(gtf, fragment_length)
+    fc_name = h5_name.replace('.h5', '_gene_id_map.p')
+    fc.pickle(fc_name)  # save the id map
 
     read_kwargs = dict(samfile=samfile, n=chunk_size)
     process_kwargs = dict(feature_converter=fc)

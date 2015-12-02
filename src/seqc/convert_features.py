@@ -2,6 +2,7 @@ __author__ = "Ambrose J. Carr"
 
 from collections import defaultdict
 from intervaltree import IntervalTree
+from more_itertools import first
 import seqc
 import pickle
 import re
@@ -191,7 +192,7 @@ class ConvertFeatureCoordinates:
                         feature_table[key].add(transcript.scid)
                     break  # move on to next set of exons
 
-    def translate(self, strand, chromosome, position):
+    def translate(self, strand: str, chromosome: str, position: int) -> list:
         """
         translate a strand, chromosome, and position into all associated SCIDs, which
         correspond to groups of overlapping transcripts.
@@ -314,8 +315,7 @@ class ConvertGeneCoordinates:
         self._data = dict_of_interval_trees
         self._id_map = id_map
 
-
-    def translate(self, strand: str, chromosome: str, position: int) -> tuple:
+    def translate(self, strand: str, chromosome: str, position: int) -> list:
         """
         translate an alignment in chromosome coordinates to gene coordinates
 
@@ -330,12 +330,13 @@ class ConvertGeneCoordinates:
 
         returns:
         --------
-        records: all genes that overlap the given position
+        records: 1-item list of gene overlapping the given position. If not unique,
+         returns [].
 
         """
         ivs = self._data[(chromosome, strand)].search(position)
         if len(ivs) == 1:
-            return [ivs[0].data]
+            return [first(ivs).data]
         else:
             return []
 
