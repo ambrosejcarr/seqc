@@ -270,7 +270,8 @@ class ClusterServer(object):
 
     def cluster_setup(self, name):
         print('setting up cluster %s...' % name)
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/plugins/aws.config'
+        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/aws.config'
+        print(config_file)
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
