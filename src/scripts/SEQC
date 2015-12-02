@@ -8,10 +8,6 @@ from copy import copy
 import sys
 import json
 
-# for htqc;  comment back in when dependencies are installed
-# from subprocess import call
-# from multiprocessing import Process
-
 
 if __name__ == "__main__":
     parser = seqc.core.create_parser()

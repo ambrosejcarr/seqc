@@ -6,6 +6,7 @@ from collections.abc import Iterator, Iterable
 from more_itertools import peekable
 from itertools import chain
 from operator import itemgetter, attrgetter
+import numpy as np
 import io
 import seqc
 import pickle
@@ -20,6 +21,18 @@ Record = namedtuple('Record', ['seqname', 'source', 'feature', 'start', 'end',
 MultiRecord = namedtuple('MultiRecord', ['seqname', 'source', 'feature', 'intervals',
                                          'score', 'strand', 'frame', 'attribute'])
 
+
+class Sample:
+    """Sample from intervals specified by a gtf file"""
+
+    def __init__(self, gtf):
+        seqc.util.check_type(gtf, str, 'gtf')
+        self._gtf = gtf
+        self._gene_data = None
+        self._tx_data = None
+        self._exon_data = None
+
+    def sample_genes(self, fragment_length: int=1000) -> np.array:
 
 class Reader:
     """GTF reader optimized for utility and simplicity"""
