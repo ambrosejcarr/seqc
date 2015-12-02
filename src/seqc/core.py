@@ -51,6 +51,10 @@ def create_parser():
         r.add_argument('-k', '--aws-upload-key', metavar='K', default=None,
                        help='upload processed results to this AWS folder. Required if '
                             '--remote is passed')
+        r.add_argument('--remote', default=False, action='store_true',
+                       help='run the requested SEQC command remotely')
+        r.add_argument('--email-status', default='', metavar='E',
+                       help='email results to this address')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
@@ -110,15 +114,16 @@ def create_parser():
     pindex.add_argument('-k', '--aws-upload-key', metavar='K', default=None,
                         help='upload constructed index to this AWS folder. Required if '
                              '--remote is passed')
+    pindex.add_argument('--remote', default=False, action='store_true',
+                        help='run the requested SEQC command remotely')
+    pindex.add_argument('--email-status', default='', metavar='E',
+                        help='email results to this address')
+
 
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
     # allow indication of remote run.
-    parser.add_argument('--remote', default=False, action='store_true',
-                        help='run the requested SEQC command remotely')
-    parser.add_argument('--email-status', default='', metavar='E',
-                        help='email results to this address')
 
 
     return parser
