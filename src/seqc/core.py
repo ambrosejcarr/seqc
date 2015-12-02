@@ -38,7 +38,6 @@ def create_parser():
     # set required arguments for all parsers
     for i, p in enumerate(subparser_list):
         r = p.add_argument_group('Required Arguments')
-        # todo needs to take input from user on what organism it should be
         r.add_argument('-i', '--index', metavar='I', help='local or s3 location of star '
                        'alignment index folder. This folder will be created if it does '
                        'not exist', default=None)
