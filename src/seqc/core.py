@@ -315,7 +315,7 @@ def check_index(index: str, output_dir: str='') -> (str, str):
         index += '/'
 
     critical_index_files = ['SA', 'SAindex', 'Genome', 'annotations.gtf',
-                            'p_coalignment.pckl']
+                            'p_coalignment_array.p']
 
     if not index.startswith('s3://'):  # index is a file path
         if not os.path.isdir(index):
