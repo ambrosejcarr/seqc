@@ -5,12 +5,14 @@ from numpy.lib.recfunctions import append_fields
 import nose2
 from nose2.tools import params
 from more_itertools import first
+from itertools import islice
 import unittest
 import os
 import pickle
 import tables as tb
 import seqc
 from io import StringIO
+from glob import glob
 import numpy as np
 import xml.dom.minidom
 import random
@@ -49,8 +51,10 @@ class config:
     samfile_pattern = seqc_dir + 'test_data/%s/.seqc_test/Aligned.out.sam'
     forward_pattern = seqc_dir + 'test_data/%s/fastq/test_seqc_r1.fastq'
     reverse_pattern = seqc_dir + 'test_data/%s/fastq/test_seqc_r2.fastq'
-    barcode_pattern = seqc_dir + 'test_data/%s/barcodes/barcodes.p'
-    barcode_link_pattern = 's3://dplab-data/barcodes/%s/barcodes.p'
+    barcode_serial_pattern = seqc_dir + 'test_data/%s/barcodes/barcodes.p'
+    barcode_files_prefix_pattern = seqc_dir + 'test_data/%s/barcodes/'
+    barcode_serialized_link_pattern = 's3://dplab-data/barcodes/%s/serial/barcodes.p'
+    barcode_files_link_prefix_pattern = 's3://dplab-data/barcodes/%s/flat/'
     h5_name_pattern = seqc_dir + 'test_data/%s/test_seqc.h5'
 
     # universal index files
@@ -65,7 +69,7 @@ class config:
 
 ############################### SETUP FILE GENERATION ###################################
 
-def check_fastq(data_type: str):
+def check_fastq(data_type: str) -> (str, str):
     """check if the required fastq files are present, else generate them"""
 
     # replace any dashes with underscores
@@ -74,16 +78,17 @@ def check_fastq(data_type: str):
     # get forward and reverse file ids
     forward = config.forward_pattern % data_type
     reverse = config.reverse_pattern % data_type
+    barcodes = config.barcode_serial_pattern % data_type
+    prefix = config.seqc_dir + 'test_data/%s/fastq/test_seqc' % data_type
 
     if not all(os.path.isfile(f) for f in [forward, reverse]):
         gen_func = getattr(seqc.fastq.GenerateFastq, data_type)
-        gen_func(10000, config.seqc_dir + 'test_data/%s/fastq/test_seqc', config.fasta,
-                 config.gtf)
+        gen_func(10000, prefix, config.fasta, config.gtf, barcodes=barcodes)
 
     return forward, reverse
 
 
-def check_sam(data_type: str):
+def check_sam(data_type: str) -> str:
     """check if the required sam files are present, else generate them"""
 
     # replace any dashes with underscores
@@ -115,10 +120,37 @@ def check_index():
             cut_dirs=2)
 
 
+def check_barcodes(data_type: str):
+    """ensure that all necessary barcodes are present and downloaded"""
+
+    if data_type == 'drop_seq':
+        return  # drop-seq has no barcodes
+
+    # make directory if not present
+    barcode_dir = config.barcode_files_prefix_pattern % data_type
+    if not os.path.isdir(barcode_dir):
+        os.mkdir(barcode_dir)
+
+    # download flat files if not present
+    if not any(f.endswith('.txt') for f in os.listdir(barcode_dir)):
+        bucket, key_prefix = seqc.io.S3.split_link(
+            config.barcode_files_link_prefix_pattern % data_type)
+        seqc.io.S3.download_files(bucket, key_prefix, output_prefix=barcode_dir,
+                                  cut_dirs=3)
+
+    # check for serialized barcode file; download if missing.
+    serial_barcodes = config.barcode_serial_pattern % data_type
+    if not os.path.isfile(serial_barcodes):
+        bucket, key = seqc.io.S3.split_link(
+            config.barcode_serialized_link_pattern % data_type)
+        seqc.io.S3.download_file(bucket, key, fout=serial_barcodes)
+
+
+
 ##################################### UNIT TESTS ########################################
 
 
-### FASTQ TESTS ###
+#################################### FASTQ TESTS ########################################
 
 class FastqRevcompTest(unittest.TestCase):
 
@@ -206,7 +238,22 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
             os.remove(self.fname)
 
 
-### IO TESTS ###
+class FastqMergeTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for t in config.data_types:
+            check_barcodes(t)
+            check_fastq(t)
+
+    @params(*config.data_types)
+    def test_merge_fastq(self, data_type):
+        forward = config.forward_pattern % data_type
+        reverse = config.reverse_pattern % data_type
+        cb = None
+
+
+##################################### IO TESTS ##########################################
 
 class IoS3Test(unittest.TestCase):
 
@@ -225,14 +272,75 @@ class IoS3Test(unittest.TestCase):
         self.assertRaises(FileNotFoundError, seqc.io.S3.download_file, self.bucket,
                           'foobar', self.testfile_download_name, overwrite=False)
 
-    def test_download_files_gets_expected_data(self):
-        pass  # todo implement
 
-    def test_download_files_does_not_overwrite(self):
-        pass  # todo implement; can use os.stat to check modification time.
+@unittest.skip('slow')
+class IoS3ClientTest(unittest.TestCase):
+
+    def setUp(self):
+        # create a file
+        self.txt1 = 'testing aws s3\n'
+        self.txt2 = 'testing aws s3 a second time\n'
+        self.txt3 = 'testing a nested file\n'
+        os.mkdir('.test_aws_s3')
+        self.file1 = '.test_aws_s3/test_aws_s3_file1.txt'
+        self.file2 = '.test_aws_s3/test_aws_s3_file2.txt'
+        os.mkdir('.test_aws_s3/test2')
+        self.file3 = '.test_aws_s3/test2/subfile.txt'
+        with open(self.file1, 'w') as f:
+            f.write(self.txt1)
+        with open(self.file2, 'w') as f:
+            f.write(self.txt2)
+        with open(self.file3, 'w') as f:
+            f.write(self.txt3)
+
+    def test_aws_s3_single_upload(self):
+        bucket = 'dplab-home'
+        key1 = 'ajc2205/testing_aws/'
+        seqc.io.S3.upload_file(self.file1, bucket=bucket, key=key1)
+
+        download_key = key1 + self.file1.split('/')[-1]
+        fout = '.test_aws_s3/recovered_file1.txt'
+
+        seqc.io.S3.download_file(bucket=bucket, key=download_key, fout=fout)
+        with open(fout, 'r') as f:
+            self.assertEqual(f.read(), self.txt1)
+
+        seqc.io.S3.remove_file(bucket, download_key)
+
+        os.remove('.test_aws_s3/recovered_file1.txt')
+
+    def test_aws_s3_multiple_upload(self):
+        # ResourceWarnings are generated by an interaction of io.S3.list() and
+        # the unittesting suite. These should not occur in normal usage.
+        bucket = 'dplab-home'
+        key_prefix = 'ajc2205/testing_aws/'
+        file_prefix = '.test_aws_s3/*'
+
+        # upload file1, file2, and file3
+        seqc.io.S3.upload_files(file_prefix, bucket, key_prefix)
+
+        aws_dir = set(seqc.io.S3.listdir(bucket, key_prefix))
+        aws_files = {key_prefix + f for f in
+                     ['test_aws_s3_file1.txt', 'test_aws_s3_file2.txt',
+                      'test2/subfile.txt']}
+        self.assertEqual(aws_files, aws_dir)
+
+        # download the files again
+        output_prefix = '.test_aws_s3/download_test/'
+        seqc.io.S3.download_files(bucket, key_prefix, output_prefix)
+        all_downloaded_files = []
+        for path, subdirs, files in os.walk(output_prefix):
+            for name in files:
+                all_downloaded_files.append(os.path.join(path, name))
+
+        # remove the files that we uploaded
+        seqc.io.S3.remove_files(bucket, key_prefix)
+
+    def tearDown(self):
+        shutil.rmtree('.test_aws_s3/')
 
 
-### GTF TESTS ###
+##################################### GTF TESTS #########################################
 
 class GTFReaderTest(unittest.TestCase):
 
@@ -440,7 +548,7 @@ class GTFReaderTest(unittest.TestCase):
     #     pass
 
 
-### CORE TESTS ###
+#################################### CORE TESTS #########################################
 
 class CoreFixOutputPathsTest(unittest.TestCase):
 
@@ -525,7 +633,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
     @params(*config.data_types)
     @unittest.skip('Downloads from s3, takes time, bandwidth')
     def test_load_barcodes_from_aws_link(self, dtype):
-        barcode_link = config.barcode_link_pattern % dtype
+        barcode_link = config.barcode_serialized_link_pattern % dtype
         self.assertFalse(os.path.isdir('test_seqc/'))
         barcodes = seqc.core.check_and_load_barcodes(barcode_link, self.output_dir)
         self.assertIsInstance(barcodes, seqc.barcodes.CellBarcodes)
@@ -537,7 +645,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
         if dtype == 'drop_seq':
             return  # None should be passed, not a link that does not target a file obj.
 
-        barcode_file = config.barcode_pattern % dtype
+        barcode_file = config.barcode_serial_pattern % dtype
         barcodes = seqc.core.check_and_load_barcodes(barcode_file)
         barcodes = self.assertIsInstance(barcodes, seqc.barcodes.CellBarcodes)
 
@@ -545,9 +653,8 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
         pass # todo implement
 
 
-### CONVERT FEATURES TESTS ###
+############################## CONVERT FEATURES TESTS ###################################
 
-# @unittest.skip('')
 class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
 
     test_dir = 'test_seqc/'
@@ -594,48 +701,153 @@ class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
                 genes.add(iv.data)
         self.assertEqual(4, len(genes))
 
-    def test_convert_gene_features_translate(self):
+    def test_convert_gene_features_translate_returns_non_empty_list(self):
+        sm = seqc.gtf.Sample(self.gtf)
+        vals = sm.sample_final_n(10)
+        self.assertTrue(all(isinstance(v, tuple) for v in vals))
+        cgc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(self.gtf)
 
-        # todo test that method always returns list
+        # test that method always returns list
+        translated = [cgc.translate(*v) for v in vals]
+        self.assertTrue(all(isinstance(t, list) and t for t in translated))
 
-        # todo test that method does not return when values are outside of final n bases
+        # test that returned id can be reversed by id_map conversion to a string id
+        for t in translated:
+            str_id = cgc.int2str_id(t)
+            self.assertIsInstance(str_id, str)
+            int_id = cgc.str2int_id(str_id)
+            self.assertIsInstance(int_id, int)
+            self.assertEqual(int_id, t)
 
-        # todo test that method returns correct gene when values are within final n bases
-        pass
+        # test that method returns empty list for out-of-range intervals
+        out_of_range = [tuple(('+', 'chr19', v)) for v in [0, -1, int(1e11)]]
+        translated = [cgc.translate(*v) for v in out_of_range]
+        self.assertTrue(all(isinstance(t, list) and not t for t in translated))
+
+        # test that translate method raises for malformed input
+        # chr should be str
+        self.assertRaises(TypeError, cgc.translate, '+', 19, 1000)
+        # strand should be + or -
+        self.assertRaises(ValueError, cgc.translate, 'plus', 'chr19', 1000)
 
     def test_convert_gene_features_save_and_load(self):
-        pass  # todo implement
+        cgc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(self.gtf)
+        cgc.pickle(self.test_dir + 'pickled.p')
+        cgc2 = seqc.convert_features.ConvertGeneCoordinates.from_pickle(
+            self.test_dir + 'pickled.p')
 
-    def test_convert_gene_features_ids_are_deterministic(self):
-        pass  # todo implement
-
-    def test_convert_gene_features_map_reverses_id_conversion(self):
-        pass # todo implement
-
-
-# todo all fastq functions below estimate_sequence_length are missing tests()
-
-# todo keep
-@unittest.skip('')
-class TestJaggedArray(unittest.TestCase):
-
-    def generate_input_iterable(self, n):
-        for i in range(n):
-            yield [random.randint(0, 5) for _ in range(random.randint(0, 5))]
-
-    def test_jagged_array(self):
-        n = int(1e3)
-        data = list(self.generate_input_iterable(n))
-        data_size = sum(len(i) for i in data)
-        jarr = seqc.arrays.JaggedArray.from_iterable(data_size, data)
-        self.assertTrue(jarr._data.dtype == np.uint32)
-        self.assertTrue(jarr._data.shape == (data_size,))
-        print(jarr[10])
+        # check that they are the same type of object, holding the same data
+        self.assertEqual(type(cgc), type(cgc2))
+        self.assertEqual(cgc._data, cgc2._data)
 
 
+############################### CELL BARCODES TESTS #####################################
 
-# todo keep
-@unittest.skip('')
+# @unittest.skip('')
+class TestThreeBitCellBarcodes(unittest.TestCase):
+
+    test_dir = 'test_seqc/barcodes/'
+    n_barcodes = 10
+
+    @classmethod
+    def setUpClass(cls):
+
+        if not os.path.isdir(cls.test_dir):
+            os.makedirs(cls.test_dir)
+
+        # get complete barcode files if not present, then create small barcode sets of
+        # ~ 10 barcodes
+        barcode_dir = config.seqc_dir + 'test_data/%s/barcodes/'
+        for t in config.data_types:
+
+            # check for full-length barcode files
+            check_barcodes(t)
+
+            # create a datatype-specific barcode directory
+            if not os.path.isdir(cls.test_dir + t + '/'):
+                os.makedirs(cls.test_dir + t + '/')
+
+            # drop-seq has no barcodes
+            if t == 'drop_seq':
+                continue
+
+            # get all flat text files in the directory
+            flat_files = [barcode_dir % t + f for f in os.listdir(barcode_dir % t)
+                          if f.endswith('.txt')]
+            for i, fin in enumerate(flat_files):
+                with open(fin) as barcode_file:
+                    data = islice(barcode_file, cls.n_barcodes)
+                    with open(cls.test_dir + '%s/cb%d_partial.txt' % (t, i + 1), 'w') as fout:
+                        for line in data:
+                            fout.write(line)
+
+
+    @params(*config.data_types)
+    def test_create_in_drop_cb(self, data_type):
+
+        # create barcode files
+        barcode_dir = self.test_dir + '%s/*' % data_type
+        barcode_files = glob(barcode_dir)
+        cb = seqc.barcodes.CellBarcodes.from_files(*barcode_files)
+        with open(barcode_dir + '%s.p', 'wb') as f:
+            pickle.dump(cb, f)
+
+        # confirm loaded and dumped files contain same data
+        with open(barcode_dir + '%s.p', 'rb') as f:
+            cb2 = pickle.load(f)
+        self.assertEqual(cb.perfect_codes, cb2.perfect_codes)
+        self.assertEqual(cb.error_codes, cb2.error_codes)
+
+        # open all the barcode files
+        with open(self.barcode_dir + 'cb1.txt') as f:
+            cb1s = [l.strip() for l in f.readlines()]
+        with open(self.barcode_dir + 'cb2.txt') as f:
+            cb2s = [l.strip() for l in f.readlines()]
+
+        # todo this is where I stopped
+        # get a random barcode from each file
+        one = random.choice(cb1s[:n_bar])
+        two = random.choice(cb2s[:10])
+        umi = 'AACCGG'
+
+        # convert to 3bit
+        tb = seqc.three_bit.ThreeBit.default_processors('in-drop')
+        one3bit = tb.str2bin(one)
+        two3bit = tb.str2bin(two)
+        cell = tb.ints2int([one3bit, two3bit])
+
+        # check that this does the same thing as getting the cell fom _extract_cell
+        seq2 = one + tb._w1 + two + umi + 'T' * 5
+        cell2, rmt, n_poly_t = tb.process_forward_sequence(seq2)
+        self.assertEqual(cell, cell2)
+
+        # check that this sequence is in the cell barcodes
+        self.assertTrue(cb.perfect_match(cell))
+        self.assertTrue(cb.close_match(cell))
+
+    def test_in_drop_error_code_construction_and_recognition(self):
+        cb1 = StringIO('AAA\nTTT\n')
+        cb2 = StringIO('CCC\nGGG\n')
+        cb = seqc.barcodes.CellBarcodes(cb1, cb2)
+        perfect_code = seqc.three_bit.ThreeBit.str2bin('AAACCC')
+        error_code = seqc.three_bit.ThreeBit.str2bin('NTTCCC')
+        self.assertTrue(cb.perfect_match(perfect_code))
+        self.assertFalse(cb.perfect_match(error_code))
+        self.assertTrue(cb.close_match(perfect_code))
+        self.assertTrue(cb.close_match(error_code))
+
+    def test_in_drop_error_code_error_type_identification(self):
+        cb1 = StringIO('AAA\nTTT\n')
+        cb2 = StringIO('CCC\nGGG\n')
+        cb = seqc.barcodes.CellBarcodes(cb1, cb2)
+        error_code = seqc.three_bit.ThreeBit.str2bin('NTTCCC')
+
+        errors = cb.map_errors(error_code)
+        self.assertEqual({'TN'}, set(errors))
+
+
+### THREE-BIT TESTS ###
+
 class TestThreeBitInDrop(unittest.TestCase):
 
     def setUp(self):
@@ -743,6 +955,23 @@ class TestThreeBitInDrop(unittest.TestCase):
         self.assertEqual(cell, 0)
 
 
+@unittest.skip('')
+class TestJaggedArray(unittest.TestCase):
+
+    def generate_input_iterable(self, n):
+        for i in range(n):
+            yield [random.randint(0, 5) for _ in range(random.randint(0, 5))]
+
+    def test_jagged_array(self):
+        n = int(1e3)
+        data = list(self.generate_input_iterable(n))
+        data_size = sum(len(i) for i in data)
+        jarr = seqc.arrays.JaggedArray.from_iterable(data_size, data)
+        self.assertTrue(jarr._data.dtype == np.uint32)
+        self.assertTrue(jarr._data.shape == (data_size,))
+        print(jarr[10])
+
+
 # todo keep
 @unittest.skip('')
 class TestThreeBitGeneral(unittest.TestCase):
@@ -815,74 +1044,6 @@ class TestThreeBitGeneral(unittest.TestCase):
         bin_string = seqc.three_bit.ThreeBit.str2bin(test_string)
         result = seqc.three_bit.ThreeBit.gc_content(bin_string)
         self.assertEqual(result, expected_result)
-
-
-# todo keep; speed up
-@unittest.skip('')
-class TestThreeBitCellBarcodes(unittest.TestCase):
-
-    def setUp(self):
-        self.barcode_dir = ('/'.join(seqc.__file__.split('/')[:-2]) +
-                            '/data/in_drop/barcodes/')
-
-    @unittest.skip('creation of the cb_3bit.p object is slow')
-    def test_create_in_drop_cb(self):
-
-        # create barcode files
-        barcode_files = [self.barcode_dir + 'cb1.txt', self.barcode_dir + 'cb2.txt']
-        cb = seqc.barcodes.CellBarcodes(*barcode_files)
-        with open(self.barcode_dir + 'cb_3bit.p', 'wb') as f:
-            pickle.dump(cb, f)
-
-    def test_created_in_drop_cb(self):
-        with open(self.barcode_dir + 'cb_3bit.p', 'rb') as f:
-            cb = pickle.load(f)
-
-        # now check and make sure the object works
-        with open(self.barcode_dir + 'cb1.txt') as f:
-            cb1s = [l.strip() for l in f.readlines()]
-        with open(self.barcode_dir + 'cb2.txt') as f:
-            cb2s = [l.strip() for l in f.readlines()]
-
-        # get a random cb1 and a random cb2
-        one = random.choice(cb1s)
-        two = random.choice(cb2s)
-        umi = 'AACCGG'
-
-        # convert to 3bit
-        tb = seqc.three_bit.ThreeBit.default_processors('in-drop')
-        one3bit = tb.str2bin(one)
-        two3bit = tb.str2bin(two)
-        cell = tb.ints2int([one3bit, two3bit])
-
-        # check that this does the same thing as getting the cell fom _extract_cell
-        seq2 = one + tb._w1 + two + umi + 'T' * 5
-        cell2, rmt, n_poly_t = tb.process_forward_sequence(seq2)
-        self.assertEqual(cell, cell2)
-
-        # check that this sequence is in the cell barcodes
-        self.assertTrue(cb.perfect_match(cell))
-        self.assertTrue(cb.close_match(cell))
-
-    def test_in_drop_error_code_construction_and_recognition(self):
-        cb1 = StringIO('AAA\nTTT\n')
-        cb2 = StringIO('CCC\nGGG\n')
-        cb = seqc.barcodes.CellBarcodes(cb1, cb2)
-        perfect_code = seqc.three_bit.ThreeBit.str2bin('AAACCC')
-        error_code = seqc.three_bit.ThreeBit.str2bin('NTTCCC')
-        self.assertTrue(cb.perfect_match(perfect_code))
-        self.assertFalse(cb.perfect_match(error_code))
-        self.assertTrue(cb.close_match(perfect_code))
-        self.assertTrue(cb.close_match(error_code))
-
-    def test_in_drop_error_code_error_type_identification(self):
-        cb1 = StringIO('AAA\nTTT\n')
-        cb2 = StringIO('CCC\nGGG\n')
-        cb = seqc.barcodes.CellBarcodes(cb1, cb2)
-        error_code = seqc.three_bit.ThreeBit.str2bin('NTTCCC')
-
-        errors = cb.map_errors(error_code)
-        self.assertEqual({'TN'}, set(errors))
 
 
 # todo import these tests from scseq/seqdb
@@ -1142,74 +1303,6 @@ class TestSamToCount(unittest.TestCase):
 
 
 @unittest.skip('')
-class TestS3Client(unittest.TestCase):
-
-    def setUp(self):
-        # create a file
-        self.txt1 = 'testing aws s3\n'
-        self.txt2 = 'testing aws s3 a second time\n'
-        self.txt3 = 'testing a nested file\n'
-        os.mkdir('.test_aws_s3')
-        self.file1 = '.test_aws_s3/test_aws_s3_file1.txt'
-        self.file2 = '.test_aws_s3/test_aws_s3_file2.txt'
-        os.mkdir('.test_aws_s3/test2')
-        self.file3 = '.test_aws_s3/test2/subfile.txt'
-        with open(self.file1, 'w') as f:
-            f.write(self.txt1)
-        with open(self.file2, 'w') as f:
-            f.write(self.txt2)
-        with open(self.file3, 'w') as f:
-            f.write(self.txt3)
-
-    @unittest.skip('')
-    def test_aws_s3_single_upload(self):
-        bucket = 'dplab-home'
-        key1 = 'ajc2205/testing_aws/'
-        seqc.io.S3.upload_file(self.file1, bucket=bucket, key=key1)
-
-        download_key = key1 + self.file1.split('/')[-1]
-        fout = '.test_aws_s3/recovered_file1.txt'
-
-        seqc.io.S3.download_file(bucket=bucket, key=download_key, fout=fout)
-        with open(fout, 'r') as f:
-            self.assertEqual(f.read(), self.txt1)
-
-        seqc.io.S3.remove_file(bucket, download_key)
-
-        os.remove('.test_aws_s3/recovered_file1.txt')
-
-    def test_aws_s3_multiple_upload(self):
-        # ResourceWarnings are generated by an interaction of io.S3.list() and
-        # the unittesting suite. These should not occur in normal usage.
-        bucket = 'dplab-home'
-        key_prefix = 'ajc2205/testing_aws/'
-        file_prefix = '.test_aws_s3/*'
-
-        # upload file1, file2, and file3
-        seqc.io.S3.upload_files(file_prefix, bucket, key_prefix)
-
-        aws_dir = set(seqc.io.S3.list(bucket, key_prefix))
-        aws_files = {key_prefix + f for f in
-                     ['test_aws_s3_file1.txt', 'test_aws_s3_file2.txt',
-                      'test2/subfile.txt']}
-        self.assertEqual(aws_files, aws_dir)
-
-        # download the files again
-        output_prefix = '.test_aws_s3/download_test/'
-        seqc.io.S3.download_files(bucket, key_prefix, output_prefix)
-        all_downloaded_files = []
-        for path, subdirs, files in os.walk(output_prefix):
-            for name in files:
-                all_downloaded_files.append(os.path.join(path, name))
-
-        # remove the files that we uploaded
-        seqc.io.S3.remove_files(bucket, key_prefix)
-
-    def tearDown(self):
-        shutil.rmtree('.test_aws_s3/')
-
-
-@unittest.skip('')
 class TestGenerateSRA(unittest.TestCase):
 
     def setUp(self):
@@ -1334,7 +1427,7 @@ class TestGenerateSRA(unittest.TestCase):
 #         experiment_name = 'test_in_drop'
 #         s3_bucket = self.s3_bucket
 #         s3_key = self.s3_key
-#         cell_barcodes = config.barcode_pattern % dtype
+#         cell_barcodes = config.barcode_serial_pattern % dtype
 #
 #         # potential issue: reverse should never map..
 #         forward = [self.forward[0]] * 3
@@ -1453,10 +1546,10 @@ class TestGroupForErrorCorrection(unittest.TestCase):
 
 # todo keep; rewrite to use check_sam()
 @unittest.skip('')
-class TestParallelConstructSam(unittest.TestCase):
+class TestParallelConstructH5(unittest.TestCase):
 
     @unittest.skip('')
-    def test_parallel_construct_sam(self):
+    def test_parallel_construct_h5(self):
         h5_name = 'test_data.h5'
         n_processes = 7
         chunk_size = 10000

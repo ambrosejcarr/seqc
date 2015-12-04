@@ -334,7 +334,19 @@ class ConvertGeneCoordinates:
          returns [].
 
         """
-        ivs = self._data[(chromosome, strand)].search(position)
+        try:
+            ivs = self._data[(chromosome, strand)].search(position)
+        except KeyError:  # should only happen with malformed input
+
+            # check for bad input
+            if not isinstance(chromosome, str):
+                raise TypeError('chromosome must be <class "str">, not %s' %
+                                type(chromosome))
+            elif not strand in ('-', '+'):
+                raise ValueError('strand must be one of "-" or "+"')
+            else:  # not sure what the problem is here, raise original exception
+                raise
+
         if len(ivs) == 1:
             return [first(ivs).data]
         else:
@@ -362,7 +374,7 @@ class ConvertGeneCoordinates:
         return cls(**data)
 
     @classmethod
-    def from_gtf(cls, gtf: str, fragment_length: int=1000) -> object:
+    def from_gtf(cls, gtf: str, fragment_length: int=1000):
         """
         construct a ConvertGeneCoordinates object from a gtf file. Also creates a map
         of integer ids to genes, which can be saved with using pickle

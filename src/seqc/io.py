@@ -79,7 +79,7 @@ class S3:
         """
         # get bucket and filenames
         client = boto3.client('s3')
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
 
         # output prefix needs to end in '/'
         if not output_prefix.endswith('/'):
@@ -180,7 +180,7 @@ class S3:
             client.upload_file(file_, bucket, key)
 
     @staticmethod
-    def list(bucket, key_prefix):
+    def listdir(bucket, key_prefix):
         """
         list all objects beginning with key_prefix
 
@@ -200,7 +200,7 @@ class S3:
 
     @classmethod
     def remove_files(cls, bucket, key_prefix):
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)

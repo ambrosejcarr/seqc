@@ -280,12 +280,36 @@ def auto_detect_processor(experiment_name):
                     'available processors can be found in seqdb.fastq.py')
 
 
-def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
+def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
+                cb: seqc.barcodes.CellBarcodes, n_processes: int) -> str:
+    """
+    Merges forward and reverse fastq files while extracting barcoding and quality
+    data from forward read
+
+    args:
+    -----
+    forward: list of forward fastq files
+    reverse: list of reverse fastq read pairs
+    exp_type: type of experiment (e.g. 'in-drop', 'drop-seq'...)
+    output_dir: the directory in which to write the merged fastq file
+    cb: cell barcode object, used to test whether each read has a valid cell barcode
+    n_processes: the number of processes to apply to merging the files.
+     Must be at least 3.
+
+    returns:
+    --------
+    name of merged fastq file, equal to output_dir + /merged.fastq
+
+    """
 
     def read(forward_: list, reverse_: list, in_queue):
         """
         read chunks from fastq files and place them on the processing queue.
         It seems this should take < 1s per 1M read chunk
+
+        # use bytes.index() to find '@' -- the beginning of the next record
+        # could also likely find the final newline; this will prevent the method
+        # from throwing out corner cases where reading a number of bytes breaks the reads
         """
 
         # set the number of reads in each chunk
@@ -350,7 +374,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
                     break
 
             # process records
-            merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
+            merged_filename = '%s/temp_%d.fastq' % (output_dir, index)
             with open(merged_filename, 'w') as fout:
                 for f, r in grouped_records(forward_, reverse_):
                     fout.write(process_record(f, r, tbp, cb))
@@ -377,7 +401,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     def merge(out_queue):
         # set a destination file to write everythign into
-        seed = open('%s/merged.fastq' % temp_dir, 'wb')
+        seed = open('%s/merged.fastq' % output_dir, 'wb')
 
         # merge all remaining files into it.
         while True:
@@ -398,13 +422,22 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     seqc.log.setup_logger()
 
+    # do some type checking of inputs
+    seqc.util.check_type(forward, list, 'forward')
+    seqc.util.check_type(reverse, list, 'reverse')
+    seqc.util.check_type(exp_type, str, 'exp_type')
+    seqc.util.check_type(output_dir, str, 'temp_dir')
+    if not isinstance(cb, (seqc.barcodes.CellBarcodes, str)):
+        raise TypeError('cb must be one of %s or %s, not %s' % (
+            type(seqc.barcodes.CellBarcodes), type(str), type(cb)))
+
     tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
         with open(cb, 'rb') as fcb:
             cb = pickle.load(fcb)
 
     # set the number of processing threads
-    n_proc = max(n_threads - 2, 1)
+    n_proc = max(n_processes - 2, 1)
 
     # read the files
     paired_records = Queue(maxsize=n_proc)  # don't need more waiting items than threads
@@ -433,7 +466,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
         p.join()
     merge_process.join()
 
-    return '%s/merged.fastq' % temp_dir
+    return '%s/merged.fastq' % output_dir
 
 
 class GenerateFastq:

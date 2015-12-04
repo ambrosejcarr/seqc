@@ -55,15 +55,13 @@ class Sample:
                     data[record.seqname, record.strand].addi(
                         iv[0], iv[1], int_id)
         # randomly sample from intervals
-        intervals = list(data.values())
+        intervals = []
+        for (chrom, strand), v in data.items():
+            for iv in v:
+                intervals.append((chrom, strand, iv))
         for i in range(n):
-            iv = random.choice(intervals)
-            yield random.randint(iv.start, iv.end)
-
-
-
-
-
+            chrom, strand, iv = random.choice(intervals)
+            yield strand, chrom, random.randint(iv.begin, iv.end)
 
 
 class Reader:

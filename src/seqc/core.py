@@ -376,8 +376,7 @@ def check_and_load_barcodes(
     elif not os.path.isfile(barcodes):
         raise FileNotFoundError('No barcode file was found at %s' % barcodes)
 
-    with open(barcodes, 'rb') as f:
-        cb = pickle.load(f)
+    cb = seqc.barcodes.CellBarcodes.from_pickle(barcodes)
 
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
         raise TypeError('specified barcodes file %s did not contain a CellBarcodes '
