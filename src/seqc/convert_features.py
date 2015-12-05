@@ -371,7 +371,7 @@ class ConvertGeneCoordinates:
 
         # check that directory exists
         *dir, name = fname.split('/')
-        if not os.path.isdir(dir):
+        if not os.path.isdir('/'.join(dir)):
             raise FileNotFoundError('the directory fname should be saved in does not '
                                     'exist')
         with open(fname, 'wb') as f:

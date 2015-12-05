@@ -547,30 +547,30 @@ class Reader:
         seqc.util.check_type(samfile, str, 'samfile')
         seqc.util.check_file(samfile, 'samfile')
 
-        self._gtf = samfile
+        self._samfile = samfile
         try:
-            gtf_iterator = iter(self)
-            next(gtf_iterator)
+            samfile_iterator = iter(self)
+            next(samfile_iterator)
         except:
             raise ValueError('%s is an invalid samfile. Please check file formatting.' %
                              samfile)
 
     @property
-    def gtf(self):
-        return self._gtf
+    def samfile(self):
+        return self._samfile
 
     def _open(self) -> io.TextIOBase:
         """
-        seamlessly open self._gtf, whether gzipped or uncompressed
+        seamlessly open self._samfile, whether gzipped or uncompressed
 
         returns:
         --------
         fobj: open file object
         """
-        if self._gtf.endswith('.gz'):
-            fobj = gzip.open(self._gtf, 'rt')
+        if self._samfile.endswith('.gz'):
+            fobj = gzip.open(self._samfile, 'rt')
         else:
-            fobj = open(self._gtf)
+            fobj = open(self._samfile)
         return fobj
 
     def __len__(self):

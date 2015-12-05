@@ -53,7 +53,6 @@ setup(name='seqc',
       scripts=['src/scripts/SEQC',
                'src/scripts/PROCESS_BARCODES',
                'src/scripts/TEST_BARCODES',
-               'src/scripts/notify.py',
                'src/scripts/process_multi_file_scseq_experiment.py',
                'src/scripts/process_single_file_scseq_experiment.py'],
       )
