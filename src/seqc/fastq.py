@@ -433,8 +433,12 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
 
     tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
-        with open(cb, 'rb') as fcb:
-            cb = pickle.load(fcb)
+        cb = seqc.barcodes.CellBarcodes.from_pickle(cb)
+
+    # check that forward and reverse are equal length
+    if not len(forward) == len(reverse):
+        raise ValueError('Equal number of forward and reverse files must be passed. '
+                         '%d != %d' % (len(forward), len(reverse)))
 
     # set the number of processing threads
     n_proc = max(n_processes - 2, 1)
@@ -447,10 +451,8 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
 
     # process the data
     output_filenames = Queue()
-    # max --> make sure at least one thread starts
     processors = [Process(target=process, args=([paired_records, output_filenames]))
                   for _ in range(n_proc)]
-    assert(len(processors) > 0)
     for p in processors:
         p.start()
 
@@ -479,8 +481,7 @@ class GenerateFastq:
 
     @classmethod
     def _forward_in_drop(cls, n, barcodes_):
-        with open(barcodes_, 'rb') as f:
-            barcodes_ = pickle.load(f)
+        barcodes_ = seqc.barcodes.CellBarcodes.from_pickle(barcodes_)
         read_length = 50
         names = range(n)
         name2 = '+'

@@ -130,7 +130,7 @@ class ThreeBit:
             else:
                 return cls(*p)
         except KeyError:
-            raise ValueError('unknown processor')
+            raise ValueError('unknown processor: %s' % key)
 
     @staticmethod
     def split_cell(s):

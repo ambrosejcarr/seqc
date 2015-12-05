@@ -3,10 +3,13 @@ __author__ = 'ambrose'
 import numpy as np
 import pickle
 import os
+import io
 import seqc
 import tables as tb
-from collections import defaultdict
+import gzip
+from collections import defaultdict, namedtuple
 from scipy.sparse import coo_matrix
+
 
 
 class ReadArrayH5Writer:
@@ -512,3 +515,74 @@ def to_count_multiple_files(sam_files, gtf_file):
     cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
 
     return coo, gene_index, cell_index
+
+
+class SamRecord:
+    """simple record object to use when iterating over sam files"""
+
+    __slots__  = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
+                  'tlen', 'seq', 'qual', 'optional_fields']
+
+    def __init__(self, qname, flag, rname, pos, mapq, cigar, rnext, pnext, tlen, seq,
+                 qual, *optional_fields):
+        self.qname = qname
+        self.flag = flag
+        self.rname = rname
+        self.pos = pos
+        self.mapq = mapq
+        self.cigar = cigar
+        self.rnext = rnext
+        self.pnext = pnext
+        self.tlen = tlen
+        self.seq = seq
+        self.qual = qual
+        self.optional_fields = optional_fields
+
+
+class Reader:
+    """simple sam reader, optimized for utility rather than speed"""
+
+    def __init__(self, samfile):
+
+        seqc.util.check_type(samfile, str, 'samfile')
+        seqc.util.check_file(samfile, 'samfile')
+
+        self._gtf = samfile
+        try:
+            gtf_iterator = iter(self)
+            next(gtf_iterator)
+        except:
+            raise ValueError('%s is an invalid samfile. Please check file formatting.' %
+                             samfile)
+
+    @property
+    def gtf(self):
+        return self._gtf
+
+    def _open(self) -> io.TextIOBase:
+        """
+        seamlessly open self._gtf, whether gzipped or uncompressed
+
+        returns:
+        --------
+        fobj: open file object
+        """
+        if self._gtf.endswith('.gz'):
+            fobj = gzip.open(self._gtf, 'rt')
+        else:
+            fobj = open(self._gtf)
+        return fobj
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def __iter__(self):
+        """return an iterator over all non-header records in samfile"""
+        fobj = self._open()
+        try:
+            for line in fobj:
+                if line.startswith('@'):
+                    continue
+                yield SamRecord(*line.strip().split('\t'))
+        finally:
+            fobj.close()

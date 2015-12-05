@@ -28,7 +28,7 @@ class CellBarcodes:
         tbp = seqc.three_bit.ThreeBit
 
         perfect_codes = cls.load_barcodes(barcode_files, reverse_complement)
-        current_codes = cls.add_single_error(perfect_codes)
+        error_codes = cls.add_single_error(perfect_codes)
 
         # todo
         # perfectly possible to store all 2-error codes in int form, but need to build
@@ -52,15 +52,14 @@ class CellBarcodes:
         #             except KeyError:
         #                 error_codes[(''.join(temp))] = [(original + e, i)]
 
-
         perfect_codes = cls.codes2bin(perfect_codes, tbp)
-        error_codes = cls.codes2bin(current_codes, tbp)
+        error_codes = cls.codes2bin(error_codes, tbp)
 
         return cls(perfect_codes, error_codes)
 
     @staticmethod
     def from_dtype(data_type, *barcode_files, reverse_complement: bool=False):
-        if data_type == 'drop_seq':
+        if data_type == 'drop-seq':
             return DropSeqCellBarcodes()
         else:
             return CellBarcodes.from_files(
@@ -69,7 +68,7 @@ class CellBarcodes:
     def pickle(self, fname: str):
         """save a serialized version of this object to file"""
         with open(fname, 'wb') as f:
-            data = {'perfect': self.perfect_codes, 'current': self.current_codes}
+            data = {'perfect': self.perfect_codes, 'current': self.error_codes}
             pickle.dump(data, f)
 
     @staticmethod
@@ -169,6 +168,9 @@ class CellBarcodes:
 
 
 class DropSeqCellBarcodes(CellBarcodes):
+    """
+    Over-rides methods in CellBarcodes to always return True for any match request
+    """
 
     def __init__(self):
         super().__init__([], [])
