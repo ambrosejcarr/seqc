@@ -15,6 +15,7 @@ import io
 import pickle
 import random
 from io import StringIO
+from collections import namedtuple
 
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
@@ -608,3 +609,57 @@ class GenerateFastq:
         fastq_data.seek(0)
 
         return fastq_data
+
+
+FastqRecord = namedtuple('FastqRecord', ['name', 'seq', 'name2', 'qual'])
+
+
+class Reader:
+    """simple fastq reader, optimized for utility rather than speed"""
+
+    def __init__(self, fastq_file):
+
+        seqc.util.check_type(fastq_file, str, 'fastq_file')
+        seqc.util.check_file(fastq_file, 'fastq_file')
+
+        self._fastq = fastq_file
+        try:
+            fastq_iterator = iter(self)
+            first = next(fastq_iterator)
+        except:
+            raise ValueError('%s is an invalid fastq_file. Please check file formatting.' %
+                             fastq_file)
+        if not first.name.startswith('@'):
+            raise ValueError('Invalid formatting: all name lines must start with "@"')
+        if not first.name2.startswith('+'):
+            raise ValueError('Invalid formatting: all name2 lines must start with "+"')
+
+    @property
+    def fastq(self):
+        return self._fastq
+
+    def _open(self) -> io.TextIOBase:
+        """
+        seamlessly open self.fastq, whether gzipped or uncompressed
+
+        returns:
+        --------
+        fobj: open file object
+        """
+        if self.fastq.endswith('.gz'):
+            fobj = gzip.open(self.fastq, 'rt')
+        else:
+            fobj = open(self.fastq)
+        return fobj
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def __iter__(self):
+        """return an iterator over all records in fastq file"""
+        fobj = self._open()
+        try:
+            for record in iter_records(fobj):
+                yield FastqRecord(*record)
+        finally:
+            fobj.close()

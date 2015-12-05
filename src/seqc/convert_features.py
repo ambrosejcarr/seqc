@@ -6,6 +6,7 @@ from more_itertools import first
 import seqc
 import pickle
 import re
+import os
 
 
 class Exon:
@@ -363,6 +364,16 @@ class ConvertGeneCoordinates:
 
     def pickle(self, fname: str) -> None:
         """Serialize self and save it to disk as fname"""
+
+        # check that fname is a file:
+        if fname.endswith('/'):
+            raise ValueError('fname must be the name of a file, not a directory')
+
+        # check that directory exists
+        *dir, name = fname.split('/')
+        if not os.path.isdir(dir):
+            raise FileNotFoundError('the directory fname should be saved in does not '
+                                    'exist')
         with open(fname, 'wb') as f:
             pickle.dump({'dict_of_interval_trees': self._data, 'id_map': self._id_map}, f)
 
