@@ -538,6 +538,11 @@ class SamRecord:
         self.qual = qual
         self.optional_fields = optional_fields
 
+    def __repr__(self):
+        return ('<SamRecord:' + ' %s' * 12 + '>') % \
+               (self.qname, self.flag, self.rname, self.pos, self.mapq, self.cigar,
+                self.rnext, self.pnext, self.tlen, self.seq, self.qual,
+                ' '.join(self.optional_fields))
 
 class Reader:
     """simple sam reader, optimized for utility rather than speed"""
@@ -586,3 +591,15 @@ class Reader:
                 yield SamRecord(*line.strip().split('\t'))
         finally:
             fobj.close()
+
+    def iter_multialignments(self):
+        """yields tuples of all alignments for each fastq record"""
+        sam_iter = iter(self)
+        fq = [next(sam_iter)]
+        for record in sam_iter:
+            if record.qname == fq[0].qname:
+                fq.append(record)
+            else:
+                yield tuple(fq)
+                fq = [record]
+        yield [record]

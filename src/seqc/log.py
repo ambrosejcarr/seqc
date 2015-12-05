@@ -6,7 +6,7 @@ from datetime import datetime
 
 def setup_logger(filename='seqc.log'):
     """create a simple log file in the cwd to track progress and any errors"""
-    logging.basicConfig(filename=filename, level=logging.DEBUG)
+    logging.basicConfig(filename=filename, filemode='w', level=logging.DEBUG)
 
 
 def info(message):
