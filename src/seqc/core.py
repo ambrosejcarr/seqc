@@ -66,15 +66,16 @@ def create_parser():
             description='pass one input file type: sam (-s), raw fastq (-f, [-r]), or '
                         'processed fastq (-m)')
 
-        i.add_argument('-f', '--forward', help='forward fastq file(s)', metavar='F',
-                       nargs='*', default=list())
-        i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
-                       nargs='*', default=list())
+        i.add_argument('-f', '--forward', nargs='*', default=list(), metavar='F',
+                       help='s3 link or filesystem location of forward fastq file(s)')
+        i.add_argument('-r', '--reverse', nargs='*', default=list(), metavar='R',
+                       help='s3 link or filesystem location of reverse fastq file(s)')
         i.add_argument('-s', '--samfile', metavar='S', nargs='?', default='',
-                       help='sam file(s) containing aligned, pre-processed reads')
+                       help='s3 link or filesystem location of sam file(s) containing '
+                            'aligned, pre-processed reads')
         i.add_argument('-m', '--merged-fastq', metavar='M', default='',
-                       help='fastq file containing merged, pre-processed records')
-
+                       help='s3 link or filesystem location of fastq file containing '
+                            'merged, pre-processed records')
         # disambiguation arguments
         d = p.add_argument_group('Optional arguments for disambiguation')
         d.add_argument('-l', '--frag-len', metavar='L', type=int, default=1000,

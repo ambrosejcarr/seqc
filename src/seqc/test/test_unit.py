@@ -1723,7 +1723,8 @@ class TestDownloadInputFiles(unittest.TestCase):
 
         # clean up the directories
         for d in (forward_dir, merged_dir, sam_dir, merged_dir):
-            shutil.rmtree(d)
+            if os.path.isdir(d):
+                shutil.rmtree(d)
 
         # test download merged fastq
         download_merged = empty_kwargs.copy()
@@ -1734,7 +1735,8 @@ class TestDownloadInputFiles(unittest.TestCase):
 
         # clean up the directories
         for d in (forward_dir, merged_dir, sam_dir, merged_dir):
-            shutil.rmtree(d)
+            if os.path.isdir(d):
+                shutil.rmtree(d)
 
         # test download merged fastq
         download_sam = empty_kwargs.copy()
@@ -1745,7 +1747,8 @@ class TestDownloadInputFiles(unittest.TestCase):
 
         # clean up the directories
         for d in (forward_dir, merged_dir, sam_dir, merged_dir):
-            shutil.rmtree(d)
+            if os.path.isdir(d):
+                shutil.rmtree(d)
 
         # confirm that passing non-s3 links passes-through arguments as normal.
         complete_local_kwargs = dict(
