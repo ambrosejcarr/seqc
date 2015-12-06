@@ -2,6 +2,7 @@ __author__ = 'ambrose'
 
 import numpy as np
 import pickle
+import shutil
 import os
 import io
 import seqc
@@ -302,42 +303,74 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
 class GenerateSam:
 
     @staticmethod
-    def in_drop(n, prefix, fasta, gtf, index, barcodes, tag_type='gene_id', replicates=3,
+    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_id', replicates=3,
                 n_threads=7, *args, **kwargs):
         """generate an in-drop .sam file"""
 
-        with open(barcodes, 'rb') as f:
-            cb = pickle.load(f)
+        # get barcodes
+        cb = seqc.barcodes.CellBarcodes.from_pickle(barcodes)
 
-        output_dir = '/'.join(prefix.split('/')[:-1]) + '/'
+        output_dir = '.generate_sam/'
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+        fastq_prefix = '.generate_sam/temp'
+
+        # get fastq files
         forward, reverse = seqc.fastq.GenerateFastq.in_drop(
-            n, prefix, fasta, gtf, barcodes, tag_type=tag_type, replicates=replicates)
+            n, fastq_prefix, fasta, gtf, barcodes, tag_type=tag_type,
+            replicates=replicates)
 
         # merge the generated fastq file
-        merged = seqc.fastq.merge_fastq(forward, reverse, 'in-drop', output_dir, cb,
+        merged = seqc.fastq.merge_fastq([forward], [reverse], 'in-drop', output_dir, cb,
                                         n_threads)
 
         # generate alignments from merged fastq
         sam = seqc.align.STAR.align(merged, index, n_threads, output_dir)
+
+        # move the alignment file to the desired filename
+        directory = '/'.join(filename.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        shutil.move(sam, filename)
+
+        # remove temporary files
+        shutil.rmtree(output_dir)
+
         return sam
 
-
     @staticmethod
-    def drop_seq(n, prefix, fasta, gtf, index, tag_type='gene_id', replicates=3,
+    def drop_seq(n, filename, fasta, gtf, index, tag_type='gene_id', replicates=3,
                  n_threads=7, *args, **kwargs):
         """generate a drop-seq .sam file"""
 
-        output_dir = '/'.join(prefix.split('/')[:-1]) + '/'
+        # get barcodes
+        cb = seqc.barcodes.DropSeqCellBarcodes()
+
+        output_dir = '.generate_sam/'
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+        fastq_prefix = '.generate_sam/temp'
+
+        # get fastq files
         forward, reverse = seqc.fastq.GenerateFastq.drop_seq(
-            n, prefix, fasta, gtf, tag_type=tag_type, replicates=replicates)
+            n, fastq_prefix, fasta, gtf, tag_type=tag_type, replicates=replicates)
 
         # merge the generated fastq file
-        merged = seqc.fastq.merge_fastq(forward, reverse, 'drop-seq', output_dir,
+        merged = seqc.fastq.merge_fastq([forward], [reverse], 'drop-seq', output_dir, cb,
                                         n_threads)
-
 
         # generate alignments from merged fastq
         sam = seqc.align.STAR.align(merged, index, n_threads, output_dir)
+
+        # move the alignment file to the desired filename
+        directory = '/'.join(filename.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        shutil.move(sam, filename)
+
+        # remove temporary files
+        shutil.rmtree(output_dir)
+
         return sam
 
 
@@ -548,6 +581,7 @@ class SamRecord:
     def strand(self):
         minus_strand = int(self.flag) & 16
         return '-' if minus_strand else '+'
+
 
 class Reader:
     """simple sam reader, optimized for utility rather than speed"""

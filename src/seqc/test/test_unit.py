@@ -1,35 +1,19 @@
 __author__ = 'ambrose'
 
-from numpy.lib.recfunctions import append_fields
 import nose2
-from nose2.tools import params
-from more_itertools import first
-from itertools import islice
 import unittest
 import os
 import pickle
-import tables as tb
 import seqc
-from io import StringIO
 import numpy as np
 import xml.dom.minidom
 import random
 import shutil
-from collections import defaultdict
-
-# from memory_profiler import profile, memory_usage
-# from itertools import product
-# from xml.etree import ElementTree as ET
-# from subprocess import Popen, PIPE
-# import cProfile
-# from pstats import Stats
-# import hashlib
-# import logging
-# import socket
-# import re
-# import pandas as pd
-# import gzip
-# import ftplib
+from nose2.tools import params
+from more_itertools import first
+from itertools import islice
+from numpy.lib.recfunctions import append_fields
+from io import StringIO
 
 # noinspection PyPep8Naming
 class config:
@@ -45,10 +29,10 @@ class config:
     data_types = ['in_drop', 'drop_seq']
 
     # universal file patterns
-    samfile_pattern = seqc_dir + 'test_data/%s/seqc_test/Aligned.out.sam'
+    samfile_pattern = seqc_dir + 'test_data/%s/sam/alignments.sam'
     forward_pattern = seqc_dir + 'test_data/%s/fastq/test_seqc_r1.fastq'
     reverse_pattern = seqc_dir + 'test_data/%s/fastq/test_seqc_r2.fastq'
-    merged_pattern = seqc_dir + 'test_data/%s/fastq/test_seqc/merged.fastq'
+    merged_pattern = seqc_dir + 'test_data/%s/fastq/merged.fastq'
     barcode_serial_pattern = seqc_dir + 'test_data/%s/barcodes/barcodes.p'
     barcode_partial_serial_pattern = seqc_dir + 'test_data/%s/barcodes/cb_partial.p'
     barcode_prefix_pattern = seqc_dir + 'test_data/%s/barcodes/'
@@ -160,7 +144,7 @@ def check_merged_fastq(data_type: str) -> str:
         forward, reverse = [forward], [reverse]
         exp_type = data_type.replace('_', '-')
         n_processors = 4
-        output_dir = 'test_data/%s/fastq/test_seqc/' % data_type
+        output_dir = os.path.abspath('./test_data/%s/fastq/' % data_type)
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
         if data_type == 'drop_seq':
@@ -183,17 +167,16 @@ def check_sam(data_type: str) -> str:
     # replace any dashes with underscores
     data_type = data_type.replace('-', '_')
 
-    # get sam pattern
-    samfile = config.samfile_pattern % data_type
-
     # generation params
     n = 10000
-    prefix = config.seqc_dir + 'test_data/%s/fastq/seqc_test'
+    samfile = config.samfile_pattern % data_type
+    prefix = config.seqc_dir + 'test_data/%s/fastq/seqc_test' % data_type
+    barcodes = config.barcode_partial_serial_pattern % data_type
 
     if not os.path.isfile(samfile):
         gen_func = getattr(seqc.sam.GenerateSam, data_type)
-        gen_func(n=n, prefix=prefix, fasta=config.fasta, gtf=config.gtf,
-                 index=config.index)
+        gen_func(n=n, filename=samfile, prefix=prefix, fasta=config.fasta, gtf=config.gtf,
+                 index=config.index, barcodes=barcodes)
 
     assert os.path.isfile(samfile)
     return samfile
@@ -1160,29 +1143,33 @@ class TestConvertGeneCoordinates(unittest.TestCase):
         rev_res = []
         both = []
         total = 0
+        res = []
         for records in rd.iter_multialignments():
             if len(records) == 1:
                 if not int(records[0].flag) & 4:
                     strand = records[0].strand
                     chrom = records[0].rname
                     pos = int(records[0].pos)
-                    forward = cgc.translate('+', chrom, pos)
-                    reverse = cgc.translate('-', chrom, pos)
-                    if forward and reverse:
-                        both.append([1])
-                    elif forward:
-                        fwd_res.append(forward)
-                    elif reverse:
-                        rev_res.append(reverse)
-                    total += 1
+                    # forward = cgc.translate('+', chrom, pos)
+                    # reverse = cgc.translate('-', chrom, pos)
+                    # if forward and reverse:
+                    #     both.append([1])
+                    # elif forward:
+                    #     fwd_res.append(forward)
+                    # elif reverse:
+                    #     rev_res.append(reverse)
+                    # total += 1
+                    res.append(cgc.translate(strand, chrom, pos))
 
-        print('plus: %d' % len(fwd_res))
-        print('minus: %d' % len(rev_res))
-        print('both: %d' % len(both))
-        print('total: %d' % total)
-        print('All features: %d' % (len(fwd_res) + len(rev_res) + len(both)))
-        # self.assertTrue(all(res), 'Of %d alignments, only %d converted' %
-        #                 (total, converted))
+        # print('plus: %d' % len(fwd_res))
+        # print('minus: %d' % len(rev_res))
+        # print('both: %d' % len(both))
+        # print('total: %d' % total)
+        # print('All features: %d' % (len(fwd_res) + len(rev_res) + len(both)))
+        total = len(res)
+        converted = sum(1 for r in res if r)
+        self.assertTrue(all(res), 'Of %d alignments, only %d converted' %
+                        (total, converted))
 
 
 class TestJaggedArray(unittest.TestCase):

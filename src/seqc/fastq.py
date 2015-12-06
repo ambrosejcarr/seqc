@@ -18,7 +18,8 @@ from io import StringIO
 from collections import namedtuple
 
 
-_revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
+_revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
+            'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
 
 
 def revcomp(s: str) -> str:
@@ -299,7 +300,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
 
     returns:
     --------
-    name of merged fastq file, equal to output_dir + /merged.fastq
+    name of merged fastq file, equal to output_dir + merged.fastq
 
     """
 
@@ -375,7 +376,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
                     break
 
             # process records
-            merged_filename = '%s/temp_%d.fastq' % (output_dir, index)
+            merged_filename = '%stemp_%d.fastq' % (output_dir, index)
             with open(merged_filename, 'w') as fout:
                 for f, r in grouped_records(forward_, reverse_):
                     fout.write(process_record(f, r, tbp, cb))
@@ -402,7 +403,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
 
     def merge(out_queue):
         # set a destination file to write everythign into
-        seed = open('%s/merged.fastq' % output_dir, 'wb')
+        seed = open('%smerged.fastq' % output_dir, 'wb')
 
         # merge all remaining files into it.
         while True:
@@ -427,10 +428,10 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
     seqc.util.check_type(forward, list, 'forward')
     seqc.util.check_type(reverse, list, 'reverse')
     seqc.util.check_type(exp_type, str, 'exp_type')
-    seqc.util.check_type(output_dir, str, 'temp_dir')
+    seqc.util.check_type(output_dir, str, 'output_dir')
     if not isinstance(cb, (seqc.barcodes.CellBarcodes, str)):
-        raise TypeError('cb must be one of %s or %s, not %s' % (
-            type(seqc.barcodes.CellBarcodes), type(str), type(cb)))
+        raise TypeError('cb must be one of seqc.barcodes.CellBarcodes or str, not %s' % (
+                        type(cb)))
 
     tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
@@ -440,6 +441,10 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
     if not len(forward) == len(reverse):
         raise ValueError('Equal number of forward and reverse files must be passed. '
                          '%d != %d' % (len(forward), len(reverse)))
+
+    # check that output dir has the terminal slash
+    if not output_dir.endswith('/'):
+        output_dir += '/'
 
     # set the number of processing threads
     n_proc = max(n_processes - 2, 1)
@@ -469,7 +474,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
         p.join()
     merge_process.join()
 
-    return '%s/merged.fastq' % output_dir
+    return '%smerged.fastq' % output_dir
 
 
 class GenerateFastq:
@@ -526,7 +531,7 @@ class GenerateFastq:
             end = int(r.end) - read_length
             start = int(r.start)
             if end > start:
-                intervals.append((r.attribute[tag_type], start, end))
+                intervals.append((r.attribute[tag_type], start, end, r.strand))
 
         # pick intervals
         exon_selections = np.random.randint(0, len(intervals), (n,))
@@ -540,11 +545,13 @@ class GenerateFastq:
         sequences = []
         tags = []
         for i in exon_selections:
-            tag, start, end = intervals[i]
+            tag, start, end, strand = intervals[i]
             # get position within interval
             start = random.randint(start, end)
             end = start + read_length
             seq = fasta[start:end]
+            if strand == '-':
+                seq = revcomp(seq)
             sequences.append(seq)
             tags.append(tag)
 
@@ -600,13 +607,17 @@ class GenerateFastq:
         reverse_fastq = StringIO('\n'.join(records) + '\n')
         return reverse_fastq
 
-
     @classmethod
-    def in_drop(cls, n, prefix_, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
+    def in_drop(cls, n, prefix, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
                 *args, **kwargs):
 
         if not replicates >= 0:
             raise ValueError('Cannot generate negative replicates')
+
+        # create directory if it doesn't exist
+        directory = '/'.join(prefix.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
 
         fwd_len = 50
         rev_len = 100
@@ -614,15 +625,24 @@ class GenerateFastq:
         forward = forward.read()  # consume the StringIO object
         reverse = cls._reverse(n, rev_len, fasta, gtf, tag_type=tag_type)
         reverse = reverse.read()  # consume the StringIO object
-        with open(prefix_ + '_r1.fastq', 'w') as f:
+        with open(prefix + '_r1.fastq', 'w') as f:
             f.write(''.join([forward] * (replicates + 1)))
-        with open(prefix_ + '_r2.fastq', 'w') as r:
+        with open(prefix + '_r2.fastq', 'w') as r:
             r.write(''.join([reverse] * (replicates + 1)))
-        return prefix_ + '_r1.fastq', prefix_ + '_r2.fastq'
+        return prefix + '_r1.fastq', prefix + '_r2.fastq'
 
     @classmethod
     def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_id', replicates=3, *args,
                  **kwargs):
+
+        if not replicates >= 0:
+            raise ValueError('Cannot generate negative replicates')
+
+        # create directory if it doesn't exist
+        directory = '/'.join(prefix.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
         rev_len = 100
         forward = cls._forward_drop_seq(n)
         forward = forward.read()  # consume the StringIO object
