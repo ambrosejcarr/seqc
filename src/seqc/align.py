@@ -467,16 +467,16 @@ class STAR:
             print('Valid Index')
 
     @classmethod
-    def align(cls, fastq_file, index, n_threads, temp_dir, reverse_fastq_file=None,
+    def align(cls, fastq_file, index, n_threads, output_dir, reverse_fastq_file=None,
               **kwargs):
 
         # check if file exists; if it does, return the filename
-        if os.path.isfile(temp_dir + 'Aligned.out.sam'):
-            if os.path.getsize(temp_dir + 'Aligned.out.sam') > 0:
-                return temp_dir + 'Aligned.out.sam'
+        if os.path.isfile(output_dir + 'Aligned.out.sam'):
+            if os.path.getsize(output_dir + 'Aligned.out.sam') > 0:
+                return output_dir + 'Aligned.out.sam'
 
         runtime_args = cls.default_alignment_args(
-            fastq_file, n_threads, index, temp_dir)
+            fastq_file, n_threads, index, output_dir)
 
         for k, v in kwargs.items():  # overwrite or add any arguments passed from cmdline
             if not isinstance(k, str):
@@ -509,7 +509,7 @@ class STAR:
         if err:
             raise ChildProcessError(err)
 
-        return temp_dir + 'Aligned.out.sam'
+        return output_dir + 'Aligned.out.sam'
 
     @classmethod
     def align_multiple_files(cls, fastq_files, index, n_threads, working_dir,

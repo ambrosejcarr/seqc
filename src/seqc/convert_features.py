@@ -6,6 +6,7 @@ from more_itertools import first
 import seqc
 import pickle
 import re
+import os
 
 
 class Exon:
@@ -315,12 +316,18 @@ class ConvertGeneCoordinates:
         self._data = dict_of_interval_trees
         self._id_map = id_map
 
+    def translate_unstranded(self, strand: str, chromosome: str, position: int) -> list:
+        # todo implement
+        raise NotImplementedError
+
     def translate(self, strand: str, chromosome: str, position: int) -> list:
         """
         translate an alignment in chromosome coordinates to gene coordinates
 
         Note that there are some cases where genomic coordinates do not map to single
         genes due to double utilization of exons. In this case, the method returns None.
+
+        Note that this translater expects a STRANDED LIBRARY.
 
         args:
         -----
@@ -334,8 +341,20 @@ class ConvertGeneCoordinates:
          returns [].
 
         """
-        ivs = self._data[(chromosome, strand)].search(position)
-        if len(ivs) == 1:
+        try:
+            ivs = self._data[(chromosome, strand)].search(position)
+        except KeyError:  # should only happen with malformed input
+
+            # check for bad input
+            if not isinstance(chromosome, str):
+                raise TypeError('chromosome must be <class "str">, not %s' %
+                                type(chromosome))
+            elif not strand in ('-', '+'):
+                raise ValueError('strand must be one of "-" or "+"')
+            else:  # not sure what the problem is here, raise original exception
+                raise
+
+        if len(ivs) >= 1:
             return [first(ivs).data]
         else:
             return []
@@ -351,6 +370,16 @@ class ConvertGeneCoordinates:
 
     def pickle(self, fname: str) -> None:
         """Serialize self and save it to disk as fname"""
+
+        # check that fname is a file:
+        if fname.endswith('/'):
+            raise ValueError('fname must be the name of a file, not a directory')
+
+        # check that directory exists
+        *dir, name = fname.split('/')
+        if not os.path.isdir('/'.join(dir)):
+            raise FileNotFoundError('the directory fname should be saved in does not '
+                                    'exist')
         with open(fname, 'wb') as f:
             pickle.dump({'dict_of_interval_trees': self._data, 'id_map': self._id_map}, f)
 
@@ -362,7 +391,7 @@ class ConvertGeneCoordinates:
         return cls(**data)
 
     @classmethod
-    def from_gtf(cls, gtf: str, fragment_length: int=1000) -> object:
+    def from_gtf(cls, gtf: str, fragment_length: int=1000):
         """
         construct a ConvertGeneCoordinates object from a gtf file. Also creates a map
         of integer ids to genes, which can be saved with using pickle

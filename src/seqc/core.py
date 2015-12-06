@@ -7,6 +7,7 @@ import shutil
 import seqc
 import sys
 import json
+from glob import glob
 
 
 def create_parser():
@@ -38,7 +39,6 @@ def create_parser():
     # set required arguments for all parsers
     for i, p in enumerate(subparser_list):
         r = p.add_argument_group('Required Arguments')
-        # todo needs to take input from user on what organism it should be
         r.add_argument('-i', '--index', metavar='I', help='local or s3 location of star '
                        'alignment index folder. This folder will be created if it does '
                        'not exist', default=None)
@@ -66,15 +66,16 @@ def create_parser():
             description='pass one input file type: sam (-s), raw fastq (-f, [-r]), or '
                         'processed fastq (-m)')
 
-        i.add_argument('-f', '--forward', help='forward fastq file(s)', metavar='F',
-                       nargs='*', default=None)
-        i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
-                       nargs='*', default=None)
-        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default=None,
-                       help='sam file(s) containing aligned, pre-processed reads')
-        i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
-                       help='fastq file containing merged, pre-processed records')
-
+        i.add_argument('-f', '--forward', nargs='*', default=list(), metavar='F',
+                       help='s3 link or filesystem location of forward fastq file(s)')
+        i.add_argument('-r', '--reverse', nargs='*', default=list(), metavar='R',
+                       help='s3 link or filesystem location of reverse fastq file(s)')
+        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default='',
+                       help='s3 link or filesystem location of sam file(s) containing '
+                            'aligned, pre-processed reads')
+        i.add_argument('-m', '--merged-fastq', metavar='M', default='',
+                       help='s3 link or filesystem location of fastq file containing '
+                            'merged, pre-processed records')
         # disambiguation arguments
         d = p.add_argument_group('Optional arguments for disambiguation')
         d.add_argument('-l', '--frag-len', metavar='L', type=int, default=1000,
@@ -124,7 +125,6 @@ def create_parser():
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
     # allow indication of remote run.
-
 
     return parser
 
@@ -319,7 +319,7 @@ def check_index(index: str, output_dir: str='') -> (str, str):
         index += '/'
 
     critical_index_files = ['SA', 'SAindex', 'Genome', 'annotations.gtf',
-                            'p_coalignment.pckl']
+                            'p_coalignment_array.p']
 
     if not index.startswith('s3://'):  # index is a file path
         if not os.path.isdir(index):
@@ -381,14 +381,137 @@ def check_and_load_barcodes(
     elif not os.path.isfile(barcodes):
         raise FileNotFoundError('No barcode file was found at %s' % barcodes)
 
-    with open(barcodes, 'rb') as f:
-        cb = pickle.load(f)
+    cb = seqc.barcodes.CellBarcodes.from_pickle(barcodes)
 
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
         raise TypeError('specified barcodes file %s did not contain a CellBarcodes '
                         'object' % barcodes)
 
     return cb
+
+
+def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
+                     samfile: str, merged: str) -> (list, list, str, str):
+    """
+    checks the validity of data inputs. If s3 links are passed, downloads the files. If
+    a basespace link is provided, transfers files from basespace.
+
+    args:
+    -----
+    output_dir: the directory that any downloaded files will be placed in
+    forward_fastq, reverse_fastq: Lists of forward fastq files OR single aws s3 links
+     specifying folders holding forward and reverse fastq files
+    samfile: an alignment file or an aws s3 link specifying the location of a samfile
+    merged: a merged fastq file or an aws s3 link specifying the location of a merged
+     fastq file
+
+    returns:
+    (forward_fastq_files, reverse_fastq_files, samfile, merged): updated links to input
+     files, if any needed to be downloaded. otherwise, the output is the same as the
+     input.
+    """
+
+    # make sure at least one input has been passed
+    if not any([forward_fastq, reverse_fastq, samfile, merged]):
+        raise ValueError('At least one input argument must be passed to SEQC')
+
+    # make sure inputs all have correct types
+    seqc.util.check_type(forward_fastq, list, 'forward_fastq')
+    seqc.util.check_type(reverse_fastq, list, 'reverse_fastq')
+    seqc.util.check_type(samfile, str, 'samfile')
+    seqc.util.check_type(samfile, str, 'samfile')
+
+    # make sure only one filetype has been passed
+    multi_input_error_message = ('Only one input type (-s, -m, or -r/-f should be passed '
+                                 'to SEQC')
+    unpaired_fastq_error_message = ('If either forward or reverse fastq files are '
+                                    'provided, both must be provided.')
+    if forward_fastq or reverse_fastq:
+        if not all((forward_fastq, reverse_fastq)):
+            raise ValueError(unpaired_fastq_error_message)
+        if any((merged, samfile)):
+            raise ValueError(multi_input_error_message)
+    if samfile:
+        if any((merged, forward_fastq, reverse_fastq)):
+            raise ValueError(multi_input_error_message)
+    if merged:
+        if any((samfile, forward_fastq, reverse_fastq)):
+            raise ValueError(multi_input_error_message)
+
+    # check dir type
+    seqc.util.check_type(output_dir, str, 'output_dir')
+
+    def download_files(link_or_file: str, data_format: str, output_dir: str):
+        """
+        Accessory function to download data files from s3 if s3 links are passed instead
+        of filesystem locations.
+        """
+
+        seqc.util.check_type(link_or_file, str, 'link_or_file')
+
+        valid_types = ['forward_fastq', 'reverse_fastq', 'merged_fastq', 'sam']
+        if not data_format in valid_types:
+            raise ValueError('only %s are valid data_formats' % repr(valid_types))
+
+        if not data_format.endswith('/'):
+                data_format += '/'
+        if not output_dir.endswith('/'):
+                output_dir += '/'
+
+        if not link_or_file.startswith('s3://'):
+            return link_or_file
+
+        msg = ('data directory already exists and may contain data files which would '
+               'confuse SEQC. Please remove the %s directory and run SEQC again')
+
+        if link_or_file.endswith('/'):  # multiple files
+
+            # make directory
+            prefix = output_dir + data_format
+            if os.path.isdir(prefix):
+                raise FileExistsError(msg % prefix)
+            os.makedirs(prefix)
+
+            # download files
+            bucket, key_prefix = seqc.io.S3.split_link(link_or_file)
+            cut_dirs = key_prefix.count('/')
+            seqc.io.S3.download_files(bucket, key_prefix, prefix, cut_dirs)
+            return sorted(prefix + f for f in os.listdir(prefix))
+
+        else:  # single file
+
+            # make directory
+            prefix = output_dir + '/'.join(data_format.split('/')[:-1]) + '/'
+            if os.path.isdir(prefix):
+                raise FileExistsError(msg % prefix)
+            os.makedirs(prefix)
+
+            # download file
+            bucket, key = seqc.io.S3.split_link(link_or_file)
+            name = link_or_file.split('/')[-1]
+            new_file = prefix + name
+            seqc.io.S3.download_file(bucket, key, new_file)
+            return new_file
+
+    if forward_fastq or reverse_fastq:
+        if len(forward_fastq) == 1:
+            forward_fastq = download_files(forward_fastq[0], 'forward_fastq', output_dir)
+            # user might pass link to a single fastq file, in which case we need to create
+            # a list of that one file for use with downstream methods
+            if isinstance(forward_fastq, str):
+                forward_fastq = [forward_fastq]
+        if len(reverse_fastq) == 1:
+            reverse_fastq = download_files(reverse_fastq[0], 'reverse_fastq', output_dir)
+            # user might pass link to a single fastq file, in which case we need to create
+            # a list of that one file for use with downstream methods
+            if isinstance(reverse_fastq, str):
+                reverse_fastq = [reverse_fastq]
+    elif samfile:
+        samfile = download_files(samfile, 'sam', output_dir)
+    if merged:
+        merged = download_files(merged, 'merged_fastq', output_dir)
+
+    return forward_fastq, reverse_fastq, samfile, merged
 
 
 def set_up(output_prefix, index, barcodes):
@@ -578,6 +701,9 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
 
     cb = check_and_load_barcodes(barcodes, output_dir)
 
+    forward, reverse, merged_fastq, samfile = check_input_data(
+        output_dir, forward, reverse, merged_fastq, samfile)
+
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
@@ -588,7 +714,7 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
 
     arr = process_samfile(samfile, output_prefix, n_threads, gtf, frag_len)
 
-    resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
+    # resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
 
     store_results(output_prefix, arr)
 
@@ -606,6 +732,9 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_n
 
     cb = check_and_load_barcodes(barcodes, output_dir)
 
+    forward, reverse, merged_fastq, samfile = check_input_data(
+        output_dir, forward, reverse, merged_fastq, samfile)
+
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
@@ -616,7 +745,7 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_n
 
     arr = process_samfile(samfile, output_prefix, n_threads, gtf, frag_len)
 
-    resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
+    # resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
 
     arr.save_h5(output_prefix + '.h5')
 

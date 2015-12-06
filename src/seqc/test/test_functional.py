@@ -5,14 +5,25 @@ import nose2
 import os
 from copy import copy
 import json
+import sys
+import logging
+
+logging.getLogger('nose2').setLevel(logging.CRITICAL)
 
 
 def test_seqc_raw_fastq_input():
+
+    # create test directory if not present
+    package_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
+    test_dir = package_dir + 'test_data/'
+    if not os.path.isdir(test_dir):
+        os.mkdir(test_dir)
+
     for data_type in ['drop_seq', 'in_drop']:
 
         seqc.log.info('SEQC functest for %s' % data_type)
 
-        package_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
+        # define some variables
         output_prefix = package_dir + 'test_data/%s/seqc_test' % data_type
         output_dir = package_dir + 'test_data/%s/' % data_type
         # output_dir = testing_dir + data_type + '/'
@@ -29,10 +40,11 @@ def test_seqc_raw_fastq_input():
             seqc.log.info('SEQC test_data: downloading mouse chr19 genome index files')
             bucket = 'dplab-data'
             key_prefix = 'genomes/mm38_chr19/'
-            output_prefix = index
+            prefix = index
             seqc.io.S3.download_files(bucket=bucket, key_prefix=key_prefix,
-                                          output_prefix=output_prefix, cut_dirs=2)
+                                      output_prefix=prefix, cut_dirs=2)
 
+        # define some file names
         forward = output_dir + 'fastq/seqc_test_r1.fastq'
         reverse = output_dir + 'fastq/seqc_test_r2.fastq'
         barcodes = output_dir + 'barcodes/barcodes.p'

@@ -6,10 +6,12 @@ from collections.abc import Iterator, Iterable
 from more_itertools import peekable
 from itertools import chain
 from operator import itemgetter, attrgetter
+from intervaltree import IntervalTree
 import numpy as np
 import io
 import seqc
 import pickle
+import random
 
 # create a simple mock-class for returned gtf records
 Record = namedtuple('Record', ['seqname', 'source', 'feature', 'start', 'end',
@@ -32,8 +34,35 @@ class Sample:
         self._tx_data = None
         self._exon_data = None
 
-    def sample_genes(self, fragment_length: int=1000) -> np.array:
-        pass  # todo this is where I stopped 15/12/02
+    def sample_final_n(self, n, fragment_length: int=1000) -> np.array:
+        id_map = {}
+        data = {}
+        gtf_reader = seqc.gtf.Reader(self._gtf)
+        for record in gtf_reader.iter_genes_final_nbases(fragment_length):
+
+            # check if gene is in map
+            gene = record.attribute['gene_id']
+            int_id = hash(gene)
+            if not int_id in id_map:
+                id_map[int_id] = gene
+
+            for iv in record.intervals:
+                try:
+                    data[(record.seqname, record.strand)].addi(
+                        iv[0], iv[1], int_id)
+                except KeyError:
+                    data[record.seqname, record.strand] = IntervalTree()
+                    data[record.seqname, record.strand].addi(
+                        iv[0], iv[1], int_id)
+        # randomly sample from intervals
+        intervals = []
+        for (chrom, strand), v in data.items():
+            for iv in v:
+                intervals.append((chrom, strand, iv))
+        for i in range(n):
+            chrom, strand, iv = random.choice(intervals)
+            yield strand, chrom, random.randint(iv.begin, iv.end)
+
 
 class Reader:
     """GTF reader optimized for utility and simplicity"""

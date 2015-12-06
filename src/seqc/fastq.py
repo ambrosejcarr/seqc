@@ -15,9 +15,11 @@ import io
 import pickle
 import random
 from io import StringIO
+from collections import namedtuple
 
 
-_revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
+_revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
+            'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
 
 
 def revcomp(s: str) -> str:
@@ -280,12 +282,36 @@ def auto_detect_processor(experiment_name):
                     'available processors can be found in seqdb.fastq.py')
 
 
-def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads):
+def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
+                cb: seqc.barcodes.CellBarcodes, n_processes: int) -> str:
+    """
+    Merges forward and reverse fastq files while extracting barcoding and quality
+    data from forward read
+
+    args:
+    -----
+    forward: list of forward fastq files
+    reverse: list of reverse fastq read pairs
+    exp_type: type of experiment (e.g. 'in-drop', 'drop-seq'...)
+    output_dir: the directory in which to write the merged fastq file
+    cb: cell barcode object, used to test whether each read has a valid cell barcode
+    n_processes: the number of processes to apply to merging the files.
+     Must be at least 3.
+
+    returns:
+    --------
+    name of merged fastq file, equal to output_dir + merged.fastq
+
+    """
 
     def read(forward_: list, reverse_: list, in_queue):
         """
         read chunks from fastq files and place them on the processing queue.
         It seems this should take < 1s per 1M read chunk
+
+        # use bytes.index() to find '@' -- the beginning of the next record
+        # could also likely find the final newline; this will prevent the method
+        # from throwing out corner cases where reading a number of bytes breaks the reads
         """
 
         # set the number of reads in each chunk
@@ -350,7 +376,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
                     break
 
             # process records
-            merged_filename = '%s/temp_%d.fastq' % (temp_dir, index)
+            merged_filename = '%stemp_%d.fastq' % (output_dir, index)
             with open(merged_filename, 'w') as fout:
                 for f, r in grouped_records(forward_, reverse_):
                     fout.write(process_record(f, r, tbp, cb))
@@ -377,7 +403,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     def merge(out_queue):
         # set a destination file to write everythign into
-        seed = open('%s/merged.fastq' % temp_dir, 'wb')
+        seed = open('%smerged.fastq' % output_dir, 'wb')
 
         # merge all remaining files into it.
         while True:
@@ -398,13 +424,30 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     seqc.log.setup_logger()
 
+    # do some type checking of inputs
+    seqc.util.check_type(forward, list, 'forward')
+    seqc.util.check_type(reverse, list, 'reverse')
+    seqc.util.check_type(exp_type, str, 'exp_type')
+    seqc.util.check_type(output_dir, str, 'output_dir')
+    if not isinstance(cb, (seqc.barcodes.CellBarcodes, str)):
+        raise TypeError('cb must be one of seqc.barcodes.CellBarcodes or str, not %s' % (
+                        type(cb)))
+
     tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
-        with open(cb, 'rb') as fcb:
-            cb = pickle.load(fcb)
+        cb = seqc.barcodes.CellBarcodes.from_pickle(cb)
+
+    # check that forward and reverse are equal length
+    if not len(forward) == len(reverse):
+        raise ValueError('Equal number of forward and reverse files must be passed. '
+                         '%d != %d' % (len(forward), len(reverse)))
+
+    # check that output dir has the terminal slash
+    if not output_dir.endswith('/'):
+        output_dir += '/'
 
     # set the number of processing threads
-    n_proc = max(n_threads - 2, 1)
+    n_proc = max(n_processes - 2, 1)
 
     # read the files
     paired_records = Queue(maxsize=n_proc)  # don't need more waiting items than threads
@@ -414,10 +457,8 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
 
     # process the data
     output_filenames = Queue()
-    # max --> make sure at least one thread starts
     processors = [Process(target=process, args=([paired_records, output_filenames]))
                   for _ in range(n_proc)]
-    assert(len(processors) > 0)
     for p in processors:
         p.start()
 
@@ -433,7 +474,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_threads)
         p.join()
     merge_process.join()
 
-    return '%s/merged.fastq' % temp_dir
+    return '%smerged.fastq' % output_dir
 
 
 class GenerateFastq:
@@ -446,8 +487,7 @@ class GenerateFastq:
 
     @classmethod
     def _forward_in_drop(cls, n, barcodes_):
-        with open(barcodes_, 'rb') as f:
-            barcodes_ = pickle.load(f)
+        barcodes_ = seqc.barcodes.CellBarcodes.from_pickle(barcodes_)
         read_length = 50
         names = range(n)
         name2 = '+'
@@ -491,6 +531,51 @@ class GenerateFastq:
             end = int(r.end) - read_length
             start = int(r.start)
             if end > start:
+                intervals.append((r.attribute[tag_type], start, end, r.strand))
+
+        # pick intervals
+        exon_selections = np.random.randint(0, len(intervals), (n,))
+
+        # fasta information:
+        with open(fasta) as f:
+            fasta = f.readlines()[1:]
+            fasta = ''.join(fasta)
+
+        # generate sequences
+        sequences = []
+        tags = []
+        for i in exon_selections:
+            tag, start, end, strand = intervals[i]
+            # get position within interval
+            start = random.randint(start, end)
+            end = start + read_length
+            seq = fasta[start:end]
+            if strand == '-':
+                seq = revcomp(seq)
+            sequences.append(seq)
+            tags.append(tag)
+
+        prefixes = range(n)
+        name2 = '+'
+        quality = 'I' * read_length
+        records = []
+        for name, tag, seq in zip(prefixes, tags, sequences):
+            records.append('\n'.join(['@%d:%s' % (name, tag), seq, name2, quality]))
+        reverse_fastq = StringIO('\n'.join(records) + '\n')
+        return reverse_fastq
+
+    @staticmethod
+    def _reverse_three_prime(n: int, read_length: int, fasta: str, gtf: str,
+                             tag_type='gene_id', fragment_length=1000):
+
+        # todo this doesn't work yet.
+        # read gtf
+        reader = seqc.gtf.Reader(gtf)
+        intervals = []
+        for r in reader.iter_genes_final_nbases(fragment_length):
+            end = int(r.end) - read_length
+            start = int(r.start)
+            if end > start:
                 intervals.append((r.attribute[tag_type], start, end))
 
         # pick intervals
@@ -523,11 +608,16 @@ class GenerateFastq:
         return reverse_fastq
 
     @classmethod
-    def in_drop(cls, n, prefix_, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
+    def in_drop(cls, n, prefix, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
                 *args, **kwargs):
 
         if not replicates >= 0:
             raise ValueError('Cannot generate negative replicates')
+
+        # create directory if it doesn't exist
+        directory = '/'.join(prefix.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
 
         fwd_len = 50
         rev_len = 100
@@ -535,15 +625,24 @@ class GenerateFastq:
         forward = forward.read()  # consume the StringIO object
         reverse = cls._reverse(n, rev_len, fasta, gtf, tag_type=tag_type)
         reverse = reverse.read()  # consume the StringIO object
-        with open(prefix_ + '_r1.fastq', 'w') as f:
+        with open(prefix + '_r1.fastq', 'w') as f:
             f.write(''.join([forward] * (replicates + 1)))
-        with open(prefix_ + '_r2.fastq', 'w') as r:
+        with open(prefix + '_r2.fastq', 'w') as r:
             r.write(''.join([reverse] * (replicates + 1)))
-        return prefix_ + '_r1.fastq', prefix_ + '_r2.fastq'
+        return prefix + '_r1.fastq', prefix + '_r2.fastq'
 
     @classmethod
     def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_id', replicates=3, *args,
                  **kwargs):
+
+        if not replicates >= 0:
+            raise ValueError('Cannot generate negative replicates')
+
+        # create directory if it doesn't exist
+        directory = '/'.join(prefix.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
         rev_len = 100
         forward = cls._forward_drop_seq(n)
         forward = forward.read()  # consume the StringIO object
@@ -574,3 +673,57 @@ class GenerateFastq:
         fastq_data.seek(0)
 
         return fastq_data
+
+
+FastqRecord = namedtuple('FastqRecord', ['name', 'seq', 'name2', 'qual'])
+
+
+class Reader:
+    """simple fastq reader, optimized for utility rather than speed"""
+
+    def __init__(self, fastq_file):
+
+        seqc.util.check_type(fastq_file, str, 'fastq_file')
+        seqc.util.check_file(fastq_file, 'fastq_file')
+
+        self._fastq = fastq_file
+        try:
+            fastq_iterator = iter(self)
+            first = next(fastq_iterator)
+        except:
+            raise ValueError('%s is an invalid fastq_file. Please check file formatting.' %
+                             fastq_file)
+        if not first.name.startswith('@'):
+            raise ValueError('Invalid formatting: all name lines must start with "@"')
+        if not first.name2.startswith('+'):
+            raise ValueError('Invalid formatting: all name2 lines must start with "+"')
+
+    @property
+    def fastq(self):
+        return self._fastq
+
+    def _open(self) -> io.TextIOBase:
+        """
+        seamlessly open self.fastq, whether gzipped or uncompressed
+
+        returns:
+        --------
+        fobj: open file object
+        """
+        if self.fastq.endswith('.gz'):
+            fobj = gzip.open(self.fastq, 'rt')
+        else:
+            fobj = open(self.fastq)
+        return fobj
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def __iter__(self):
+        """return an iterator over all records in fastq file"""
+        fobj = self._open()
+        try:
+            for record in iter_records(fobj):
+                yield FastqRecord(*record)
+        finally:
+            fobj.close()

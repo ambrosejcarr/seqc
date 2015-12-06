@@ -319,7 +319,7 @@ class JaggedArray:
             return np.uint8
 
     @classmethod
-    def from_iterable(cls, nested_iterable, dtype=np.int32):
+    def from_iterable(cls, nested_iterable, dtype=np.uint32):
         if not nested_iterable:
             raise ValueError('Cannot initialize empty array')
         k = len(nested_iterable)
