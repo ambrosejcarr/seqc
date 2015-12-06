@@ -7,6 +7,7 @@ import shutil
 import seqc
 import sys
 import json
+from glob import glob
 
 
 def create_parser():
@@ -383,6 +384,75 @@ def check_and_load_barcodes(
                         'object' % barcodes)
 
     return cb
+
+
+def check_input_data(output_dir: str, forward_fastq: list=None, reverse_fastq: list=None,
+                     samfile: str=None, merged: str=None) -> (list, list, str, str):
+    """
+    checks the validity of data inputs. If s3 links are passed, downloads the files. If
+    a basespace link is provided, transfers files from basespace.
+
+    args:
+    -----
+    output_dir: the directory that any downloaded files will be placed in
+    forward_fastq, reverse_fastq: Lists of forward fastq files OR single aws s3 links
+     specifying folders holding forward and reverse fastq files
+    samfile: an alignment file or an aws s3 link specifying the location of a samfile
+    merged: a merged fastq file or an aws s3 link specifying the location of a merged
+     fastq file
+
+    returns:
+    (forward_fastq_files, reverse_fastq_files, samfile, merged): updated links to input
+     files, if any needed to be downloaded. otherwise, the output is the same as the
+     input.
+    """
+
+    # make sure at least one input has been passed
+    if not any([forward_fastq, reverse_fastq, samfile, merged]):
+        raise ValueError('At least one input argument must be passed to SEQC')
+
+    # todo add more type-checking here
+    if forward_fastq or reverse_fastq:
+        if not all([forward_fastq, reverse_fastq]):
+            raise ValueError('If either forward or reverse fastq files are provided, '
+                             'both must be provided.')
+        # check if any s3 links were passed
+        if len(forward_fastq) == 1:
+            if forward_fastq[0].startswith('s3://'):
+                forward_prefix = output_dir + 'fastq/'
+                os.makedirs(forward_prefix)
+                bucket, key_prefix = seqc.io.S3.split_link(forward_fastq[0])
+                cut_dirs = key_prefix.count('/')
+                seqc.io.S3.download_files(bucket, key_prefix, forward_prefix, cut_dirs)
+                forward_fastq = sorted(glob(forward_prefix + '*.fastq*'))
+        if len(reverse_fastq) == 1:
+            if reverse_fastq[0].startswith('s3://'):
+                reverse_prefix = output_dir + 'fastq/'
+                os.makedirs(reverse_prefix)
+                bucket, key_prefix = seqc.io.S3.split_link(reverse_fastq[0])
+                cut_dirs = key_prefix.count('/')
+                seqc.io.S3.download_files(bucket, key_prefix, reverse_prefix, cut_dirs)
+                reverse_fastq = sorted(glob(reverse_prefix + '*.fastq*'))
+    if samfile and isinstance(samfile, str):
+        if samfile.startswith('s3://'):
+            if samfile.startswith('s3://'):
+                os.makedirs(output_dir + 'alignments/')
+                bucket, key = seqc.io.S3.split_link(samfile)
+                name = samfile.split('/')[-1]
+                new_samfile = output_dir + 'alignments/%s' % name
+                seqc.io.S3.download_file(bucket, key, new_samfile)
+                samfile = new_samfile
+    if merged and isinstance(merged, str):
+        if merged.startswith('s3://'):
+            if merged.startswith('s3://'):
+                os.makedirs(output_dir + 'alignments/')
+                bucket, key = seqc.io.S3.split_link(merged)
+                name = merged.split('/')[-1]
+                new_merged = output_dir + 'alignments/%s' % name
+                seqc.io.S3.download_file(bucket, key, new_merged)
+                merged = new_merged
+
+    return forward_fastq, reverse_fastq, samfile, merged
 
 
 def set_up(output_prefix, index, barcodes):

@@ -1,4 +1,4 @@
-__author__ = 'ambrose'
+__author__ = "Ambrose J. Carr"
 
 import nose2
 import unittest
