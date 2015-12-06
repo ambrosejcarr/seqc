@@ -561,6 +561,7 @@ class GenerateFastq:
     def _reverse_three_prime(n: int, read_length: int, fasta: str, gtf: str,
                              tag_type='gene_id', fragment_length=1000):
 
+        # todo this doesn't work yet.
         # read gtf
         reader = seqc.gtf.Reader(gtf)
         intervals = []

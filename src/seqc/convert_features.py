@@ -316,12 +316,18 @@ class ConvertGeneCoordinates:
         self._data = dict_of_interval_trees
         self._id_map = id_map
 
+    def translate_unstranded(self, strand: str, chromosome: str, position: int) -> list:
+        # todo implement
+        raise NotImplementedError
+
     def translate(self, strand: str, chromosome: str, position: int) -> list:
         """
         translate an alignment in chromosome coordinates to gene coordinates
 
         Note that there are some cases where genomic coordinates do not map to single
         genes due to double utilization of exons. In this case, the method returns None.
+
+        Note that this translater expects a STRANDED LIBRARY.
 
         args:
         -----
