@@ -321,7 +321,7 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
     merged_fastq = directory + 'merged.fastq'
     counts = prefix + '_sp_counts.npz'
     id_map = prefix + '_gene_id_map.p'
-    summary = prefix + 'alignment_summary.txt'
+    summary = prefix + '_alignment_summary.txt'
     files = [samfile, h5_archive, merged_fastq, counts, id_map, summary]
 
     # gzip everything and upload to aws_upload_key
