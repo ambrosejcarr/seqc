@@ -1626,6 +1626,11 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     pass  # not aligned
 
 
+class TestDownloadInputFiles(unittest.TestCase):
+
+    def test_download_input_files(self):
+        raise NotImplementedError  # todo implement
+
 if __name__ == '__main__':
     nose2.main()
 
