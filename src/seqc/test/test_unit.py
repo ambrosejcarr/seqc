@@ -1729,6 +1729,7 @@ class TestDownloadInputFiles(unittest.TestCase):
         # test download merged fastq
         download_merged = empty_kwargs.copy()
         download_merged['merged'] = complete_kwargs['merged']
+        self.assertTrue(download_merged['merged'])  # was showing mgd == ''
         self.assertFalse(os.path.isdir(merged_dir))
         fwd, rev, mgd, sam = seqc.core.check_input_data(**download_merged)
         self.assertEqual(add_prefix(merged_dir, sorted(os.listdir(merged_dir)))[0], mgd)

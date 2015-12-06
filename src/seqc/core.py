@@ -120,7 +120,6 @@ def create_parser():
     pindex.add_argument('--email-status', default='', metavar='E',
                         help='email results to this address')
 
-
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
@@ -387,7 +386,7 @@ def check_and_load_barcodes(
 
 
 def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
-                     samfile: str, merged: str) -> (list, list, str, str):
+                     merged: str, samfile: str) -> (list, list, str, str):
     """
     checks the validity of data inputs. If s3 links are passed, downloads the files. If
     a basespace link is provided, transfers files from basespace.
@@ -408,7 +407,7 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
     """
 
     # make sure at least one input has been passed
-    if not any([forward_fastq, reverse_fastq, samfile, merged]):
+    if not any([forward_fastq, reverse_fastq, merged, samfile]):
         raise ValueError('At least one input argument must be passed to SEQC')
 
     # make sure inputs all have correct types
@@ -437,7 +436,7 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
     # check dir type
     seqc.util.check_type(output_dir, str, 'output_dir')
 
-    def download_files(link_or_file: str, data_format: str, output_dir: str):
+    def download_s3_files(link_or_file: str, data_format: str, output_dir: str):
         """
         Accessory function to download data files from s3 if s3 links are passed instead
         of filesystem locations.
@@ -453,9 +452,6 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
                 data_format += '/'
         if not output_dir.endswith('/'):
                 output_dir += '/'
-
-        if not link_or_file.startswith('s3://'):
-            return link_or_file
 
         msg = ('data directory already exists and may contain data files which would '
                'confuse SEQC. Please remove the %s directory and run SEQC again')
@@ -487,27 +483,41 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
             name = link_or_file.split('/')[-1]
             new_file = prefix + name
             seqc.io.S3.download_file(bucket, key, new_file)
+            print(new_file)
             return new_file
 
     if forward_fastq or reverse_fastq:
         if len(forward_fastq) == 1:
-            forward_fastq = download_files(forward_fastq[0], 'forward_fastq', output_dir)
-            # user might pass link to a single fastq file, in which case we need to create
-            # a list of that one file for use with downstream methods
-            if isinstance(forward_fastq, str):
-                forward_fastq = [forward_fastq]
+            if forward_fastq[0].startswith('s3://'):
+                seqc.log.info('AWS s3 link provided for forward_fastq. Downloading '
+                              'forward_fastq')
+                forward_fastq = download_s3_files(forward_fastq[0], 'forward_fastq',
+                                               output_dir)
+                # user might pass link to a single fastq file, in which case we need to
+                # create a list of that one file for use with downstream methods
+                if isinstance(forward_fastq, str):
+                    forward_fastq = [forward_fastq]
         if len(reverse_fastq) == 1:
-            reverse_fastq = download_files(reverse_fastq[0], 'reverse_fastq', output_dir)
-            # user might pass link to a single fastq file, in which case we need to create
-            # a list of that one file for use with downstream methods
-            if isinstance(reverse_fastq, str):
-                reverse_fastq = [reverse_fastq]
+            if reverse_fastq[0].startswith('s3://'):
+                seqc.log.info('AWS s3 link provided for reverse_fastq. Downloading '
+                              'reverse_fastq')
+                reverse_fastq = download_s3_files(reverse_fastq[0], 'reverse_fastq',
+                                               output_dir)
+                # user might pass link to a single fastq file, in which case we need to
+                # create a list of that one file for use with downstream methods
+                if isinstance(reverse_fastq, str):
+                    reverse_fastq = [reverse_fastq]
     elif samfile:
-        samfile = download_files(samfile, 'sam', output_dir)
+        if samfile.startswith('s3://'):
+            seqc.log.info('AWS s3 link provided for samfile. Downloading samfile')
+            samfile = download_s3_files(samfile, 'sam', output_dir)
     if merged:
-        merged = download_files(merged, 'merged_fastq', output_dir)
+        if samfile.startswith('s3://'):
+            seqc.log.info('AWS s3 link provided for merged_fastq. Downloading '
+                          'merged_fastq')
+            merged = download_s3_files(merged, 'merged_fastq', output_dir)
 
-    return forward_fastq, reverse_fastq, samfile, merged
+    return forward_fastq, reverse_fastq, merged, samfile
 
 
 def set_up(output_prefix, index, barcodes):
