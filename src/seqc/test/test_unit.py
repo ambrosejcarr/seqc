@@ -1656,7 +1656,7 @@ class TestDownloadInputFiles(unittest.TestCase):
             os.makedirs(cls.test_dir)
 
     def test_download_input_files(self):
-        raise NotImplementedError  # todo implement
+
 
     @classmethod
     def tearDownClass(cls):

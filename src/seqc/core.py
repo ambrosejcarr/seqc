@@ -67,12 +67,12 @@ def create_parser():
                         'processed fastq (-m)')
 
         i.add_argument('-f', '--forward', help='forward fastq file(s)', metavar='F',
-                       nargs='*', default=None)
+                       nargs='*', default=list())
         i.add_argument('-r', '--reverse', help='reverse fastq file(s)', metavar='R',
-                       nargs='*', default=None)
-        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default=None,
+                       nargs='*', default=list())
+        i.add_argument('-s', '--samfile', metavar='S', nargs='?', default='',
                        help='sam file(s) containing aligned, pre-processed reads')
-        i.add_argument('-m', '--merged-fastq', metavar='M', default=None,
+        i.add_argument('-m', '--merged-fastq', metavar='M', default='',
                        help='fastq file containing merged, pre-processed records')
 
         # disambiguation arguments
@@ -124,7 +124,6 @@ def create_parser():
     parser.add_argument('-v', '--version', help='print version and exit',
                         action='store_true', default=False)
     # allow indication of remote run.
-
 
     return parser
 
