@@ -411,46 +411,71 @@ def check_input_data(output_dir: str, forward_fastq: list=None, reverse_fastq: l
     if not any([forward_fastq, reverse_fastq, samfile, merged]):
         raise ValueError('At least one input argument must be passed to SEQC')
 
-    # todo add more type-checking here
+    def download_files(link_or_file: str, data_format: str, output_dir: str):
+        """
+        Accessory function to download data files from s3 if s3 links are passed instead
+        of filesystem locations.
+        """
+
+        seqc.util.check_type(link_or_file, str, 'link_or_file')
+
+        valid_types = ['forward_fastq', 'reverse_fastq', 'merged_fastq', 'sam']
+        if not data_format in valid_types:
+            raise ValueError('only %s are valid data_formats' % repr(valid_types))
+
+        if not data_format.endswith('/'):
+                data_format += '/'
+        if not output_dir.endswith('/'):
+                output_dir += '/'
+
+        if not link_or_file.startswith('s3://'):
+            return link_or_file
+
+        msg = ('data directory already exists and may contain data files which would '
+               'confuse SEQC. Please remove the %s directory and run SEQC again')
+
+        if link_or_file.endswith('/'):  # multiple files
+
+            # make directory
+            prefix = output_dir + data_format
+            if os.path.isdir(prefix):
+                raise ValueError(msg % prefix)
+            os.makedirs(prefix)
+
+            # download files
+            bucket, key_prefix = seqc.io.S3.split_link(link_or_file)
+            cut_dirs = key_prefix.count('/')
+            seqc.io.S3.download_files(bucket, key_prefix, prefix, cut_dirs)
+            return sorted(os.listdir(prefix))
+
+        else:  # single file
+
+            # make directory
+            prefix = output_dir + '/'.join(data_format.split('/')[:-1]) + '/'
+            if os.path.isdir(prefix):
+                raise ValueError(msg % prefix)
+            os.makedirs(prefix)
+
+            # download file
+            bucket, key = seqc.io.S3.split_link(link_or_file)
+            name = link_or_file.split('/')[-1]
+            new_file = prefix + name
+            seqc.io.S3.download_file(bucket, key, new_file)
+            return new_file
+
     if forward_fastq or reverse_fastq:
         if not all([forward_fastq, reverse_fastq]):
             raise ValueError('If either forward or reverse fastq files are provided, '
                              'both must be provided.')
-        # check if any s3 links were passed
         if len(forward_fastq) == 1:
-            if forward_fastq[0].startswith('s3://'):
-                forward_prefix = output_dir + 'fastq/'
-                os.makedirs(forward_prefix)
-                bucket, key_prefix = seqc.io.S3.split_link(forward_fastq[0])
-                cut_dirs = key_prefix.count('/')
-                seqc.io.S3.download_files(bucket, key_prefix, forward_prefix, cut_dirs)
-                forward_fastq = sorted(glob(forward_prefix + '*.fastq*'))
+            forward_fastq = download_files(forward_fastq[0], 'forward_fastq', output_dir)
         if len(reverse_fastq) == 1:
-            if reverse_fastq[0].startswith('s3://'):
-                reverse_prefix = output_dir + 'fastq/'
-                os.makedirs(reverse_prefix)
-                bucket, key_prefix = seqc.io.S3.split_link(reverse_fastq[0])
-                cut_dirs = key_prefix.count('/')
-                seqc.io.S3.download_files(bucket, key_prefix, reverse_prefix, cut_dirs)
-                reverse_fastq = sorted(glob(reverse_prefix + '*.fastq*'))
-    if samfile and isinstance(samfile, str):
-        if samfile.startswith('s3://'):
-            if samfile.startswith('s3://'):
-                os.makedirs(output_dir + 'alignments/')
-                bucket, key = seqc.io.S3.split_link(samfile)
-                name = samfile.split('/')[-1]
-                new_samfile = output_dir + 'alignments/%s' % name
-                seqc.io.S3.download_file(bucket, key, new_samfile)
-                samfile = new_samfile
-    if merged and isinstance(merged, str):
-        if merged.startswith('s3://'):
-            if merged.startswith('s3://'):
-                os.makedirs(output_dir + 'alignments/')
-                bucket, key = seqc.io.S3.split_link(merged)
-                name = merged.split('/')[-1]
-                new_merged = output_dir + 'alignments/%s' % name
-                seqc.io.S3.download_file(bucket, key, new_merged)
-                merged = new_merged
+            reverse_fastq = download_files(reverse_fastq[0], 'reverse_fastq', output_dir)
+
+    if samfile:
+        samfile = download_files(samfile, 'sam', output_dir)
+    if merged:
+        merged = download_files(merged, 'merged_fastq', output_dir)
 
     return forward_fastq, reverse_fastq, samfile, merged
 

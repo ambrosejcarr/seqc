@@ -49,6 +49,12 @@ class config:
     # config parameters
     n_threads = 7
 
+    # s3 test file download links
+    s3_forward_fastq_pattern = 's3://dplab-data/seqc/test_seqc/%s/fastq/forward/test_seqc_r1.fastq'
+    s3_reverse_fastq_pattern = 's3://dplab-data/seqc/test_seqc/%s/fastq/reverse/test_seqc_r2.fastq'
+    s3_merged_fastq_pattern = 's3://dplab-data/seqc/test_seqc/%s/fastq/merged/merged.fastq'
+    s3_sam_pattern = 's3://dplab-data/seqc/test_seqc/%s/sam/alignments.sam'
+
 
 def check_index():
     """ensure that there is an index present. If not, download it."""
@@ -642,6 +648,11 @@ class GTFReaderTest(unittest.TestCase):
         #         shutil.rmtree(cls.test_dir)
         #     pass
 
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.test_dir):
+            shutil.rmtree(cls.test_dir)
+
 
 class CoreFixOutputPathsTest(unittest.TestCase):
     def setUp(self):
@@ -713,8 +724,7 @@ class CoreCheckIndex(unittest.TestCase):
 class CoreCheckLoadBarcodesTest(unittest.TestCase):
     """nose2 test_data generator"""
 
-    def setUp(self):
-        self.output_dir = 'test_seqc/'
+    output_dir = 'test_seqc/'
 
     def test_load_barcodes_wrong_input_type_raises(self):
         self.assertRaises(TypeError, seqc.core.check_and_load_barcodes,
@@ -742,6 +752,10 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
     def test_load_pickle_containing_non_barcode_data(self):
         pass  # todo implement
 
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.output_dir):
+            shutil.rmtree(cls.output_dir)
 
 class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
     test_dir = 'test_seqc_convert_features/'
@@ -1171,6 +1185,11 @@ class TestConvertGeneCoordinates(unittest.TestCase):
         self.assertTrue(all(res), 'Of %d alignments, only %d converted' %
                         (total, converted))
 
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.test_dir):
+            shutil.rmtree(cls.test_dir)
+
 
 class TestJaggedArray(unittest.TestCase):
 
@@ -1255,6 +1274,7 @@ class TestUniqueArrayCreation(unittest.TestCase):
 
 
 class TestCountingUniqueArray(unittest.TestCase):
+
     def setUp(self):
 
         # design a UniqueReadArray to test_data validity of method
@@ -1628,8 +1648,20 @@ class TestGroupForErrorCorrection(unittest.TestCase):
 
 class TestDownloadInputFiles(unittest.TestCase):
 
+    test_dir = 'test_seqc/'
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.path.isdir(cls.test_dir):
+            os.makedirs(cls.test_dir)
+
     def test_download_input_files(self):
         raise NotImplementedError  # todo implement
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.test_dir):
+            shutil.rmtree(cls.test_dir)
 
 if __name__ == '__main__':
     nose2.main()
