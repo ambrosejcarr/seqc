@@ -30,11 +30,7 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-<<<<<<< HEAD
       #test_suite=nose2.collector.collector,
-=======
-      test_suite='nose2.collector.collector',
->>>>>>> 1379a89c26590b32cd898994dd05bb871bd49293
       # note: requires numpy > 1.10.0
       packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[
