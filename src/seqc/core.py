@@ -228,23 +228,12 @@ def run_remote(kwargs: dict) -> None:
 
     #running SEQC on the cluster
     seqc.log.info('Beginning remote run.')
-    print('cmd: %s' %cmd)
+    # print('cmd: %s' %cmd)
     cluster.serv.exec_command(cmd)
     #cluster.serv.exec_command('nohup %s > /dev/null 2>&1 &' % cmd)
     # cluster.serv.exec_command('nohup %s > /data/software/nohup.txt' % cmd)
     # seqc.log.info('Terminating local client. Email will be sent when remote run '
     #               'completes')
-
-    #shut down cluster after finished
-    # todo | have local program exit while process still runs remotely
-    # print('shutting down cluster...')
-    # if out:
-    #     cluster.terminate_cluster()
-    #     sys.exit("process complete -- program exiting")
-    # elif err:
-    #     cluster.terminate_cluster()
-    #     sys.exit("process complete -- program exiting")
-
 
 def fix_output_paths(output_prefix: str) -> (str, str):
     """

@@ -9,11 +9,6 @@ import seqc
 from subprocess import Popen, PIPE
 from botocore.exceptions import ClientError
 
-# instance.update() to refresh
-# workflow: 1) run code w/ paramters 2) this thing does everything and uploads file onto S3
-# 3) sends back to user
-
-
 #TODO check if any errors in the arguments here
 # maybe keep track of all the volumes associated with it too
 class ClusterServer(object):

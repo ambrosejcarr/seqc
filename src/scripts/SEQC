@@ -58,6 +58,16 @@ if __name__ == "__main__":
             # Note that this finally loop is executed regardless
             # of whether cluster SETUP has succeeded; there may not be any cluster.
             # Program accordingly.
+
+            #shut down cluster after finished
+            # todo | have local program exit while process still runs remotely
+            # print('shutting down cluster...')
+            # if out:
+            #     cluster.terminate_cluster()
+            #     sys.exit("process complete -- program exiting")
+            # elif err:
+            #     cluster.terminate_cluster()
+            #     sys.exit("process complete -- program exiting")
             pass
 
     else:  # not email_status and not remote
