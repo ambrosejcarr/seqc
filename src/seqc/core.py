@@ -385,8 +385,8 @@ def check_and_load_barcodes(
     return cb
 
 
-def check_input_data(output_dir: str, forward_fastq: list=None, reverse_fastq: list=None,
-                     samfile: str=None, merged: str=None) -> (list, list, str, str):
+def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
+                     samfile: str, merged: str) -> (list, list, str, str):
     """
     checks the validity of data inputs. If s3 links are passed, downloads the files. If
     a basespace link is provided, transfers files from basespace.
@@ -409,6 +409,32 @@ def check_input_data(output_dir: str, forward_fastq: list=None, reverse_fastq: l
     # make sure at least one input has been passed
     if not any([forward_fastq, reverse_fastq, samfile, merged]):
         raise ValueError('At least one input argument must be passed to SEQC')
+
+    # make sure inputs all have correct types
+    seqc.util.check_type(forward_fastq, list, 'forward_fastq')
+    seqc.util.check_type(reverse_fastq, list, 'reverse_fastq')
+    seqc.util.check_type(samfile, str, 'samfile')
+    seqc.util.check_type(samfile, str, 'samfile')
+
+    # make sure only one filetype has been passed
+    multi_input_error_message = ('Only one input type (-s, -m, or -r/-f should be passed '
+                                 'to SEQC')
+    unpaired_fastq_error_message = ('If either forward or reverse fastq files are '
+                                    'provided, both must be provided.')
+    if forward_fastq or reverse_fastq:
+        if not all((forward_fastq, reverse_fastq)):
+            raise ValueError(unpaired_fastq_error_message)
+        if any((merged, samfile)):
+            raise ValueError(multi_input_error_message)
+    if samfile:
+        if any((merged, forward_fastq, reverse_fastq)):
+            raise ValueError(multi_input_error_message)
+    if merged:
+        if any((samfile, forward_fastq, reverse_fastq)):
+            raise ValueError(multi_input_error_message)
+
+    # check dir type
+    seqc.util.check_type(output_dir, str, 'output_dir')
 
     def download_files(link_or_file: str, data_format: str, output_dir: str):
         """
@@ -438,21 +464,21 @@ def check_input_data(output_dir: str, forward_fastq: list=None, reverse_fastq: l
             # make directory
             prefix = output_dir + data_format
             if os.path.isdir(prefix):
-                raise ValueError(msg % prefix)
+                raise FileExistsError(msg % prefix)
             os.makedirs(prefix)
 
             # download files
             bucket, key_prefix = seqc.io.S3.split_link(link_or_file)
             cut_dirs = key_prefix.count('/')
             seqc.io.S3.download_files(bucket, key_prefix, prefix, cut_dirs)
-            return sorted(os.listdir(prefix))
+            return sorted(prefix + f for f in os.listdir(prefix))
 
         else:  # single file
 
             # make directory
             prefix = output_dir + '/'.join(data_format.split('/')[:-1]) + '/'
             if os.path.isdir(prefix):
-                raise ValueError(msg % prefix)
+                raise FileExistsError(msg % prefix)
             os.makedirs(prefix)
 
             # download file
@@ -463,15 +489,19 @@ def check_input_data(output_dir: str, forward_fastq: list=None, reverse_fastq: l
             return new_file
 
     if forward_fastq or reverse_fastq:
-        if not all([forward_fastq, reverse_fastq]):
-            raise ValueError('If either forward or reverse fastq files are provided, '
-                             'both must be provided.')
         if len(forward_fastq) == 1:
             forward_fastq = download_files(forward_fastq[0], 'forward_fastq', output_dir)
+            # user might pass link to a single fastq file, in which case we need to create
+            # a list of that one file for use with downstream methods
+            if isinstance(forward_fastq, str):
+                forward_fastq = [forward_fastq]
         if len(reverse_fastq) == 1:
             reverse_fastq = download_files(reverse_fastq[0], 'reverse_fastq', output_dir)
-
-    if samfile:
+            # user might pass link to a single fastq file, in which case we need to create
+            # a list of that one file for use with downstream methods
+            if isinstance(reverse_fastq, str):
+                reverse_fastq = [reverse_fastq]
+    elif samfile:
         samfile = download_files(samfile, 'sam', output_dir)
     if merged:
         merged = download_files(merged, 'merged_fastq', output_dir)
@@ -666,6 +696,9 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
 
     cb = check_and_load_barcodes(barcodes, output_dir)
 
+    forward, reverse, merged_fastq, samfile = check_input_data(
+        output_dir, forward, reverse, merged_fastq, samfile)
+
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
@@ -693,6 +726,9 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_n
     index, gtf = check_index(index, output_dir)
 
     cb = check_and_load_barcodes(barcodes, output_dir)
+
+    forward, reverse, merged_fastq, samfile = check_input_data(
+        output_dir, forward, reverse, merged_fastq, samfile)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 

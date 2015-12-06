@@ -3,6 +3,7 @@ __author__ = 'ambrose'
 import cProfile
 import pstats
 from memory_profiler import memory_usage
+from memory_profiler import profile as mem_profile
 import os
 
 
@@ -91,7 +92,7 @@ def time_profile(func, filename=None):
         # print or dump the statistics
         stats = pstats.Stats(profile_)
         stats.strip_dirs()
-        stats.sort_stats('cumtime')
+        stats.sort_stats('tottime')
         if filename:
             stats.dump_stats(os.path.expanduser(filename))
         else:
@@ -103,7 +104,7 @@ def time_profile(func, filename=None):
     return time_profiled_function
 
 
-def mem_profile(func, filename=None):
+def mem_profile_time(func, filename=None):
     """Decoratable memory profiling function
 
     Note that this will slow execution because the code must be executed twice in order
