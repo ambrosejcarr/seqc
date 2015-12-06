@@ -557,6 +557,49 @@ class GenerateFastq:
         reverse_fastq = StringIO('\n'.join(records) + '\n')
         return reverse_fastq
 
+    @staticmethod
+    def _reverse_three_prime(n: int, read_length: int, fasta: str, gtf: str,
+                             tag_type='gene_id', fragment_length=1000):
+
+        # read gtf
+        reader = seqc.gtf.Reader(gtf)
+        intervals = []
+        for r in reader.iter_genes_final_nbases(fragment_length):
+            end = int(r.end) - read_length
+            start = int(r.start)
+            if end > start:
+                intervals.append((r.attribute[tag_type], start, end))
+
+        # pick intervals
+        exon_selections = np.random.randint(0, len(intervals), (n,))
+
+        # fasta information:
+        with open(fasta) as f:
+            fasta = f.readlines()[1:]
+            fasta = ''.join(fasta)
+
+        # generate sequences
+        sequences = []
+        tags = []
+        for i in exon_selections:
+            tag, start, end = intervals[i]
+            # get position within interval
+            start = random.randint(start, end)
+            end = start + read_length
+            seq = fasta[start:end]
+            sequences.append(seq)
+            tags.append(tag)
+
+        prefixes = range(n)
+        name2 = '+'
+        quality = 'I' * read_length
+        records = []
+        for name, tag, seq in zip(prefixes, tags, sequences):
+            records.append('\n'.join(['@%d:%s' % (name, tag), seq, name2, quality]))
+        reverse_fastq = StringIO('\n'.join(records) + '\n')
+        return reverse_fastq
+
+
     @classmethod
     def in_drop(cls, n, prefix_, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
                 *args, **kwargs):

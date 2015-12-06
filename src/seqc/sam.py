@@ -544,6 +544,11 @@ class SamRecord:
                 self.rnext, self.pnext, self.tlen, self.seq, self.qual,
                 ' '.join(self.optional_fields))
 
+    @property
+    def strand(self):
+        minus_strand = int(self.flag) & 16
+        return '-' if minus_strand else '+'
+
 class Reader:
     """simple sam reader, optimized for utility rather than speed"""
 

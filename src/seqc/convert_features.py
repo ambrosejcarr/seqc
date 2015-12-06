@@ -348,7 +348,7 @@ class ConvertGeneCoordinates:
             else:  # not sure what the problem is here, raise original exception
                 raise
 
-        if len(ivs) == 1:
+        if len(ivs) >= 1:
             return [first(ivs).data]
         else:
             return []

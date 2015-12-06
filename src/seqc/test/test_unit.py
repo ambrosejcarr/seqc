@@ -15,7 +15,7 @@ import numpy as np
 import xml.dom.minidom
 import random
 import shutil
-
+from collections import defaultdict
 
 # from memory_profiler import profile, memory_usage
 # from itertools import product
@@ -1144,14 +1144,45 @@ class TestConvertGeneCoordinates(unittest.TestCase):
                 check_sam(dtype)
             assert os.path.isfile(config.samfile_pattern % dtype)
 
-    def test_convert_gene_features(self):
+    @params(*config.data_types)
+    def test_convert_gene_features(self, dtype):
         """
         the vast majority of the inputs are unique, therefore the vast majority should
         convert properly
         """
 
+        # create the converter, allow the full gene to be used to create intervals!
+        cgc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(config.gtf, int(1e10))
 
+        samfile = config.samfile_pattern % dtype
+        rd = seqc.sam.Reader(samfile)
+        fwd_res = []
+        rev_res = []
+        both = []
+        total = 0
+        for records in rd.iter_multialignments():
+            if len(records) == 1:
+                if not int(records[0].flag) & 4:
+                    strand = records[0].strand
+                    chrom = records[0].rname
+                    pos = int(records[0].pos)
+                    forward = cgc.translate('+', chrom, pos)
+                    reverse = cgc.translate('-', chrom, pos)
+                    if forward and reverse:
+                        both.append([1])
+                    elif forward:
+                        fwd_res.append(forward)
+                    elif reverse:
+                        rev_res.append(reverse)
+                    total += 1
 
+        print('plus: %d' % len(fwd_res))
+        print('minus: %d' % len(rev_res))
+        print('both: %d' % len(both))
+        print('total: %d' % total)
+        print('All features: %d' % (len(fwd_res) + len(rev_res) + len(both)))
+        # self.assertTrue(all(res), 'Of %d alignments, only %d converted' %
+        #                 (total, converted))
 
 
 class TestJaggedArray(unittest.TestCase):
@@ -1194,6 +1225,7 @@ class TestUniqueArrayCreation(unittest.TestCase):
             os.mkdir(cls.test_dir)
 
     @params(*config.data_types)
+    @unittest.skip('slow')
     def test_num_unique_samfile(self, dtype):
         h5 = seqc.sam.to_h5(config.samfile_pattern % dtype, self.h5_name, 7,
                             int(1e7), config.gtf, 1000)

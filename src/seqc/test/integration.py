@@ -6,7 +6,7 @@ import unittest
 import nose2
 from nose2.tools import params
 from operator import itemgetter
-from seqc.test.unit import config
+from seqc.test.test_unit import config
 
 
 class GTFReaderTakeFinalNTest(unittest.TestCase):
