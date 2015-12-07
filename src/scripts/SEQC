@@ -56,7 +56,7 @@ if __name__ == "__main__":
         finally:
             # todo figure out what we want to do here
             #we are currently within a cluster:
-            if kwargs['terminate']:
+            if not kwargs['no_terminate']:
                 if os.path.isfile('/data/software/instance.txt'):
                     with open('/data/software/instance.txt','r') as f:
                         inst_id = f.readline().strip('\n')

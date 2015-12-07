@@ -55,8 +55,8 @@ def create_parser():
                        help='run the requested SEQC command remotely')
         r.add_argument('--email-status', default='', metavar='E',
                        help='email results to this address')
-        r.add_argument('--terminate', default=False, action='store_true',
-                       help='terminate the cluster upon completion.')
+        r.add_argument('--no-terminate', default=False, action='store_true',
+                       help='Decide if the cluster will terminate upon completion.')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
@@ -121,8 +121,8 @@ def create_parser():
                         help='run the requested SEQC command remotely')
     pindex.add_argument('--email-status', default='', metavar='E',
                         help='email results to this address')
-    pindex.add_argument('--terminate', default=False, action='store_true',
-                        help='terminate the cluster upon completion.')
+    pindex.add_argument('--no-terminate', default=False, action='store_true',
+                        help='Decide if the cluster will terminate upon completion.')
 
 
     # allow user to check version
@@ -215,6 +215,16 @@ def run_remote(kwargs: dict) -> None:
     del kwargs['subparser_name']
     del kwargs['func']
     del kwargs['cluster_name']
+    if kwargs['no_terminate']:
+        no_terminate = True
+    else:
+        no_terminate = False
+    del kwargs['no_terminate']
+
+    # todo if no terminate in args --> then append to end of list
+    # todo delete from kwargs
+
+    #if no-terminate is True, then you want to append no-terminate
 
     for k, v in kwargs.items():
         if isinstance(v, list):
@@ -222,6 +232,9 @@ def run_remote(kwargs: dict) -> None:
         if v:
             edit_k = '-'.join(k.split('_'))
             cmd += '--%s %s ' % (edit_k, v)
+
+    if no_terminate:
+        cmd += ' --no-terminate'
     print('cmd: %s' %cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
