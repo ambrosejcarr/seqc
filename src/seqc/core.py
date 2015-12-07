@@ -224,11 +224,6 @@ def run_remote(kwargs: dict) -> None:
     for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
-        # if k == 'no_terminate':
-        #     print(v)
-        #     if v: #v is true, user appended flag here
-        #         cmd += '--no-terminate '
-        #     continue
         if v:
             edit_k = '-'.join(k.split('_'))
             cmd += '--%s %s ' % (edit_k, v)
@@ -248,11 +243,11 @@ def run_remote(kwargs: dict) -> None:
     filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
     with open(filepath,'w') as f:
         f.write('%s\n' % str(cluster.inst_id.instance_id))
+        f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
     #running SEQC on the cluster
     seqc.log.info('Beginning remote run.')
     # writing name of instance in /data/software/instance.txt for clean up
-    # todo | figure out if we want this here
     cluster.serv.exec_command('cd /data/software; echo %s > instance.txt'
                               % str(cluster.inst_id.instance_id))
     cluster.serv.exec_command('cd /data/software; nohup %s > /dev/null 2>&1 &' % cmd)
