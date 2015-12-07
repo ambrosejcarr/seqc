@@ -122,6 +122,9 @@ def create_parser():
                         help='run the requested SEQC command remotely')
     pindex.add_argument('--email-status', default='', metavar='E',
                         help='email results to this address')
+    pindex.add_argument('--terminate', default=True, action='store_true',
+                       help='terminate the cluster upon completion. Required if '
+                        '--remote is passed')
 
 
     # allow user to check version
