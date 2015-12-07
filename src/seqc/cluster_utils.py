@@ -237,23 +237,30 @@ class ClusterServer(object):
         self.set_credentials()
         print('sucessfully set up the remote cluster environment!')
 
-# todo test this function
 def terminate_cluster(instance_id):
     """terminates a running cluster"""
     ec2 = boto3.resource('ec2')
     instance = ec2.Instance(instance_id)
-    if instance.state['Name'] == 'running':
-        gname = instance.security_groups[0]['GroupName']
-        sg = instance.security_groups[0]['GroupId']
-        instance.terminate()
-        instance.wait_until_terminated()
-        print('instance %s has successfully terminated' % instance_id)
 
-        print('removing security group %s...' %gname)
-        boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=sg)
-        print('termination complete!')
-    else:
-        print('instance %s is not running!' % instance_id)
+    try:
+        if instance.state['Name'] == 'running':
+            instance.terminate()
+            instance.wait_until_terminated()
+            print('termination complete!')
+        else:
+            print('instance %s is not running!' % instance_id)
+    except ClientError:
+        print('instance %s does not exist!' % instance_id)
+
+def remove_sg(sg_id):
+    ec2 = boto3.resource('ec2')
+    sg = ec2.SecurityGroup(sg_id)
+    sg_name = sg.group_name
+    try:
+        sg.delete()
+        print('security group %s (%s) successfully removed' % (sg_name, sg_id))
+    except ClientError:
+        print('security group %s (%s) is still in use!' % (sg_name, sg_id))
 
 def email_user(attachment, email_body, email_address: str) -> None:
     """
