@@ -573,9 +573,9 @@ class GenerateFastq:
         reader = seqc.gtf.Reader(gtf)
         intervals = []
         for r in reader.iter_genes_final_nbases(fragment_length):
-            end = int(r.end) - read_length
-            start = int(r.start)
-            if end > start:
+            for iv in r.intervals:
+                start, end = int(iv[0]), int(iv[1])
+            if (end - read_length) > start:
                 intervals.append((r.attribute[tag_type], start, end))
 
         # pick intervals
@@ -623,7 +623,7 @@ class GenerateFastq:
         rev_len = 100
         forward = cls._forward_in_drop(n, barcodes)
         forward = forward.read()  # consume the StringIO object
-        reverse = cls._reverse(n, rev_len, fasta, gtf, tag_type=tag_type)
+        reverse = cls._reverse_three_prime(n, rev_len, fasta, gtf, tag_type=tag_type)
         reverse = reverse.read()  # consume the StringIO object
         with open(prefix + '_r1.fastq', 'w') as f:
             f.write(''.join([forward] * (replicates + 1)))
@@ -646,7 +646,7 @@ class GenerateFastq:
         rev_len = 100
         forward = cls._forward_drop_seq(n)
         forward = forward.read()  # consume the StringIO object
-        reverse = cls._reverse(n, rev_len, fasta, gtf, tag_type=tag_type)
+        reverse = cls._reverse_three_prime(n, rev_len, fasta, gtf, tag_type=tag_type)
         reverse = reverse.read()  # consume the StringIO object
         with open(prefix + '_r1.fastq', 'w') as f:
             f.write(''.join([forward] * (replicates + 1)))

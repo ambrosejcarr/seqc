@@ -128,3 +128,95 @@ class GTFReaderTakeFinalNTest(unittest.TestCase):
 
 if __name__ == "__main__":
     nose2.main()
+
+# @unittest.skip('')
+# class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
+#
+#     def setUp(self):
+#         self.forward, self.reverse = check_fastq('in_drop')
+#         self.s3_bucket = 'dplab-home'
+#         self.s3_key = 'ajc2205/test_in_drop.npz'
+#
+#     @unittest.skip('')
+#     def test_process_single_file_no_sra_download(self):
+#
+#         # set some variables
+#         index_bucket = None
+#         index_key = None
+#
+#         experiment_name = 'test_in_drop'
+#         s3_bucket = self.s3_bucket
+#         s3_key = self.s3_key
+#         cell_barcodes = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
+#                          'in_drop_barcodes.p')
+#
+#         # set the index
+#         if not config.index:  # download the index
+#             index_dir = working_directory + 'index/'
+#             S3.download_files(bucket=index_bucket, key_prefix=index_key,
+#                               output_prefix=index_dir, no_cut_dirs=True)
+#             index = index_dir + index_key.lstrip('/')
+#         if not os.path.isdir(index):
+#             raise FileNotFoundError('Index does not lead to a directory')
+#
+#         # merge fastq files
+#         merged_fastq, _ = fastq.merge_fastq(
+#             self.forward, self.reverse, 'in-drop', self.working_directory, cell_barcodes)
+#
+#         # align the data
+#         sam_file = STAR.align(
+#             merged_fastq, index, n_threads, working_directory, reverse_fastq_file=None)
+#
+#         # create the matrix
+#         gtf_file = index + 'annotations.gtf'
+#         coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
+#
+#         numpy_archive = experiment_name + '.npz'
+#         with open(numpy_archive, 'wb') as f:
+#             np.savez(f, mat=coo, row=rowind, col=colind)
+#
+#         # upload the matrix to amazon s3
+#         S3.upload_file(numpy_archive, s3_bucket, s3_key)
+#
+#     def test_process_multiple_file_no_sra_download(self):
+#         # set some variables
+#         index = self.index
+#         working_directory = self.working_directory
+#         index_bucket = None
+#         index_key = None
+#         S3 = io.S3
+#         STAR = align.STAR
+#         n_threads = 7
+#         sam_to_count_multiple_files = qc.sam_to_count_multiple_files
+#         experiment_name = 'test_in_drop'
+#         s3_bucket = self.s3_bucket
+#         s3_key = self.s3_key
+#         cell_barcodes = config.barcode_serial_pattern % dtype
+#
+#         # potential issue: reverse should never map..
+#         forward = [self.forward[0]] * 3
+#         reverse = [self.reverse[0]] * 3
+#
+#         # set the index
+#         if not index:  # download the index
+#             index_dir = working_directory + 'index/'
+#             S3.download_files(bucket=index_bucket, key_prefix=index_key,
+#                               output_prefix=index_dir, no_cut_dirs=True)
+#             index = index_dir + index_key.lstrip('/')
+#         if not os.path.isdir(index):
+#             raise FileNotFoundError('Index does not lead to a directory')
+#
+#         # align the data
+#         sam_files = STAR.align_multiple_files(
+#             forward, index, n_threads, working_directory, reverse_fastq_files=reverse)
+#
+#         # create the matrix
+#         gtf_file = index + 'annotations.gtf'
+#         coo, rowind, colind = sam_to_count_multiple_files(sam_files, gtf_file)
+#
+#         numpy_archive = experiment_name + '.npz'
+#         with open(numpy_archive, 'wb') as f:
+#             np.savez(f, mat=coo, row=rowind, col=colind)
+#
+#         # upload the matrix to amazon s3
+#         S3.upload_file(numpy_archive, s3_bucket, s3_key)

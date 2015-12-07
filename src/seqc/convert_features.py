@@ -430,11 +430,12 @@ class ConvertGeneCoordinates:
                 id_map[int_id] = gene
 
             for iv in record.intervals:
-                try:
-                    data[(record.seqname, record.strand)].addi(
-                        iv[0], iv[1], int_id)
-                except KeyError:
-                    data[record.seqname, record.strand] = IntervalTree()
-                    data[record.seqname, record.strand].addi(
-                        iv[0], iv[1], int_id)
+                if iv[0] < iv[1]:
+                    try:
+                        data[(record.seqname, record.strand)].addi(
+                            iv[0], iv[1], int_id)
+                    except KeyError:
+                        data[record.seqname, record.strand] = IntervalTree()
+                        data[record.seqname, record.strand].addi(
+                            iv[0], iv[1], int_id)
         return cls(data, id_map)
