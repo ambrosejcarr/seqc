@@ -25,7 +25,6 @@ def main():
             remain_vol.append(name)
     print('Finished deleting all new, unattached volumes')
 
-    #TODO | fix this for when there are multiple clusters running?
     # updating vol_names.txt file
     call(["rm", fpath])
     if remain_vol:

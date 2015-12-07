@@ -120,6 +120,8 @@ class _UnionFind:
 # todo | change from_iterable to be able to construct from a jagged array slice output
 # todo test if id() is faster than .tobytes()
 # todo | it would save more memory to skip "empty" features and give them equal indices
+# todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
+# todo | returning array([]); this would also reduce downstream complexity.
 class JaggedArray:
 
     def __init__(self, data, index):
@@ -319,7 +321,7 @@ class JaggedArray:
             return np.uint8
 
     @classmethod
-    def from_iterable(cls, nested_iterable, dtype=np.uint32):
+    def from_iterable(cls, nested_iterable, dtype=np.int32):
         if not nested_iterable:
             raise ValueError('Cannot initialize empty array')
         k = len(nested_iterable)
@@ -992,15 +994,6 @@ class ReadArray:
         efficiently save the ReadArray to a compressed h5 archive; note that this
         will overwrite an existing archive with the same name
         """
-
-        # check that there is data in array
-        if not self.positions.data.shape[0]:
-            raise ValueError('No feature positions were assigned to this object. Cannot '
-                             'save an empty array.')
-        if not self.features.data.shape[0]:
-            raise ValueError('No features were assigned to this object. Cannot '
-                             'save an empty array.')
-
 
         def store_carray(h5f, array, where, name):
             atom = tb.Atom.from_dtype(array.dtype)
