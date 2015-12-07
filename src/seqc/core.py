@@ -226,6 +226,11 @@ def run_remote(kwargs: dict) -> None:
     cluster.serv.connect()
     seqc.log.info('Remote server set-up complete.')
 
+    # todo | decide how we want to clean up
+    # todo | figure out how to get seqc/src/scripts/ directory here!!!
+    with open('instance.txt','w') as f:
+        f.write('%s\n' % str(cluster.inst_id.instance_id))
+
     #running SEQC on the cluster
     seqc.log.info('Beginning remote run.')
     # writing name of instance in /data/software/instance.txt for clean up
