@@ -221,11 +221,6 @@ def run_remote(kwargs: dict) -> None:
         no_terminate = False
     del kwargs['no_terminate']
 
-    # todo if no terminate in args --> then append to end of list
-    # todo delete from kwargs
-
-    #if no-terminate is True, then you want to append no-terminate
-
     for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
@@ -234,7 +229,7 @@ def run_remote(kwargs: dict) -> None:
             cmd += '--%s %s ' % (edit_k, v)
 
     if no_terminate:
-        cmd += ' --no-terminate'
+        cmd += '--no-terminate'
     print('cmd: %s' %cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
