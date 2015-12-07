@@ -61,7 +61,9 @@ if __name__ == "__main__":
                         inst_id = f.readline().strip('\n')
                     seqc.cluster_utils.terminate_cluster(inst_id)
                 else:
-                    pass
+                    seqc.log.info('file containing instance id is unavailable!')
+            else:
+                seqc.log.info('not terminating cluster -- user responsible for cleanup')
     else:  # not email_status and not remote
         try:
             # log command line arguments for debugging

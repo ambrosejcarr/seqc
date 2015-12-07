@@ -225,7 +225,8 @@ def run_remote(kwargs: dict) -> None:
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
         if k == 'no_terminate':
-            if not v:
+            print(v)
+            if v: #v is true, user appended flag here
                 cmd += '--no-terminate '
             continue
         if v:
@@ -237,10 +238,10 @@ def run_remote(kwargs: dict) -> None:
     print('cmd: %s' %cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
-    cluster = seqc.cluster_utils.ClusterServer()
-    cluster.cluster_setup(clustname)
-    cluster.serv.connect()
-    seqc.log.info('Remote server set-up complete.')
+    # cluster = seqc.cluster_utils.ClusterServer()
+    # cluster.cluster_setup(clustname)
+    # cluster.serv.connect()
+    # seqc.log.info('Remote server set-up complete.')
 
     # todo | decide how we want to clean up
     temp_path = seqc.__path__[0]
