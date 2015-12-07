@@ -2,14 +2,14 @@
 
 __author__ = 'ambrose'
 
-import seqc
+from seqc.io_lib import S3, GEO
+from seqc.align import STAR
+from seqc.qc import sam_to_count_multiple_files
 import os
 import json
 import numpy as np
 import argparse
 import logging
-from collections import defaultdict
-from scipy.sparse import coo_matrix
 from datetime import datetime
 
 
@@ -60,7 +60,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
     if not index:  # download the index
         log_info('Downloading index from S3')
         index_dir = working_directory + 'index/'
-        seqc.io.S3.download_files(bucket=index_bucket, key_prefix=index_key,
+        S3.download_files(bucket=index_bucket, key_prefix=index_key,
                           output_prefix=index_dir, cut_dirs=False)
         index = index_dir + index_key.lstrip('/')
     if not os.path.isdir(index):
@@ -69,30 +69,30 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
 
     # download the data
     log_info('Downloading SRA data')
-    files = seqc.io.GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
+    files = GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
                              clobber=False)
 
     # todo right now there is no clobber, but this could be added later
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
-    fastq_files = seqc.io.GEO.extract_fastq(
+    fastq_files = GEO.extract_fastq(
         files, n_threads, working_directory, verbose=False, paired_end=paired_end)
 
     # align the data
     if paired_end:
         forward, reverse = fastq_files
         log_info('Aligning fastq records')
-        sam_files = seqc.align.STAR.align_multiple_files(
+        sam_files = STAR.align_multiple_files(
             forward, index, n_threads, working_directory, reverse_fastq_files=reverse)
     else:
         log_info('Aligning fastq records')
-        sam_files = seqc.align.STAR.align_multiple_files(
+        sam_files = STAR.align_multiple_files(
             fastq_files, index, n_threads, working_directory, reverse_fastq_files=None)
 
     # create the matrix
     log_info('Creating counts matrix')
     gtf_file = index + 'annotations.gtf'
-    coo, rowind, colind = seqc.sam.to_count_multiple_files(sam_files, gtf_file)
+    coo, rowind, colind = sam_to_count_multiple_files(sam_files, gtf_file)
 
     log_info('Saving counts matrix')
     numpy_archive = experiment_name + '.npz'
@@ -101,7 +101,7 @@ def main(srp, n_threads, s3_bucket, s3_key, experiment_name, index_key=None,
 
     # upload the matrix to amazon s3
     log_info('Uploading counts matrix to S3')
-    seqc.io.S3.upload_file(numpy_archive, s3_bucket, s3_key)
+    S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
 
 if __name__ == "__main__":

@@ -70,14 +70,11 @@ def join(processes):
 
 
 def process_parallel(
-        n_proc, fout, read_func, process_func, write_func, read_kwargs=None,
+        n_proc, h5_name, read_func, process_func, write_func, read_kwargs=None,
         process_kwargs=None, write_kwargs=None):
     """
-    Implementation of a read / multiprocess / write strategy
-
     args:
     -----
-    n_proc: number of processors to use. Must be at least 3.
     """
 
     def read(read_func_, process_queue_, kwargs, pids):
@@ -130,10 +127,6 @@ def process_parallel(
             h5writer.write(data)
         h5writer.close()
 
-    if n_proc < 3:
-        raise ValueError('Cannot multiprocess with fewer than 3 processors, n_proc must '
-                         'be >= 3, not %d' % n_proc)
-
     seqc.log.setup_logger()
 
     # set up shared dictionary to track whether processes have started
@@ -171,7 +164,7 @@ def process_parallel(
 
     # create the write process
     write_process, write_pids = start_processes(
-        n_write, write, ([write_func, write_queue, fout, write_kwargs, pids]))
+        n_write, write, ([write_func, write_queue, h5_name, write_kwargs, pids]))
     pids['write'] = write_pids
 
     # wait for each process to finish

@@ -43,7 +43,6 @@ class RaidAutomator(ClusterSetup):
                 ["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
             vol_stat = vol_stat.decode().split()
 
-            #TODO: grep for available instead of hardcoding the number
             while vol_stat[6] != 'available':
                 time.sleep(5)
                 vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
@@ -57,7 +56,6 @@ class RaidAutomator(ClusterSetup):
             vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
             vol_stat = vol_stat.decode().split()
 
-            #TODO: grep for attached instead of hardcoding the number
             while vol_stat[14] != 'attached':
                 time.sleep(5)
                 vol_stat = check_output(["aws", "ec2", "describe-volumes", "--volume-ids", vol_id])
