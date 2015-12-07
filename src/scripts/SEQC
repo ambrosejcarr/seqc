@@ -49,17 +49,21 @@ if __name__ == "__main__":
                 kwargs['output_prefix'], kwargs['email_status'], kwargs['aws_upload_key'])
         except:
             seqc.log.exception()
-            email_body = b'Process interrupted -- see attached error message'
+            email_body = 'Process interrupted -- see attached error message'
             seqc.cluster_utils.email_user(attachment='seqc.log', email_body=email_body,
                                           email_address=kwargs['email_status'])
             sys.exit(1)
         finally:
-            # todo add cluster cleanup here
-            # Note that this finally loop is executed regardless
-            # of whether cluster SETUP has succeeded; there may not be any cluster.
-            # Program accordingly.
-            pass
-
+            #we are currently within a cluster:
+            if not kwargs['no_terminate']:
+                if os.path.isfile('/data/software/instance.txt'):
+                    with open('/data/software/instance.txt','r') as f:
+                        inst_id = f.readline().strip('\n')
+                    seqc.cluster_utils.terminate_cluster(inst_id)
+                else:
+                    seqc.log.info('file containing instance id is unavailable!')
+            else:
+                seqc.log.info('not terminating cluster -- user responsible for cleanup')
     else:  # not email_status and not remote
         try:
             # log command line arguments for debugging

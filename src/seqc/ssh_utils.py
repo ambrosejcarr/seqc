@@ -14,8 +14,6 @@ class SSHServer(object):
 
     def connect(self):
         max_attempts = 5
-        print('warming up the instance for connection, please wait...')
-        # time.sleep(45) #give instance time to warm up
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         dns = self.instance.public_dns_name
         for attempt in range(max_attempts):
@@ -38,9 +36,7 @@ class SSHServer(object):
             #     print('the host key %s could not be verified!' %self.key)
             #     sys.exit(2)
             except Exception as e:
-                print(e)
-                print(sys.exc_info()[:2])
-                print('sleeping...')
+                print('not yet connected, sleeping...')
                 time.sleep(30)
                 # continue
         # gname = self.instance.security_groups[0]['GroupName']

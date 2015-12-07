@@ -9,11 +9,6 @@ import seqc
 from subprocess import Popen, PIPE
 from botocore.exceptions import ClientError
 
-# instance.update() to refresh
-# workflow: 1) run code w/ paramters 2) this thing does everything and uploads file onto S3
-# 3) sends back to user
-
-
 #TODO check if any errors in the arguments here
 # maybe keep track of all the volumes associated with it too
 class ClusterServer(object):
@@ -21,7 +16,6 @@ class ClusterServer(object):
     allows for the creation/manipulation of EC2 instances and executions
     of commands on the remote server"""
 
-    # check if you need to alter these parameters
     def __init__(self, private_key=None, security_group=None,
                  image_id=None, zone=None, server=None,
                  instance_type=None, subnet_id=None):
@@ -51,12 +45,11 @@ class ClusterServer(object):
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
             print('created security group %s (%s)' % (name,sg.id))
-        #TODO how to catch this error gracefully??
         except ClientError:
             print('the cluster %s already exists!' %name)
             sys.exit(2)
 
-    # TODO catch errors in cluster configuration
+    # todo catch errors in cluster configuration
     def configure_cluster(self, config_file):
         """configures the newly created cluster according to aws.config"""
         config = configparser.ConfigParser()
@@ -116,21 +109,6 @@ class ClusterServer(object):
         else:
             print('instance %s is not in a stopped state!' % self.inst_id.id)
 
-            # documenting test code
-            # resp = instance.start()
-            # state = resp['Name']
-            # while state != 'running':
-            #     time.sleep(5)
-            #     instance = ec2.Instance(inst_id)
-            #     resp = instance.start()
-            #     state = resp['Name']
-            # nice function here
-            # instance.wait_until_running()
-            # print('stopped instance %s has restarted' % self.inst_id.id)
-
-            # def stop_cluster(self, inst_id):
-            # instance = self.ec2.Instance(inst_id)
-
     def stop_cluster(self):
         """stops a running cluster"""
         if self.cluster_is_running():
@@ -139,29 +117,7 @@ class ClusterServer(object):
             print('instance %s is now stopped' % self.inst_id)
         else:
             print('instance %s is not running!' % self.inst_id)
-            # resp = instance.stop()
-            # stopping seems to be instantaneous, see if you want something like this here
-            # if resp['StoppingInstances'][0]['CurrentState']['Name'] == 'stopped':
-            #     print('Instance %s is now stopped' %inst_id)
-            # instance.wait_until_stopped()
-            # print('Instance %s is now stopped' % inst_id)
 
-    #TODO test this function
-    def terminate_cluster(self):
-        """terminates a running cluster"""
-        if self.cluster_is_running():
-            gname = self.inst_id.security_groups[0]['GroupName']
-            self.inst_id.terminate()
-            self.inst_id.wait_until_terminated()
-            print('instance %s has successfully terminated' % self.inst_id)
-
-            print('removing security group %s...' %gname)
-            boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=self.sg)
-            print('termination complete!')
-        else:
-            print('instance %s is not running!' % self.inst_id)
-
-    # should test out this code
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
         vol_size = 50 #1024 --> just testing
@@ -176,7 +132,7 @@ class ClusterServer(object):
         print('volume %s created successfully' % vol_id)
         return vol_id
 
-    #TODO deal with volume creation errors
+    # todo deal with volume creation errors
     def attach_volume(self, vol_id, dev_id):
         """attaches a vol_id to inst_id at dev_id"""
         vol = self.ec2.Volume(vol_id)
@@ -227,7 +183,6 @@ class ClusterServer(object):
             print(err)
             sys.exit(2)
 
-
         self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount LABEL=my_raid /data")
@@ -244,9 +199,10 @@ class ClusterServer(object):
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
-        # TODO replace this with public stuff
+        # todo replace this with git clone once repo is public
         # works with normal public git repository
         # install seqc on AMI to simplify
+
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
         folder = self.dir_name
@@ -254,12 +210,13 @@ class ClusterServer(object):
         self.serv.exec_command("sudo mkdir %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
-        #see if this does anything
+
         location = folder + "seqc.tar.gz"
+        # todo | get rid of "nuke_sc" branch here, just for testing
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball | sudo tee %s > /dev/null' % location)
-        # implement some sort of ls grep check system here
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/nuke_sc | sudo tee %s > /dev/null' % location)
+        # todo implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
         print('successfully installed seqc.tar.gz in %s on the cluster!' %folder)
 
@@ -270,7 +227,7 @@ class ClusterServer(object):
 
     def cluster_setup(self, name):
         print('setting up cluster %s...' % name)
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/plugins/aws.config'
+        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/aws.config'
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
@@ -280,6 +237,30 @@ class ClusterServer(object):
         self.set_credentials()
         print('sucessfully set up the remote cluster environment!')
 
+def terminate_cluster(instance_id):
+    """terminates a running cluster"""
+    ec2 = boto3.resource('ec2')
+    instance = ec2.Instance(instance_id)
+
+    try:
+        if instance.state['Name'] == 'running':
+            instance.terminate()
+            instance.wait_until_terminated()
+            print('termination complete!')
+        else:
+            print('instance %s is not running!' % instance_id)
+    except ClientError:
+        print('instance %s does not exist!' % instance_id)
+
+def remove_sg(sg_id):
+    ec2 = boto3.resource('ec2')
+    sg = ec2.SecurityGroup(sg_id)
+    sg_name = sg.group_name
+    try:
+        sg.delete()
+        print('security group %s (%s) successfully removed' % (sg_name, sg_id))
+    except ClientError:
+        print('security group %s (%s) is still in use!' % (sg_name, sg_id))
 
 def email_user(attachment, email_body, email_address: str) -> None:
     """
@@ -294,9 +275,9 @@ def email_user(attachment, email_body, email_address: str) -> None:
     """
     seqc.log.exception()
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
-    email_process = Popen(email_args, stdin=email_body)
+    message = Popen(['echo',email_body],stdout=PIPE,stderr=PIPE)
+    email_process = Popen(email_args, stdin=message.stdout,stdout=PIPE,stderr=PIPE)
     email_process.communicate()
-
 
 def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> None:
     """
@@ -320,7 +301,7 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
     merged_fastq = directory + 'merged.fastq'
     counts = prefix + '_sp_counts.npz'
     id_map = prefix + '_gene_id_map.p'
-    summary = prefix + 'alignment_summary.txt'
+    summary = prefix + '_alignment_summary.txt'
     files = [samfile, h5_archive, merged_fastq, counts, id_map, summary]
 
     # gzip everything and upload to aws_upload_key

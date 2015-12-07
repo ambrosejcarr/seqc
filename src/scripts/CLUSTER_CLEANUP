@@ -1,0 +1,18 @@
+#!/usr/local/bin/python3
+
+import os
+import seqc
+from subprocess import call
+
+temp_path = seqc.__path__[0]
+filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
+
+if os.path.isfile(filepath):
+    with open(filepath, 'r') as f:
+        inst_id = f.readline().strip('\n')
+        sg_id = f.readline().strip('\n')
+    seqc.cluster_utils.terminate_cluster(inst_id)
+    seqc.cluster_utils.remove_sg(sg_id)
+    call(['rm',filepath])
+else:
+    pass

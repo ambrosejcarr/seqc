@@ -55,6 +55,8 @@ def create_parser():
                        help='run the requested SEQC command remotely')
         r.add_argument('--email-status', default='', metavar='E',
                        help='email results to this address')
+        r.add_argument('--no-terminate', default=False, action='store_true',
+                       help='Decide if the cluster will terminate upon completion.')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
@@ -124,6 +126,8 @@ def create_parser():
                         help='run the requested SEQC command remotely')
     pindex.add_argument('--email-status', default='', metavar='E',
                         help='email results to this address')
+    pindex.add_argument('--no-terminate', default=False, action='store_true',
+                        help='Decide if the cluster will terminate upon completion.')
 
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
@@ -215,6 +219,11 @@ def run_remote(kwargs: dict) -> None:
     del kwargs['subparser_name']
     del kwargs['func']
     del kwargs['cluster_name']
+    if kwargs['no_terminate']:
+        no_terminate = True
+    else:
+        no_terminate = False
+    del kwargs['no_terminate']
 
     for k, v in kwargs.items():
         if isinstance(v, list):
@@ -223,44 +232,30 @@ def run_remote(kwargs: dict) -> None:
             edit_k = '-'.join(k.split('_'))
             cmd += '--%s %s ' % (edit_k, v)
 
+    if no_terminate:
+        cmd += '--no-terminate'
+
     # set up remote cluster here, finishes all the way through gitpull
     cluster = seqc.cluster_utils.ClusterServer()
     cluster.cluster_setup(clustname)
     cluster.serv.connect()
     seqc.log.info('Remote server set-up complete.')
 
-    # todo
-    # figure out how to download files from basespace here; hard-coded inputs right now
-    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/'
-                          'short_f1.fastq','shortf1.fastq')
-    cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/'
-                          'short_r1.fastq','short_r1.fastq')
-    # cluster.serv.put_file('/Users/kristyc/PycharmProjects/seqc/src/scripts/notify.py',
-    #                       'notify.py')
-    # cluster.serv.exec_command('mv notify.py /data/software/notify.py')
-    cluster.serv.exec_command('mv f1.fastq /data/software/short_f1.fastq')
-    cluster.serv.exec_command('mv r1.fastq /data/software/short_r1.fastq')
-    seqc.log.info('Remote file download complete.')
+    # writing instance id and security group id into file for cluster cleanup
+    temp_path = seqc.__path__[0]
+    filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
+    with open(filepath,'w') as f:
+        f.write('%s\n' % str(cluster.inst_id.instance_id))
+        f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
-    #running SEQC on the cluster
-    # cmdstring = "SEQC in-drop --forward short_f1.fastq --index
-    # s3://dplab-data/genomes/mm38/ --frag-len 1000 --reverse short_r1.fastq --n-threads
-    # 30 --barcodes s3://dplab-data/sc-seq/allon/barcodes/in_drop_barcodes.p
-    # --output-prefix /data/software/qq"
+    # running SEQC on the cluster
     seqc.log.info('Beginning remote run.')
-    cluster.serv.exec_command('nohup %s > dev/null 2>&1 &' % cmd)
+    # writing name of instance in /data/software/instance.txt for clean up
+    cluster.serv.exec_command('cd /data/software; echo %s > instance.txt'
+                              % str(cluster.inst_id.instance_id))
+    cluster.serv.exec_command('cd /data/software; nohup %s > /dev/null 2>&1 &' % cmd)
     seqc.log.info('Terminating local client. Email will be sent when remote run '
                   'completes')
-
-    #shut down cluster after finished
-    # todo | have local program exit while process still runs remotely
-    # print('shutting down cluster...')
-    # if out:
-    #     cluster.terminate_cluster()
-    #     sys.exit("process complete -- program exiting")
-    # elif err:
-    #     cluster.terminate_cluster()
-    #     sys.exit("process complete -- program exiting")
 
 
 def fix_output_paths(output_prefix: str) -> (str, str):
@@ -344,8 +339,9 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     # check that the index contains the necessary files to run SEQC
     for f in critical_index_files:
         if not os.path.isfile(index + f):
-            raise FileNotFoundError('Index is missing critical file "%s". Please '
-                                    'regenerate the index.')
+            seqc.log.info('%s not found' %index+f)
+            raise FileNotFoundError('Index is missing critical file %s. Please '
+                                    'regenerate the index.' %index+f)
 
     # obtain gtf file from index argument
     gtf = index + 'annotations.gtf'
