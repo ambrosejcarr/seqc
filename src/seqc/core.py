@@ -238,7 +238,7 @@ def run_remote(kwargs: dict) -> None:
     cluster.serv.connect()
     seqc.log.info('Remote server set-up complete.')
 
-    # todo | decide how we want to clean up
+    #writing instance id and security group id into file for cluster cleanup
     temp_path = seqc.__path__[0]
     filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
     with open(filepath,'w') as f:
