@@ -1,17 +1,26 @@
 __author__ = 'ambrose'
 
-# todo replace threading with processing
 from glob import glob
 import gzip
 import bz2
 import os
 import ftplib
 from threading import Thread
+import threading
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
+import seqc
 import boto3
 import logging
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+from pyftpdlib.authorizers import DummyAuthorizer
+import requests
+from multiprocessing import Pool
+from functools import partial
+
+
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
@@ -21,8 +30,15 @@ class S3:
     """A series of methods to upload and download files from amazon s3"""
 
     @staticmethod
-    def download_file(bucket, key, fout=None, overwrite=False):
+    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False):
         """download the file key located in bucket, sending output to filename fout"""
+
+        # check argument types
+        seqc.util.check_type(bucket, str, 'bucket must be type str, not %s'
+                             % type(bucket))
+        seqc.util.check_type(key, str, 'key must be type str, not %s' % key)
+        seqc.util.check_type(fout, str, 'fout must be type str, not %s' % key)
+
         if not overwrite:
             if os.path.isfile(fout):
                 raise FileExistsError('file "%s" already exists. Set overwrite=True to '
@@ -43,12 +59,17 @@ class S3:
             os.makedirs(dirs)
 
         # download the file
-        client = boto3.client('s3')
-        client.download_file(bucket, key, fout)
+        try:
+            client = boto3.client('s3')
+            client.download_file(bucket, key, fout)
+        except FileNotFoundError:
+            raise FileNotFoundError('No file was found at the specified s3 location: '
+                                    '"%s".' % bucket + '/' + key)
 
         return fout
 
     # todo return all downloaded filenames
+    # todo implement glob-based filtering
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
                        overwrite=False):
@@ -61,7 +82,7 @@ class S3:
         """
         # get bucket and filenames
         client = boto3.client('s3')
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
 
         # output prefix needs to end in '/'
         if not output_prefix.endswith('/'):
@@ -162,7 +183,7 @@ class S3:
             client.upload_file(file_, bucket, key)
 
     @staticmethod
-    def list(bucket, key_prefix):
+    def listdir(bucket, key_prefix):
         """
         list all objects beginning with key_prefix
 
@@ -182,7 +203,7 @@ class S3:
 
     @classmethod
     def remove_files(cls, bucket, key_prefix):
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
@@ -411,6 +432,59 @@ class GEO:
             return forward
 
 
+class BaseSpace:
+
+    @classmethod
+    def download_sample(cls, sample_id: str, access_token: str, dest_path: str)\
+            -> (list, list):
+        """
+        Downloads all files related to a sample from the basespace API
+
+        args:
+        -----
+        sample_id: The sample id, taken directory from the basespace link for a
+         sample (experiment). e.g. if the link is:
+         "https://basespace.illumina.com/sample/30826030/Day0-ligation-11-17", then the
+         sample_id is "30826030"
+        access_token: a string access token that allows permission to access the ILLUMINA
+         BaseSpace server and download the requested data
+        dest_path: the location that the downloaded files should be placed.
+
+        returns:
+        forward, reverse: lists of fastq files
+        """
+
+        # check types
+        seqc.util.check_type(sample_id, str, 'sample_id')
+        seqc.util.check_type(access_token, str, 'access_token')
+        seqc.util.check_type(dest_path, str, 'dest_path')
+
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+        data = response.json()
+
+        func = partial(cls._download_content, data['Response']['Items'], access_token,
+                       dest_path)
+        seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
+        with Pool(len(data['Response']['Items'])) as pool:
+            pool.map(func, range(len(data['Response']['Items'])))
+
+    @staticmethod
+    def _download_content(item_data, access_token, dest_path, index):
+        """gets the content of a file requested from the BaseSpace REST API."""
+        item = item_data[index]
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
+                                item['Id'] + '/content?access_token=' +
+                                access_token, stream=True)
+        path = dest_path + '/' + item['Path']
+        with open(path, "wb") as fd:
+            for chunk in response.iter_content(104857600):  # chunksize = 100MB
+                fd.write(chunk)
+            fd.close()
+
+
 def open_file(filename):
     if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')
@@ -418,3 +492,104 @@ def open_file(filename):
         return bz2.open(filename, 'rt')
     else:
         return open(filename)
+
+
+
+class DummyFTPClient(threading.Thread):
+    """A threaded FTP server used for running tests.
+
+    This is basically a modified version of the FTPServer class which
+    wraps the polling loop into a thread.
+
+    The instance returned can be used to start(), stop() and
+    eventually re-start() the server.
+
+    The instance can also launch a client using ftplib to navigate and download files.
+    it will serve files from home.
+    """
+    handler = FTPHandler
+    server_class = FTPServer
+
+    def __init__(self, addr=None, home=None):
+
+        try:
+            host = socket.gethostbyname('localhost')
+        except socket.error:
+            host = 'localhost'
+
+        threading.Thread.__init__(self)
+        self.__serving = False
+        self.__stopped = False
+        self.__lock = threading.Lock()
+        self.__flag = threading.Event()
+        if addr is None:
+            addr = (host, 0)
+
+        if not home:
+            home = os.getcwd()
+
+        authorizer = DummyAuthorizer()
+        authorizer.add_anonymous(home, perm='erl')
+        # authorizer.add_anonymous(home, perm='elr')
+        self.handler.authorizer = authorizer
+        # lower buffer sizes = more "loops" while transfering data
+        # = less false positives
+        self.handler.dtp_handler.ac_in_buffer_size = 4096
+        self.handler.dtp_handler.ac_out_buffer_size = 4096
+        self.server = self.server_class(addr, self.handler)
+        self.host, self.port = self.server.socket.getsockname()[:2]
+        self.client = None
+
+    def __repr__(self):
+        status = [self.__class__.__module__ + "." + self.__class__.__name__]
+        if self.__serving:
+            status.append('active')
+        else:
+            status.append('inactive')
+        status.append('%s:%s' % self.server.socket.getsockname()[:2])
+        return '<%s at %#x>' % (' '.join(status), id(self))
+
+    def generate_local_client(self):
+        self.client = ftplib.FTP()
+        self.client.connect(self.host, self.port)
+        self.client.login()
+        return self.client
+
+    @property
+    def running(self):
+        return self.__serving
+
+    def start(self, timeout=0.001):
+        """Start serving until an explicit stop() request.
+        Polls for shutdown every 'timeout' seconds.
+        """
+        if self.__serving:
+            raise RuntimeError("Server already started")
+        if self.__stopped:
+            # ensure the server can be started again
+            DummyFTPClient.__init__(self, self.server.socket.getsockname(), self.handler)
+        self.__timeout = timeout
+        threading.Thread.start(self)
+        self.__flag.wait()
+
+    def run(self):
+        logging.basicConfig(filename='testing.log', level=logging.DEBUG)
+        self.__serving = True
+        self.__flag.set()
+        while self.__serving:
+            self.__lock.acquire()
+            self.server.serve_forever(timeout=self.__timeout, blocking=False)
+            self.__lock.release()
+        self.server.close_all()
+
+    def stop(self):
+        """Stop serving (also disconnecting all currently connected
+        clients) by telling the serve_forever() loop to stop and
+        waits until it does.
+        """
+        if not self.__serving:
+            raise RuntimeError("Server not started yet")
+        self.__serving = False
+        self.__stopped = True
+        self.join()
+        self.client.close()

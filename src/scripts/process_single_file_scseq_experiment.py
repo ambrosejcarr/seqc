@@ -2,9 +2,9 @@
 
 __author__ = 'ambrose'
 
-from seqc.io_lib import S3, GEO
-from seqc.align import STAR
-from seqc.qc import sam_to_count_single_file
+import seqc
+from scipy.sparse import coo_matrix
+from collections import defaultdict
 from seqc.fastq import merge_fastq
 import os
 import json
@@ -62,7 +62,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
     if not index:  # download the index
         log_info('Downloading Index from S3')
         index_dir = working_directory + 'index/'
-        S3.download_files(bucket=index_bucket, key_prefix=index_key,
+        seqc.io.S3.download_files(bucket=index_bucket, key_prefix=index_key,
                           output_prefix=index_dir, cut_dirs=False)
         index = index_dir + index_key.lstrip('/')
     if not os.path.isdir(index):
@@ -71,13 +71,14 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     # download the data
     log_info('Downloading SRA Data')
-    files = GEO.download_srp(srp, working_directory, min(n_threads, 10), verbose=False,
+    files = seqc.io.GEO.download_srp(
+        srp, working_directory, min(n_threads, 10), verbose=False,
                              clobber=False)
 
     # unpack the .sra files into forward and reverse fastq files
     log_info('Unpacking SRA to fastq')
-    forward, reverse = GEO.extract_fastq(files, n_threads, working_directory,
-                                         verbose=False)
+    forward, reverse = seqc.io.GEO.extract_fastq(files, n_threads, working_directory,
+                                                     verbose=False)
 
     # merge fastq files
     log_info('Extracting cell information and merging fastq files')
@@ -86,13 +87,13 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     # align the data
     log_info('Aligning fastq records')
-    sam_file = STAR.align(merged_fastq, index, n_threads, working_directory,
-                          paired_end=False)
+    sam_file = seqc.align.STAR.align(merged_fastq, index, n_threads, working_directory,
+                                     paired_end=False)
 
     # create the matrix
     log_info('Creating counts matrix')
     gtf_file = index + 'annotations.gtf'
-    coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
+    coo, rowind, colind = seqc.sam.to_count_single_file(sam_file, gtf_file)
 
     log_info('Saving counts matrix')
     numpy_archive = experiment_name + '.npz'
@@ -101,7 +102,7 @@ def main(srp, n_threads, s3_bucket, s3_key, cell_barcodes,
 
     log_info('Uploading counts matrix to S3')
     # upload the matrix to amazon s3
-    S3.upload_file(numpy_archive, s3_bucket, s3_key)
+    seqc.io.S3.upload_file(numpy_archive, s3_bucket, s3_key)
 
     log_info('Run completed')
 

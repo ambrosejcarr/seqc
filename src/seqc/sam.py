@@ -1,9 +1,16 @@
 __author__ = 'ambrose'
 
 import numpy as np
+import pickle
+import shutil
 import os
+import io
 import seqc
 import tables as tb
+import gzip
+from collections import defaultdict, namedtuple
+from scipy.sparse import coo_matrix
+
 
 
 class ReadArrayH5Writer:
@@ -163,12 +170,12 @@ def _process_chunk(chunk, feature_converter):
     while records[0][0].startswith('@'):
         records = records[1:]
 
-    # over-allocate a numpy structured array, we'll trim n records == number of
-    # reads that multi-aligned
+    # over-allocate a numpy structured array, we'll trim n == number of
+    # reads that multi-aligned records at the end
     n = len(records)
     data = np.zeros((n,), dtype=_dtype)
     index = np.zeros((n, 2), dtype=np.uint32)
-    features = np.zeros(n, dtype=np.uint32)
+    features = np.zeros(n, dtype=np.int64)  # changed feature storage for hashed genes
     positions = np.zeros(n, dtype=np.uint32)
 
     # process multi-alignments
@@ -234,6 +241,10 @@ def _write_chunk(data, h5_file):
     h5_file.root.positions.append(positions)
 
 
+class EmptyAligmentFile(Exception):
+    pass
+
+
 def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     """Process a samfile in parallel, dump results into an h5 database.
 
@@ -245,6 +256,16 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
         multialignment
 
     """
+    # check that samefile is non-empty:
+    with open(samfile, 'r') as f:
+        empty = True
+        for line in f:
+            if not line.startswith('@'):
+                empty = False
+                break
+    if empty:
+        raise EmptyAligmentFile('Alignment may have failed. Sam file has no alignments.')
+
     # get file size
     filesize = os.stat(samfile).st_size
 
@@ -263,7 +284,11 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     expectedrows = filesize / average_record_size
 
     # create a feature_converter object to convert genomic -> transcriptomic features
-    fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, fragment_length)
+    # todo this is where the conversion method is defined; swapped genes in here.
+    # fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(gtf, fragment_length)
+    fc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(gtf, fragment_length)
+    fc_name = h5_name.replace('.h5', '_gene_id_map.p')
+    fc.pickle(fc_name)  # save the id map
 
     read_kwargs = dict(samfile=samfile, n=chunk_size)
     process_kwargs = dict(feature_converter=fc)
@@ -275,3 +300,345 @@ def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
     return h5_name
 
 
+class GenerateSam:
+
+    @staticmethod
+    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_id', replicates=3,
+                n_threads=7, *args, **kwargs):
+        """generate an in-drop .sam file"""
+
+        # get barcodes
+        cb = seqc.barcodes.CellBarcodes.from_pickle(barcodes)
+
+        output_dir = '.generate_sam/'
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+        fastq_prefix = '.generate_sam/temp'
+
+        # get fastq files
+        forward, reverse = seqc.fastq.GenerateFastq.in_drop(
+            n, fastq_prefix, fasta, gtf, barcodes, tag_type=tag_type,
+            replicates=replicates)
+
+        # merge the generated fastq file
+        merged = seqc.fastq.merge_fastq([forward], [reverse], 'in-drop', output_dir, cb,
+                                        n_threads)
+
+        # generate alignments from merged fastq
+        sam = seqc.align.STAR.align(merged, index, n_threads, output_dir)
+
+        # move the alignment file to the desired filename
+        directory = '/'.join(filename.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        shutil.move(sam, filename)
+
+        # remove temporary files
+        shutil.rmtree(output_dir)
+
+        return sam
+
+    @staticmethod
+    def drop_seq(n, filename, fasta, gtf, index, tag_type='gene_id', replicates=3,
+                 n_threads=7, *args, **kwargs):
+        """generate a drop-seq .sam file"""
+
+        # get barcodes
+        cb = seqc.barcodes.DropSeqCellBarcodes()
+
+        output_dir = '.generate_sam/'
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+        fastq_prefix = '.generate_sam/temp'
+
+        # get fastq files
+        forward, reverse = seqc.fastq.GenerateFastq.drop_seq(
+            n, fastq_prefix, fasta, gtf, tag_type=tag_type, replicates=replicates)
+
+        # merge the generated fastq file
+        merged = seqc.fastq.merge_fastq([forward], [reverse], 'drop-seq', output_dir, cb,
+                                        n_threads)
+
+        # generate alignments from merged fastq
+        sam = seqc.align.STAR.align(merged, index, n_threads, output_dir)
+
+        # move the alignment file to the desired filename
+        directory = '/'.join(filename.split('/')[:-1])
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        shutil.move(sam, filename)
+
+        # remove temporary files
+        shutil.rmtree(output_dir)
+
+        return sam
+
+
+def to_count_single_file(sam_file, gtf_file):
+    """cannot separate file due to operating system limitations. Instead, implement
+    a mimic of htseq-count that uses the default 'union' approach to counting, given the
+    same gtf file; for fluidigm/SMART data"""
+
+    # get conversion table, all possible genes for the count matrix
+    gt = seqc.convert_features.GeneTable(gtf_file)
+    all_genes = gt.all_genes()
+
+    # map genes to ids
+    n_genes = len(all_genes)
+    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
+    cell_to_int_id = {'no_cell': 0}
+    cell_number = 1
+    read_count = defaultdict(int)
+
+    # add metadata fields to mimic htseq output; remember to remove these in the final
+    # analysis
+    gene_to_int_id['ambiguous'] = n_genes
+    gene_to_int_id['no_feature'] = n_genes + 1
+    gene_to_int_id['not_aligned'] = n_genes + 2
+
+    # estimate the average read length
+    with open(sam_file, 'r') as f:
+        sequences = []
+        line = f.readline()
+        while line.startswith('@'):
+            line = f.readline()
+        while len(sequences) < 100:
+            sequences.append(f.readline().strip().split('\t')[9])
+        read_length = round(np.mean([len(s) for s in sequences]))
+
+    # pile up counts
+    with open(sam_file) as f:
+        for record in f:
+
+            # discard headers
+            if record.startswith('@'):
+                continue
+            record = record.strip().split('\t')
+
+            # get cell id, discard if no cell, add new cell if not found.
+            cell = record[0].split(':')[0]
+            if cell == 0:
+                int_cell_id = 0
+            else:
+                try:
+                    int_cell_id = cell_to_int_id[cell]
+                except KeyError:
+                    cell_to_int_id[cell] = cell_number
+                    int_cell_id = cell_number
+                    cell_number += 1
+
+            # get start, end, chrom, strand
+            flag = int(record[1])
+            if flag & 4:
+                int_gene_id = n_genes + 2  # not aligned
+            else:
+                chromosome = record[2]
+                if flag & 16:
+                    strand = '-'
+                    end = int(record[3])
+                    start = end - read_length
+                else:
+                    strand = '+'
+                    start = int(record[3])
+                    end = start + read_length
+
+                try:
+                    genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                except KeyError:
+                    continue  # todo include these non-chromosome scaffolds instead of
+                    # discarding
+                if len(genes) == 1:
+                    int_gene_id = gene_to_int_id[genes[0]]
+                if len(genes) == 0:
+                    int_gene_id = n_genes + 1
+                if len(genes) > 1:
+                    int_gene_id = n_genes
+            read_count[(int_cell_id, int_gene_id)] += 1
+
+    # create sparse matrix
+    cell_row, gene_col = zip(*read_count.keys())
+    data = list(read_count.values())
+    m = cell_number
+    n = n_genes + 3
+
+    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
+    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
+                          dtype=object)
+    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
+
+    return coo, gene_index, cell_index
+
+
+def to_count_multiple_files(sam_files, gtf_file):
+    """count genes in each cell; fluidigm data"""
+    gt = seqc.convert_features.GeneTable(gtf_file)
+    all_genes = gt.all_genes()
+
+    # map genes to ids
+    n_genes = len(all_genes)
+    gene_to_int_id = dict(zip(sorted(all_genes), range(n_genes)))
+    cell_number = 1
+    read_count = defaultdict(int)
+
+    # add metadata fields to mimic htseq output; remember to remove these in the final
+    # analysis
+    gene_to_int_id['ambiguous'] = n_genes
+    gene_to_int_id['no_feature'] = n_genes + 1
+    gene_to_int_id['not_aligned'] = n_genes + 2
+
+    for sam_file in sam_files:
+    # pile up counts
+
+        # estimate the average read length
+        with open(sam_file, 'r') as f:
+            sequences = []
+            line = f.readline()
+            while line.startswith('@'):
+                line = f.readline()
+            while len(sequences) < 100:
+                sequences.append(f.readline().strip().split('\t')[9])
+            read_length = round(np.mean([len(s) for s in sequences]))
+
+        with open(sam_file) as f:
+            for record in f:
+
+                # discard headers
+                if record.startswith('@'):
+                    continue
+                record = record.strip().split('\t')
+
+                # get start, end, chrom, strand
+                flag = int(record[1])
+                if flag & 4:
+                    int_gene_id = n_genes + 2  # not aligned
+                else:
+                    chromosome = record[2]
+                    if flag & 16:
+                        strand = '-'
+                        end = int(record[3])
+                        start = end - read_length
+                    else:
+                        strand = '+'
+                        start = int(record[3])
+                        end = start + read_length
+
+                    try:
+                        genes = gt.coordinates_to_gene_ids(chromosome, start, end, strand)
+                    except KeyError:
+                        continue  # todo count these weird non-chromosome scaffolds
+                        # right now, we just throw them out...
+                    if len(genes) == 1:
+                        int_gene_id = gene_to_int_id[genes[0]]
+                    if len(genes) == 0:
+                        int_gene_id = n_genes + 1
+                    if len(genes) > 1:
+                        int_gene_id = n_genes
+                read_count[(cell_number, int_gene_id)] += 1
+        cell_number += 1
+
+    # create sparse matrix
+    cell_row, gene_col = zip(*read_count.keys())
+    data = list(read_count.values())
+    m = cell_number
+    n = n_genes + 3
+
+    coo = coo_matrix((data, (cell_row, gene_col)), shape=(m, n), dtype=np.int32)
+    gene_index = np.array(sorted(all_genes) + ['ambiguous', 'no_feature', 'not_aligned'],
+                          dtype=object)
+    cell_index = np.array(['no_cell'] + list(range(1, cell_number)), dtype=object)
+
+    return coo, gene_index, cell_index
+
+
+class SamRecord:
+    """simple record object to use when iterating over sam files"""
+
+    __slots__  = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
+                  'tlen', 'seq', 'qual', 'optional_fields']
+
+    def __init__(self, qname, flag, rname, pos, mapq, cigar, rnext, pnext, tlen, seq,
+                 qual, *optional_fields):
+        self.qname = qname
+        self.flag = flag
+        self.rname = rname
+        self.pos = pos
+        self.mapq = mapq
+        self.cigar = cigar
+        self.rnext = rnext
+        self.pnext = pnext
+        self.tlen = tlen
+        self.seq = seq
+        self.qual = qual
+        self.optional_fields = optional_fields
+
+    def __repr__(self):
+        return ('<SamRecord:' + ' %s' * 12 + '>') % \
+               (self.qname, self.flag, self.rname, self.pos, self.mapq, self.cigar,
+                self.rnext, self.pnext, self.tlen, self.seq, self.qual,
+                ' '.join(self.optional_fields))
+
+    @property
+    def strand(self):
+        minus_strand = int(self.flag) & 16
+        return '-' if minus_strand else '+'
+
+
+class Reader:
+    """simple sam reader, optimized for utility rather than speed"""
+
+    def __init__(self, samfile):
+
+        seqc.util.check_type(samfile, str, 'samfile')
+        seqc.util.check_file(samfile, 'samfile')
+
+        self._samfile = samfile
+        try:
+            samfile_iterator = iter(self)
+            next(samfile_iterator)
+        except:
+            raise ValueError('%s is an invalid samfile. Please check file formatting.' %
+                             samfile)
+
+    @property
+    def samfile(self):
+        return self._samfile
+
+    def _open(self) -> io.TextIOBase:
+        """
+        seamlessly open self._samfile, whether gzipped or uncompressed
+
+        returns:
+        --------
+        fobj: open file object
+        """
+        if self._samfile.endswith('.gz'):
+            fobj = gzip.open(self._samfile, 'rt')
+        else:
+            fobj = open(self._samfile)
+        return fobj
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def __iter__(self):
+        """return an iterator over all non-header records in samfile"""
+        fobj = self._open()
+        try:
+            for line in fobj:
+                if line.startswith('@'):
+                    continue
+                yield SamRecord(*line.strip().split('\t'))
+        finally:
+            fobj.close()
+
+    def iter_multialignments(self):
+        """yields tuples of all alignments for each fastq record"""
+        sam_iter = iter(self)
+        fq = [next(sam_iter)]
+        for record in sam_iter:
+            if record.qname == fq[0].qname:
+                fq.append(record)
+            else:
+                yield tuple(fq)
+                fq = [record]
+        yield fq

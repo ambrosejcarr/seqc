@@ -2,11 +2,14 @@ __author__ = 'ambrose'
 
 import logging
 from datetime import datetime
+import os
 
 
 def setup_logger(filename='seqc.log'):
     """create a simple log file in the cwd to track progress and any errors"""
-    logging.basicConfig(filename=filename, level=logging.DEBUG)
+    if os.path.isfile(filename):
+        os.remove(filename)
+    logging.basicConfig(filename=filename, filemode='w', level=logging.DEBUG)
 
 
 def info(message):

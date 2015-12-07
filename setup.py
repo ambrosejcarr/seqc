@@ -4,6 +4,9 @@ from setuptools import setup
 from warnings import warn
 import os
 import shutil
+import nose2
+
+__version__ = '0.1.4'
 
 # pip3 cannot install external dependencies for python; warn user if external dependencies
 # are missing; do this at the end so that the users are more likely to see it.
@@ -22,11 +25,12 @@ elif os.path.isfile('/usr/local/hdf5/lib/libhdf5.so'):
     h5fail = False
 
 setup(name='seqc',
-      version='0.1',
+      version=__version__,
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
+      # test_suite=nose2.collector.collector,
       # note: requires numpy > 1.10.0
       packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[
@@ -41,7 +45,11 @@ setup(name='seqc',
           'pyftpdlib',
           'intervaltree',
           # 'tsne',
-          'tables'],
+          'tables',
+          'nose2',
+          'memory_profiler',
+          'more_itertools',
+          'paramiko', 'requests'],
       scripts=['src/scripts/SEQC',
                'src/scripts/PROCESS_BARCODES',
                'src/scripts/TEST_BARCODES',
