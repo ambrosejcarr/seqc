@@ -215,21 +215,25 @@ def run_remote(kwargs: dict) -> None:
     del kwargs['subparser_name']
     del kwargs['func']
     del kwargs['cluster_name']
-    if kwargs['no_terminate']:
-        no_terminate = True
-    else:
-        no_terminate = False
-    del kwargs['no_terminate']
+    # if kwargs['no_terminate']:
+    #     no_terminate = True
+    # else:
+    #     no_terminate = False
+    # del kwargs['no_terminate']
 
     for k, v in kwargs.items():
         if isinstance(v, list):
             v = ' '.join(v)  # lists of input files should be merged with whitespace
+        if k == 'no_terminate':
+            if not v:
+                cmd += '--no-terminate '
+            continue
         if v:
             edit_k = '-'.join(k.split('_'))
             cmd += '--%s %s ' % (edit_k, v)
 
-    if no_terminate:
-        cmd += '--no-terminate'
+    # if no_terminate:
+    #     cmd += '--no-terminate'
     print('cmd: %s' %cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
