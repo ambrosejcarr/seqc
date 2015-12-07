@@ -9,6 +9,7 @@ import numpy as np
 import xml.dom.minidom
 import random
 import shutil
+import re
 from nose2.tools import params
 from more_itertools import first
 from itertools import islice
@@ -1656,8 +1657,17 @@ class TestDownloadInputFiles(unittest.TestCase):
         if not os.path.isdir(cls.test_dir):
             os.makedirs(cls.test_dir)
 
-    # @unittest.skip('extremely slow; need to profile io.s3.download_files()')
-    @seqc.util.time_profile
+    def test_forward_fastq_basespace_pattern(self):
+        forward_file = 'Day0-ligation-11-17_S1_L001_R1_001.fastq.gz'
+        reverse_file = 'Day0-ligation-11-17_S1_L001_R2_001.fastq.gz'
+        forward_pattern = r'_R1_.*?\.fastq\.gz'
+        reverse_pattern = r'_R2_.*?\.fastq\.gz'
+        self.assertTrue(re.search(forward_pattern, forward_file))
+        self.assertFalse(re.search(reverse_pattern, forward_file))
+        self.assertTrue(re.search(reverse_pattern, reverse_file))
+        self.assertFalse(re.search(forward_pattern, reverse_file))
+
+    @unittest.skip('extremely slow due to s3 download speeds')
     def test_download_input_files_incorrect_input_raises(self):
         data_type = 'in_drop'
         complete_kwargs = dict(
@@ -1780,11 +1790,24 @@ class TestDownloadInputFiles(unittest.TestCase):
         res = seqc.core.check_input_data(**local_fastq_kwargs)
         self.assertEqual(expected_results, res)
 
+    def test_download_base_space(self):
+        """
+        unittest to make sure that BaseSpace is downloading properly in the context
+        of seqc.
+        """
+        raise NotImplementedError  # todo test
 
     @classmethod
     def tearDownClass(cls):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
+
+
+class TestDownloadBaseSpace(unittest.TestCase):
+    """unittests to make sure BaseSpace is correctly functioning"""
+
+    def test_download_base_space(self):
+        raise NotImplementedError  # todo test
 
 if __name__ == '__main__':
     nose2.main()

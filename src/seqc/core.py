@@ -7,6 +7,7 @@ import shutil
 import seqc
 import sys
 import json
+import re
 from glob import glob
 
 
@@ -76,6 +77,11 @@ def create_parser():
         i.add_argument('-m', '--merged-fastq', metavar='M', default='',
                        help='s3 link or filesystem location of fastq file containing '
                             'merged, pre-processed records')
+        i.add_argument('--basespace', nargs=2, default=None, metavar='BS',
+                       help='takes 2 arguments: a basespace sample id, and a basespace '
+                            'oAuth token. If provided, fastq input data will be '
+                            'downloaded from BaseSpace for processing.')
+
         # disambiguation arguments
         d = p.add_argument_group('Optional arguments for disambiguation')
         d.add_argument('-l', '--frag-len', metavar='L', type=int, default=1000,
@@ -157,11 +163,11 @@ def parse_args(parser, args=None):
 
         # check that at least one input argument was passed:
         check = [arguments.forward, arguments.reverse, arguments.samfile,
-                 arguments.merged_fastq]
+                 arguments.merged_fastq, arguments.basespace]
         if not any(check):
             print('SEQC %s: error: one or more of the following arguments must be '
-                  'provided: -f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam' %
-                  arguments.subparser_name)
+                  'provided: -f/--forward, -r/--reverse, -m/--merged-fastq, -s/--sam, '
+                  '--basespace' % arguments.subparser_name)
             sys.exit(2)
         required = [arguments.output_prefix, arguments.index, arguments.n_threads]
         if not arguments.subparser_name == 'drop-seq':
@@ -385,8 +391,9 @@ def check_and_load_barcodes(
     return cb
 
 
-def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
-                     merged: str, samfile: str) -> (list, list, str, str):
+def check_input_data(
+        output_dir: str, forward_fastq: list, reverse_fastq: list, merged: str,
+        samfile: str, basespace: (str, str)) -> (list, list, str, str):
     """
     checks the validity of data inputs. If s3 links are passed, downloads the files. If
     a basespace link is provided, transfers files from basespace.
@@ -399,6 +406,8 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
     samfile: an alignment file or an aws s3 link specifying the location of a samfile
     merged: a merged fastq file or an aws s3 link specifying the location of a merged
      fastq file
+    basespace: the sample id and authorization token necessary to download files from
+     BaseSpace
 
     returns:
     (forward_fastq_files, reverse_fastq_files, samfile, merged): updated links to input
@@ -407,7 +416,7 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
     """
 
     # make sure at least one input has been passed
-    if not any([forward_fastq, reverse_fastq, merged, samfile]):
+    if not any([forward_fastq, reverse_fastq, merged, samfile, basespace]):
         raise ValueError('At least one input argument must be passed to SEQC')
 
     # make sure inputs all have correct types
@@ -415,10 +424,17 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
     seqc.util.check_type(reverse_fastq, list, 'reverse_fastq')
     seqc.util.check_type(samfile, str, 'samfile')
     seqc.util.check_type(samfile, str, 'samfile')
+    if basespace:
+        if not len(basespace) == 2:
+            raise ValueError('BaseSpace argument must provide a tuple or list containing '
+                             '(1) the sample ID and (2) the oAuth token needed to '
+                             'download the files')
+        if not all(isinstance(arg, str) for arg in basespace):
+            raise TypeError('Both sample ID and oAuth token must be strings')
 
     # make sure only one filetype has been passed
-    multi_input_error_message = ('Only one input type (-s, -m, or -r/-f should be passed '
-                                 'to SEQC')
+    multi_input_error_message = ('Only one input type (-s, -m, -r/-f, or --basespace '
+                                 'should be passed to SEQC')
     unpaired_fastq_error_message = ('If either forward or reverse fastq files are '
                                     'provided, both must be provided.')
     if forward_fastq or reverse_fastq:
@@ -511,11 +527,19 @@ def check_input_data(output_dir: str, forward_fastq: list, reverse_fastq: list,
         if samfile.startswith('s3://'):
             seqc.log.info('AWS s3 link provided for samfile. Downloading samfile')
             samfile = download_s3_files(samfile, 'sam', output_dir)
-    if merged:
+    elif merged:
         if samfile.startswith('s3://'):
             seqc.log.info('AWS s3 link provided for merged_fastq. Downloading '
                           'merged_fastq')
             merged = download_s3_files(merged, 'merged_fastq', output_dir)
+    elif basespace:
+        prefix = output_dir + 'fastq/'
+        sample_id, access_token = basespace
+        seqc.io.BaseSpace.download_sample(sample_id, access_token, prefix)
+        forward_pattern = r'_R1_.*?\.fastq\.gz'
+        reverse_pattern = r'_R2_.*?\.fastq\.gz'
+        forward_fastq = [f for f in os.listdir(prefix) if re.search(forward_pattern, f)]
+        reverse_fastq = [f for f in os.listdir(prefix) if re.search(reverse_pattern, f)]
 
     return forward_fastq, reverse_fastq, merged, samfile
 
@@ -698,8 +722,8 @@ def clean_up(temp_dir):
         shutil.rmtree('_STARtmp')
 
 
-def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
-            n_threads, frag_len, star_args, barcodes, **kwargs):
+def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
+            subparser_name, index, n_threads, frag_len, star_args, barcodes, **kwargs):
 
     output_prefix, output_dir = fix_output_paths(output_prefix)
 
@@ -708,7 +732,7 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
     cb = check_and_load_barcodes(barcodes, output_dir)
 
     forward, reverse, merged_fastq, samfile = check_input_data(
-        output_dir, forward, reverse, merged_fastq, samfile)
+        output_dir, forward, reverse, merged_fastq, samfile, basespace)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
@@ -729,8 +753,8 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, subparser_na
     run_complete()
 
 
-def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_name, index,
-             n_threads, frag_len, star_args, barcodes, **kwargs):
+def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
+             subparser_name, index, n_threads, frag_len, star_args, barcodes, **kwargs):
 
     output_prefix, output_dir = fix_output_paths(output_prefix)
 
@@ -739,7 +763,7 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, subparser_n
     cb = check_and_load_barcodes(barcodes, output_dir)
 
     forward, reverse, merged_fastq, samfile = check_input_data(
-        output_dir, forward, reverse, merged_fastq, samfile)
+        output_dir, forward, reverse, merged_fastq, samfile, basespace)
 
     # htqc(temp_dir, forward, reverse, 1000, 1)
 
