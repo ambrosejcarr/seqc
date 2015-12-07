@@ -55,6 +55,9 @@ def create_parser():
                        help='run the requested SEQC command remotely')
         r.add_argument('--email-status', default='', metavar='E',
                        help='email results to this address')
+        r.add_argument('--terminate', default=True, action='store_true',
+                       help='terminate the cluster upon completion. Required if '
+                            '--remote is passed')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
