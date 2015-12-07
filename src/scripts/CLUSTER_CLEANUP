@@ -3,9 +3,11 @@
 import os
 import seqc
 
-# todo | get proper path here!!!
-if os.path.isfile('/seqc/src/scripts/instance.txt'):
-    with open('/seqc/src/scripts/instance.txt', 'r') as f:
+temp_path = seqc.__path__[0]
+filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
+
+if os.path.isfile(filepath):
+    with open(filepath, 'r') as f:
         inst_id = f.readline().strip('\n')
     seqc.cluster_utils.terminate_cluster(inst_id)
 else:
