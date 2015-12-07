@@ -54,13 +54,11 @@ if __name__ == "__main__":
                                           email_address=kwargs['email_status'])
             sys.exit(1)
         finally:
-            # todo add cluster cleanup here
             # Note that this finally loop is executed regardless
             # of whether cluster SETUP has succeeded; there may not be any cluster.
             # Program accordingly.
 
-            #shut down cluster after finished
-            # todo | have local program exit while process still runs remotely
+            # todo shut down cluster after finished
             # print('shutting down cluster...')
             # if out:
             #     cluster.terminate_cluster()
