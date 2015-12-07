@@ -228,6 +228,9 @@ def run_remote(kwargs: dict) -> None:
 
     #running SEQC on the cluster
     seqc.log.info('Beginning remote run.')
+    # todo | writing name of instance in file in /data/software/instance.txt
+    cluster.serv.exec_command('cd /data/software; echo %s > instance.txt'
+                              % str(cluster.inst_id.instance_id))
     cluster.serv.exec_command('cd /data/software; nohup %s > /dev/null 2>&1 &' % cmd)
     seqc.log.info('Terminating local client. Email will be sent when remote run '
                   'completes')

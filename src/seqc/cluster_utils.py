@@ -118,21 +118,6 @@ class ClusterServer(object):
         else:
             print('instance %s is not running!' % self.inst_id)
 
-    # todo test this function
-    def terminate_cluster(self):
-        """terminates a running cluster"""
-        if self.cluster_is_running():
-            gname = self.inst_id.security_groups[0]['GroupName']
-            self.inst_id.terminate()
-            self.inst_id.wait_until_terminated()
-            print('instance %s has successfully terminated' % self.inst_id)
-
-            print('removing security group %s...' %gname)
-            boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=self.sg)
-            print('termination complete!')
-        else:
-            print('instance %s is not running!' % self.inst_id)
-
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
         vol_size = 50 #1024 --> just testing
@@ -252,6 +237,23 @@ class ClusterServer(object):
         self.set_credentials()
         print('sucessfully set up the remote cluster environment!')
 
+# todo test this function
+def terminate_cluster(instance_id):
+    """terminates a running cluster"""
+    ec2 = boto3.resource('ec2')
+    instance = ec2.Instance(instance_id)
+    if instance.state['Name'] == 'running':
+        gname = instance.security_groups[0]['GroupName']
+        sg = instance.security_groups[0]['GroupId']
+        instance.terminate()
+        instance.wait_until_terminated()
+        print('instance %s has successfully terminated' % instance_id)
+
+        print('removing security group %s...' %gname)
+        boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=sg)
+        print('termination complete!')
+    else:
+        print('instance %s is not running!' % instance_id)
 
 def email_user(attachment, email_body, email_address: str) -> None:
     """

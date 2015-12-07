@@ -54,19 +54,14 @@ if __name__ == "__main__":
                                           email_address=kwargs['email_status'])
             sys.exit(1)
         finally:
-            # Note that this finally loop is executed regardless
-            # of whether cluster SETUP has succeeded; there may not be any cluster.
-            # Program accordingly.
-
             # todo shut down cluster after finished
-            # print('shutting down cluster...')
-            # if out:
-            #     cluster.terminate_cluster()
-            #     sys.exit("process complete -- program exiting")
-            # elif err:
-            #     cluster.terminate_cluster()
-            #     sys.exit("process complete -- program exiting")
-            pass
+            #we are currently within a cluster:
+            if os.path.isfile('/data/software/instance.txt'):
+                with open('/data/software/instance.txt','r') as f:
+                    inst_id = f.readline().strip('\n')
+                    seqc.cluster_utils.terminate_cluster(inst_id)
+            else:
+                pass
 
     else:  # not email_status and not remote
         try:
