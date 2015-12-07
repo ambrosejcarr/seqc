@@ -274,6 +274,19 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
             os.remove(self.fname)
 
 
+class FastqGenerateTest(unittest.TestCase):
+
+    def test_reverse_three_prime(self):
+        fasta = config.fasta
+        gtf = config.gtf
+        res = seqc.fastq.GenerateFastq._reverse_three_prime(
+            5, read_length=30, fasta=fasta, gtf=gtf)
+        self.assertTrue(True) # this test only tests that the data runs.
+
+        # todo test that reads align
+        # todo test that reads are converted properly
+
+
 class FastqMergeTest(unittest.TestCase):
     test_dir = 'test_seqc_fastq_merge/'
 

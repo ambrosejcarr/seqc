@@ -190,6 +190,20 @@ def seqc_raw_fastq_input(args):
             seqc.log.exception()
             raise
 
+    # ADDITIONAL TESTING OF FUNCTION OUTPUTS
+    # (1) get number of lines in fastq file
+    n_records = 0
+    print(kwargs)
+    for f in kwargs['forward']:
+        with open(f) as fastq_in:
+            n_records += sum(1 for line in fastq_in.readlines()) / 4
+
+    # (2) get number of alignments in samfile
+    samfile_name = '/'.join(kwargs['output_prefix'].split('/')[:-1]) + 'Aligned.out.sam'
+    rd = seqc.sam.Reader(samfile_name)
+    n_alignments = sum(1 for ma in rd.iter_multialignments())
+
+    assert n_alignments == n_records
 
 if __name__ == "__main__":
     seqc.log.setup_logger('seqc_functest.log')
