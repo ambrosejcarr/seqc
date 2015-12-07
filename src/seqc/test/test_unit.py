@@ -9,6 +9,7 @@ import numpy as np
 import xml.dom.minidom
 import random
 import shutil
+import re
 from nose2.tools import params
 from more_itertools import first
 from itertools import islice
@@ -37,6 +38,8 @@ class config:
     barcode_partial_serial_pattern = seqc_dir + 'test_data/%s/barcodes/cb_partial.p'
     barcode_prefix_pattern = seqc_dir + 'test_data/%s/barcodes/'
     barcode_serialized_link_pattern = 's3://dplab-data/barcodes/%s/serial/barcodes.p'
+    barcode_partial_serial_link_pattern = ('s3://dplab-data/barcodes/%s/serial/'
+                                           'cb_partial.p')
     barcode_files_link_prefix_pattern = 's3://dplab-data/barcodes/%s/flat/'
     h5_name_pattern = seqc_dir + 'test_data/%s/test_seqc.h5'
 
@@ -269,6 +272,19 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
     def tearDown(self):
         if os.path.isfile(self.fname):
             os.remove(self.fname)
+
+
+class FastqGenerateTest(unittest.TestCase):
+
+    def test_reverse_three_prime(self):
+        fasta = config.fasta
+        gtf = config.gtf
+        res = seqc.fastq.GenerateFastq._reverse_three_prime(
+            5, read_length=30, fasta=fasta, gtf=gtf)
+        self.assertTrue(True) # this test only tests that the data runs.
+
+        # todo test that reads align
+        # todo test that reads are converted properly
 
 
 class FastqMergeTest(unittest.TestCase):
@@ -1656,8 +1672,17 @@ class TestDownloadInputFiles(unittest.TestCase):
         if not os.path.isdir(cls.test_dir):
             os.makedirs(cls.test_dir)
 
-    # @unittest.skip('extremely slow; need to profile io.s3.download_files()')
-    @seqc.util.time_profile
+    def test_forward_fastq_basespace_pattern(self):
+        forward_file = 'Day0-ligation-11-17_S1_L001_R1_001.fastq.gz'
+        reverse_file = 'Day0-ligation-11-17_S1_L001_R2_001.fastq.gz'
+        forward_pattern = r'_R1_.*?\.fastq\.gz'
+        reverse_pattern = r'_R2_.*?\.fastq\.gz'
+        self.assertTrue(re.search(forward_pattern, forward_file))
+        self.assertFalse(re.search(reverse_pattern, forward_file))
+        self.assertTrue(re.search(reverse_pattern, reverse_file))
+        self.assertFalse(re.search(forward_pattern, reverse_file))
+
+    @unittest.skip('extremely slow due to s3 download speeds')
     def test_download_input_files_incorrect_input_raises(self):
         data_type = 'in_drop'
         complete_kwargs = dict(
@@ -1729,6 +1754,7 @@ class TestDownloadInputFiles(unittest.TestCase):
         # test download merged fastq
         download_merged = empty_kwargs.copy()
         download_merged['merged'] = complete_kwargs['merged']
+        self.assertTrue(download_merged['merged'])  # was showing mgd == ''
         self.assertFalse(os.path.isdir(merged_dir))
         fwd, rev, mgd, sam = seqc.core.check_input_data(**download_merged)
         self.assertEqual(add_prefix(merged_dir, sorted(os.listdir(merged_dir)))[0], mgd)
@@ -1779,103 +1805,24 @@ class TestDownloadInputFiles(unittest.TestCase):
         res = seqc.core.check_input_data(**local_fastq_kwargs)
         self.assertEqual(expected_results, res)
 
+    def test_download_base_space(self):
+        """
+        unittest to make sure that BaseSpace is downloading properly in the context
+        of seqc.
+        """
+        raise NotImplementedError  # todo test
 
     @classmethod
     def tearDownClass(cls):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
 
+
+class TestDownloadBaseSpace(unittest.TestCase):
+    """unittests to make sure BaseSpace is correctly functioning"""
+
+    def test_download_base_space(self):
+        raise NotImplementedError  # todo test
+
 if __name__ == '__main__':
     nose2.main()
-
-# @unittest.skip('')
-# class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
-#
-#     def setUp(self):
-#         self.forward, self.reverse = check_fastq('in_drop')
-#         self.s3_bucket = 'dplab-home'
-#         self.s3_key = 'ajc2205/test_in_drop.npz'
-#
-#     @unittest.skip('')
-#     def test_process_single_file_no_sra_download(self):
-#
-#         # set some variables
-#         index_bucket = None
-#         index_key = None
-#
-#         experiment_name = 'test_in_drop'
-#         s3_bucket = self.s3_bucket
-#         s3_key = self.s3_key
-#         cell_barcodes = ('/Users/ambrose/PycharmProjects/SEQC/src/data/in_drop/barcodes/'
-#                          'in_drop_barcodes.p')
-#
-#         # set the index
-#         if not config.index:  # download the index
-#             index_dir = working_directory + 'index/'
-#             S3.download_files(bucket=index_bucket, key_prefix=index_key,
-#                               output_prefix=index_dir, no_cut_dirs=True)
-#             index = index_dir + index_key.lstrip('/')
-#         if not os.path.isdir(index):
-#             raise FileNotFoundError('Index does not lead to a directory')
-#
-#         # merge fastq files
-#         merged_fastq, _ = fastq.merge_fastq(
-#             self.forward, self.reverse, 'in-drop', self.working_directory, cell_barcodes)
-#
-#         # align the data
-#         sam_file = STAR.align(
-#             merged_fastq, index, n_threads, working_directory, reverse_fastq_file=None)
-#
-#         # create the matrix
-#         gtf_file = index + 'annotations.gtf'
-#         coo, rowind, colind = sam_to_count_single_file(sam_file, gtf_file)
-#
-#         numpy_archive = experiment_name + '.npz'
-#         with open(numpy_archive, 'wb') as f:
-#             np.savez(f, mat=coo, row=rowind, col=colind)
-#
-#         # upload the matrix to amazon s3
-#         S3.upload_file(numpy_archive, s3_bucket, s3_key)
-#
-#     def test_process_multiple_file_no_sra_download(self):
-#         # set some variables
-#         index = self.index
-#         working_directory = self.working_directory
-#         index_bucket = None
-#         index_key = None
-#         S3 = io.S3
-#         STAR = align.STAR
-#         n_threads = 7
-#         sam_to_count_multiple_files = qc.sam_to_count_multiple_files
-#         experiment_name = 'test_in_drop'
-#         s3_bucket = self.s3_bucket
-#         s3_key = self.s3_key
-#         cell_barcodes = config.barcode_serial_pattern % dtype
-#
-#         # potential issue: reverse should never map..
-#         forward = [self.forward[0]] * 3
-#         reverse = [self.reverse[0]] * 3
-#
-#         # set the index
-#         if not index:  # download the index
-#             index_dir = working_directory + 'index/'
-#             S3.download_files(bucket=index_bucket, key_prefix=index_key,
-#                               output_prefix=index_dir, no_cut_dirs=True)
-#             index = index_dir + index_key.lstrip('/')
-#         if not os.path.isdir(index):
-#             raise FileNotFoundError('Index does not lead to a directory')
-#
-#         # align the data
-#         sam_files = STAR.align_multiple_files(
-#             forward, index, n_threads, working_directory, reverse_fastq_files=reverse)
-#
-#         # create the matrix
-#         gtf_file = index + 'annotations.gtf'
-#         coo, rowind, colind = sam_to_count_multiple_files(sam_files, gtf_file)
-#
-#         numpy_archive = experiment_name + '.npz'
-#         with open(numpy_archive, 'wb') as f:
-#             np.savez(f, mat=coo, row=rowind, col=colind)
-#
-#         # upload the matrix to amazon s3
-#         S3.upload_file(numpy_archive, s3_bucket, s3_key)

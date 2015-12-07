@@ -9,6 +9,7 @@ from subprocess import Popen, PIPE, call, check_output, CalledProcessError
 from shutil import rmtree, copyfileobj
 from collections import defaultdict
 import seqc
+import logging
 
 
 # download links for supported genomes on GEO
@@ -504,6 +505,8 @@ class STAR:
             for pair in runtime_args.items():
                 cmd.extend(pair)
 
+        # align
+        seqc.log.info('Final STAR arguments: %s' % ' '.join(cmd))
         aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
         out, err = aln.communicate()
         if err:
@@ -580,6 +583,7 @@ class STAR:
             cmds.append(cmd)
 
         # load shared memory
+        seqc.log.info('Final STAR arguments: %s' % ' '.join(cmds[0]))
         cls.load_index(index)
         try:
             for cmd in cmds:

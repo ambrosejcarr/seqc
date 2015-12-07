@@ -1,6 +1,5 @@
 __author__ = 'ambrose'
 
-# todo replace threading with processing
 from glob import glob
 import gzip
 import bz2
@@ -17,6 +16,10 @@ import logging
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.authorizers import DummyAuthorizer
+import requests
+from multiprocessing import Pool
+from functools import partial
+
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
@@ -427,6 +430,59 @@ class GEO:
         else:
             forward = [f.replace('.sra', '.fastq') for f in sra_files]
             return forward
+
+
+class BaseSpace:
+
+    @classmethod
+    def download_sample(cls, sample_id: str, access_token: str, dest_path: str)\
+            -> (list, list):
+        """
+        Downloads all files related to a sample from the basespace API
+
+        args:
+        -----
+        sample_id: The sample id, taken directory from the basespace link for a
+         sample (experiment). e.g. if the link is:
+         "https://basespace.illumina.com/sample/30826030/Day0-ligation-11-17", then the
+         sample_id is "30826030"
+        access_token: a string access token that allows permission to access the ILLUMINA
+         BaseSpace server and download the requested data
+        dest_path: the location that the downloaded files should be placed.
+
+        returns:
+        forward, reverse: lists of fastq files
+        """
+
+        # check types
+        seqc.util.check_type(sample_id, str, 'sample_id')
+        seqc.util.check_type(access_token, str, 'access_token')
+        seqc.util.check_type(dest_path, str, 'dest_path')
+
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+        data = response.json()
+
+        func = partial(cls._download_content, data['Response']['Items'], access_token,
+                       dest_path)
+        seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
+        with Pool(len(data['Response']['Items'])) as pool:
+            pool.map(func, range(len(data['Response']['Items'])))
+
+    @staticmethod
+    def _download_content(item_data, access_token, dest_path, index):
+        """gets the content of a file requested from the BaseSpace REST API."""
+        item = item_data[index]
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
+                                item['Id'] + '/content?access_token=' +
+                                access_token, stream=True)
+        path = dest_path + '/' + item['Path']
+        with open(path, "wb") as fd:
+            for chunk in response.iter_content(104857600):  # chunksize = 100MB
+                fd.write(chunk)
+            fd.close()
 
 
 def open_file(filename):
