@@ -57,7 +57,7 @@ def create_parser():
                        help='email results to this address')
         r.add_argument('--terminate', default=True, action='store_true',
                        help='terminate the cluster upon completion. Required if '
-                            '--remote is passed')
+                        '--remote is passed')
 
         # for all experiments except drop-seq, barcodes are a required input argument
         if i < 5:
@@ -123,7 +123,7 @@ def create_parser():
     pindex.add_argument('--email-status', default='', metavar='E',
                         help='email results to this address')
     pindex.add_argument('--terminate', default=True, action='store_true',
-                       help='terminate the cluster upon completion. Required if '
+                        help='terminate the cluster upon completion. Required if '
                         '--remote is passed')
 
 
