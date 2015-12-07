@@ -8,7 +8,6 @@ import seqc
 import sys
 import json
 import re
-from glob import glob
 
 
 def create_parser():
@@ -223,7 +222,6 @@ def run_remote(kwargs: dict) -> None:
         if v:
             edit_k = '-'.join(k.split('_'))
             cmd += '--%s %s ' % (edit_k, v)
-    print(cmd)
 
     # set up remote cluster here, finishes all the way through gitpull
     cluster = seqc.cluster_utils.ClusterServer()

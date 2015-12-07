@@ -993,6 +993,15 @@ class ReadArray:
         will overwrite an existing archive with the same name
         """
 
+        # check that there is data in array
+        if not self.positions.data.shape[0]:
+            raise ValueError('No feature positions were assigned to this object. Cannot '
+                             'save an empty array.')
+        if not self.features.data.shape[0]:
+            raise ValueError('No features were assigned to this object. Cannot '
+                             'save an empty array.')
+
+
         def store_carray(h5f, array, where, name):
             atom = tb.Atom.from_dtype(array.dtype)
             store = h5f.createCArray(where, name, atom, array.shape)

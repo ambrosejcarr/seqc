@@ -38,6 +38,8 @@ class config:
     barcode_partial_serial_pattern = seqc_dir + 'test_data/%s/barcodes/cb_partial.p'
     barcode_prefix_pattern = seqc_dir + 'test_data/%s/barcodes/'
     barcode_serialized_link_pattern = 's3://dplab-data/barcodes/%s/serial/barcodes.p'
+    barcode_partial_serial_link_pattern = ('s3://dplab-data/barcodes/%s/serial/'
+                                           'cb_partial.p')
     barcode_files_link_prefix_pattern = 's3://dplab-data/barcodes/%s/flat/'
     h5_name_pattern = seqc_dir + 'test_data/%s/test_seqc.h5'
 

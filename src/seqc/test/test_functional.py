@@ -7,6 +7,7 @@ from copy import copy
 import json
 import sys
 import logging
+from seqc.test.test_unit import config
 
 logging.getLogger('nose2').setLevel(logging.CRITICAL)
 
@@ -14,42 +15,41 @@ logging.getLogger('nose2').setLevel(logging.CRITICAL)
 def test_seqc_raw_fastq_input():
 
     # create test directory if not present
-    package_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
-    test_dir = package_dir + 'test_data/'
+
+    test_dir = config.seqc_dir + 'test_data/'
     if not os.path.isdir(test_dir):
         os.mkdir(test_dir)
 
-    for data_type in ['drop_seq', 'in_drop']:
+    for data_type in config.data_types:
 
         seqc.log.info('SEQC functest for %s' % data_type)
 
         # define some variables
-        output_prefix = package_dir + 'test_data/%s/seqc_test' % data_type
-        output_dir = package_dir + 'test_data/%s/' % data_type
+        output_prefix = config.seqc_dir + 'test_data/%s/functest/test_seqc' % data_type
+        output_dir = config.seqc_dir + 'test_data/%s/functest/' % data_type
         # output_dir = testing_dir + data_type + '/'
-        index = package_dir + 'test_data/genome/'
-        n_threads = 7
+
+        n_threads = config.n_threads
 
         # check if output_directory exists
         if not os.path.isdir(output_dir):
             seqc.log.info('SEQC test_data: creating testing directory')
-            os.mkdir(output_dir)
+            os.makedirs(output_dir)
 
         # check for necessary genome index files
-        if not os.path.isdir(index):
+        if not os.path.isdir(config.index):
             seqc.log.info('SEQC test_data: downloading mouse chr19 genome index files')
-            bucket = 'dplab-data'
-            key_prefix = 'genomes/mm38_chr19/'
-            prefix = index
+            bucket, key_prefix = seqc.io.S3.split_link(config.index_link)
+            prefix = config.index
             seqc.io.S3.download_files(bucket=bucket, key_prefix=key_prefix,
                                       output_prefix=prefix, cut_dirs=2)
 
         # define some file names
-        forward = output_dir + 'fastq/seqc_test_r1.fastq'
-        reverse = output_dir + 'fastq/seqc_test_r2.fastq'
-        barcodes = output_dir + 'barcodes/barcodes.p'
+        forward = config.forward_pattern % data_type
+        reverse = config.reverse_pattern % data_type
+        barcodes = config.barcode_partial_serial_pattern % data_type
 
-        ########################### correct special barcode cases ###########################
+        ######################## correct special barcode cases ##########################
 
         if data_type == 'drop_seq':
             barcodes = ''
@@ -68,13 +68,11 @@ def test_seqc_raw_fastq_input():
             # download file if missing
             if not os.path.isfile(barcodes):
                 seqc.log.info('Downloading %s barcode files' % data_type)
-                bucket = 'dplab-data'
-                key = 'barcodes/%s/barcodes.p' % data_type
+                bucket, key = seqc.io.S3.split_link(
+                    config.barcode_partial_serial_link_pattern % data_type)
                 seqc.io.S3.download_file(bucket=bucket, key=key, fout=barcodes)
 
         # define some genome files
-        gtf = index + 'annotations.gtf'
-        fasta = index + 'mm38_chr19.fa'
 
         # get fastq data
         fastq_files = [forward, reverse]
@@ -101,13 +99,13 @@ def test_seqc_raw_fastq_input():
 
                 # get generator for correct fastq data type and create fastq files
                 generate_fastq = getattr(seqc.fastq.GenerateFastq, data_type)
-                prefix = fastq_dir + 'seqc_test'
-                generate_fastq(10000, prefix, fasta, gtf, barcodes=barcodes,
+                prefix = fastq_dir + 'test_seqc'
+                generate_fastq(10000, prefix, config.fasta, config.gtf, barcodes=barcodes,
                                tag_type='gene_id')
 
         args = [
             data_type.replace('_', '-'),
-            '-i', index,
+            '-i', config.index,
             '-n', str(n_threads),
             '-o', output_prefix,
         ]
@@ -194,7 +192,7 @@ def seqc_raw_fastq_input(args):
 
 
 if __name__ == "__main__":
-    seqc.log.setup_logger()
+    seqc.log.setup_logger('seqc_functest.log')
     try:
         nose2.main(exit=False, module=__name__, verbosity=5)
     except:
