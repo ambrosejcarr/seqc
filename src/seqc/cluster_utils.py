@@ -55,8 +55,8 @@ class ClusterServer(object):
         config = configparser.ConfigParser()
         config.read(config_file)
         template = config['global']['default_template']
-        self.keyname = config['key']['key_name']
-        self.keypath = os.path.expanduser(config['key']['key_location'])
+        self.keyname = config['key']['rsa_key_name']
+        self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
         if template == 'c4':
