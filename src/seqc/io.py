@@ -435,7 +435,7 @@ class GEO:
 class BaseSpace:
 
     @classmethod
-    def download_sample(cls, sample_id: str, access_token: str, dest_path: str)\
+    def download_fastq(cls, sample_id: str, access_token: str, dest_path: str)\
             -> (list, list):
         """
         Downloads all files related to a sample from the basespace API
@@ -447,7 +447,10 @@ class BaseSpace:
          "https://basespace.illumina.com/sample/30826030/Day0-ligation-11-17", then the
          sample_id is "30826030"
         access_token: a string access token that allows permission to access the ILLUMINA
-         BaseSpace server and download the requested data
+         BaseSpace server and download the requested data. Access tokens can be obtained
+         by (1) logging into https://developer.basespace.illumina.com, (2), creating a
+         "new application", and (3) going to the credentials tab of that application to
+         obtain the access token.
         dest_path: the location that the downloaded files should be placed.
 
         returns:
@@ -463,6 +466,13 @@ class BaseSpace:
                                 sample_id +
                                 '/files?Extensions=gz&access_token=' +
                                 access_token)
+
+        # check that a valid request was sent
+        if response.status_code != 200:
+            raise ValueError('Invalid access_token or sample_id. BaseSpace could not '
+                             'find the requested data. Response status code: %d'
+                             % response.status_code)
+
         data = response.json()
 
         func = partial(cls._download_content, data['Response']['Items'], access_token,
@@ -470,6 +480,14 @@ class BaseSpace:
         seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
         with Pool(len(data['Response']['Items'])) as pool:
             pool.map(func, range(len(data['Response']['Items'])))
+
+        # get downloaded forward and reverse fastq files
+        filenames = [f['Name'] for f in data['Response']['Items']]
+        forward_fastq = [dest_path + '/' + f for f in filenames if '_R1_' in f]
+        reverse_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
+
+        return forward_fastq, reverse_fastq
+
 
     @staticmethod
     def _download_content(item_data, access_token, dest_path, index):

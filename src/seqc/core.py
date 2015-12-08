@@ -529,11 +529,8 @@ def check_input_data(
     elif basespace:
         prefix = output_dir + 'fastq/'
         sample_id, access_token = basespace
-        seqc.io.BaseSpace.download_sample(sample_id, access_token, prefix)
-        forward_pattern = r'_R1_.*?\.fastq\.gz'
-        reverse_pattern = r'_R2_.*?\.fastq\.gz'
-        forward_fastq = [f for f in os.listdir(prefix) if re.search(forward_pattern, f)]
-        reverse_fastq = [f for f in os.listdir(prefix) if re.search(reverse_pattern, f)]
+        forward_fastq, reverse_fastq = seqc.io.BaseSpace.download_fastq(
+            sample_id, access_token, prefix)
 
     return forward_fastq, reverse_fastq, merged, samfile
 
