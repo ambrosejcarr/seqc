@@ -191,20 +191,38 @@ def seqc_raw_fastq_input(args):
             raise
 
     # ADDITIONAL TESTING OF FUNCTION OUTPUTS
-    # (1) get number of lines in fastq file
+    # get number of lines in fastq file
     n_records = 0
-    print(kwargs)
     for f in kwargs['forward']:
         with open(f) as fastq_in:
             n_records += sum(1 for line in fastq_in.readlines()) / 4
 
-    # (2) get number of alignments in samfile
+    # get number of lines in merged file
+    prefix = kwargs['output_prefix'] + '/'
+    merged = prefix + 'merged.fastq'
+    with open(merged) as f:
+        n_merged = sum(1 for line in f) / 4
+
+    # (1) test that n_merged is within expected range
+    margin = 2 * 4 * int(n_merged / (1e6 * 4))
+    assert n_records - margin <= n_merged <= n_records
+
+    # get number of alignments in samfile
     samfile_name = ('/'.join(kwargs['output_prefix'].split('/')[:-1]) +
                     '/test_seqc/Aligned.out.sam')
     rd = seqc.sam.Reader(samfile_name)
     n_alignments = sum(1 for ma in rd.iter_multialignments())
 
-    assert n_alignments == n_records, '%d != %d' % (n_alignments, n_records)
+    # (2) check that the number of alignments is the same as the number of input records
+    assert n_alignments >= n_merged * .99, '%d != %d' % (n_alignments, n_records)
+
+    # (3) open the counts matrix and count up the reads that are considered valid
+    npz_name = kwargs['output_prefix'] + '_sp_counts.npz'
+    exp = seqc.analyze.Experiment.from_npz(npz_name)
+
+    print('\nNumber of Reads found in count matrix: %d' % exp.reads.counts.sum().sum())
+    print('\nNumber of Mols. found in count matrix: %d' %
+          exp.molecules.counts.sum().sum())
 
 if __name__ == "__main__":
     seqc.log.setup_logger('seqc_functest.log')

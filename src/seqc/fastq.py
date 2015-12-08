@@ -12,7 +12,6 @@ import re
 from itertools import islice
 import seqc
 import io
-import pickle
 import random
 from io import StringIO
 from collections import namedtuple
@@ -343,7 +342,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
                         i += 1
                         break
                     except Full:
-                        sleep(1)
+                        sleep(.1)
 
             # close fids
             ffastq.close()
@@ -370,7 +369,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
             except Empty:
                 try:
                     os.kill(read_pid, 0)  # does nothing if thread is alive
-                    sleep(1)
+                    sleep(.1)
                     continue
                 except ProcessLookupError:  # process is dead.
                     break
@@ -389,7 +388,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
                     seqc.log.info('%d Processed. Placed on output queue.' % index)
                     break
                 except Full:
-                    sleep(1)
+                    sleep(.1)
 
     def any_alive(pids):
         for id_ in pids:
@@ -415,7 +414,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
                 os.remove(next_file)
             except Empty:
                 if any_alive(process_pids):
-                    sleep(1)
+                    sleep(.1)
                     continue
                 else:
                     break
@@ -568,7 +567,6 @@ class GenerateFastq:
     def _reverse_three_prime(n: int, read_length: int, fasta: str, gtf: str,
                              tag_type='gene_id', fragment_length=1000):
 
-        # todo this doesn't work yet.
         # read gtf
         reader = seqc.gtf.Reader(gtf)
         intervals = []
@@ -576,7 +574,7 @@ class GenerateFastq:
             for iv in r.intervals:
                 start, end = int(iv[0]), int(iv[1])
             if (end - read_length) > start:
-                intervals.append((r.attribute[tag_type], start, end))
+                intervals.append((r.attribute[tag_type], start, end, r.strand))
 
         # pick intervals
         exon_selections = np.random.randint(0, len(intervals), (n,))
@@ -590,11 +588,13 @@ class GenerateFastq:
         sequences = []
         tags = []
         for i in exon_selections:
-            tag, start, end = intervals[i]
+            tag, start, end, strand = intervals[i]
             # get position within interval
             start = random.randint(start, end)
             end = start + read_length
             seq = fasta[start:end]
+            if strand == '-':
+                seq = revcomp(seq)
             sequences.append(seq)
             tags.append(tag)
 

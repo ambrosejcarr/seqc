@@ -494,7 +494,6 @@ def open_file(filename):
         return open(filename)
 
 
-
 class DummyFTPClient(threading.Thread):
     """A threaded FTP server used for running tests.
 
