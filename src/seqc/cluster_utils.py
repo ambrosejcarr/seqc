@@ -51,7 +51,7 @@ class ClusterServer(object):
 
     # todo catch errors in cluster configuration
     def configure_cluster(self, config_file):
-        """configures the newly created cluster according to aws.config"""
+        """configures the newly created cluster according to config"""
         config = configparser.ConfigParser()
         config.read(config_file)
         template = config['global']['DEFAULT_TEMPLATE']
@@ -68,7 +68,7 @@ class ClusterServer(object):
         self.aws_key = config['aws_info']['AWS_SECRET_ACCESS_KEY']
 
     def create_cluster(self):
-        """creates a new AWS cluster with specifications from aws.config"""
+        """creates a new AWS cluster with specifications from config"""
         if 'c4' in self.inst_type:
             if not self.subnet:
                 print('You must specify a subnet-id for C4 instances!')
@@ -227,7 +227,7 @@ class ClusterServer(object):
 
     def cluster_setup(self, name):
         print('setting up cluster %s...' % name)
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/aws.config'
+        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/config'
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()

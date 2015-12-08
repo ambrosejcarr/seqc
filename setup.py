@@ -72,15 +72,14 @@ is not installed, please install it prior to installing SEQC.
 if not shutil.which('STAR'):
     warn('SEQC: STAR is not installed. SEQC will not be able to align files.')
 
-# after set-up completes, install and configure the aws.config file
+# after set-up completes, install and configure the config file
 install_dir = os.path.expanduser('~/.seqc') + '/'
 if not os.path.isdir(install_dir):
     os.makedirs(install_dir)
 seqc_dir = os.path.dirname(os.path.realpath(__file__))
 
-
 config = configparser.RawConfigParser()
-seqc_config = seqc_dir + '/src/plugins/aws.config'
+seqc_config = seqc_dir + '/src/plugins/config'
 config.read(seqc_config)
 # have the user fill in any missing values
 print('Configuring SEQC for access to Amazon Web Services and BaseSpace. If needed, '
@@ -95,7 +94,7 @@ for s in config.sections():
             user_input = input('Please provide your %s: ' % k)
             if user_input:
                 config[s][k] = user_input
-with open(install_dir + 'aws.config', 'w') as f:
+with open(install_dir + 'config', 'w') as f:
     config.write(f)
 
 
