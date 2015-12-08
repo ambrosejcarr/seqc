@@ -21,6 +21,7 @@ from pyftpdlib.authorizers import DummyAuthorizer
 import requests
 from multiprocessing import Pool
 from functools import partial
+import configparser
 
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
@@ -472,7 +473,7 @@ class GEO:
 class BaseSpace:
 
     @classmethod
-    def download_fastq(cls, sample_id: str, access_token: str, dest_path: str)\
+    def download_sample(cls, sample_id: str, dest_path: str, access_token: str=None)\
             -> (list, list):
         """
         Downloads all files related to a sample from the basespace API
@@ -498,6 +499,12 @@ class BaseSpace:
         seqc.util.check_type(sample_id, str, 'sample_id')
         seqc.util.check_type(access_token, str, 'access_token')
         seqc.util.check_type(dest_path, str, 'dest_path')
+
+        # if the access token isn't provided, look for it in config
+        if not access_token:
+            config = configparser.ConfigParser()
+            config.read(os.path.expanduser('~/.seqc/config'))
+            access_token = config['BaseSpaceToken']['base_space_token']
 
         response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
                                 sample_id +

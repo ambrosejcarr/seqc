@@ -54,18 +54,18 @@ class ClusterServer(object):
         """configures the newly created cluster according to config"""
         config = configparser.ConfigParser()
         config.read(config_file)
-        template = config['global']['DEFAULT_TEMPLATE']
-        self.keyname = config['key']['KEY_NAME']
-        self.keypath = os.path.expanduser(config['key']['KEY_LOCATION'])
-        self.image_id = config[template]['NODE_IMAGE_ID']
-        self.inst_type = config[template]['NODE_INSTANCE_TYPE']
+        template = config['global']['default_template']
+        self.keyname = config['key']['key_name']
+        self.keypath = os.path.expanduser(config['key']['key_location'])
+        self.image_id = config[template]['node_image_id']
+        self.inst_type = config[template]['node_instance_type']
         if template == 'c4':
-            self.subnet = config[template]['SUBNET_ID']
-        self.zone = config[template]['AVAILABILITY_ZONE']
+            self.subnet = config[template]['subnet_id']
+        self.zone = config[template]['availability_zone']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
-        self.aws_id = config['aws_info']['AWS_ACCESS_KEY_ID']
-        self.aws_key = config['aws_info']['AWS_SECRET_ACCESS_KEY']
+        self.aws_id = config['aws_info']['aws_access_key_id']
+        self.aws_key = config['aws_info']['aws_secret_access_key']
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
@@ -227,7 +227,8 @@ class ClusterServer(object):
 
     def cluster_setup(self, name):
         print('setting up cluster %s...' % name)
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/config'
+        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/config'
+        config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()

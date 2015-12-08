@@ -78,9 +78,8 @@ def create_parser():
         i.add_argument('-m', '--merged-fastq', metavar='M', default='',
                        help='s3 link or filesystem location of fastq file containing '
                             'merged, pre-processed records')
-        i.add_argument('--basespace', nargs=2, default=None, metavar='BS',
-                       help='takes 2 arguments: a basespace sample id, and a basespace '
-                            'oAuth token. If provided, fastq input data will be '
+        i.add_argument('--basespace', default=None, metavar='BS',
+                       help='Basespace sample ID. If provided, fastq input data will be '
                             'downloaded from BaseSpace for processing.')
 
         # disambiguation arguments
@@ -528,9 +527,9 @@ def check_input_data(
             merged = download_s3_files(merged, 'merged_fastq', output_dir)
     elif basespace:
         prefix = output_dir + 'fastq/'
-        sample_id, access_token = basespace
-        forward_fastq, reverse_fastq = seqc.io.BaseSpace.download_fastq(
-            sample_id, access_token, prefix)
+        sample_id = basespace
+        forward_fastq, reverse_fastq = seqc.io.BaseSpace.download_sample(
+            sample_id, prefix)
 
     return forward_fastq, reverse_fastq, merged, samfile
 
