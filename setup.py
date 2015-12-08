@@ -4,7 +4,6 @@ from setuptools import setup
 from warnings import warn
 import os
 import shutil
-import nose2
 
 __version__ = '0.1.4'
 
@@ -62,12 +61,23 @@ if h5fail:
     warn("""
 SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/,
 /usr/lib/, /usr/hdf5/lib/, or /usr/local/lib/hdf5/.
-tables will not find h5lib and installation will likely fail unless the
-HDF5_DIR environment variable has been set to the location that HDF5 was
-installed into. If HDF5 is not installed, please install it prior to
-installing SEQC.
+
+"tables" will not find h5lib and installation will likely fail unless the HDF5_DIR
+environment variable has been set to the location that HDF5 was installed into. If HDF5
+is not installed, please install it prior to installing SEQC.
 """)
 
 # look for star
 if not shutil.which('STAR'):
     warn('SEQC: STAR is not installed. SEQC will not be able to align files.')
+
+
+# after set-up completes, install and configure the aws.config file
+install_dir = os.path.expanduser('~/.seqc') + '/'
+os.makedirs(install_dir)
+seqc_dir = os.path.dirname(os.path.realpath(__file__))
+
+# copy the config file
+shutil.copy(seqc_dir + '/plugins/aws.config', install_dir + 'aws.config')
+
+# parse

@@ -5,9 +5,11 @@ import gzip
 import bz2
 import os
 import ftplib
-from threading import Thread
 import threading
-from queue import Queue, Empty
+from multiprocessing import Process, Queue
+import socket
+import threading
+from queue import Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
 import seqc
@@ -350,14 +352,14 @@ class GEO:
         for f in files:
             for_download.put(srp + f)
 
-        threads = []
+        processes = []
         for i in range(max_concurrent_dl):
-            threads.append(Thread(target=cls._download_sra_file,
+            processes.append(Process(target=cls._download_sra_file,
                                   args=([for_download, prefix, clobber, verbose])))
 
-            threads[i].start()
+            processes[i].start()
 
-        for t in threads:
+        for t in processes:
             t.join()
 
         # get output files
@@ -411,15 +413,15 @@ class GEO:
         for f in sra_files:
             to_extract.put(f)
 
-        threads = []
+        processes = []
         for i in range(max_concurrent):
-            threads.append(Thread(
+            processes.append(Process(
                 target=cls._extract_fastq,
                 args=([to_extract, working_directory, verbose, paired_end, clobber])
             ))
-            threads[i].start()
+            processes[i].start()
 
-        for t in threads:
+        for t in processes:
             t.join()
 
         # get output files
