@@ -235,6 +235,9 @@ class S3:
 
 
 class GEO:
+    """
+    Group of methods for downloading files from NCBI GEO
+    """
 
     @staticmethod
     def _ftp_login(ip, port=0, username='anonymous', password=''):
@@ -278,7 +281,24 @@ class GEO:
             ftp.close()
 
     @classmethod
-    def download_sra_file(cls, link, prefix, clobber=False, verbose=True, port=0):
+    def download_sra_file(cls, link: str, prefix: str, clobber=False, verbose=True,
+                          port=0) -> str:
+        """
+        Downloads file from ftp server found at link into directory prefix
+
+        args:
+        -----
+        link: ftp link to file
+        prefix: directory into which file should be downloaded
+        clobber: If False, will not download if a file is already present in prefix with
+         the same name
+        verbose: If True, status updates will be printed throughout file download
+        port: Port for login. for NCBI, this should be zero (default).
+
+        return:
+        -------
+        downloaded filename
+        """
 
         # check link validity
         if not link.startswith('ftp://'):
@@ -308,9 +328,24 @@ class GEO:
 
 
     @classmethod
-    def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False,
-                     port=0):
-        """download all files in an SRP experiment into directory 'prefix'."""
+    def download_srp(cls, srp: str, prefix: str, max_concurrent_dl: int, verbose=True,
+                     clobber=False, port=0) -> [str]:
+
+        """
+        Download all files in an SRP experiment into directory prefix
+
+        args:
+        -----
+        srp: the complete ftp link to the folder for the SRP experiment
+        prefix: the name of the folder in which files should be saved
+        max_concurrent_dl: the number of processes to spawn for parallel downloading
+        verbose: If True, status updates will be printed throughout file download
+        port: Port for login. for NCBI, this should be zero (default).
+
+        returns:
+        --------
+        list of downloaded files
+        """
 
         if not srp.startswith('ftp://'):
             raise ValueError(
