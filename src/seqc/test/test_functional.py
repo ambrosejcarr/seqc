@@ -199,11 +199,12 @@ def seqc_raw_fastq_input(args):
             n_records += sum(1 for line in fastq_in.readlines()) / 4
 
     # (2) get number of alignments in samfile
-    samfile_name = '/'.join(kwargs['output_prefix'].split('/')[:-1]) + 'Aligned.out.sam'
+    samfile_name = ('/'.join(kwargs['output_prefix'].split('/')[:-1]) +
+                    '/test_seqc/Aligned.out.sam')
     rd = seqc.sam.Reader(samfile_name)
     n_alignments = sum(1 for ma in rd.iter_multialignments())
 
-    assert n_alignments == n_records
+    assert n_alignments == n_records, '%d != %d' % (n_alignments, n_records)
 
 if __name__ == "__main__":
     seqc.log.setup_logger('seqc_functest.log')
