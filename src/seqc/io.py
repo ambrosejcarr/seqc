@@ -470,6 +470,19 @@ class GEO:
             return forward
 
 
+def _download_basespace_content(item_data, access_token, dest_path, index):
+    """gets the content of a file requested from the BaseSpace REST API."""
+    item = item_data[index]
+    response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
+                            item['Id'] + '/content?access_token=' +
+                            access_token, stream=True)
+    path = dest_path + '/' + item['Path']
+    with open(path, "wb") as fd:
+        for chunk in response.iter_content(104857600):  # chunksize = 100MB
+            fd.write(chunk)
+        fd.close()
+
+
 class BaseSpace:
 
     @classmethod
@@ -497,7 +510,6 @@ class BaseSpace:
 
         # check types
         seqc.util.check_type(sample_id, str, 'sample_id')
-        seqc.util.check_type(access_token, str, 'access_token')
         seqc.util.check_type(dest_path, str, 'dest_path')
 
         # if the access token isn't provided, look for it in config
@@ -505,11 +517,13 @@ class BaseSpace:
             config = configparser.ConfigParser()
             config.read(os.path.expanduser('~/.seqc/config'))
             access_token = config['BaseSpaceToken']['base_space_token']
+            print(access_token)
 
         response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
                                 sample_id +
                                 '/files?Extensions=gz&access_token=' +
                                 access_token)
+        print(response)
 
         # check that a valid request was sent
         if response.status_code != 200:
@@ -519,8 +533,8 @@ class BaseSpace:
 
         data = response.json()
 
-        func = partial(cls._download_content, data['Response']['Items'], access_token,
-                       dest_path)
+        func = partial(_download_basespace_content, data['Response']['Items'],
+                       access_token, dest_path)
         seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
         with Pool(len(data['Response']['Items'])) as pool:
             pool.map(func, range(len(data['Response']['Items'])))
@@ -531,20 +545,6 @@ class BaseSpace:
         reverse_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
 
         return forward_fastq, reverse_fastq
-
-
-    @staticmethod
-    def _download_content(item_data, access_token, dest_path, index):
-        """gets the content of a file requested from the BaseSpace REST API."""
-        item = item_data[index]
-        response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
-                                item['Id'] + '/content?access_token=' +
-                                access_token, stream=True)
-        path = dest_path + '/' + item['Path']
-        with open(path, "wb") as fd:
-            for chunk in response.iter_content(104857600):  # chunksize = 100MB
-                fd.write(chunk)
-            fd.close()
 
 
 def open_file(filename):
