@@ -6,7 +6,7 @@ import os
 import shutil
 import configparser
 
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 # pip3 cannot install external dependencies for python; warn user if external dependencies
 # are missing; do this at the end so that the users are more likely to see it.
