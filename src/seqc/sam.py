@@ -245,7 +245,8 @@ class EmptyAligmentFile(Exception):
     pass
 
 
-def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
+def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: str,
+          fragment_length=1000) -> str:
     """Process a samfile in parallel, dump results into an h5 database.
 
     Note that this method uses several shortcuts that have minor adverse consequences for

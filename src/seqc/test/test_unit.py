@@ -41,7 +41,7 @@ class config:
     barcode_partial_serial_link_pattern = ('s3://dplab-data/barcodes/%s/serial/'
                                            'cb_partial.p')
     barcode_files_link_prefix_pattern = 's3://dplab-data/barcodes/%s/flat/'
-    h5_name_pattern = seqc_dir + 'test_data/%s/test_seqc.h5'
+    h5_name_pattern = seqc_dir + 'test_data/%s/h5/test_seqc.h5'
 
     # universal index files
     gtf = seqc_dir + 'test_data/genome/annotations.gtf'
@@ -182,6 +182,11 @@ def check_sam(data_type: str) -> str:
     prefix = config.seqc_dir + 'test_data/%s/fastq/seqc_test' % data_type
     barcodes = config.barcode_partial_serial_pattern % data_type
 
+    expected_samfile = config.samfile_pattern % data_type
+    sam_dir = '/'.join(expected_samfile.strip('/')[:-1])
+    if not os.path.isdir(sam_dir):
+        os.makedirs(sam_dir)
+
     if not os.path.isfile(samfile):
         gen_func = getattr(seqc.sam.GenerateSam, data_type)
         gen_func(n=n, filename=samfile, prefix=prefix, fasta=config.fasta, gtf=config.gtf,
@@ -189,6 +194,23 @@ def check_sam(data_type: str) -> str:
 
     assert os.path.isfile(samfile)
     return samfile
+
+
+def check_h5(data_type: str) -> str:
+
+    samfile = check_sam(data_type)
+
+    expected_h5 = config.h5_name_pattern % data_type
+    h5_dir = '/'.join(expected_h5.split('/')[:-1])
+    if not os.path.isdir(h5_dir):
+        os.makedirs(h5_dir)
+
+    if not os.path.isfile(config.h5_name_pattern % data_type):
+        h5 = seqc.sam.to_h5(samfile, config.h5_name_pattern % data_type, 4, int(1e7),
+                            config.gtf)
+        assert os.path.isfile(config.h5_name_pattern % data_type)
+        assert h5 == config.h5_name_pattern % data_type
+        return h5
 
 
 class FastqRevcompTest(unittest.TestCase):
@@ -1090,8 +1112,9 @@ class TestParallelConstructH5(unittest.TestCase):
                 check_sam(dtype)
             assert os.path.isfile(config.samfile_pattern % dtype)
 
+
+    # @unittest.skip('slow; parallel has baked in waiting time')
     @params(*config.data_types)
-    @unittest.skip('slow; parallel has baked in waiting time')
     def test_parallel_construct_h5(self, dtype):
         chunk_size = int(1e7)
         self.assertFalse(os.path.isfile(self.h5_name))
@@ -1130,6 +1153,10 @@ class TestParallelConstructH5(unittest.TestCase):
         # all reads should have average quality == 40 (due to how data was generated)
         self.assertTrue(np.all(ra.data['rev_quality'] == 40))
         self.assertTrue(np.all(ra.data['fwd_quality'] == 40))
+
+        # more than 98% of reads should have features.
+        n_with_features = sum(1 for f in ra.features if np.any(f))
+        self.assertTrue(n_with_features > len(ra) * .98)
 
     def tearDown(self):
         if os.path.isfile(self.h5_name):
@@ -1246,7 +1273,7 @@ class TestUniqueArrayCreation(unittest.TestCase):
             os.mkdir(cls.test_dir)
 
     @params(*config.data_types)
-    @unittest.skip('slow')
+    # @unittest.skip('slow')
     def test_num_unique_samfile(self, dtype):
         h5 = seqc.sam.to_h5(config.samfile_pattern % dtype, self.h5_name, 7,
                             int(1e7), config.gtf, 1000)
@@ -1281,6 +1308,8 @@ class TestUniqueArrayCreation(unittest.TestCase):
             ua2 = ra.to_unique(3)
         self.assertTrue(ua2.shape == ua.shape, 'Incongruent number of unique reads: '
                                                '%d != %d' % (ua2.shape[0], ua.shape[0]))
+
+        self.assertTrue(len(ua) > len(ra) * .98)
 
     @classmethod
     def tearDownClass(cls):
@@ -1363,6 +1392,27 @@ class TestCountingUniqueArray(unittest.TestCase):
         mdata = np.array(exp.molecules.counts.todense())
         self.assertTrue(np.all(rdata == 6))
         self.assertTrue(np.all(mdata == 3))
+
+
+class TestExperimentCreation(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for dtype in config.data_types:
+            check_h5(dtype)
+
+    @params(*config.data_types)
+    def test_create_experiment(self, dtype):
+        h5 = config.h5_name_pattern % dtype
+        ra = seqc.arrays.ReadArray.from_h5(h5)
+        ua = ra.to_unique(0)
+        exp = ua.to_experiment(0)
+        print('ReadCounts: %d' % exp.reads.counts.sum().sum())
+        print('Molecule Counts: %d' % exp.molecules.counts.sum().sum())
+        print('UniqueArray Length: %d' % len(ua))
+        print('ReadArray length: %d' % len(ra))
+
+
 
 
 class TestThreeBitGeneral(unittest.TestCase):
@@ -1482,7 +1532,7 @@ class TestGeneTable(unittest.TestCase):
 
 
 # todo reimplement these tests
-class TestSamToCount(unittest.TestCase):
+class TestSMARTSeqSamToCount(unittest.TestCase):
     def setUp(self):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
 
@@ -1659,6 +1709,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     pass  # not aligned
 
 
+@unittest.skip('')
 class TestDownloadInputFiles(unittest.TestCase):
 
     test_dir = 'test_seqc/'
@@ -1813,7 +1864,7 @@ class TestDownloadInputFiles(unittest.TestCase):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
 
-
+@unittest.skip('')
 class TestDownloadBaseSpace(unittest.TestCase):
     """unittests to make sure BaseSpace is correctly functioning"""
 
