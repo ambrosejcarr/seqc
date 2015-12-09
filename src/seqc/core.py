@@ -7,7 +7,6 @@ import shutil
 import seqc
 import sys
 import json
-import re
 
 
 def create_parser():
@@ -102,7 +101,7 @@ def create_parser():
         sys.exit(2)
 
     # add a sub-parser for building the index
-    pindex = subparsers.add_parser('index', help='SEQC index functions')
+    pindex = subparsers.add_parser('index', help='SEQC index methods')
     pindex.add_argument('-b', '--build', action='store_true', default=False,
                         help='build a SEQC index')
     pindex.add_argument('-t', '--test', action='store_true', default=False,
@@ -127,6 +126,14 @@ def create_parser():
                         help='email results to this address')
     pindex.add_argument('--no-terminate', default=False, action='store_true',
                         help='Decide if the cluster will terminate upon completion.')
+
+    pcleanup = subparsers.add_parser('clean', help='AWS cleanup methods')
+    pcleanup.add_argument('-i', '--instances', action='store_true', default=False,
+                          help='clean up any leftover security groups produced by '
+                               'remote instance creation')
+    pcleanup.add_argument('-v', '--volumes', action='store_true', default=False,
+                          help='clean up any leftover volumes produced by remote '
+                               'instance creation')
 
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
@@ -153,6 +160,14 @@ def parse_args(parser, args=None):
             print('SEQC index: error: one but not both of the following arguments must '
                   'be provided: -b/--build, -t/--test')
             sys.exit(2)
+    elif arguments.subparser_name == 'clean':
+        if arguments.volumes:
+            clean_volumes()
+        elif arguments.instances:
+            clean_instances()
+        else:
+            print('SEQC clean: error: one but not both of the following arguments must '
+                  'be provided: -v/--volumes, -i/--instances')
     else:
         # list star args if requested, then exit
         if arguments.list_default_star_args:
@@ -791,3 +806,19 @@ def strt_seq():
     This method assumes STRT-seq datasets are being retrieved from GEO, where Sten
     Linnarsson has demultiplexed the data into multiple, individual fastq files."""
     raise NotImplementedError
+
+
+def clean_instances():
+    """remove any leftover security groups and terminate clusters"""
+    filepath = os.path.expanduser('~/.seqc/instances.txt')
+    if os.path.isfile(filepath):
+        with open(filepath, 'r') as f:
+            inst_id = f.readline().strip('\n')
+            sg_id = f.readline().strip('\n')
+        seqc.cluster_utils.terminate_cluster(inst_id)
+        seqc.cluster_utils.remove_sg(sg_id)
+        os.remove(filepath)
+
+
+def clean_volumes():
+    seqc.io.EC2.clean_volumes()

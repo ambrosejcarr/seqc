@@ -874,6 +874,51 @@ class Experiment:
         plt.ylim(0, 300)
         return f, ax
 
+    def summary(self, alignment_summary, fout=None):
+        """print a basic summary of the run for technological debugging purposes
+
+        args:
+        -----
+        alignment_summary:  name of alignment summary file. Found in output directory
+         of SEQC run.
+        fout: name of the file in which to save the summary.
+        """
+        read_counts = self.reads.counts.sum(axis=1)
+        mol_counts = self.reads.counts.sum(axis=1)
+        stats = pd.Series()
+
+        def get_val(frame, val):
+            idx = np.array([True if val in l else False for l in frame.index])
+            return frame.ix[idx][0]
+
+        # parse alignment
+        lines = pd.DataFrame.from_csv(alignment_summary, sep='\t').iloc[:, 0]
+        stats['Reverse Read Length'] = get_val(lines, 'Average input read length')
+        stats['No of reads'] = get_val(lines, 'Number of input reads')
+        stats['Uniquely mapping reads'] = '%s (%s)' % (
+            get_val(lines, 'Uniquely mapped reads number'),
+            get_val(lines, 'Uniquely mapped reads %'))
+        stats['Unmapped reads (includes phiX)'] = get_val(
+            lines, '% of reads unmapped: too short')
+
+        # Molecule counts
+        stats['Total molecules'] = '%d' % mol_counts.sum()
+        stats['Reads contributing to molecules'] = '%d (%.2f%%)' % (
+            read_counts.sum(), read_counts.sum() / int(stats['No of reads']) * 100)
+        stats['Reads per molecule'] = '%d' % (read_counts.sum() / mol_counts.sum())
+
+        # Cell counts
+        stats['cells: > 500 mols.'] = str(int(sum(mol_counts > 500)[0]))
+        stats['cells: > 1k mols.'] = str(int(sum(mol_counts > 1000)[0]))
+        stats['cells: > 5k mols.'] = str(int(sum(mol_counts > 5000)[0]))
+        stats['cells: >10k mols'] = str(int(sum(mol_counts > 10000)[0]))
+
+        if fout:
+            with open(fout, 'w') as f:
+                f.write(repr(stats))
+
+        return stats
+
 
 class CompareExperiments:
     """

@@ -10,7 +10,7 @@ from multiprocessing import Process, Queue
 import socket
 import threading
 from queue import Empty
-from subprocess import Popen, check_output, PIPE
+from subprocess import Popen, check_output, PIPE, call
 from itertools import zip_longest
 import seqc
 import boto3
@@ -27,6 +27,39 @@ import configparser
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
+
+
+class EC2:
+
+    @staticmethod
+    def clean_volumes():
+        ec2 = boto3.resource('ec2')
+        fpath = os.path.expanduser('~/.seqc/vol_names.txt')
+
+        try:
+            with open(fpath, 'r') as f:
+                vol_names = [line.strip() for line in f]
+        except IOError:
+            print('No new volumes for cleanup!')
+            return
+
+        remain_vol = []
+        for name in vol_names:
+            volume = ec2.Volume(name)
+            if not volume.attachments:
+                call(["aws", "ec2", "delete-volume", "--volume-id", name])
+            else:
+                remain_vol.append(name)
+        print('Finished deleting all new, unattached volumes')
+
+        #TODO | fix this for when there are multiple clusters running?
+        # updating vol_names.txt file
+        os.remove(fpath)
+        if remain_vol:
+            print('There are %d new volumes still being used' % len(remain_vol))
+            with open(fpath, 'w') as f:
+                for name in remain_vol:
+                    f.write('%s\n' % name)
 
 
 class S3:
