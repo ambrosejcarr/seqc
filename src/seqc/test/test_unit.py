@@ -865,10 +865,10 @@ class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
         self.assertTrue(all(isinstance(t, list) and not t for t in translated))
 
         # test that translate method raises for malformed input
-        # chr should be str
-        self.assertRaises(TypeError, cgc.translate, '+', 19, 1000)
-        # strand should be + or -
-        self.assertRaises(ValueError, cgc.translate, 'plus', 'chr19', 1000)
+        # this chromosome has no genes, thus won't be in dictionary; should return empty
+        # list
+        self.assertEqual([], cgc.translate('+', 'KI270751.1', 1000))
+
 
     def test_convert_gene_features_save_and_load(self):
         cgc = seqc.convert_features.ConvertGeneCoordinates.from_gtf(self.gtf)
@@ -1217,11 +1217,6 @@ class TestConvertGeneCoordinates(unittest.TestCase):
                     # total += 1
                     res.append(cgc.translate(strand, chrom, pos))
 
-        # print('plus: %d' % len(fwd_res))
-        # print('minus: %d' % len(rev_res))
-        # print('both: %d' % len(both))
-        # print('total: %d' % total)
-        # print('All features: %d' % (len(fwd_res) + len(rev_res) + len(both)))
         total = len(res)
         converted = sum(1 for r in res if r)
         self.assertTrue(total * .98 < converted, 'Of %d alignments, only %d converted' %
@@ -1309,7 +1304,8 @@ class TestUniqueArrayCreation(unittest.TestCase):
         self.assertTrue(ua2.shape == ua.shape, 'Incongruent number of unique reads: '
                                                '%d != %d' % (ua2.shape[0], ua.shape[0]))
 
-        self.assertTrue(len(ua) > len(ra) * .98)
+        # we lose a few genes (<5%) by requiring uniqueness
+        self.assertTrue(len(ua) > len(ra) * .95, 'ua: %d << ra: %d' % (len(ua), len(ra)))
 
     @classmethod
     def tearDownClass(cls):
@@ -1407,10 +1403,10 @@ class TestExperimentCreation(unittest.TestCase):
         ra = seqc.arrays.ReadArray.from_h5(h5)
         ua = ra.to_unique(0)
         exp = ua.to_experiment(0)
-        print('ReadCounts: %d' % exp.reads.counts.sum().sum())
-        print('Molecule Counts: %d' % exp.molecules.counts.sum().sum())
-        print('UniqueArray Length: %d' % len(ua))
-        print('ReadArray length: %d' % len(ra))
+        self.assertEqual(len(ua), exp.reads.counts.sum().sum())
+        # this one is a bit artificial; should figure out precisely how many reads we
+        # expect to see.
+        self.assertGreaterEqual(exp.molecules.counts.sum().sum(), len(ua) / 2)
 
 
 class TestThreeBitGeneral(unittest.TestCase):
@@ -1539,14 +1535,14 @@ class TestSMARTSeqSamToCount(unittest.TestCase):
         samfile = self.data_dir + 'test_seqc_merge_drop_seq_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
         coo, gene_index, ci = seqc.sam.to_count_single_file(samfile, gtf, 100)
-        print(repr(coo))
-        print(len(gene_index))
+        # print(repr(coo))
+        # print(len(gene_index))
 
         samfile = self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
         coo, gene_index, ci = seqc.sam.to_count_single_file(samfile, gtf, 100)
-        print(repr(coo))
-        print(len(gene_index))
+        # print(repr(coo))
+        # print(len(gene_index))
 
     @unittest.skip('not working atm.')
     def test_sam_to_count_multiple_files(self):
@@ -1554,15 +1550,15 @@ class TestSMARTSeqSamToCount(unittest.TestCase):
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
         coo, gene_index, ci = seqc.sam.to_count_multiple_files([samfile, samfile], gtf,
                                                                100)
-        print(repr(coo))
-        print(len(gene_index))
+        # print(repr(coo))
+        # print(len(gene_index))
 
         samfile = self.data_dir + 'test_seqc_merge_in_drop_fastq/Aligned.out.sam'
         gtf = self.data_dir + '/genome/mm38_chr19/annotations.gtf'
         coo, gene_index, ci = seqc.sam.to_count_multiple_files([samfile, samfile], gtf,
                                                                100)
-        print(repr(coo))
-        print(len(gene_index))
+        # print(repr(coo))
+        # print(len(gene_index))
 
 
 class TestGenerateSRA(unittest.TestCase):
@@ -1575,7 +1571,7 @@ class TestGenerateSRA(unittest.TestCase):
     @unittest.skip("doesn't work")
     def test_md5sum(self):
         res = seqc.sra.SRAGenerator.md5sum(self.data_dir + 'in_drop/sample_data_r1.fastq')
-        print(res)
+        # print(res)
 
     @unittest.skip('')
     def test_generate_experiment_xml_file(self):
@@ -1583,7 +1579,7 @@ class TestGenerateSRA(unittest.TestCase):
                                                   fout_stem=self.sra_dir + 'EXP_XML')
         xml_data = xml.dom.minidom.parse(self.sra_dir + 'EXP_XML_experiment.xml')
         pretty = xml_data.toprettyxml()
-        print('\n', pretty)
+        # print('\n', pretty)
 
     @unittest.skip('')
     def test_generate_run_xml_file(self):
@@ -1599,7 +1595,7 @@ class TestGenerateSRA(unittest.TestCase):
             reverse_fastq, reverse_checksum)
         xml_data = xml.dom.minidom.parse(self.sra_dir + 'RUN_XML_run.xml')
         pretty = xml_data.toprettyxml()
-        print('\n', pretty)
+        # print('\n', pretty)
 
     @unittest.skip('')
     def test_generate_sra_paired_end(self):
