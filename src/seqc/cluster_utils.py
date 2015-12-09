@@ -366,10 +366,7 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     id_map = prefix + '_gene_id_map.p'
     alignment_summary = prefix + '_alignment_summary.txt'
     log = 'seqc.log'
-    if os.path.isfile(log):
-        files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
-    else:
-        files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary]
+    files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
 
     # gzip everything and upload to aws_upload_key
     archive_name = prefix + '.tar.gz'
@@ -379,24 +376,13 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     seqc.io.S3.upload_file(archive_name, bucket, key)
 
-    # gzip small files for email
-    attachment = prefix + '_counts_and_metadata.tar.gz'
-    if os.path.isfile(log):
-        gzip_args = ['tar', '-czf', attachment, counts, id_map, alignment_summary, log]
-    else:
-        gzip_args = ['tar', '-czf', attachment, counts, id_map, alignment_summary]
-    gzip = Popen(gzip_args, stdout=PIPE, stderr=PIPE)
-    err, out = gzip.communicate()
-    if err:
-        raise ChildProcessError(err.decode())
-
     # generate a run summary and append to the email
     exp = seqc.Experiment.from_npz(counts)
     run_summary = exp.summary(alignment_summary)
 
     # email results to user
-    body = ('SEQC run complete. Read and molecule counts can be found in the attached '
-            'archive.\n\nLarger files (.fastq, .sam, .h5) are available as file %s in '
-            'the S3 location you specified:\n\n%s\n\nRun Summary:\n\n %s' %
-            (archive_name, aws_upload_key, repr(run_summary)))
-    email_user(attachment, body, email_address)
+    body = ('SEQC run complete. The run log has been attached to this email.\n\n'
+            'Larger files (.fastq, .sam, .h5, .npz) are available as file %s in '
+            'the S3 location you specified:\n\n%s\n\n'
+            'Run Summary:\n\n%s' % (archive_name, aws_upload_key, repr(run_summary)))
+    email_user(log, body, email_address)

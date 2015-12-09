@@ -908,10 +908,10 @@ class Experiment:
         stats['Reads per molecule'] = '%d' % (read_counts.sum() / mol_counts.sum())
 
         # Cell counts
-        stats['cells: > 500 mols.'] = str(int(sum(mol_counts > 500)[0]))
-        stats['cells: > 1k mols.'] = str(int(sum(mol_counts > 1000)[0]))
-        stats['cells: > 5k mols.'] = str(int(sum(mol_counts > 5000)[0]))
-        stats['cells: >10k mols'] = str(int(sum(mol_counts > 10000)[0]))
+        stats['Cells: > 500 mols.'] = str(int(sum(mol_counts > 500)[0]))
+        stats['Cells: > 1k mols.'] = str(int(sum(mol_counts > 1000)[0]))
+        stats['Cells: > 5k mols.'] = str(int(sum(mol_counts > 5000)[0]))
+        stats['Cells: >10k mols'] = str(int(sum(mol_counts > 10000)[0]))
 
         if fout:
             with open(fout, 'w') as f:
