@@ -28,3 +28,7 @@ from . import util
 from . import sra
 from . import cluster_utils
 from . import ssh_utils
+
+# import some key classes into the general namespace
+from .analyze import Experiment, DenseCounts, SparseCounts
+from .arrays import ReadArray, UniqueReadArray
