@@ -157,7 +157,7 @@ def check_merged_fastq(data_type: str) -> str:
         forward, reverse = [forward], [reverse]
         exp_type = data_type.replace('_', '-')
         n_processors = 4
-        output_dir = os.path.abspath('./test_data/%s/fastq/' % data_type)
+        output_dir = config.seqc_dir + 'test_data/%s/fastq' % data_type
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
         if data_type == 'drop_seq':
