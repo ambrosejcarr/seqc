@@ -82,7 +82,7 @@ class TestFunctionalRemote(unittest.TestCase):
                                               email_address=kwargs['email_status'])
                 sys.exit(1)
             finally:
-                #we are currently within a cluster:
+                # we are currently within a cluster:
                 if not kwargs['no_terminate']:
                     if os.path.isfile('/data/software/instance.txt'):
                         with open('/data/software/instance.txt','r') as f:

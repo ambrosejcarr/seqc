@@ -337,7 +337,7 @@ def email_user(attachment, email_body, email_address: str) -> None:
     email_process.communicate()
 
 
-def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> None:
+def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) -> None:
     """
     todo document me!
 
@@ -361,7 +361,10 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
     id_map = prefix + '_gene_id_map.p'
     summary = prefix + '_alignment_summary.txt'
     log = 'seqc.log'
-    files = [samfile, h5_archive, merged_fastq, counts, id_map, summary, log]
+    if os.path.isfile(log):
+        files = [samfile, h5_archive, merged_fastq, counts, id_map, summary, log]
+    else:
+        files = [samfile, h5_archive, merged_fastq, counts, id_map, summary]
 
     # gzip everything and upload to aws_upload_key
     archive_name = prefix + '.tar.gz'
@@ -373,12 +376,15 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
 
     # gzip small files for email
     attachment = prefix + '_counts_and_metadata.tar.gz'
-    gzip_args = ['tar', '-czf', attachment, counts, id_map, summary, log]
+    if os.path.isfile(log):
+        gzip_args = ['tar', '-czf', attachment, counts, id_map, summary, log]
+    else:
+        gzip_args = ['tar', '-czf', attachment, counts, id_map, summary]
     gzip = Popen(gzip_args)
     gzip.communicate()
 
     # email results to user
     body = ('SEQC run complete. Read and molecule counts can be found in the attached '
-            'archive. Larger files (.fastq, .sam, .h5) are available as file %s in your '
-            'specified S3 bucket: %s' % (archive_name, bucket))
+            'archive. Larger files (.fastq, .sam, .h5) are available as file %s in the '
+            'S3 location you specified: %s' % (archive_name, aws_upload_key))
     email_user(attachment, body, email_address)
