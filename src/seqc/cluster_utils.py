@@ -319,12 +319,16 @@ def remove_sg(sg_id):
         seqc.log.notify('security group %s (%s) is still in use!' % (sg_name, sg_id))
 
 
-def email_user(attachment, email_body, email_address: str) -> None:
+def email_user(attachment: str, email_body: str, email_address: str) -> None:
     """
-    todo document me!
+    sends an email to email address with text contents of email_body and attachment
+    attached. Email will come from "Ubuntu@<ec2-instance-ip-of-aws-instance>
 
     args:
     -----
+    attachment: the file location of the attachment to append to the email
+    email_body: text to send in the body of the email
+    email_address: the address to which the email should be sent.
 
     returns:
     --------
