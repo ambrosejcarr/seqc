@@ -380,9 +380,13 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     exp = seqc.Experiment.from_npz(counts)
     run_summary = exp.summary(alignment_summary)
 
+    # get the name of the output file
+    archive_suffix = archive_name.split('/')[-1]
+
     # email results to user
-    body = ('SEQC run complete. The run log has been attached to this email.\n\n'
-            'Larger files (.fastq, .sam, .h5, .npz) are available as file %s in '
-            'the S3 location you specified:\n\n%s\n\n'
-            'Run Summary:\n\n%s' % (archive_name, aws_upload_key, repr(run_summary)))
+    body = ('SEQC RUN COMPLETE.\n\n'
+            'The run log has been attached to this email and '
+            'results are now available in the S3 location you specified: '
+            '"%s%s"\n\n'
+            'RUN SUMMARY:\n\n%s' % (aws_upload_key, archive_suffix, repr(run_summary)))
     email_user(log, body, email_address)
