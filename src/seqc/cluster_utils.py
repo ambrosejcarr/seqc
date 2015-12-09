@@ -91,6 +91,8 @@ class ClusterServer(object):
                                               InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
+        else:
+            raise ValueError('self.inst_type must be a c3 or c4 instance')
         instance = clust[0]
         print('created new instance %s' % instance)
         instance.wait_until_exists()
@@ -149,8 +151,9 @@ class ClusterServer(object):
             time.sleep(3)
             vol.reload()
         resp = self.inst_id.modify_attribute(
-            BlockDeviceMappings=[{'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
-                                                                'DeleteOnTermination': True}}])
+            BlockDeviceMappings=[
+                {'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
+                                               'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
             print('Something went wrong modifying the attribute of the Volume!')
             sys.exit(2)
@@ -197,7 +200,8 @@ class ClusterServer(object):
         mdadm_failed = True
         for i in range(num_retries):
             _, res = self.serv.exec_command(
-                "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid --raid-devices=%s %s" % (
+                "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
+                "--raid-devices=%s %s" % (
                     self.n_tb, all_dev))
             if 'started' in ''.join(res):
                 mdadm_failed = False
@@ -258,7 +262,8 @@ class ClusterServer(object):
         # todo | get rid of "nuke_sc" branch here, just for testing
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/nuke_sc | sudo tee %s > /dev/null' % location)
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/testing_overhaul | '
+            'sudo tee %s > /dev/null' % location)
         # todo implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
         print('successfully installed seqc.tar.gz in %s on the cluster!' % folder)
