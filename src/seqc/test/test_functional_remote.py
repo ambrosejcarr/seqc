@@ -27,10 +27,14 @@ class TestFunctionalRemote(unittest.TestCase):
         '--index', 's3://dplab-data/genomes/mm38_chr19/',
         '--output-prefix', '/data/software/output',
         '--frag-len', '1000',
-        '--email-status', 'kristy.choi24@gmail.com',
+        '--email-status', None,
         '--barcodes', 's3://dplab-data/barcodes/in_drop/serial/barcodes.p',
         '--remote'
     ]
+
+    if args[16] is None:
+        raise ValueError('Please input user email for testing on line 30 of '
+                         'test_functional_remote.py, then rerun the test.')
 
     def test_seqc_raw_fastq_input_remote_test(self):
 

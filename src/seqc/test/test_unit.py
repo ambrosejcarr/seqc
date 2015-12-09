@@ -16,6 +16,10 @@ from itertools import islice
 from numpy.lib.recfunctions import append_fields
 from io import StringIO
 
+# todo future test list:
+# tests for downloading s3 inputs: barcodes, index, fastq
+# tests for downloading from basespace
+
 # noinspection PyPep8Naming
 class config:
     """
