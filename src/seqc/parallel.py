@@ -98,7 +98,6 @@ def process_parallel(
 
         for i, chunk in enumerate(read_func_(**kwargs)):
             put((i, chunk), process_queue_, pids['process'])
-            seqc.log.info('Read chunk %d.' % i)
 
     def process(process_func_, process_queue_, write_queue_, kwargs, pids):
         """
@@ -109,7 +108,6 @@ def process_parallel(
             sleep(.05)
 
         for i, data in get(process_queue_, pids['read']):
-            seqc.log.info('Processing chunk %d.' % i)
             processed_data = process_func_(data, **kwargs)
             put((i, processed_data), write_queue_, pids['write'])
 
@@ -126,7 +124,6 @@ def process_parallel(
         h5writer = write_func_(filename)
         h5writer.create(**kwargs)
         for i, data in get(write_queue_, pids['process']):
-            seqc.log.info('Writing chunk %d.' % i)
             h5writer.write(data)
         h5writer.close()
 

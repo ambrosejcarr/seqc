@@ -40,16 +40,17 @@ class ClusterServer(object):
         """Creates a new security group for the cluster"""
         if name is None:
             name = 'seqc_' + str(random.randint(1, int(1e12)))
-            print('no name assigned, chose %s' % name)
+            seqc.log.notify('No instance name provided, assigned %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                  ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
-            print('created security group %s (%s)' % (name, sg.id))
+
+            seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
         except ClientError:
-            print('the cluster %s already exists!' % name)
+            seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
     # todo catch errors in cluster configuration
@@ -74,7 +75,8 @@ class ClusterServer(object):
         """creates a new AWS cluster with specifications from config"""
         if 'c4' in self.inst_type:
             if not self.subnet:
-                print('You must specify a subnet-id for C4 instances!')
+                seqc.log.notify('A subnet-id must be specified for C4 instances! '
+                                'Exiting.')
                 sys.exit(2)
             else:
                 clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
@@ -95,7 +97,7 @@ class ClusterServer(object):
         else:
             raise ValueError('self.inst_type must be a c3 or c4 instance')
         instance = clust[0]
-        print('created new instance %s' % instance)
+        seqc.log.notify('Created new instance %s.' % instance)
         instance.wait_until_exists()
         instance.wait_until_running()
         self.inst_id = instance
@@ -103,7 +105,7 @@ class ClusterServer(object):
     def cluster_is_running(self):
         """checks whether a cluster is running"""
         if self.inst_id is None:
-            print('No instance created!')
+            seqc.log.notify('Instance was not successfully created! Exiting.')
             sys.exit(2)
         self.inst_id.reload()
         if self.inst_id.state['Name'] == 'running':
@@ -116,18 +118,18 @@ class ClusterServer(object):
         if self.inst_id.state['Name'] == 'stopped':
             self.inst_id.start()
             self.inst_id.wait_until_running()
-            print('stopped instance %s has restarted' % self.inst_id.id)
+            seqc.log.notify('Stopped instance %s has restarted.' % self.inst_id.id)
         else:
-            print('instance %s is not in a stopped state!' % self.inst_id.id)
+            seqc.log.notify('Instance %s is not in a stopped state!' % self.inst_id.id)
 
     def stop_cluster(self):
         """stops a running cluster"""
         if self.cluster_is_running():
             self.inst_id.stop()
             self.inst_id.wait_until_stopped()
-            print('instance %s is now stopped' % self.inst_id)
+            seqc.log.notify('Instance %s is now stopped.' % self.inst_id)
         else:
-            print('instance %s is not running!' % self.inst_id)
+            seqc.log.notify('Instance %s is not running!' % self.inst_id)
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
@@ -140,7 +142,7 @@ class ClusterServer(object):
             time.sleep(3)
             vol.reload()
             vol_state = vol.state
-        print('volume %s created successfully' % vol_id)
+        seqc.log.notify('Volume %s created successfully.' % vol_id)
         return vol_id
 
     # todo deal with volume creation errors
@@ -156,7 +158,8 @@ class ClusterServer(object):
                 {'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
                                                'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
-            print('Something went wrong modifying the attribute of the Volume!')
+            seqc.log.notify('Something went wrong modifying the attribute of the Volume! '
+                            'Exiting.')
             sys.exit(2)
 
         # wait until all volumes are attached
@@ -168,16 +171,16 @@ class ClusterServer(object):
                 self.inst_id.reload()
                 device_info = self.inst_id.block_device_mappings
                 status = device_info[i]['Ebs']['Status']
-        print(self.inst_id.block_device_mappings)
-        print('volume %s attached to %s at %s' % (vol_id, self.inst_id.id, dev_id))
+        seqc.log.notify('Volume %s attached to %s at %s.' %
+                        (vol_id, self.inst_id.id, dev_id))
 
     def connect_server(self):
         """connects to the aws instance"""
         ssh_server = seqc.ssh_utils.SSHServer(self.inst_id.id, self.keypath)
-        print('connecting to instance %s...' % self.inst_id.id)
+        seqc.log.notify('Connecting to instance %s...' % self.inst_id.id)
         ssh_server.connect()
         if ssh_server.is_connected():
-            print('connection successful!')
+            seqc.log.notify('Connection successful!')
         self.serv = ssh_server
 
     def create_raid(self):
@@ -186,13 +189,14 @@ class ClusterServer(object):
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
         for i in range(int(self.n_tb)):
-            print("creating volume %s of %s..." % (i + 1, self.n_tb))
+            seqc.log.notify("Creating volume %s of %s..." % (i + 1, self.n_tb))
             vol_id = self.create_volume()
             dev_id = dev_base + alphabet[i]
             dev_names.append(dev_id)
             self.attach_volume(vol_id, dev_id)
-        print("successfully attached %s TB in %s volumes!" % (self.n_tb, self.n_tb))
-        print("creating logical RAID device...")
+        seqc.log.notify("Successfully attached %s TB in %s volumes." %
+                        (self.n_tb, self.n_tb))
+        seqc.log.notify("Creating logical RAID device...")
         all_dev = ' '.join(dev_names)
 
         # check if this sleep is necessary for successful execution of mdadm function
@@ -208,10 +212,10 @@ class ClusterServer(object):
                 mdadm_failed = False
                 break
             else:
-                print('retrying sudo mdadm')
+                seqc.log.notify('Retrying sudo mdadm.')
                 time.sleep(5)
         if mdadm_failed:
-            print('error creating raid array md0 with mdadm function')
+            seqc.log.notify('Error creating raid array md0 with mdadm function.')
             sys.exit(2)
 
         # todo | may not need to do repeated checks
@@ -224,7 +228,7 @@ class ClusterServer(object):
             else:
                 time.sleep(5)
         if ls_failed:
-            print('error creating raid array md0 with mdadm function')
+            seqc.log.notify('Error creating raid array md0 with mdadm function.')
             sys.exit(2)
         self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
         self.serv.exec_command("sudo mkdir -p /data")
@@ -235,14 +239,14 @@ class ClusterServer(object):
         for i in range(num_retries):
             output, err = self.serv.exec_command('df -h | grep /dev/md0')
             if output and output[0].endswith('/data'):
-                print("successfully created RAID array in /data!")
+                seqc.log.notify("Successfully created RAID array in /data.")
                 md0_failed = False
                 break
             else:
-                print('retrying df -h')
+                seqc.log.notify('retrying df -h')
                 time.sleep(5)
         if md0_failed:
-            print("error occurred in mounting RAID array to /data")
+            seqc.log.notify("Error occurred in mounting RAID array to /data! Exiting.")
             sys.exit(2)
 
     def git_pull(self):
@@ -254,7 +258,7 @@ class ClusterServer(object):
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
         folder = self.dir_name
-        print('installing seqc.tar.gz...')
+        seqc.log.notify('Installing SEQC on remote instance.')
         self.serv.exec_command("sudo mkdir %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
@@ -267,7 +271,7 @@ class ClusterServer(object):
             'sudo tee %s > /dev/null' % location)
         # todo implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
-        print('successfully installed seqc.tar.gz in %s on the cluster!' % folder)
+        seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
@@ -276,7 +280,6 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name):
-        print('setting up cluster %s...' % name)
         # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/config'
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
@@ -286,7 +289,7 @@ class ClusterServer(object):
         self.create_raid()
         self.git_pull()
         self.set_credentials()
-        print('sucessfully set up the remote cluster environment!')
+        seqc.log.notify('Remote instance successfully configured.')
 
 
 def terminate_cluster(instance_id):
@@ -298,11 +301,11 @@ def terminate_cluster(instance_id):
         if instance.state['Name'] == 'running':
             instance.terminate()
             instance.wait_until_terminated()
-            print('termination complete!')
+            seqc.log.notify('termination complete!')
         else:
-            print('instance %s is not running!' % instance_id)
+            seqc.log.notify('instance %s is not running!' % instance_id)
     except ClientError:
-        print('instance %s does not exist!' % instance_id)
+        seqc.log.notify('instance %s does not exist!' % instance_id)
 
 
 def remove_sg(sg_id):
@@ -311,9 +314,9 @@ def remove_sg(sg_id):
     sg_name = sg.group_name
     try:
         sg.delete()
-        print('security group %s (%s) successfully removed' % (sg_name, sg_id))
+        seqc.log.notify('security group %s (%s) successfully removed' % (sg_name, sg_id))
     except ClientError:
-        print('security group %s (%s) is still in use!' % (sg_name, sg_id))
+        seqc.log.notify('security group %s (%s) is still in use!' % (sg_name, sg_id))
 
 
 def email_user(attachment, email_body, email_address: str) -> None:
@@ -357,7 +360,8 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
     counts = prefix + '_sp_counts.npz'
     id_map = prefix + '_gene_id_map.p'
     summary = prefix + '_alignment_summary.txt'
-    files = [samfile, h5_archive, merged_fastq, counts, id_map, summary]
+    log = 'seqc.log'
+    files = [samfile, h5_archive, merged_fastq, counts, id_map, summary, log]
 
     # gzip everything and upload to aws_upload_key
     archive_name = prefix + '.tar.gz'
@@ -369,11 +373,12 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
 
     # gzip small files for email
     attachment = prefix + '_counts_and_metadata.tar.gz'
-    gzip_args = ['tar', '-czf', attachment, counts, id_map, summary]
+    gzip_args = ['tar', '-czf', attachment, counts, id_map, summary, log]
     gzip = Popen(gzip_args)
     gzip.communicate()
 
     # email results to user
-    body = ('SEQC run complete -- see attached .npz file. The rest of the output is '
-            'available as %s in your specified S3 bucket.' % archive_name)
+    body = ('SEQC run complete. Read and molecule counts can be found in the attached '
+            'archive. Larger files (.fastq, .sam, .h5) are available as file %s in your '
+            'specified S3 bucket: %s' % (archive_name, bucket))
     email_user(attachment, body, email_address)

@@ -208,6 +208,7 @@ def run_remote(kwargs: dict) -> None:
     --------
     None
     """
+    seqc.log.notify('Beginning remote SEQC run...')
     cmd = 'SEQC '
 
     # get the positional argument; doesn't need a '--' prefix
@@ -238,7 +239,6 @@ def run_remote(kwargs: dict) -> None:
     cluster = seqc.cluster_utils.ClusterServer()
     cluster.cluster_setup(clustname)
     cluster.serv.connect()
-    seqc.log.info('Remote server set-up complete.')
 
     # writing instance id and security group id into file for cluster cleanup
     temp_path = seqc.__path__[0]
@@ -248,13 +248,13 @@ def run_remote(kwargs: dict) -> None:
         f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
     # running SEQC on the cluster
-    seqc.log.info('Beginning remote run.')
+    seqc.log.notify('Beginning remote run.')
     # writing name of instance in /data/software/instance.txt for clean up
     cluster.serv.exec_command('cd /data/software; echo %s > instance.txt'
                               % str(cluster.inst_id.instance_id))
     cluster.serv.exec_command('cd /data/software; nohup %s > /dev/null 2>&1 &' % cmd)
-    seqc.log.info('Terminating local client. Email will be sent when remote run '
-                  'completes')
+    seqc.log.notify('Terminating local client. Email will be sent when remote run '
+                    'completes.')
 
 
 def fix_output_paths(output_prefix: str) -> (str, str):
@@ -492,7 +492,6 @@ def check_input_data(
             name = link_or_file.split('/')[-1]
             new_file = prefix + name
             seqc.io.S3.download_file(bucket, key, new_file)
-            print(new_file)
             return new_file
 
     if forward_fastq or reverse_fastq:
@@ -526,6 +525,7 @@ def check_input_data(
                           'merged_fastq')
             merged = download_s3_files(merged, 'merged_fastq', output_dir)
     elif basespace:
+        seqc.log.info('BaseSpace sample id provided for fastq data. Downloading fastq.')
         prefix = output_dir + 'fastq/'
         sample_id = basespace
         forward_fastq, reverse_fastq = seqc.io.BaseSpace.download_sample(

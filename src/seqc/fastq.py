@@ -365,7 +365,6 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
         while True:
             try:
                 index, (forward_, reverse_) = in_queue.get_nowait()
-                seqc.log.info('%d Processing.' % index)
             except Empty:
                 try:
                     os.kill(read_pid, 0)  # does nothing if thread is alive
@@ -385,7 +384,6 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
             while True:
                 try:
                     out_queue.put_nowait(merged_filename)
-                    seqc.log.info('%d Processed. Placed on output queue.' % index)
                     break
                 except Full:
                     sleep(.1)
@@ -408,9 +406,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
         while True:
             try:
                 next_file = out_queue.get_nowait()
-                seqc.log.info('Grabbed output object, copying!')
                 shutil.copyfileobj(open(next_file, 'rb'), seed)
-                seqc.log.info('Finished copying object.')
                 os.remove(next_file)
             except Empty:
                 if any_alive(process_pids):

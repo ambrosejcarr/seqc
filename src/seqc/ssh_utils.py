@@ -2,6 +2,7 @@ import paramiko
 import sys
 import time
 import boto3
+import seqc
 
 
 class SSHServer(object):
@@ -36,7 +37,7 @@ class SSHServer(object):
             #     print('the host key %s could not be verified!' %self.key)
             #     sys.exit(2)
             except Exception as e:
-                print('not yet connected, sleeping...')
+                seqc.log.notify('Not yet connected, sleeping...')
                 time.sleep(30)
                 # continue
         # gname = self.instance.security_groups[0]['GroupName']
@@ -61,7 +62,7 @@ class SSHServer(object):
 
     def get_file(self, localfile, remotefile):
         if not self.is_connected():
-            print('you are not connected!')
+            seqc.log.notify('You are not connected!')
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.get(remotefile, localfile)
@@ -69,7 +70,7 @@ class SSHServer(object):
 
     def put_file(self, localfile, remotefile):
         if not self.is_connected():
-            print('you are not connected!')
+            seqc.log.notify('You are not connected!')
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.put(localfile, remotefile)
@@ -78,12 +79,10 @@ class SSHServer(object):
 
     def exec_command(self, args):
         if not self.is_connected():
-            print('you are not connected!')
+            seqc.log.notify('You are not connected!')
             sys.exit(2)
         stdin, stdout, stderr = self.ssh.exec_command(args)
         stdin.flush()
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
-        # print(data)
-        # print(errs)
         return data, errs
