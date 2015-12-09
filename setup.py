@@ -44,7 +44,7 @@ setup(name='seqc',
           'boto3',
           'pyftpdlib',
           'intervaltree',
-          'sklearn>=0.17',
+          # 'sklearn>=0.17',  # doesn't find this for some reason; it is on pypi... todo
           # 'tsne',
           'tables',
           'nose2',
