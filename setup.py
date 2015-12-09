@@ -44,6 +44,7 @@ setup(name='seqc',
           'boto3',
           'pyftpdlib',
           'intervaltree',
+          'sklearn>=0.17'
           # 'tsne',
           'tables',
           'nose2',
