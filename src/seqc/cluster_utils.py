@@ -336,16 +336,11 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     """
     if isinstance(email_body, str):
         email_body = email_body.encode()
-    # log any exceptions if they exist
-    try:
-        seqc.log.exception()
-    except AttributeError:
-        pass
+    # Note: exceptions used to be logged here, but this is not the right place for it.
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
-    email_process = Popen(email_args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    out, err = email_process.communicate(email_body)
-    print('out: %s' % out.decode())
-    print('err: %s' % err.decode())
+    email_process = Popen(email_args, stdin=PIPE)
+    email_process.communicate(email_body)
+
 
 def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) -> None:
     """

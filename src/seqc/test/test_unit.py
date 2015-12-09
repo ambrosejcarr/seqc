@@ -1162,6 +1162,9 @@ class TestParallelConstructH5(unittest.TestCase):
         n_with_features = sum(1 for f in ra.features if np.any(f))
         self.assertTrue(n_with_features > len(ra) * .98)
 
+        # check data types
+        self.assertEqual(ra.features.data.dtype, np.int64)
+
     def tearDown(self):
         if os.path.isfile(self.h5_name):
             os.remove(self.h5_name)
@@ -1223,7 +1226,7 @@ class TestConvertGeneCoordinates(unittest.TestCase):
 
         total = len(res)
         converted = sum(1 for r in res if r)
-        self.assertTrue(total * .98 < converted, 'Of %d alignments, only %d converted' %
+        self.assertTrue(total * .95 < converted, 'Of %d alignments, only %d converted' %
                         (total, converted))
 
     @classmethod
@@ -1250,7 +1253,7 @@ class TestJaggedArray(unittest.TestCase):
             except TypeError:
                 data_size += 1
         jarr = seqc.arrays.JaggedArray.from_iterable(data)
-        self.assertTrue(jarr._data.dtype == np.uint32)
+        self.assertTrue(jarr._data.dtype == np.int64)
         self.assertTrue(jarr._data.shape == (data_size,))
 
 
@@ -1310,6 +1313,10 @@ class TestUniqueArrayCreation(unittest.TestCase):
 
         # we lose a few genes (<5%) by requiring uniqueness
         self.assertTrue(len(ua) > len(ra) * .95, 'ua: %d << ra: %d' % (len(ua), len(ra)))
+
+        # check that features and positions have the right type
+        self.assertEqual(ua.features.dtype, np.int64)
+        self.assertEqual(ua.positions.dtype, np.int64)
 
     @classmethod
     def tearDownClass(cls):
@@ -1405,12 +1412,24 @@ class TestExperimentCreation(unittest.TestCase):
     def test_create_experiment(self, dtype):
         h5 = config.h5_name_pattern % dtype
         ra = seqc.arrays.ReadArray.from_h5(h5)
+
+        # check that dtypes are correct
+        self.assertEqual(ra.features.data.dtype, np.int64)
+
         ua = ra.to_unique(0)
+
+        # check that dtypes are correct
+        self.assertEqual(ua.features.dtype, np.int64)
+
         exp = ua.to_experiment(0)
         self.assertEqual(len(ua), exp.reads.counts.sum().sum())
         # this one is a bit artificial; should figure out precisely how many reads we
         # expect to see.
         self.assertGreaterEqual(exp.molecules.counts.sum().sum(), len(ua) / 2)
+
+        # check that the types are correct
+        self.assertEqual(exp.reads.columns.dtype, np.int64)
+        self.assertEqual(exp.molecules.columns.dtype, np.int64)
 
 
 class TestThreeBitGeneral(unittest.TestCase):
