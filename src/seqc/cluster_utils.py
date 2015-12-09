@@ -392,6 +392,6 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
 
     # email results to user
     body = ('SEQC run complete. Read and molecule counts can be found in the attached '
-            'archive. Larger files (.fastq, .sam, .h5) are available as file %s in the '
-            'S3 location you specified: %s' % (archive_name, aws_upload_key))
+            'archive.\n\nLarger files (.fastq, .sam, .h5) are available as file %s in '
+            'the S3 location you specified:\n%s' % (archive_name, aws_upload_key))
     email_user(attachment, body, email_address)
