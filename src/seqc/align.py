@@ -1,6 +1,5 @@
 __author__ = 'ambrose'
 
-
 import os
 import ftplib
 import gzip
@@ -9,7 +8,6 @@ from subprocess import Popen, PIPE, call, check_output, CalledProcessError
 from shutil import rmtree, copyfileobj
 from collections import defaultdict
 import seqc
-import logging
 
 
 # download links for supported genomes on GEO

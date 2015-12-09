@@ -134,8 +134,6 @@ def process_parallel(
         raise ValueError('Cannot multiprocess with fewer than 3 processors, n_proc must '
                          'be >= 3, not %d' % n_proc)
 
-    seqc.log.setup_logger()
-
     # set up shared dictionary to track whether processes have started
     manager = Manager()
     pids = manager.dict()

@@ -17,6 +17,7 @@ class ClusterServer(object):
     allows for the creation/manipulation of EC2 instances and executions
     of commands on the remote server"""
 
+    # todo many of these parameters aren't used. Either integrate or remove.
     def __init__(self, private_key=None, security_group=None,
                  image_id=None, zone=None, server=None,
                  instance_type=None, subnet_id=None):
@@ -37,7 +38,7 @@ class ClusterServer(object):
 
     def create_security_group(self, name=None):
         """Creates a new security group for the cluster"""
-        if name == None:
+        if name is None:
             name = 'seqc_' + str(random.randint(1, int(1e12)))
             print('no name assigned, chose %s' % name)
         try:
@@ -160,7 +161,7 @@ class ClusterServer(object):
 
         # wait until all volumes are attached
         device_info = self.inst_id.block_device_mappings
-        for i in range(1,len(device_info)):
+        for i in range(1, len(device_info)):
             status = device_info[i]['Ebs']['Status']
             while status != 'attached':
                 time.sleep(5)

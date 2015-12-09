@@ -421,8 +421,6 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
 
         seed.close()
 
-    seqc.log.setup_logger()
-
     # do some type checking of inputs
     seqc.util.check_type(forward, list, 'forward')
     seqc.util.check_type(reverse, list, 'reverse')

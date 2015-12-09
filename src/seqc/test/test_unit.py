@@ -1413,8 +1413,6 @@ class TestExperimentCreation(unittest.TestCase):
         print('ReadArray length: %d' % len(ra))
 
 
-
-
 class TestThreeBitGeneral(unittest.TestCase):
     def test_3bit_mars_seq(self):
         self.assertRaises(NotImplementedError, seqc.three_bit.ThreeBit.default_processors,
