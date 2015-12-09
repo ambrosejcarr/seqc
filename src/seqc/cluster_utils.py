@@ -9,7 +9,8 @@ import seqc
 from subprocess import Popen, PIPE
 from botocore.exceptions import ClientError
 
-#TODO check if any errors in the arguments here
+
+# TODO check if any errors in the arguments here
 # maybe keep track of all the volumes associated with it too
 class ClusterServer(object):
     """Connects to AWS instance using paramiko and a private RSA key,
@@ -38,15 +39,16 @@ class ClusterServer(object):
         """Creates a new security group for the cluster"""
         if name == None:
             name = 'seqc_' + str(random.randint(1, int(1e12)))
-            print('no name assigned, chose %s' %name)
+            print('no name assigned, chose %s' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
-            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22, ToPort=22)
+            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
+                                 ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
-            print('created security group %s (%s)' % (name,sg.id))
+            print('created security group %s (%s)' % (name, sg.id))
         except ClientError:
-            print('the cluster %s already exists!' %name)
+            print('the cluster %s already exists!' % name)
             sys.exit(2)
 
     # todo catch errors in cluster configuration
@@ -74,13 +76,19 @@ class ClusterServer(object):
                 print('You must specify a subnet-id for C4 instances!')
                 sys.exit(2)
             else:
-                clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1, MaxCount=1,
-                                                  KeyName=self.keyname, InstanceType=self.inst_type,
-                                                  Placement={'AvailabilityZone': self.zone},
-                                                  SecurityGroupIds=[self.sg], SubnetId=self.subnet)
+                clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
+                                                  MaxCount=1,
+                                                  KeyName=self.keyname,
+                                                  InstanceType=self.inst_type,
+                                                  Placement={
+                                                      'AvailabilityZone': self.zone},
+                                                  SecurityGroupIds=[self.sg],
+                                                  SubnetId=self.subnet)
         elif 'c3' in self.inst_type:
-            clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1, MaxCount=1,
-                                              KeyName=self.keyname, InstanceType=self.inst_type,
+            clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
+                                              MaxCount=1,
+                                              KeyName=self.keyname,
+                                              InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
         instance = clust[0]
@@ -141,10 +149,22 @@ class ClusterServer(object):
             time.sleep(3)
             vol.reload()
         resp = self.inst_id.modify_attribute(
-            BlockDeviceMappings=[{'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id, 'DeleteOnTermination': True}}])
+            BlockDeviceMappings=[{'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
+                                                                'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
             print('Something went wrong modifying the attribute of the Volume!')
             sys.exit(2)
+
+        # wait until all volumes are attached
+        device_info = self.inst_id.block_device_mappings
+        for i in range(1,len(device_info)):
+            status = device_info[i]['Ebs']['Status']
+            while status != 'attached':
+                time.sleep(5)
+                self.inst_id.reload()
+                device_info = self.inst_id.block_device_mappings
+                status = device_info[i]['Ebs']['Status']
+        print(self.inst_id.block_device_mappings)
         print('volume %s attached to %s at %s' % (vol_id, self.inst_id.id, dev_id))
 
     def connect_server(self):
@@ -172,29 +192,52 @@ class ClusterServer(object):
         all_dev = ' '.join(dev_names)
 
         # check if this sleep is necessary for successful execution of mdadm function
-        time.sleep(5)
-        self.serv.exec_command(
-            "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid --raid-devices=%s %s" % (
-                self.n_tb, all_dev))
-        # grep for md0 as a check here in dev --> function
-        out, err = self.serv.exec_command('ls /dev | grep "md0"')
-        if not out:
-            print('error with mdadm function')
-            print(err)
+        time.sleep(10)
+        num_retries = 5
+        mdadm_failed = True
+        for i in range(num_retries):
+            _, res = self.serv.exec_command(
+                "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid --raid-devices=%s %s" % (
+                    self.n_tb, all_dev))
+            if 'started' in ''.join(res):
+                mdadm_failed = False
+                break
+            else:
+                print('retrying sudo mdadm')
+                time.sleep(5)
+        if mdadm_failed:
+            print('error creating raid array md0 with mdadm function')
             sys.exit(2)
 
+        # todo | may not need to do repeated checks
+        ls_failed = True
+        for i in range(num_retries):
+            out, err = self.serv.exec_command('ls /dev | grep md0')
+            if out:
+                ls_failed = False
+                break
+            else:
+                time.sleep(5)
+        if ls_failed:
+            print('error creating raid array md0 with mdadm function')
+            sys.exit(2)
         self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount LABEL=my_raid /data")
 
         # checking for proper raid mounting
-        output, err = self.serv.exec_command('df -h | grep "/dev/md0"')
-        if output:
-            if output[0].endswith('/data'):
+        md0_failed = True
+        for i in range(num_retries):
+            output, err = self.serv.exec_command('df -h | grep /dev/md0')
+            if output and output[0].endswith('/data'):
                 print("successfully created RAID array in /data!")
-        else:
+                md0_failed = False
+                break
+            else:
+                print('retrying df -h')
+                time.sleep(5)
+        if md0_failed:
             print("error occurred in mounting RAID array to /data")
-            print(err)
             sys.exit(2)
 
     def git_pull(self):
@@ -218,12 +261,13 @@ class ClusterServer(object):
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/nuke_sc | sudo tee %s > /dev/null' % location)
         # todo implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
-        print('successfully installed seqc.tar.gz in %s on the cluster!' %folder)
+        print('successfully installed seqc.tar.gz in %s on the cluster!' % folder)
 
     def set_credentials(self):
-        self.serv.exec_command('aws configure set aws_access_key_id %s' %self.aws_id)
-        self.serv.exec_command('aws configure set aws_secret_access_key %s' %self.aws_key)
-        self.serv.exec_command('aws configure set region %s' %self.zone[:-1])
+        self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
+        self.serv.exec_command(
+            'aws configure set aws_secret_access_key %s' % self.aws_key)
+        self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name):
         print('setting up cluster %s...' % name)
@@ -236,6 +280,7 @@ class ClusterServer(object):
         self.git_pull()
         self.set_credentials()
         print('sucessfully set up the remote cluster environment!')
+
 
 def terminate_cluster(instance_id):
     """terminates a running cluster"""
@@ -252,6 +297,7 @@ def terminate_cluster(instance_id):
     except ClientError:
         print('instance %s does not exist!' % instance_id)
 
+
 def remove_sg(sg_id):
     ec2 = boto3.resource('ec2')
     sg = ec2.SecurityGroup(sg_id)
@@ -261,6 +307,7 @@ def remove_sg(sg_id):
         print('security group %s (%s) successfully removed' % (sg_name, sg_id))
     except ClientError:
         print('security group %s (%s) is still in use!' % (sg_name, sg_id))
+
 
 def email_user(attachment, email_body, email_address: str) -> None:
     """
@@ -275,9 +322,10 @@ def email_user(attachment, email_body, email_address: str) -> None:
     """
     seqc.log.exception()
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
-    message = Popen(['echo',email_body],stdout=PIPE,stderr=PIPE)
-    email_process = Popen(email_args, stdin=message.stdout,stdout=PIPE,stderr=PIPE)
+    message = Popen(['echo', email_body], stdout=PIPE, stderr=PIPE)
+    email_process = Popen(email_args, stdin=message.stdout, stdout=PIPE, stderr=PIPE)
     email_process.communicate()
+
 
 def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> None:
     """
