@@ -385,8 +385,10 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
         gzip_args = ['tar', '-czf', attachment, counts, id_map, summary, log]
     else:
         gzip_args = ['tar', '-czf', attachment, counts, id_map, summary]
-    gzip = Popen(gzip_args)
-    gzip.communicate()
+    gzip = Popen(gzip_args, stdout=PIPE, stderr=PIPE)
+    err, out = gzip.communicate()
+    if err:
+        raise ChildProcessError(err.decode())
 
     # email results to user
     body = ('SEQC run complete. Read and molecule counts can be found in the attached '
