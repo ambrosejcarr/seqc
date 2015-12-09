@@ -334,10 +334,12 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     --------
     None
     """
+    if isinstance(email_body, str):
+        email_body = email_body.encode()
     seqc.log.exception()
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
-    email_process = Popen(email_args, stdin=email_body.encode(), stdout=PIPE, stderr=PIPE)
-    out, err = email_process.communicate()
+    email_process = Popen(email_args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    out, err = email_process.communicate(email_body)
     print('out: %s' % out.decode())
     print('err: %s' % err.decode())
 
