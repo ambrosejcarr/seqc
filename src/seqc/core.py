@@ -229,6 +229,27 @@ def parse_args(parser, args=None):
     return vars(arguments)
 
 
+# todo write this function; iss#77
+def quick_verify_input_arguments(kwargs):
+    """
+    runs quick checks on each input argument prior to starting a cluster or downloading
+    data to catch as many errors as possible prior to beginning the run in earnest.
+
+    to check:
+    forward, reverse, merged, sam, barcodes, index:
+      make sure they exist, and point to valid files or folders.
+
+    if any aws links are passed, make sure we have permissions to read and write to those
+    folders (if appropriate)
+
+    if additional star arguments are passed, check if possible that they are valid
+    arguments
+
+    if basespace is passed, check that the key is valid to access (might need a testing
+    function for this).
+    """
+    raise NotImplementedError
+
 def run_remote(kwargs: dict) -> None:
     """
     todo document me!
