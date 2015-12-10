@@ -24,18 +24,22 @@
 class DropSeq():
 
     # which arguments to add to parser? if not forward/reverse, then merge will not
-    # be run. If not merged, then align will not be run.. etc. Builds functions to
-    # process the data dynamically.
-    valid_inputs = ['forward', 'reverse', 'merged', 'sam']
+    #  be run. If not merged, then align will not be run.. etc. Builds functions to
+    #  process the data dynamically.
+    # Note that below 'forward' and 'reverse' have been replaced with 'genomic' and
+    #  'barcodes', to indicate which strand contains barcode data (some are reversed).
+    valid_inputs = ['genomic', 'barcodes', 'merged', 'sam']
 
     # if barcodes_required is false, evidence-based error correction will not be run
     barcodes_required = False
 
     # methods to be run prior to beginning of general pipeline (which runs from merged
-    # fastq)
-    custom_preprocessing_object = ()
+    # fastq); if present, this method replaces the general CellBarcodes method, which
+    # should take a forward and reverse read and merge them into the standard form.
+    custom_merge_method = None
 
-    # general preprocessing parameters
+    # general preprocessing parameters; these data should be adequate to create a
+    # generator method for each data type.
     cell_barcode_position = (0, 12)
     umi_position = (12, 20)
 
