@@ -121,7 +121,8 @@ class SparseCounts:
             raise NotImplementedError
 
     @classmethod
-    def from_read_array(cls, read_array, collapse_molecules=True, n_poly_t_required=0):
+    def _deprecated_from_read_array(cls, read_array, collapse_molecules=True,
+                                    n_poly_t_required=0):
         """
         Construct a SparseCounts object from a ReadArray object.
 

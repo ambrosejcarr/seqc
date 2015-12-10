@@ -1730,6 +1730,8 @@ class TestGroupForErrorCorrection(unittest.TestCase):
 
 class TestConvertSparseGeneIDs(unittest.TestCase):
 
+    test_dir = 'test_seqc'
+
     @classmethod
     def setUpClass(cls):
         for dtype in config.data_types:
@@ -1748,6 +1750,14 @@ class TestConvertSparseGeneIDs(unittest.TestCase):
         exp.convert_gene_ids(gmap)
         self.assertIsInstance(exp.molecules.columns[0], str)
         self.assertIsInstance(exp.molecules.columns[0], str)
+
+        # make sure the result is pickleable
+        exp.to_npz(self.test_dir + 'test_seqc.npz')
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir('test_seqc'):
+            shutil.rmtree('test_seqc')
 
 
 @unittest.skip('')
@@ -1905,6 +1915,7 @@ class TestDownloadInputFiles(unittest.TestCase):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
 
+
 @unittest.skip('')
 class TestDownloadBaseSpace(unittest.TestCase):
     """unittests to make sure BaseSpace is correctly functioning"""
@@ -1914,3 +1925,6 @@ class TestDownloadBaseSpace(unittest.TestCase):
 
 if __name__ == '__main__':
     nose2.main()
+    # final cleanup
+    if os.path.isdir('test_seqc'):
+        shutil.rmtree('test_seqc')
