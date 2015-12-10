@@ -18,12 +18,12 @@ def create_parser():
     # add subparsers for each library construction method
     subparsers = parser.add_subparsers(help='library construction method types',
                                        dest='subparser_name')
-    parse_in_drop = subparsers.add_parser('in-drop', help='in-drop help')
-    parse_drop_seq = subparsers.add_parser('drop-seq', help='drop-seq help')
-    parse_mars_seq = subparsers.add_parser('mars-seq', help='mars-seq help')
-    parse_cel_seq = subparsers.add_parser('cel-seq', help='cel-seq help')
-    parse_avo_seq = subparsers.add_parser('avo-seq', help='avo-seq help')
-    parse_strt_seq = subparsers.add_parser('strt-seq', help='strt-seq help')
+    parse_in_drop = subparsers.add_parser('in-drop', help='process process in-drop')
+    parse_drop_seq = subparsers.add_parser('drop-seq', help='process drop-seq data')
+    parse_mars_seq = subparsers.add_parser('mars-seq', help='process mars-seq data')
+    parse_cel_seq = subparsers.add_parser('cel-seq', help='process cel-seq data')
+    parse_avo_seq = subparsers.add_parser('avo-seq', help='process avo-seq data')
+    parse_strt_seq = subparsers.add_parser('strt-seq', help='process strt-seq data')
 
     # get a list of parsers, set-up pipeline function for each parser
     subparser_list = [parse_in_drop, parse_mars_seq, parse_cel_seq,
@@ -101,7 +101,7 @@ def create_parser():
         sys.exit(2)
 
     # add a sub-parser for building the index
-    pindex = subparsers.add_parser('index', help='SEQC index methods')
+    pindex = subparsers.add_parser('index', help='create or test a SEQC index')
     pindex.add_argument('-b', '--build', action='store_true', default=False,
                         help='build a SEQC index')
     pindex.add_argument('-t', '--test', action='store_true', default=False,
@@ -126,14 +126,29 @@ def create_parser():
                         help='email results to this address')
     pindex.add_argument('--no-terminate', default=False, action='store_true',
                         help='Decide if the cluster will terminate upon completion.')
+    pindex.set_defaults(remote=False, email_status=False)
 
-    pcleanup = subparsers.add_parser('clean', help='AWS cleanup methods')
+    # add a sub-parser for cleaning up instances and volumes on AWS
+    pcleanup = subparsers.add_parser('clean', help='clean up AWS resources')
     pcleanup.add_argument('-i', '--instances', action='store_true', default=False,
                           help='clean up any leftover security groups produced by '
                                'remote instance creation')
     pcleanup.add_argument('-v', '--volumes', action='store_true', default=False,
                           help='clean up any leftover volumes produced by remote '
                                'instance creation')
+    pcleanup.set_defaults(remote=False, email_status=False)
+
+    # add a sub-parser for creating and testing barcode files
+    pbc = subparsers.add_parser('barcode', help='build a serialized barcode object')
+    pbc.add_argument('-f', '--barcode-files', nargs='+', default=None,
+                     help='text barcode file(s).', metavar='F')
+    pbc.add_argument('--reverse-complement', action='store_true', default=False,
+                     help=('indicates that barcodes in fastq files are '
+                           'reverse complements of the barcodes in the '
+                           'barcode files'))
+    pbc.add_argument('-o', '--output', metavar = 'O',
+                     help='Name for the barcode file that is to be generated')
+    pbc.set_defaults(remote=False, email_status=False)
 
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
@@ -168,6 +183,8 @@ def parse_args(parser, args=None):
         else:
             print('SEQC clean: error: one but not both of the following arguments must '
                   'be provided: -v/--volumes, -i/--instances')
+    elif arguments.subparser_name == 'barcode':
+        arguments.func = create_barcodes
     else:
         # list star args if requested, then exit
         if arguments.list_default_star_args:
@@ -197,17 +214,18 @@ def parse_args(parser, args=None):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
                       '-n/--n-threads, -o/--output-prefix')
 
-    if arguments.remote:
-        if not arguments.aws_upload_key:
-            print('SEQC: %s: error: if requesting a remote run with --remote, '
-                  '-k/--aws-upload-key must be specified. Otherwise results are '
-                  'discarded when the cluster is terminated.' % arguments.subparser_name)
-            sys.exit(2)
-        if not arguments.email_status:
-            print('SEQC: %s: error: if requesting a remote run with --remote, '
-                  '--email-status must specify the email address that updates or errors '
-                  'should be sent to.')
-            sys.exit(2)
+        if arguments.remote:
+            if not arguments.aws_upload_key:
+                print('SEQC: %s: error: if requesting a remote run with --remote, '
+                      '-k/--aws-upload-key must be specified. Otherwise results are '
+                      'discarded when the cluster is terminated.' %
+                      arguments.subparser_name)
+                sys.exit(2)
+            if not arguments.email_status:
+                print('SEQC: %s: error: if requesting a remote run with --remote, '
+                      '--email-status must specify the email address that updates or '
+                      'errors should be sent to.')
+                sys.exit(2)
 
     return vars(arguments)
 
@@ -822,3 +840,13 @@ def clean_instances():
 
 def clean_volumes():
     seqc.io.EC2.clean_volumes()
+
+
+def create_barcodes(output, barcode_files, reverse_complement, *args, **kwargs):
+    cb = seqc.barcodes.CellBarcodes.from_files(*barcode_files,
+                                               reverse_complement=reverse_complement)
+    if not output.endswith('.p'):
+        output += '.p'
+    cb.pickle(output)
+    seqc.log.notify('Barcode object saved to "%s"' % output)
+

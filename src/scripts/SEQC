@@ -22,7 +22,6 @@ if __name__ == "__main__":
     parser = seqc.core.create_parser()
     kwargs = seqc.core.parse_args(parser)
     seqc.log.setup_logger()
-
     if kwargs['remote']:
         try:
             # log command line arguments for debugging
