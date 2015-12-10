@@ -219,6 +219,9 @@ def seqc_raw_fastq_input(args):
     npz_name = kwargs['output_prefix'] + '_sp_counts.npz'
     exp = seqc.analyze.Experiment.from_npz(npz_name)
 
+    print('\ndtype: %s' % kwargs['subparser_name'])
+    print(exp.summary(kwargs['output_prefix'] + '_alignment_summary.txt'))
+
 
 if __name__ == "__main__":
     seqc.log.setup_logger('seqc_functest.log')

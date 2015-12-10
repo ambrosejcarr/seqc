@@ -19,6 +19,7 @@ from io import StringIO
 # todo future test list:
 # tests for downloading s3 inputs: barcodes, index, fastq
 # tests for downloading from basespace
+# test that error on remote instance should result in an email
 
 # noinspection PyPep8Naming
 class config:
