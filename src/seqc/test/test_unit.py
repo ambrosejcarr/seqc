@@ -772,7 +772,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
     output_dir = 'test_seqc/'
 
     def test_load_barcodes_wrong_input_type_raises(self):
-        self.assertRaises(TypeError, seqc.core.check_and_load_barcodes,
+        self.assertRaises(TypeError, seqc.core.check_barcodes,
                           10, self.output_dir)
 
     @params(*config.data_types)
@@ -780,7 +780,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
     def test_load_barcodes_from_aws_link(self, dtype):
         barcode_link = config.barcode_serialized_link_pattern % dtype
         self.assertFalse(os.path.isdir('test_seqc/'))
-        barcodes = seqc.core.check_and_load_barcodes(barcode_link, self.output_dir)
+        barcodes = seqc.core.check_barcodes(barcode_link, self.output_dir)
         self.assertIsInstance(barcodes, seqc.barcodes.CellBarcodes)
 
     @params(*config.data_types)
@@ -791,7 +791,7 @@ class CoreCheckLoadBarcodesTest(unittest.TestCase):
             return  # None should be passed, not a link that does not target a file obj.
 
         barcode_file = config.barcode_serial_pattern % dtype
-        barcodes = seqc.core.check_and_load_barcodes(barcode_file)
+        barcodes = seqc.core.check_barcodes(barcode_file)
         barcodes = self.assertIsInstance(barcodes, seqc.barcodes.CellBarcodes)
 
     def test_load_pickle_containing_non_barcode_data(self):

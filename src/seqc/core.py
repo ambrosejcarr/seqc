@@ -380,7 +380,7 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     return index, gtf
 
 
-def check_and_load_barcodes(
+def check_barcodes(
         barcodes: str='', output_dir='') -> seqc.barcodes.CellBarcodes:
     """
     check if barcodes points to a valid s3 link or file object. If it does, load and
@@ -566,69 +566,6 @@ def check_input_data(
     return forward_fastq, reverse_fastq, merged, samfile
 
 
-def set_up(output_prefix, index, barcodes):
-    """
-    create temporary directory for run, find gtf in index, and create or load a
-    serialized barcode object
-    """
-
-    # temporary directory should be made in the same directory as the output prefix
-    *stem, final_prefix = output_prefix.split('/')
-    output_dir = '/'.join(stem + ['.' + final_prefix])
-
-    # create temporary directory based on experiment name
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    if not output_dir.endswith('/'):
-        output_dir += '/'
-
-    # check that index exists. If index is an aws link, download the index
-    if index.startswith('s3://'):
-        seqc.log.info('AWS s3 link provided for index. Downloading index.')
-        bucket, prefix = seqc.io.S3.split_link(index)
-        index = output_dir + 'index/'
-        cut_dirs = prefix.count('/')
-        seqc.io.S3.download_files(bucket, prefix, index, cut_dirs)
-
-    # obtain gtf file from index argument
-    gtf = index + 'annotations.gtf'
-    if not os.path.isfile(gtf):
-        raise FileNotFoundError('no file named "annotations.gtf" found in index: %s' % index)
-
-    # get cell barcode files
-    if not barcodes:
-        cb = seqc.barcodes.DropSeqCellBarcodes()
-    else:
-        if barcodes.startswith('s3://'):
-            seqc.log.info('AWS s3 link provided for barcodes. Downloading barcodes')
-            bucket, key = seqc.io.S3.split_link(barcodes)
-            output_prefix = output_dir + 'barcodes.p'
-            try:
-                barcodes = seqc.io.S3.download_file(bucket, key, output_prefix)
-            except FileExistsError:
-                barcodes = output_prefix
-                pass  # already have the file in this location from a previous run
-
-        # now, we should definitely have the binary file. Load it.
-        with open(barcodes, 'rb') as f:
-            cb = pickle.load(f)
-
-    return output_dir, gtf, cb, index
-
-# todo commented out until dependencies are installed automatically.
-# todo should be coded to pep8 standards
-# def htqc(output_dir, forward, reverse, r, t):
-#     seqc.log.info('getting QC')
-#     def run_htqc():
-#         call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
-#         call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
-#         call(["ht-stat-draw.pl", "--dir", output_dir])
-#         os.remove(output_dir + "sample_1.fastq.gz")
-#         os.remove(output_dir + "sample_2.fastq.gz")
-#     p = Process(target=run_htqc, args=(), daemon=True)
-#     p.start()
-
-
 def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_threads):
     if (forward or reverse) and not (samfile or merged_fastq):
 
@@ -668,27 +605,6 @@ def process_samfile(samfile, output_prefix, n_threads, gtf, frag_len):
     return read_array
 
 
-def correct_errors():
-    # try:
-    #     info('Correcting errors')
-    #     if not barcode_dir.endswith('/'):
-    #         barcode_dir += '/'
-    #     barcode_files = glob(barcode_dir + '*')
-    #     corrected, nerr, err_rate = correct_errors(
-    #         unambiguous, barcode_files, processor_name, meta, p_val=0.1)
-    #
-    #     # store metadata from these runs in post-processing summary
-    #     # post_processing_summary(h5db, exp_name, dis_meta, nerr)
-    #
-    #     # store error rates
-    #     # store_error_rate(h5db, exp_name, err_rate)
-    #
-    # except:  # fail gracefully on error_correction; not all methods can do this!
-    #     logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
-    #     corrected = unambiguous
-    raise NotImplementedError
-
-
 def resolve_alignments(index, arr, n, output_prefix):
     seqc.log.info('Resolving ambiguous alignments.')
     try:
@@ -709,20 +625,6 @@ def save_counts_matrices(output_prefix, arr, n):
     del arr
     experiment = uniq.to_experiment(2)  # require 2 reads per molecule; correct for errors
     experiment.to_npz(output_prefix + '_sp_counts.npz')
-
-
-def select_cells():
-    ################################### SELECT CELLS ####################################
-    # # filter cells with < threshold # reads. todo | add gc, length, maybe size biases
-    # mols, meta = filter_cells_mols(mols, meta, 10)
-    # reads, meta = filter_cells_reads(reads, meta, 100)
-    #
-    # # store files
-    # if location:
-    #     location += '/'
-    # with open(location + exp_name + '_read_and_mol_frames.p', 'wb') as f:
-    #     pickle.dump(((reads, rrow, rcol), (mols, mrow, mcol)), f)
-    raise NotImplementedError
 
 
 def store_results(output_prefix, arr):
@@ -751,12 +653,10 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
 
     index, gtf = check_index(index, output_dir)
 
-    cb = check_and_load_barcodes(barcodes, output_dir)
+    cb = check_barcodes(barcodes, output_dir)
 
     forward, reverse, merged_fastq, samfile = check_input_data(
         output_dir, forward, reverse, merged_fastq, samfile, basespace)
-
-    # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          output_dir, cb, n_threads)
@@ -782,12 +682,10 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
 
     index, gtf = check_index(index, output_dir)
 
-    cb = check_and_load_barcodes(barcodes, output_dir)
+    cb = check_barcodes(barcodes, output_dir)
 
     forward, reverse, merged_fastq, samfile = check_input_data(
         output_dir, forward, reverse, merged_fastq, samfile, basespace)
-
-    # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          output_dir, cb, n_threads)
