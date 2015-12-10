@@ -708,7 +708,7 @@ def save_counts_matrices(output_prefix, arr, n):
     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     uniq = arr.to_unique(n_poly_t_required=n)
     del arr
-    experiment = uniq.to_experiment()
+    experiment = uniq.to_experiment(2)  # require 2 reads per molecule; correct for errors
     experiment.to_npz(output_prefix + '_sp_counts.npz')
 
 

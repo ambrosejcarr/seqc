@@ -911,7 +911,7 @@ class Experiment:
         stats['Cells: > 500 mols.'] = str(int(sum(mol_counts > 500)[0]))
         stats['Cells: > 1k mols.'] = str(int(sum(mol_counts > 1000)[0]))
         stats['Cells: > 5k mols.'] = str(int(sum(mol_counts > 5000)[0]))
-        stats['Cells: >10k mols'] = str(int(sum(mol_counts > 10000)[0]))
+        stats['Cells: > 10k mols.'] = str(int(sum(mol_counts > 10000)[0]))
 
         if fout:
             with open(fout, 'w') as f:
