@@ -4,7 +4,6 @@ from setuptools import setup
 from warnings import warn
 import os
 import shutil
-import configparser
 
 __version__ = '0.1.5'
 
@@ -30,8 +29,7 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      # test_suite=nose2.collector.collector,
-      # note: requires numpy > 1.10.0
+      test_suite='nose2.collector.collector',
       packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[
           'numpy>=1.10.0',
@@ -52,8 +50,6 @@ setup(name='seqc',
           'more_itertools',
           'paramiko', 'requests'],
       scripts=['src/scripts/SEQC',
-               'src/scripts/PROCESS_BARCODES',
-               'src/scripts/TEST_BARCODES',
                'src/scripts/process_multi_file_scseq_experiment.py',
                'src/scripts/process_single_file_scseq_experiment.py'],
       )
@@ -72,21 +68,3 @@ is not installed, please install it prior to installing SEQC.
 # look for star
 if not shutil.which('STAR'):
     warn('SEQC: STAR is not installed. SEQC will not be able to align files.')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
