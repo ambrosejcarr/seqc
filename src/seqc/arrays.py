@@ -707,7 +707,7 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+        seq = [seqc.encodings.ThreeBit.ints2int([int(c), int(r)])
                for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
@@ -759,7 +759,7 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+        seq = [seqc.encodings.ThreeBit.ints2int([int(c), int(r)])
                for c, r in zip(cells, rmts)]
         indices = indices[mask]
 

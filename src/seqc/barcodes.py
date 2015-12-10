@@ -25,7 +25,7 @@ class CellBarcodes:
     @classmethod
     def from_files(cls, *barcode_files, reverse_complement: bool=False):
         """Create a CellBarcodes object from text files containing barcodes"""
-        tbp = seqc.three_bit.ThreeBit
+        tbp = seqc.encodings.ThreeBit
 
         perfect_codes = cls.load_barcodes(barcode_files, reverse_complement)
         error_codes = cls.add_single_error(perfect_codes)

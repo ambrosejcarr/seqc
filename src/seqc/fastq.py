@@ -424,7 +424,7 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
         raise TypeError('cb must be one of seqc.barcodes.CellBarcodes or str, not %s' % (
                         type(cb)))
 
-    tbp = seqc.three_bit.ThreeBit.default_processors(exp_type)
+    tbp = seqc.encodings.ThreeBit.default_processors(exp_type)
     if not isinstance(cb, seqc.barcodes.CellBarcodes):
         cb = seqc.barcodes.CellBarcodes.from_pickle(cb)
 
@@ -489,8 +489,8 @@ class GenerateFastq:
         for name in names:
             # for now, translate barcode back into string code
             cb = random.choice(codes)
-            c1, c2 = seqc.three_bit.ThreeBitInDrop.split_cell(cb)
-            c1, c2 = [seqc.three_bit.ThreeBit.bin2str(c) for c in [c1, c2]]
+            c1, c2 = seqc.encodings.ThreeBitInDrop.split_cell(cb)
+            c1, c2 = [seqc.encodings.ThreeBit.bin2str(c) for c in [c1, c2]]
             w1 = 'GAGTGATTGCTTGTGACGCCTT'
             cb = ''.join([c1, w1, c2])
             umi = ''.join(np.random.choice(cls._alphabet, umi_len))

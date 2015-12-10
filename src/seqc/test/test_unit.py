@@ -923,7 +923,7 @@ class ThreeBitCellBarcodesTest(unittest.TestCase):
                 barcode_data.append([l.strip() for l in fin.readlines()])
 
         # call the appropriate processor
-        tbp = seqc.three_bit.ThreeBit.default_processors(data_type.replace('_', '-'))
+        tbp = seqc.encodings.ThreeBit.default_processors(data_type.replace('_', '-'))
 
         # get a random barcode from each file and an UMI of appropriate length
         barcodes = [random.choice(bcs) for bcs in barcode_data]
@@ -956,7 +956,7 @@ class ThreeBitCellBarcodesTest(unittest.TestCase):
 
 class ThreeBitInDropTest(unittest.TestCase):
     def setUp(self):
-        self.tb = seqc.three_bit.ThreeBit.default_processors('in-drop')
+        self.tb = seqc.encodings.ThreeBit.default_processors('in-drop')
         # note: don't test_data with palindromic sequences, these can produce unexpected
         # errors, given the rotation occuring in the method.
         c11 = 'TAAAAAAA'
@@ -970,28 +970,28 @@ class ThreeBitInDropTest(unittest.TestCase):
                               self.rmt + 'TTTAT') for c1 in self.c1s]
 
     def test_bin2str_inverts_str2bin(self):
-        s = seqc.three_bit.ThreeBit.str2bin(self.example_seqs[0])
-        seq = seqc.three_bit.ThreeBit.bin2str(s)
+        s = seqc.encodings.ThreeBit.str2bin(self.example_seqs[0])
+        seq = seqc.encodings.ThreeBit.bin2str(s)
         self.assertTrue(seq == self.example_seqs[0])
 
     def test_bin2str_inverts_str2bin_with_ints2int(self):
-        b1 = seqc.three_bit.ThreeBit.str2bin(self.c1s[0])
-        b2 = seqc.three_bit.ThreeBit.str2bin(self.c1s[1])
-        b12 = seqc.three_bit.ThreeBit.ints2int([b1, b2])
-        self.assertTrue(b12 == seqc.three_bit.ThreeBit.str2bin(self.c1s[0] + self.c1s[1]))
+        b1 = seqc.encodings.ThreeBit.str2bin(self.c1s[0])
+        b2 = seqc.encodings.ThreeBit.str2bin(self.c1s[1])
+        b12 = seqc.encodings.ThreeBit.ints2int([b1, b2])
+        self.assertTrue(b12 == seqc.encodings.ThreeBit.str2bin(self.c1s[0] + self.c1s[1]))
 
     def test_str2bin_converts_forwards_not_backwards(self):
-        s = seqc.three_bit.ThreeBit.str2bin('ACGT')
+        s = seqc.encodings.ThreeBit.str2bin('ACGT')
         self.assertEqual(s, 0b100110101011)
         self.assertNotEqual(s, 0b011101110100)
 
     def test_ints2int_and_cells(self):
         s1 = 'AAAAAAAA'
         s2 = 'TTTTTTTT'
-        seqs = [seqc.three_bit.ThreeBit.str2bin(s) for s in [s1, s2]]
-        c = seqc.three_bit.ThreeBit.ints2int(seqs)
+        seqs = [seqc.encodings.ThreeBit.str2bin(s) for s in [s1, s2]]
+        c = seqc.encodings.ThreeBit.ints2int(seqs)
         cells = self.tb.split_cell(c)
-        c1, c2 = [seqc.three_bit.ThreeBit.bin2str(c) for c in cells]
+        c1, c2 = [seqc.encodings.ThreeBit.bin2str(c) for c in cells]
         self.assertTrue(s1 == c1)
         self.assertTrue(s2 == c2)
 
@@ -1001,7 +1001,7 @@ class ThreeBitInDropTest(unittest.TestCase):
         for i, strseq in enumerate(self.example_seqs):
             # note this tracks code in extract cell; test_data will not reflect function
             # if extract cell is changed (not an ideal test_data)
-            s = seqc.three_bit.ThreeBit.str2bin(strseq)
+            s = seqc.encodings.ThreeBit.str2bin(strseq)
             bitlen = s.bit_length()
 
             # correct for leading T-nucleotide (011) which gets trimmed
@@ -1017,7 +1017,7 @@ class ThreeBitInDropTest(unittest.TestCase):
             cell, rmt, n_poly_t = self.tb.process_forward_sequence(strseq)
 
             # check cell
-            str_cell = seqc.three_bit.ThreeBit.bin2str(cell)
+            str_cell = seqc.encodings.ThreeBit.bin2str(cell)
             self.assertEqual(self.c1s[i] + self.c2, str_cell)
 
             # check rmt
@@ -1439,7 +1439,7 @@ class TestExperimentCreation(unittest.TestCase):
 
 class TestThreeBitGeneral(unittest.TestCase):
     def test_3bit_mars_seq(self):
-        self.assertRaises(NotImplementedError, seqc.three_bit.ThreeBit.default_processors,
+        self.assertRaises(NotImplementedError, seqc.encodings.ThreeBit.default_processors,
                           'mars-seq')
 
     def test_3bit_drop_seq(self):
@@ -1447,7 +1447,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         rmt = 'AACCGGTT'
         poly_t = ''
         sample_seq = cell + rmt
-        tb = seqc.three_bit.ThreeBit.default_processors('drop-seq')
+        tb = seqc.encodings.ThreeBit.default_processors('drop-seq')
         icell, irmt, num_poly_t = tb.process_forward_sequence(sample_seq)
         str_cell = tb.bin2str(icell)
         str_rmt = tb.bin2str(irmt)
@@ -1460,7 +1460,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         rmt = 'AACCGG'
         poly_t = 'TTTATTTAT'
         sample_seq = cell + rmt + poly_t
-        tb = seqc.three_bit.ThreeBit.default_processors('cel-seq')
+        tb = seqc.encodings.ThreeBit.default_processors('cel-seq')
         icell, irmt, num_poly_t = tb.process_forward_sequence(sample_seq)
         str_cell = tb.bin2str(icell)
         str_rmt = tb.bin2str(irmt)
@@ -1474,7 +1474,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         # adding N's breaks the poly-t somehow?
         poly_t = 'TAATTTNTTTT'
         sample_seq = cell + rmt + poly_t
-        tb = seqc.three_bit.ThreeBit.default_processors('avo-seq')
+        tb = seqc.encodings.ThreeBit.default_processors('avo-seq')
         icell, irmt, num_poly_t = tb.process_forward_sequence(sample_seq)
         str_cell = tb.bin2str(icell)
         str_rmt = tb.bin2str(irmt)
@@ -1488,7 +1488,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         truncated_rmt = 'ACGTACGT' + 'AAC'
         no_data = 'ACGTAC'
 
-        tb = seqc.three_bit.ThreeBit.default_processors('avo-seq')
+        tb = seqc.encodings.ThreeBit.default_processors('avo-seq')
 
         # results
         cell = tb.str2bin('ACGTACGT')
@@ -1503,8 +1503,8 @@ class TestThreeBitGeneral(unittest.TestCase):
     def test_gc_content(self):
         test_string = 'TGCGCAAAAG'
         expected_result = 0.5
-        bin_string = seqc.three_bit.ThreeBit.str2bin(test_string)
-        result = seqc.three_bit.ThreeBit.gc_content(bin_string)
+        bin_string = seqc.encodings.ThreeBit.str2bin(test_string)
+        result = seqc.encodings.ThreeBit.gc_content(bin_string)
         self.assertEqual(result, expected_result)
 
 
@@ -1657,7 +1657,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
         dummy_data = np.zeros((20,), dtype=dtype)
 
         # we'll use these cell barcodes; no palindromes
-        s2b = seqc.three_bit.ThreeBit.str2bin
+        s2b = seqc.encodings.ThreeBit.str2bin
         cb11 = s2b('CACGGACA')
         cb21 = s2b('GTGTGGTT')
         cb12 = s2b('TTTCCTTT')
@@ -1670,7 +1670,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
         # convert everything to ints the same way as in a fastq
         # in fastq, we first convert each to an int, and concatenate
         # the integers using ints2int; we'll create two cells this way
-        i2i = seqc.three_bit.ThreeBit.ints2int
+        i2i = seqc.encodings.ThreeBit.ints2int
         c1 = i2i([cb11, cb21])
         c2 = i2i([cb12, cb22])
 
@@ -1712,7 +1712,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
         self.ra = seqc.arrays.ReadArray(dummy_data, features, positions)
 
     def test_ints2int(self):
-        i2i = seqc.three_bit.ThreeBit.ints2int
+        i2i = seqc.encodings.ThreeBit.ints2int
         for record in self.ra.data:
             i = i2i([int(record['cell']), int(record['rmt'])])
             self.assertTrue(i > 0)
@@ -1722,7 +1722,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
         # print(self.ra.data)
         # print(grp)
         # print(grp.keys())
-        b2s = seqc.three_bit.ThreeBit.bin2str
+        b2s = seqc.encodings.ThreeBit.bin2str
         for feature in grp.keys():
             for seq in grp[feature].keys():
                 if seq:

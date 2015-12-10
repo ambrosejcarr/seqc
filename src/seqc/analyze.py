@@ -44,7 +44,7 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
     title = 'Cell Sequencing Coverage vs. GC Content'
 
     # get gc content of sequences
-    gc_content = np.array([seqc.three_bit.ThreeBit.gc_content(s) for s in sequences])
+    gc_content = np.array([seqc.encodings.ThreeBit.gc_content(s) for s in sequences])
     fig, ax = seqc.plot.scatter_density(gc_content, cell_counts, fig=fig, ax=ax,
                                         xlabel=xlabel, ylabel=ylabel, title=title)
     return fig, ax
@@ -915,7 +915,7 @@ class Experiment:
         mask = (mol_counts > min_mols) & (ratios > min_ratio)
 
         cells = self.molecules.index[mask]
-        gc_content = np.array([seqc.three_bit.ThreeBit.gc_content(i) for i in cells])
+        gc_content = np.array([seqc.encodings.ThreeBit.gc_content(i) for i in cells])
         ratios = ratios[mask]
 
         xlabel = 'cell GC content'
