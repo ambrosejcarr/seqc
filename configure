@@ -10,7 +10,7 @@ if not os.path.isdir(install_dir):
 seqc_dir = os.path.dirname(os.path.realpath(__file__))
 
 config = configparser.RawConfigParser()
-seqc_config = seqc_dir + '/src/plugins/config'
+seqc_config = seqc_dir + '/config'
 config.read(seqc_config)
 # have the user fill in any missing values
 print('Configuring SEQC for access to Amazon Web Services and BaseSpace. If needed, '

@@ -355,10 +355,6 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     """
     prefix, directory = seqc.core.fix_output_paths(output_prefix)
 
-    # todo
-    # at some point, script should write a metadata summary and upload that in place of
-    # the alignment summary
-
     samfile = directory + 'Aligned.out.sam'
     h5_archive = prefix + '.h5'
     merged_fastq = directory + 'merged.fastq'
