@@ -46,6 +46,7 @@ class config:
                                            'cb_partial.p')
     barcode_files_link_prefix_pattern = 's3://dplab-data/barcodes/%s/flat/'
     h5_name_pattern = seqc_dir + 'test_data/%s/h5/test_seqc.h5'
+    gene_map_pattern = seqc_dir + 'test_data/%s/h5/test_seqc_gene_id_map.p'
 
     # universal index files
     gtf = seqc_dir + 'test_data/genome/annotations.gtf'
@@ -214,6 +215,7 @@ def check_h5(data_type: str) -> str:
                             config.gtf)
         assert os.path.isfile(config.h5_name_pattern % data_type)
         assert h5 == config.h5_name_pattern % data_type
+        assert os.path.isfile(config.gene_map_pattern % data_type)
         return h5
 
 
@@ -1724,6 +1726,28 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     b2s(seq)
                 else:
                     pass  # not aligned
+
+
+class TestConvertSparseGeneIDs(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for dtype in config.data_types:
+            check_h5(dtype)
+
+    @params(*config.data_types)
+    def test_convert_sparse_gene_ids(self, data_type):
+        ra = seqc.ReadArray.from_h5(config.h5_name_pattern % data_type)
+        gmap = config.gene_map_pattern % data_type
+        if data_type == 'drop_seq':
+            exp = seqc.Experiment.from_read_array(ra, 0, 2)
+        else:
+            exp = seqc.Experiment.from_read_array(ra, 3, 2)
+        self.assertEqual(exp.reads.columns.dtype, np.int64)
+        self.assertEqual(exp.molecules.columns.dtype, np.int64)
+        exp.convert_gene_ids(gmap)
+        self.assertIsInstance(exp.molecules.columns[0], str)
+        self.assertIsInstance(exp.molecules.columns[0], str)
 
 
 @unittest.skip('')

@@ -120,7 +120,6 @@ class SparseCounts:
         else:
             raise NotImplementedError
 
-
     @classmethod
     def from_read_array(cls, read_array, collapse_molecules=True, n_poly_t_required=0):
         """
@@ -301,16 +300,27 @@ class SparseCounts:
         df = pd.DataFrame(dense_counts, subset.index, subset.columns)
         return DenseCounts(df)
 
-    def convert_ids(self, fgtf=None, scid_map=None):
-        # todo delete the 'zero' column corresponding to all the genes that got no alignments
+    def convert_gene_ids(self, converter):
         """
-        Convert scids to gene identifiers either by parsing the gtf file (slow) or by
-        directly mapping scids to genes (fast). In the latter case, the gtf_map must be
-        pre-processed and saved to the index folder.
+        convert integer gene ids into gene names for downstream analysis
 
-        see seqc.gtf.Reader.scid_to_gene(gtf, save=<output_file>) to save this gtf_map for
-        repeat-use.
+        args:
+        -----
+        converter: a seqc.convert_features.ConvertGeneCoordinates object. This is
+         typically saved as output_stem + '_gene_id_map.p' during a SEQC run.
+
+        returns:
+        --------
+        None
+
+        modifies:
+        ---------
+        self.columns (int ids -> str ids)
         """
+        ids = [converter.int2str_id(id_) for id_ in self.columns]
+        self._columns = np.array(ids)
+
+    def _convert_ids_deprecated(self, fgtf, scid_map):
         if not any([fgtf, scid_map]):
             raise ValueError('one of gtf or scid_map must be passed for conversion to'
                              'occur')
@@ -616,9 +626,20 @@ class Experiment:
         return self._molecules
 
     @staticmethod
-    def from_read_array(ra):
-        ua = ra.to_unique()
-        return ua.to_experiment()
+    def from_read_array(ra, n, s):
+        """create an experiment from a ReadArray object.
+
+        args:
+        -----
+        ra: ReadArray object
+        n: the number of T nulceotides that must follow the cell barcodes for the
+         alignment to be considered valid
+        s: the number of times a molecule must be observed to be included in the final
+         read or molecule matrices
+
+        """
+        ua = ra.to_unique(n)
+        return ua.to_experiment(s)
 
     @staticmethod
     def from_unique_read_array(ua):
@@ -669,6 +690,36 @@ class Experiment:
         columns = npz_data['m_columns']
         molecules = SparseCounts(data, index, columns)
         return cls(reads, molecules)
+
+    def convert_gene_ids(self, converter: str) -> None:
+        """
+        convert integer gene identifiers into string identifiers for downstream analysis
+
+        args:
+        -----
+        converter: a filepath pointing to a serialized
+         seqc.convert_features.ConvertGeneCoordinates object. or a loaded
+         ConvertGeneCoordinates object. This object is usually saved as
+         output_stem + '_gene_id_map.p' during a SEQC run.
+
+        returns:
+        --------
+        None
+
+        modifies:
+        ---------
+        self.reads.columns (int ids -> string ids)
+        self.molecules.columns (int ids -> string ids)
+        """
+        if isinstance(converter, str):
+            gmap = seqc.convert_features.ConvertGeneCoordinates.from_pickle(converter)
+        elif isinstance(converter, seqc.convert_features.ConvertGeneCoordinates):
+            gmap = converter
+        else:
+            raise TypeError('converter must either be a loaded ConvertGeneCoordinates '
+                            'object or the filename of a serialized version')
+        self._molecules.convert_gene_ids(gmap)
+        self._reads.convert_gene_ids(gmap)
 
     def plot_umi_correction(self, log=False):
         """
@@ -884,7 +935,7 @@ class Experiment:
         fout: name of the file in which to save the summary.
         """
         read_counts = self.reads.counts.sum(axis=1)
-        mol_counts = self.reads.counts.sum(axis=1)
+        mol_counts = self.molecules.counts.sum(axis=1)
         stats = pd.Series()
 
         def get_val(frame, val):

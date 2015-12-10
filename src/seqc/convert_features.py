@@ -385,7 +385,7 @@ class ConvertGeneCoordinates:
             pickle.dump({'dict_of_interval_trees': self._data, 'id_map': self._id_map}, f)
 
     @classmethod
-    def from_pickle(cls, fname: str) -> None:
+    def from_pickle(cls, fname: str):
         """load a ConvertGeneCoordinates object from a serialized file"""
         with open(fname, 'rb') as f:
             data = pickle.load(f)
