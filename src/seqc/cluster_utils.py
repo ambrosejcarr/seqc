@@ -360,7 +360,7 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     merged_fastq = directory + 'merged.fastq'
     counts = prefix + '_sp_counts.npz'
     id_map = prefix + '_gene_id_map.p'
-    alignment_summary = prefix + '_alignment_summary.txt'
+    alignment_summary = prefix + '_alignment_summary'
     log = 'seqc.log'
     files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
 

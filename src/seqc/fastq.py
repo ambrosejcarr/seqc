@@ -327,7 +327,6 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
 
             # get slices of reads and put them on the consume queue
             while True:
-                seqc.log.info('%d Reading.' % i)
                 data = (tuple(islice(ffastq, n * 4)), tuple(islice(rfastq, n * 4)))
 
                 # check that files aren't exhausted
@@ -338,7 +337,6 @@ def merge_fastq(forward: list, reverse: list, exp_type: str, output_dir: str,
                 while True:
                     try:
                         in_queue.put_nowait((i, data))
-                        seqc.log.info('%d Read. Putting on process Queue.' % i)
                         i += 1
                         break
                     except Full:

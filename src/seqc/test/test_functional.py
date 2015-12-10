@@ -138,7 +138,6 @@ def seqc_raw_fastq_input(args):
 
     parser = seqc.core.create_parser()
     kwargs = seqc.core.parse_args(parser, args)
-    seqc.log.setup_logger()
 
     if kwargs['remote']:
         try:

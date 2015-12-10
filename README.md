@@ -12,7 +12,7 @@ use of this capability requires the user have an active AWS account. If Users wi
 run SEQC on their own server, they can install SEQC locally and run it without the
 --remote flag.
 
-### Requirements:
+### Local Running Requirements:
 1. 32GB RAM for human genome processing. Other larger genomes may require more RAM.
 2. 4+ compute cores (30+ optimal)
 
@@ -75,19 +75,23 @@ wish to create an account.
 
 After SEQC is installed, help can be listed:
 
-    $usage: SEQC [-h] [-v]
-                {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq,index} ...
+    $> SEQC -h
+    usage: SEQC [-h] [-v]
+                {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq,index,clean,barcode}
+                ...
     
     positional arguments:
-      {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq,index}
+      {in-drop,drop-seq,mars-seq,cel-seq,avo-seq,strt-seq,index,clean,barcode}
                             library construction method types
-        in-drop             in-drop help
-        drop-seq            drop-seq help
-        mars-seq            mars-seq help
-        cel-seq             cel-seq help
-        avo-seq             avo-seq help
-        strt-seq            strt-seq help
-        index               SEQC index functions
+        in-drop             process process in-drop
+        drop-seq            process drop-seq data
+        mars-seq            process mars-seq data
+        cel-seq             process cel-seq data
+        avo-seq             process avo-seq data
+        strt-seq            process strt-seq data
+        index               create or test a SEQC index
+        clean               clean up AWS resources
+        barcode             build a serialized barcode object
     
     optional arguments:
       -h, --help            show this help message and exit
@@ -154,15 +158,7 @@ Help on running each data types can be obtained by typing:
 
 
 All SEQC runs require that you pass a SEQC index (`-i/--index`). These are STAR indices,
-augmented by SEQC-specific files:
-
-1. `annotations.gtf`: a modified GTF file, containing truncated sequence sizes that
-reflect that we expect all data to fall within ~ 1kb of the transcriptional termination
-sites. In addition, transcripts are tagged with "SCIDs", identifiers that merge
-transcripts and genes which cannot be distinguished in the ~ 1kb of sequence that we
-expect to observe.
-2. `p_coalignments_array.p`: a binary file containing, for each SCID, the probability of
-observing a co-alignment to other genes or transcripts.
+augmented by SEQC-specific files. 
 
 Human and mouse indices can be found on our aws s3 bucket at
 `s3://dplab-data/genomes/mm38/` and `s3://dplab-data/genomes/hg38`. These indices
@@ -185,38 +181,31 @@ If new indices must be generated, these can be produced by the SEQC index method
       -n N, --n-threads N   number of threads to use when building index
       --phix                add phiX to the genome index and GTF file.
      
-     $> # for example, to build a mouse index with phiX features added to mm38, in a
-     $> $ folder called 'mouse', using 7 threads
+for example, to build a mouse index with phiX features added to mm38, in a
+folder called 'mouse', using 7 threads:
+
      $> SEQC index -b -o mm38 -i mouse -n 7 --phix
     
 Some data types require serialized barcode objects (`-b/--barcodes`). These objects contain
 all of the barcodes for an experiment, as they would be expected to be observed.
 For example, if you expect to observe the reverse complement of the barcodes you used to
-construct the library, then this object should be built from reverse complements.   
- 
-These barcode files can be found at `s3://dplab-data/barcodes/`. If you need to generate
-a new barcode object, this can be accomplished with the built-in `PROCESS_BARCODES`
-utility:
+construct the library, then this object should be built from reverse complements. 
+These barcode files can be found at `s3://dplab-data/barcodes/` for standard data  
+formats. If you need to generate
+a new barcode object, this can be accomplished with `SEQC barcode` utility:
 
-    $> PROCESS_BARCODES -h
-    usage: PROCESS_BARCODES [-h] [-o O] [-b B [B ...]] [-p P]
-                            [--reverse-complement]
+
+    $> SEQC barcode -h
+    usage: SEQC barcode [-h] [-f F [F ...]] [--reverse-complement] [-o O]
     
     optional arguments:
       -h, --help            show this help message and exit
-      -o O, --output_stem O
-                            name and path for output file
-      -b B [B ...], --barcode_files B [B ...]
-                            barcode files
-      -p P, --processor P   type of experiment barcodes will be used in
+      -f F [F ...], --barcode-files F [F ...]
+                            text barcode file(s).
       --reverse-complement  indicates that barcodes in fastq files are reverse
-                            complements of the barcodes found in barcode files
+                            complements of the barcodes in the barcode files
+      -o O, --output O      Name for the barcode file that is to be generated
 
-Example usage:
-
-`$> PROCESS_BARCODES -o ./in_drop_barcodes -b <barcode_file> -p in-drop --reverse-complement`
-would save a new, reverse-complemented barcode object built from `<barcode_file>` at
-`./in_drop_barcodes.p`
 
 ### Inputting Data
 
