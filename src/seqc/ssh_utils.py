@@ -3,6 +3,7 @@ import sys
 import time
 import boto3
 import seqc
+import os
 
 
 class SSHServer(object):
@@ -10,16 +11,22 @@ class SSHServer(object):
     def __init__(self, inst_id, keypath):
         ec2 = boto3.resource('ec2')
         self.instance = ec2.Instance(inst_id)
+
+        seqc.util.check_type(keypath, str, 'keypath')
+        if not os.path.isfile(keypath):
+            raise ValueError('ssh key not found at provided keypath: %s' % keypath)
         self.key = keypath
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
-        max_attempts = 5
+        max_attempts = 25
+        attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         dns = self.instance.public_dns_name
-        for attempt in range(max_attempts):
+        while True:
             try:
                 self.ssh.connect(dns, username='ubuntu', key_filename=self.key)
+                break
             # except paramiko.AuthenticationException:
             #     print('autherror')
             #     print('instance not ready for connection, sleeping...')
@@ -36,10 +43,14 @@ class SSHServer(object):
             # except paramiko.BadHostKeyException:
             #     print('the host key %s could not be verified!' %self.key)
             #     sys.exit(2)
-            except Exception as e:
-                seqc.log.notify('Not yet connected, sleeping...')
-                time.sleep(30)
-                # continue
+            except:
+                seqc.log.notify('Not yet connected, sleeping (try %d of %d)' % (
+                    attempt, max_attempts))
+                time.sleep(4)
+                attempt += 1
+                if attempt > max_attempts:
+                    raise
+
         # gname = self.instance.security_groups[0]['GroupName']
         # gid = self.instance.security_groups[0]['GroupId']
         # self.instance.terminate()

@@ -9,22 +9,22 @@ with the current SEQC version installed. The user can install and call SEQC on t
 local machine, which will trigger an AWS server to start up, process the specified
 sequencing experiment, and email you the results when it completes. Please note that the
 use of this capability requires the user have an active AWS account. If Users wish to
-run SEQC on their own server, they can install SEQC locally and run it without the
+run SEQC on their own server, SEQC can be installed locally and run it without the
 --remote flag.
 
 ### Local Running Requirements:
 1. 32GB RAM for human genome processing. Other larger genomes may require more RAM.
 2. 4+ compute cores (30+ optimal)
+3. <a href=https://www.python.org/downloads/>Python3</a>
+4. <a href=https://github.com/alexdobin/STAR>STAR aligner</a> v2.5.0 or later
+5. LibHDF5 (see below for installation instructions)
 
 ### Installation \& Dependencies:
 
 #### Installation for running remotely:
 1. Create an Amazon Web Services account (see below).
 2. Create an RSA key and register it with AWS (see below). 
-3. Download and install <a href=https://www.python.org/downloads/>Python 3</a>.
-4. Install <a href=https://www.hdfgroup.org/HDF5>libhdf5</a> (optional), a highly
-efficient database used to store SEQC output. This is only required for remote-running if
-you wish to parse the filtered data.
+3. Download and install <a href=https://www.python.org/downloads/>Python3</a>.
 5. Install SEQC:
 
         $> git clone https://github.com/ambrosejcarr/seqc.git

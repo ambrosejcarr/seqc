@@ -9,6 +9,9 @@ import seqc
 from subprocess import Popen, PIPE
 from botocore.exceptions import ClientError
 
+class EC2RuntimeError(Exception):
+    pass
+
 
 # TODO check if any errors in the arguments here
 # maybe keep track of all the volumes associated with it too
@@ -39,7 +42,7 @@ class ClusterServer(object):
     def create_security_group(self, name=None):
         """Creates a new security group for the cluster"""
         if name is None:
-            name = 'seqc_' + str(random.randint(1, int(1e12)))
+            name = 'SEQC-%07d' % random.randint(1, int(1e7))
             seqc.log.notify('No instance name provided, assigned %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
@@ -75,9 +78,7 @@ class ClusterServer(object):
         """creates a new AWS cluster with specifications from config"""
         if 'c4' in self.inst_type:
             if not self.subnet:
-                seqc.log.notify('A subnet-id must be specified for C4 instances! '
-                                'Exiting.')
-                sys.exit(2)
+                ValueError('A subnet-id must be specified for C4 instances!')
             else:
                 clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
                                                   MaxCount=1,
@@ -97,16 +98,18 @@ class ClusterServer(object):
         else:
             raise ValueError('self.inst_type must be a c3 or c4 instance')
         instance = clust[0]
-        seqc.log.notify('Created new instance %s.' % instance)
+        seqc.log.notify('Created new instance %s. Waiting until instance is running' %
+                        instance)
         instance.wait_until_exists()
         instance.wait_until_running()
+        seqc.log.notify('Instance %s now running.' % instance)
         self.inst_id = instance
 
     def cluster_is_running(self):
         """checks whether a cluster is running"""
         if self.inst_id is None:
-            seqc.log.notify('Instance was not successfully created! Exiting.')
-            sys.exit(2)
+            raise EC2RuntimeError('No inst_id assigned. Instance was not successfully '
+                                  'created!')
         self.inst_id.reload()
         if self.inst_id.state['Name'] == 'running':
             return True
@@ -150,6 +153,7 @@ class ClusterServer(object):
         """attaches a vol_id to inst_id at dev_id"""
         vol = self.ec2.Volume(vol_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
+        # todo potential infinite loop
         while vol.state != 'in-use':
             time.sleep(3)
             vol.reload()
@@ -158,16 +162,15 @@ class ClusterServer(object):
                 {'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
                                                'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
-            seqc.log.notify('Something went wrong modifying the attribute of the Volume! '
-                            'Exiting.')
-            sys.exit(2)
+            EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
 
         # wait until all volumes are attached
         device_info = self.inst_id.block_device_mappings
         for i in range(1, len(device_info)):
             status = device_info[i]['Ebs']['Status']
+            # todo possibly infinite loop
             while status != 'attached':
-                time.sleep(5)
+                time.sleep(1)
                 self.inst_id.reload()
                 device_info = self.inst_id.block_device_mappings
                 status = device_info[i]['Ebs']['Status']
@@ -185,6 +188,7 @@ class ClusterServer(object):
 
     def create_raid(self):
         """creates a raid array of a specified number of volumes on /data"""
+        seqc.log.notify('Creating and attaching storage volumes.')
         dev_base = "/dev/xvd"
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
@@ -200,8 +204,7 @@ class ClusterServer(object):
         all_dev = ' '.join(dev_names)
 
         # check if this sleep is necessary for successful execution of mdadm function
-        time.sleep(10)
-        num_retries = 5
+        num_retries = 30
         mdadm_failed = True
         for i in range(num_retries):
             _, res = self.serv.exec_command(
@@ -213,10 +216,9 @@ class ClusterServer(object):
                 break
             else:
                 seqc.log.notify('Retrying sudo mdadm.')
-                time.sleep(5)
+                time.sleep(1)
         if mdadm_failed:
-            seqc.log.notify('Error creating raid array md0 with mdadm function.')
-            sys.exit(2)
+            EC2RuntimeError('Error creating raid array md0 with mdadm function.')
 
         # todo | may not need to do repeated checks
         ls_failed = True
@@ -226,10 +228,9 @@ class ClusterServer(object):
                 ls_failed = False
                 break
             else:
-                time.sleep(5)
+                time.sleep(1)
         if ls_failed:
-            seqc.log.notify('Error creating raid array md0 with mdadm function.')
-            sys.exit(2)
+            EC2RuntimeError('Error creating raid array md0 with mdadm function.')
         self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount LABEL=my_raid /data")
@@ -244,10 +245,9 @@ class ClusterServer(object):
                 break
             else:
                 seqc.log.notify('retrying df -h')
-                time.sleep(5)
+                time.sleep(1)
         if md0_failed:
-            seqc.log.notify("Error occurred in mounting RAID array to /data! Exiting.")
-            sys.exit(2)
+            EC2RuntimeError("Error occurred in mounting RAID array to /data! Exiting.")
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
@@ -360,7 +360,7 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     merged_fastq = directory + 'merged.fastq'
     counts = prefix + '_sp_counts.npz'
     id_map = prefix + '_gene_id_map.p'
-    alignment_summary = prefix + '_alignment_summary'
+    alignment_summary = prefix + '_alignment_summary.txt'
     log = 'seqc.log'
     files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
 

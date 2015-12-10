@@ -20,6 +20,8 @@ from io import StringIO
 # tests for downloading s3 inputs: barcodes, index, fastq
 # tests for downloading from basespace
 # test that error on remote instance should result in an email
+# test sshutils
+# test cluster_utils
 
 # noinspection PyPep8Naming
 class config:
@@ -1731,12 +1733,14 @@ class TestGroupForErrorCorrection(unittest.TestCase):
 
 class TestConvertSparseGeneIDs(unittest.TestCase):
 
-    test_dir = 'test_seqc'
+    test_dir = 'test_seqc/'
 
     @classmethod
     def setUpClass(cls):
         for dtype in config.data_types:
             check_h5(dtype)
+        if not os.path.isdir(cls.test_dir):
+            os.makedirs(cls.test_dir)
 
     @params(*config.data_types)
     def test_convert_sparse_gene_ids(self, data_type):
@@ -1924,8 +1928,19 @@ class TestDownloadBaseSpace(unittest.TestCase):
     def test_download_base_space(self):
         raise NotImplementedError  # todo test
 
+
+class TestSSHTools(unittest.TestCase):
+
+    def test_wrong_ssh_key_raises(self):
+        self.assertRaises(seqc.ssh_utils.SSHServer())
+
 if __name__ == '__main__':
     nose2.main()
     # final cleanup
     if os.path.isdir('test_seqc'):
         shutil.rmtree('test_seqc')
+    if os.path.isdir('seqc_test'):
+        shutil.rmtree('seqc_test')
+    # awful that we need to have this; can't find out how this is getting created
+    if os.path.isdir('U'):
+        shutil.rmtree('U')
