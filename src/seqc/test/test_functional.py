@@ -220,9 +220,6 @@ def seqc_raw_fastq_input(args):
     npz_name = kwargs['output_prefix'] + '_sp_counts.npz'
     exp = seqc.analyze.Experiment.from_npz(npz_name)
 
-    print('\nNumber of Reads found in count matrix: %d' % exp.reads.counts.sum().sum())
-    print('\nNumber of Mols. found in count matrix: %d' %
-          exp.molecules.counts.sum().sum())
 
 if __name__ == "__main__":
     seqc.log.setup_logger('seqc_functest.log')
