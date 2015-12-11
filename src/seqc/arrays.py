@@ -120,8 +120,6 @@ class _UnionFind:
 # todo | change from_iterable to be able to construct from a jagged array slice output
 # todo test if id() is faster than .tobytes()
 # todo | it would save more memory to skip "empty" features and give them equal indices
-# todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
-# todo | returning array([]); this would also reduce downstream complexity.
 class JaggedArray:
 
     def __init__(self, data, index):
@@ -321,7 +319,7 @@ class JaggedArray:
             return np.uint8
 
     @classmethod
-    def from_iterable(cls, nested_iterable, dtype=np.int32):
+    def from_iterable(cls, nested_iterable, dtype=np.int64):
         if not nested_iterable:
             raise ValueError('Cannot initialize empty array')
         k = len(nested_iterable)
@@ -529,82 +527,87 @@ class ReadArray:
                 self.positions.index.nbytes)
 
     @classmethod
-    # todo this is losing either the first or the last read
-    # todo if necessary, this can be built out-of-memory using an h5 table
-    def from_samfile(cls, samfile, feature_converter):
+    def from_samfile(self):
+        # todo link to seqc.sam.to_h5()
+        raise NotImplementedError
 
-        # first pass through file: get the total number of alignments and the number of
-        # multialignments for array construction; store indices for faster second pass
-        with open(samfile) as f:
 
-            # first, get header size and get rid of the headers
-            line = f.readline()
-            header_size = 0
-            while line.startswith('@'):
-                header_size += 1
-                line = f.readline()
-
-            # next, count alignments and multi-alignments, keep track of where the MAs
-            # switch
-            n_reads = 0
-            n_mult = 0
-            ma_sizes = []
-
-            current_name = line.split('\t')[0]
-            current_size = 1
-            for line in f:
-                n_reads += 1
-                new_name = line.split('\t')[0]
-                if current_name != new_name:
-                    n_mult += 1
-                    current_name = new_name
-                    ma_sizes.append(current_size)
-                    current_size = 1
-                else:
-                    current_size += 1
-
-        # construct the arrays in contiguous memory
-        read_data = np.zeros((n_mult,), dtype=cls._dtype)
-
-        # both features and positions can reference the same index object
-        index_dtype = JaggedArray.size_to_dtype(n_reads)
-        index = np.zeros((n_mult, 2), dtype=index_dtype)
-
-        # not all reads will have valid features; this size estimate is an upper bound
-        # that will shrink when the array is filled
-        features = np.zeros(n_reads, dtype=np.uint32)
-        positions = np.zeros(n_reads, dtype=np.uint32)
-
-        # 2nd pass through the file: populate the arrays
-        idx = 0  # current index in jagged arrays
-        with open(samfile) as f:
-            records = iter(f)
-            _ = list(islice(records, header_size))  # get rid of header
-            for i, s in enumerate(ma_sizes):
-                # get all records associated with a multialignment
-                multi_alignment = list(islice(records, s))
-                if not multi_alignment:  # iterator is exhausted
-                    break
-                recd, feat, pos = cls._process_multialignment(
-                    multi_alignment, feature_converter)
-                read_data[i] = recd
-                if feat:
-                    nfeatures = len(feat)
-                    features[idx:idx + nfeatures] = feat
-                    positions[idx:idx + nfeatures] = pos
-                    index[i, :] = (idx, idx + nfeatures)
-                    idx += nfeatures
-                else:
-                    index[i, :] = (idx, idx)
-
-        # eliminate any extra size from the features & positions arrays
-        features = features[:idx]
-        positions = positions[:idx]
-
-        jagged_features = JaggedArray(features, index)
-        jagged_positions = JaggedArray(positions, index)
-
-        return cls(read_data, jagged_features, jagged_positions)
+    # old method
+    # @classmethod
+    # def from_samfile(cls, samfile, feature_converter):
+    #
+    #     # first pass through file: get the total number of alignments and the number of
+    #     # multialignments for array construction; store indices for faster second pass
+    #     with open(samfile) as f:
+    #
+    #         # first, get header size and get rid of the headers
+    #         line = f.readline()
+    #         header_size = 0
+    #         while line.startswith('@'):
+    #             header_size += 1
+    #             line = f.readline()
+    #
+    #         # next, count alignments and multi-alignments, keep track of where the MAs
+    #         # switch
+    #         n_reads = 0
+    #         n_mult = 0
+    #         ma_sizes = []
+    #
+    #         current_name = line.split('\t')[0]
+    #         current_size = 1
+    #         for line in f:
+    #             n_reads += 1
+    #             new_name = line.split('\t')[0]
+    #             if current_name != new_name:
+    #                 n_mult += 1
+    #                 current_name = new_name
+    #                 ma_sizes.append(current_size)
+    #                 current_size = 1
+    #             else:
+    #                 current_size += 1
+    #
+    #     # construct the arrays in contiguous memory
+    #     read_data = np.zeros((n_mult,), dtype=cls._dtype)
+    #
+    #     # both features and positions can reference the same index object
+    #     index_dtype = JaggedArray.size_to_dtype(n_reads)
+    #     index = np.zeros((n_mult, 2), dtype=index_dtype)
+    #
+    #     # not all reads will have valid features; this size estimate is an upper bound
+    #     # that will shrink when the array is filled
+    #     features = np.zeros(n_reads, dtype=np.uint32)
+    #     positions = np.zeros(n_reads, dtype=np.uint32)
+    #
+    #     # 2nd pass through the file: populate the arrays
+    #     idx = 0  # current index in jagged arrays
+    #     with open(samfile) as f:
+    #         records = iter(f)
+    #         _ = list(islice(records, header_size))  # get rid of header
+    #         for i, s in enumerate(ma_sizes):
+    #             # get all records associated with a multialignment
+    #             multi_alignment = list(islice(records, s))
+    #             if not multi_alignment:  # iterator is exhausted
+    #                 break
+    #             recd, feat, pos = cls._process_multialignment(
+    #                 multi_alignment, feature_converter)
+    #             read_data[i] = recd
+    #             if feat:
+    #                 nfeatures = len(feat)
+    #                 features[idx:idx + nfeatures] = feat
+    #                 positions[idx:idx + nfeatures] = pos
+    #                 index[i, :] = (idx, idx + nfeatures)
+    #                 idx += nfeatures
+    #             else:
+    #                 index[i, :] = (idx, idx)
+    #
+    #     # eliminate any extra size from the features & positions arrays
+    #     features = features[:idx]
+    #     positions = positions[:idx]
+    #
+    #     jagged_features = JaggedArray(features, index)
+    #     jagged_positions = JaggedArray(positions, index)
+    #
+    #     return cls(read_data, jagged_features, jagged_positions)
 
     @staticmethod
     def _average_quality(quality_string):
@@ -704,7 +707,7 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+        seq = [seqc.encodings.ThreeBit.ints2int([int(c), int(r)])
                for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
@@ -756,7 +759,7 @@ class ReadArray:
         cells = self.data['cell'][mask]
         rmts = self.data['rmt'][mask]
 
-        seq = [seqc.three_bit.ThreeBit.ints2int([int(c), int(r)])
+        seq = [seqc.encodings.ThreeBit.ints2int([int(c), int(r)])
                for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
@@ -995,6 +998,14 @@ class ReadArray:
         will overwrite an existing archive with the same name
         """
 
+        # check that there is data in array
+        if not self.positions.data.shape[0]:
+            raise ValueError('No feature positions were assigned to this object. Cannot '
+                             'save an empty array.')
+        if not self.features.data.shape[0]:
+            raise ValueError('No features were assigned to this object. Cannot '
+                             'save an empty array.')
+
         def store_carray(h5f, array, where, name):
             atom = tb.Atom.from_dtype(array.dtype)
             store = h5f.createCArray(where, name, atom, array.shape)
@@ -1124,7 +1135,6 @@ class ReadArray:
 
         # get number contributing to all filters
 
-
         # get error number todo | need to wait for Rami's error correction
         # is_error = np.sum(self.data['is_error']) / self.data.shape[0]
 
@@ -1146,6 +1156,11 @@ class UniqueReadArray:
         positions: np.array
 
         """
+
+        seqc.util.check_type(features, np.ndarray, 'features')
+        seqc.util.check_type(positions, np.ndarray, 'positions')
+        seqc.util.check_type(data, np.ndarray, 'data')
+
         self._data = data
         self._features = features
         self._positions = positions
@@ -1228,11 +1243,6 @@ class UniqueReadArray:
             self._sort()
 
         sort_ord = self._sorted
-
-        # todo could be some 1-off bugs: Mostly working.
-        # todo I believe the first molecule ends up missing 1 read
-        # todo the final molecule may be restricted to 1 read.
-        # I see this as minor, will fix later in the process of refactoring this stuff.
 
         # find boundaries between cell, rmt, and feature
         all_diff = np.zeros(len(self), dtype=np.bool)

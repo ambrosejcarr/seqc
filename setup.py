@@ -5,6 +5,8 @@ from warnings import warn
 import os
 import shutil
 
+__version__ = '0.1.5'
+
 # pip3 cannot install external dependencies for python; warn user if external dependencies
 # are missing; do this at the end so that the users are more likely to see it.
 
@@ -22,12 +24,13 @@ elif os.path.isfile('/usr/local/hdf5/lib/libhdf5.so'):
     h5fail = False
 
 setup(name='seqc',
-      version='0.1.4',
+
+      version=__version__,
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      # note: requires numpy > 1.10.0
+      test_suite='nose2.collector.collector',
       packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[
           'numpy>=1.10.0',
@@ -40,11 +43,14 @@ setup(name='seqc',
           'boto3',
           'pyftpdlib',
           'intervaltree',
+          # 'sklearn>=0.17',  # doesn't find this for some reason; it is on pypi... todo
           # 'tsne',
-          'tables'],
+          'tables',
+          'nose2',
+          'memory_profiler',
+          'more_itertools',
+          'paramiko', 'requests'],
       scripts=['src/scripts/SEQC',
-               'src/scripts/PROCESS_BARCODES',
-               'src/scripts/TEST_BARCODES',
                'src/scripts/process_multi_file_scseq_experiment.py',
                'src/scripts/process_single_file_scseq_experiment.py'],
       )
@@ -54,10 +60,10 @@ if h5fail:
     warn("""
 SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/,
 /usr/lib/, /usr/hdf5/lib/, or /usr/local/lib/hdf5/.
-tables will not find h5lib and installation will likely fail unless the
-HDF5_DIR environment variable has been set to the location that HDF5 was
-installed into. If HDF5 is not installed, please install it prior to
-installing SEQC.
+
+"tables" will not find h5lib and installation will likely fail unless the HDF5_DIR
+environment variable has been set to the location that HDF5 was installed into. If HDF5
+is not installed, please install it prior to installing SEQC.
 """)
 
 # look for star

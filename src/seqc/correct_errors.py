@@ -3,7 +3,7 @@ from scipy.special import gammaincinv
 from itertools import permutations
 from sys import maxsize
 import time
-from seqc.three_bit import ThreeBit as bin_rep		#Using Ambrose coder for unity
+from seqc.encodings import ThreeBit as bin_rep		#Using Ambrose coder for unity
 
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence  
 

@@ -1,28 +1,80 @@
 __author__ = 'ambrose'
 
-# todo replace threading with processing
 from glob import glob
 import gzip
 import bz2
 import os
 import ftplib
-from threading import Thread
-from queue import Queue, Empty
-from subprocess import Popen, check_output, PIPE
+import threading
+from multiprocessing import Process, Queue
+import socket
+import threading
+from queue import Empty
+from subprocess import Popen, check_output, PIPE, call
 from itertools import zip_longest
+import seqc
 import boto3
 import logging
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+from pyftpdlib.authorizers import DummyAuthorizer
+import requests
+from multiprocessing import Pool
+from functools import partial
+import configparser
+
+
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
+
+
+class EC2:
+
+    @staticmethod
+    def clean_volumes():
+        ec2 = boto3.resource('ec2')
+        fpath = os.path.expanduser('~/.seqc/vol_names.txt')
+
+        try:
+            with open(fpath, 'r') as f:
+                vol_names = [line.strip() for line in f]
+        except IOError:
+            print('No new volumes for cleanup!')
+            return
+
+        remain_vol = []
+        for name in vol_names:
+            volume = ec2.Volume(name)
+            if not volume.attachments:
+                call(["aws", "ec2", "delete-volume", "--volume-id", name])
+            else:
+                remain_vol.append(name)
+        print('Finished deleting all new, unattached volumes')
+
+        #TODO | fix this for when there are multiple clusters running?
+        # updating vol_names.txt file
+        os.remove(fpath)
+        if remain_vol:
+            print('There are %d new volumes still being used' % len(remain_vol))
+            with open(fpath, 'w') as f:
+                for name in remain_vol:
+                    f.write('%s\n' % name)
 
 
 class S3:
     """A series of methods to upload and download files from amazon s3"""
 
     @staticmethod
-    def download_file(bucket, key, fout=None, overwrite=False):
+    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False):
         """download the file key located in bucket, sending output to filename fout"""
+
+        # check argument types
+        seqc.util.check_type(bucket, str, 'bucket must be type str, not %s'
+                             % type(bucket))
+        seqc.util.check_type(key, str, 'key must be type str, not %s' % key)
+        seqc.util.check_type(fout, str, 'fout must be type str, not %s' % key)
+
         if not overwrite:
             if os.path.isfile(fout):
                 raise FileExistsError('file "%s" already exists. Set overwrite=True to '
@@ -43,12 +95,17 @@ class S3:
             os.makedirs(dirs)
 
         # download the file
-        client = boto3.client('s3')
-        client.download_file(bucket, key, fout)
+        try:
+            client = boto3.client('s3')
+            client.download_file(bucket, key, fout)
+        except FileNotFoundError:
+            raise FileNotFoundError('No file was found at the specified s3 location: '
+                                    '"%s".' % bucket + '/' + key)
 
         return fout
 
     # todo return all downloaded filenames
+    # todo implement glob-based filtering
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
                        overwrite=False):
@@ -61,7 +118,7 @@ class S3:
         """
         # get bucket and filenames
         client = boto3.client('s3')
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
 
         # output prefix needs to end in '/'
         if not output_prefix.endswith('/'):
@@ -162,7 +219,7 @@ class S3:
             client.upload_file(file_, bucket, key)
 
     @staticmethod
-    def list(bucket, key_prefix):
+    def listdir(bucket, key_prefix):
         """
         list all objects beginning with key_prefix
 
@@ -182,7 +239,7 @@ class S3:
 
     @classmethod
     def remove_files(cls, bucket, key_prefix):
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
@@ -212,6 +269,9 @@ class S3:
 
 
 class GEO:
+    """
+    Group of methods for downloading files from NCBI GEO
+    """
 
     @staticmethod
     def _ftp_login(ip, port=0, username='anonymous', password=''):
@@ -255,7 +315,24 @@ class GEO:
             ftp.close()
 
     @classmethod
-    def download_sra_file(cls, link, prefix, clobber=False, verbose=True, port=0):
+    def download_sra_file(cls, link: str, prefix: str, clobber=False, verbose=True,
+                          port=0) -> str:
+        """
+        Downloads file from ftp server found at link into directory prefix
+
+        args:
+        -----
+        link: ftp link to file
+        prefix: directory into which file should be downloaded
+        clobber: If False, will not download if a file is already present in prefix with
+         the same name
+        verbose: If True, status updates will be printed throughout file download
+        port: Port for login. for NCBI, this should be zero (default).
+
+        return:
+        -------
+        downloaded filename
+        """
 
         # check link validity
         if not link.startswith('ftp://'):
@@ -285,9 +362,24 @@ class GEO:
 
 
     @classmethod
-    def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False,
-                     port=0):
-        """download all files in an SRP experiment into directory 'prefix'."""
+    def download_srp(cls, srp: str, prefix: str, max_concurrent_dl: int, verbose=True,
+                     clobber=False, port=0) -> [str]:
+
+        """
+        Download all files in an SRP experiment into directory prefix
+
+        args:
+        -----
+        srp: the complete ftp link to the folder for the SRP experiment
+        prefix: the name of the folder in which files should be saved
+        max_concurrent_dl: the number of processes to spawn for parallel downloading
+        verbose: If True, status updates will be printed throughout file download
+        port: Port for login. for NCBI, this should be zero (default).
+
+        returns:
+        --------
+        list of downloaded files
+        """
 
         if not srp.startswith('ftp://'):
             raise ValueError(
@@ -329,14 +421,14 @@ class GEO:
         for f in files:
             for_download.put(srp + f)
 
-        threads = []
+        processes = []
         for i in range(max_concurrent_dl):
-            threads.append(Thread(target=cls._download_sra_file,
+            processes.append(Process(target=cls._download_sra_file,
                                   args=([for_download, prefix, clobber, verbose])))
 
-            threads[i].start()
+            processes[i].start()
 
-        for t in threads:
+        for t in processes:
             t.join()
 
         # get output files
@@ -390,15 +482,15 @@ class GEO:
         for f in sra_files:
             to_extract.put(f)
 
-        threads = []
+        processes = []
         for i in range(max_concurrent):
-            threads.append(Thread(
+            processes.append(Process(
                 target=cls._extract_fastq,
                 args=([to_extract, working_directory, verbose, paired_end, clobber])
             ))
-            threads[i].start()
+            processes[i].start()
 
-        for t in threads:
+        for t in processes:
             t.join()
 
         # get output files
@@ -411,6 +503,83 @@ class GEO:
             return forward
 
 
+def _download_basespace_content(item_data, access_token, dest_path, index):
+    """gets the content of a file requested from the BaseSpace REST API."""
+    item = item_data[index]
+    response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
+                            item['Id'] + '/content?access_token=' +
+                            access_token, stream=True)
+    path = dest_path + '/' + item['Path']
+    with open(path, "wb") as fd:
+        for chunk in response.iter_content(104857600):  # chunksize = 100MB
+            fd.write(chunk)
+        fd.close()
+
+
+class BaseSpace:
+
+    @classmethod
+    def download_sample(cls, sample_id: str, dest_path: str, access_token: str=None)\
+            -> (list, list):
+        """
+        Downloads all files related to a sample from the basespace API
+
+        args:
+        -----
+        sample_id: The sample id, taken directory from the basespace link for a
+         sample (experiment). e.g. if the link is:
+         "https://basespace.illumina.com/sample/30826030/Day0-ligation-11-17", then the
+         sample_id is "30826030"
+        access_token: a string access token that allows permission to access the ILLUMINA
+         BaseSpace server and download the requested data. Access tokens can be obtained
+         by (1) logging into https://developer.basespace.illumina.com, (2), creating a
+         "new application", and (3) going to the credentials tab of that application to
+         obtain the access token.
+        dest_path: the location that the downloaded files should be placed.
+
+        returns:
+        forward, reverse: lists of fastq files
+        """
+
+        # check types
+        seqc.util.check_type(sample_id, str, 'sample_id')
+        seqc.util.check_type(dest_path, str, 'dest_path')
+
+        # if the access token isn't provided, look for it in config
+        if not access_token:
+            config = configparser.ConfigParser()
+            config.read(os.path.expanduser('~/.seqc/config'))
+            access_token = config['BaseSpaceToken']['base_space_token']
+            print(access_token)
+
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+        print(response)
+
+        # check that a valid request was sent
+        if response.status_code != 200:
+            raise ValueError('Invalid access_token or sample_id. BaseSpace could not '
+                             'find the requested data. Response status code: %d'
+                             % response.status_code)
+
+        data = response.json()
+
+        func = partial(_download_basespace_content, data['Response']['Items'],
+                       access_token, dest_path)
+        seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
+        with Pool(len(data['Response']['Items'])) as pool:
+            pool.map(func, range(len(data['Response']['Items'])))
+
+        # get downloaded forward and reverse fastq files
+        filenames = [f['Name'] for f in data['Response']['Items']]
+        forward_fastq = [dest_path + '/' + f for f in filenames if '_R1_' in f]
+        reverse_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
+
+        return forward_fastq, reverse_fastq
+
+
 def open_file(filename):
     if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')
@@ -418,3 +587,103 @@ def open_file(filename):
         return bz2.open(filename, 'rt')
     else:
         return open(filename)
+
+
+class DummyFTPClient(threading.Thread):
+    """A threaded FTP server used for running tests.
+
+    This is basically a modified version of the FTPServer class which
+    wraps the polling loop into a thread.
+
+    The instance returned can be used to start(), stop() and
+    eventually re-start() the server.
+
+    The instance can also launch a client using ftplib to navigate and download files.
+    it will serve files from home.
+    """
+    handler = FTPHandler
+    server_class = FTPServer
+
+    def __init__(self, addr=None, home=None):
+
+        try:
+            host = socket.gethostbyname('localhost')
+        except socket.error:
+            host = 'localhost'
+
+        threading.Thread.__init__(self)
+        self.__serving = False
+        self.__stopped = False
+        self.__lock = threading.Lock()
+        self.__flag = threading.Event()
+        if addr is None:
+            addr = (host, 0)
+
+        if not home:
+            home = os.getcwd()
+
+        authorizer = DummyAuthorizer()
+        authorizer.add_anonymous(home, perm='erl')
+        # authorizer.add_anonymous(home, perm='elr')
+        self.handler.authorizer = authorizer
+        # lower buffer sizes = more "loops" while transfering data
+        # = less false positives
+        self.handler.dtp_handler.ac_in_buffer_size = 4096
+        self.handler.dtp_handler.ac_out_buffer_size = 4096
+        self.server = self.server_class(addr, self.handler)
+        self.host, self.port = self.server.socket.getsockname()[:2]
+        self.client = None
+
+    def __repr__(self):
+        status = [self.__class__.__module__ + "." + self.__class__.__name__]
+        if self.__serving:
+            status.append('active')
+        else:
+            status.append('inactive')
+        status.append('%s:%s' % self.server.socket.getsockname()[:2])
+        return '<%s at %#x>' % (' '.join(status), id(self))
+
+    def generate_local_client(self):
+        self.client = ftplib.FTP()
+        self.client.connect(self.host, self.port)
+        self.client.login()
+        return self.client
+
+    @property
+    def running(self):
+        return self.__serving
+
+    def start(self, timeout=0.001):
+        """Start serving until an explicit stop() request.
+        Polls for shutdown every 'timeout' seconds.
+        """
+        if self.__serving:
+            raise RuntimeError("Server already started")
+        if self.__stopped:
+            # ensure the server can be started again
+            DummyFTPClient.__init__(self, self.server.socket.getsockname(), self.handler)
+        self.__timeout = timeout
+        threading.Thread.start(self)
+        self.__flag.wait()
+
+    def run(self):
+        logging.basicConfig(filename='testing.log', level=logging.DEBUG)
+        self.__serving = True
+        self.__flag.set()
+        while self.__serving:
+            self.__lock.acquire()
+            self.server.serve_forever(timeout=self.__timeout, blocking=False)
+            self.__lock.release()
+        self.server.close_all()
+
+    def stop(self):
+        """Stop serving (also disconnecting all currently connected
+        clients) by telling the serve_forever() loop to stop and
+        waits until it does.
+        """
+        if not self.__serving:
+            raise RuntimeError("Server not started yet")
+        self.__serving = False
+        self.__stopped = True
+        self.join()
+        self.client.close()
