@@ -50,6 +50,7 @@ class config:
     barcode_files_link_prefix_pattern = 's3://dplab-data/barcodes/%s/flat/'
     h5_name_pattern = seqc_dir + 'test_data/%s/h5/test_seqc.h5'
     gene_map_pattern = seqc_dir + 'test_data/%s/h5/test_seqc_gene_id_map.p'
+    experiment_pattern = seqc_dir + 'test_data/%s/results/test_seqc.npz'
 
     # universal index files
     gtf = seqc_dir + 'test_data/genome/annotations.gtf'
@@ -219,7 +220,30 @@ def check_h5(data_type: str) -> str:
         assert os.path.isfile(config.h5_name_pattern % data_type)
         assert h5 == config.h5_name_pattern % data_type
         assert os.path.isfile(config.gene_map_pattern % data_type)
-        return h5
+    else:
+        h5 = config.h5_name_pattern % data_type
+
+    return h5
+
+
+def check_experiment(data_type: str) -> str:
+
+    h5_file = check_h5(data_type)
+
+    experiment_file = config.experiment_pattern % data_type
+    exp_dir = '/'.join(experiment_file.split('/')[:-1])
+    if not os.path.isdir(exp_dir):
+        os.makedirs(exp_dir)
+
+    if not os.path.isfile(experiment_file):
+        ra = seqc.ReadArray.from_h5(h5_file)
+        if data_type == 'drop_seq':
+            exp = seqc.Experiment.from_read_array(ra, 0, 2)
+        else:
+            exp = seqc.Experiment.from_read_array(ra, 3, 2)
+        exp.to_npz(experiment_file)
+
+    return experiment_file
 
 
 class FastqRevcompTest(unittest.TestCase):
@@ -1755,6 +1779,7 @@ class TestConvertSparseGeneIDs(unittest.TestCase):
         exp.convert_gene_ids(gmap)
         self.assertIsInstance(exp.molecules.columns[0], str)
         self.assertIsInstance(exp.molecules.columns[0], str)
+        print(exp.molecules.columns)
 
         # make sure the result is pickleable
         exp.to_npz(self.test_dir + 'test_seqc.npz')
@@ -1765,7 +1790,7 @@ class TestConvertSparseGeneIDs(unittest.TestCase):
             shutil.rmtree('test_seqc')
 
 
-@unittest.skip('')
+@unittest.skip('Not implemented')
 class TestDownloadInputFiles(unittest.TestCase):
 
     test_dir = 'test_seqc/'
@@ -1921,7 +1946,7 @@ class TestDownloadInputFiles(unittest.TestCase):
             shutil.rmtree(cls.test_dir)
 
 
-@unittest.skip('')
+@unittest.skip('Not implemented')
 class TestDownloadBaseSpace(unittest.TestCase):
     """unittests to make sure BaseSpace is correctly functioning"""
 
@@ -1929,10 +1954,35 @@ class TestDownloadBaseSpace(unittest.TestCase):
         raise NotImplementedError  # todo test
 
 
+@unittest.skip('Not implemented')
 class TestSSHTools(unittest.TestCase):
 
     def test_wrong_ssh_key_raises(self):
+        # is it possible to test this without creating an instance? Can one ssh into one's
+        # own computer or something to test?
+        raise NotImplementedError
         self.assertRaises(seqc.ssh_utils.SSHServer())
+
+
+class TestExperiment(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for dtype in config.data_types:
+            check_experiment(dtype)
+
+    @params(*config.data_types)
+    def test_equalize_features(self, data_type):
+        e = seqc.Experiment.from_npz(config.experiment_pattern % data_type)
+        new = e.equalize_features()
+        self.assertTrue(np.array_equal(new.molecules.columns, new.reads.columns))
+
+    @params(*config.data_types)
+    def test_equalize_cells(self, data_type):
+        e = seqc.Experiment.from_npz(config.experiment_pattern % data_type)
+        new = e.equalize_cells()
+        self.assertTrue(np.array_equal(new.molecules.index, new.reads.index))
+
 
 if __name__ == '__main__':
     nose2.main()

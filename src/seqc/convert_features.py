@@ -425,7 +425,7 @@ class ConvertGeneCoordinates:
         for record in gtf_reader.iter_genes_final_nbases(fragment_length):
 
             # check if gene is in map
-            gene = record.attribute['gene_id']
+            gene = record.attribute['gene_name'].upper()
             int_id = hash(gene)
             if int_id not in id_map:
                 id_map[int_id] = gene

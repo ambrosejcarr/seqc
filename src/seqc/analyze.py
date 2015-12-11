@@ -722,6 +722,64 @@ class Experiment:
         self._molecules.convert_gene_ids(gmap)
         self._reads.convert_gene_ids(gmap)
 
+    def equalize_features(self):
+        """
+        Ensures columns of self.reads and self.molecules are equal
+
+        Error correction removes any molecule the support < s (default 2). This can
+        cause some features to drop out of the molecule matrix while still being present
+        in the unfiltered reads. Many of the comparisons in this class are done across
+        features, and therefore those features must first be equalized.
+
+        returns:
+        --------
+        Experiment object
+        """
+        # get the read features that are in molecules; all molecules are in features
+        if np.array_equal(self.reads.columns, self.molecules.columns):
+            return self
+
+        in_mols = np.in1d(self.reads.columns, self.molecules.columns)
+
+        # sort both, index columns
+        read_order = np.argsort(self.reads.columns)[in_mols]
+        mol_order = np.argsort(self.molecules.columns)
+
+        read_columns = self.reads.columns[read_order]
+        mol_columns = self.molecules.columns[mol_order]
+
+        read_data = self.reads.counts.tocsc()[:, read_order].tocoo()
+        mol_data = self.molecules.counts.tocsc()[:, mol_order].tocoo()
+
+        reads = SparseCounts(read_data, self.reads.index, read_columns)
+        mols = SparseCounts(mol_data, self.molecules.index, mol_columns)
+        return Experiment(reads, mols)
+
+    def equalize_cells(self):
+        """
+        Ensures indices of self.reads and self.molecules are equal by eliminating any cell
+        that does not appear in the molecule matrix. This happens when cells consist
+        entirely of low-count (likely erroneous) reads
+        """
+        if np.array_equal(self.reads.index, self.molecules.index):
+            return self
+
+        in_mols = np.in1d(self.reads.index, self.molecules.index)
+
+        # sort both, index columns
+        read_order = np.argsort(self.reads.index)[in_mols]
+        mol_order = np.argsort(self.molecules.index)
+
+        read_index = self.reads.index[read_order]
+        mol_index = self.molecules.index[mol_order]
+
+        read_data = self.reads.counts.tocsr()[read_order, :].tocoo()
+        mol_data = self.molecules.counts.tocsr()[mol_order, :].tocoo()
+
+        reads = SparseCounts(read_data, read_index, self.reads.columns)
+        mols = SparseCounts(mol_data, mol_index, self.molecules.columns)
+        return Experiment(reads, mols)
+
     def plot_umi_correction(self, log=False):
         """
         Displays the impact of UMI correction on raw or log-transformed sc-RNA-seq data
