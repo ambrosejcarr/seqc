@@ -1,16 +1,12 @@
 __author__ = 'Ambrose J. Carr'
 
-# import warnings
-# with warnings.catch_warnings():
 from operator import itemgetter
 import numpy as np
 from copy import copy
 from numpy.lib.recfunctions import append_fields
-from itertools import islice
 from collections import defaultdict
 from scipy.sparse import coo_matrix
 import numbers
-import tables as tb
 import pickle
 from types import *
 import os
@@ -116,10 +112,10 @@ class _UnionFind:
         return self[next(iter(iterable))]
 
 
-# todo | change jagged array slicing to return another jagged array
-# todo | change from_iterable to be able to construct from a jagged array slice output
-# todo test if id() is faster than .tobytes()
-# todo | it would save more memory to skip "empty" features and give them equal indices
+# todo
+# change jagged array slicing to return another jagged array
+# change from_iterable to be able to construct from a jagged array slice output
+# test if id() is faster than .tobytes()
 class JaggedArray:
 
     def __init__(self, data, index):
@@ -685,7 +681,9 @@ class ReadArray:
 
     def stack(self, other):
         """returns a stacked copy of self and other"""
-        data = np.hstack(self.data, other.data)
+        if not isinstance(other, ReadArray):
+            raise TypeError('other must be a ReadArray object, not %s' % type(other))
+        data = np.hstack([self.data, other.data])
         features = self.features.extend(other.features)
         positions = self.positions.extend(other.positions)
         return ReadArray(data, features, positions)
@@ -949,7 +947,6 @@ class ReadArray:
                 del l[i]
         return lists
 
-    # todo could be a bug here.
     def to_unique(self, n_poly_t_required):
         """Create a UniqueReadArray containing copying only unique reads from self"""
 
@@ -1221,6 +1218,165 @@ class UniqueReadArray:
         """
         self._sorted = np.lexsort((self.data['rmt'], self.features, self.data['cell']))
 
+    def _find_boundaries(self, order, *keys):
+        """
+        finds boundaries between records in arrays given a sorting order and the set
+        of keys that define different types of records.
+
+        args:
+        -----
+        order: an index that defines the sorted order of the ReadArray object. This should
+         be the output of self._sorted
+        keys: a set of keys over which to find unique boundaries
+
+        returns:
+        --------
+        boundaries: boolean vector defining the boundaries between different sets of reads
+        """
+        boundaries = np.zeros(len(self), dtype=np.bool)
+        boundaries[0] = True  # keeps the first molecule
+
+        if 'features' in keys:
+            boundaries[1:] |= np.diff(self.features[order].astype(np.bool))
+            keys = list(keys)
+            del keys[keys.index('features')]
+
+        if 'positions' in keys:
+            boundaries[1:] |= np.diff(self.positions[order].astype(np.bool))
+            keys = list(keys)
+            del keys[keys.index('positions')]
+
+        for key in keys:
+            boundaries[1:] |= np.diff(self.data[key][order].astype(np.bool))
+
+        return boundaries
+
+    def _get_counts(self, boundaries):
+        """
+        get the counts for each record object, whose uniqueness is defined by the values
+         in keys
+
+        args:
+        -----
+        order: an index that defines the sorted order of the ReadArray object. This should
+         be the output of self._sorted
+        boundaries: indices of which records define records distinct from the previous
+         one; the output from self._find_boundaries.
+        keys: the keys used to find boundaries, and which therefore define what
+         constitutes a unique object.
+
+        returns:
+        --------
+        counts: np.array of counts
+        index: index into ReadArray that these counts correspond to. Must index the SORTED
+         ReadArray
+        """
+        # np.nonzero returns a vector for each dimension; we input a 1d array and so only
+        # need the first dimension
+        index, _ = np.nonzero(boundaries)
+
+        # len(self) gives the final position of the array, allowing counting of the number
+        # of times the final category is observed. Add to the array of indices
+        index = np.concatenate((index, [len(self)]))
+
+        # difference between boundary indices gives the number of counts
+        counts = np.diff(index)
+
+        # the index can be used to retrieve the values that correspond to these counts
+        # from the original (sorted) record array
+        return counts, index
+
+    def _get_cells(self, order, index):
+        """
+        get the cells that correspond to the passed index, given the sorted order
+
+        args:
+        -----
+        order: the lexsorted order of self
+        index: the positions of unique records
+
+        returns:
+        --------
+        cells: a numpy array of cell ids that correspnd to index, given the sorted order
+        """
+
+        return self.data['cell'][order][index]
+
+    def _get_features(self, order, index):
+        """
+        get the cells that correspond to the passed index, given the sorted order
+
+        args:
+        -----
+        order: the lexsorted order of self
+        index: the positions of unique records
+
+        returns:
+        --------
+        features: a numpy array of cell ids that correspnd to index, given the sorted order
+        """
+
+        return self.features[order][index]
+
+    @staticmethod
+    def _filter_low_support_features(order, record_index, counts, required_support):
+        """
+        Given a sorted order, a record_index that identifies unique records, and a set of
+        counts for each indexed record, return the subset of the unique records that have
+        counts > required support.
+        """
+
+        adequate_support = counts > required_support
+        # todo explain why this last one should be False
+        adequate_support = np.concatenate((adequate_support, [False]))
+
+        supported_unique_record_positions = order[record_index[adequate_support]]
+
+        if len(supported_unique_record_positions) == 0:
+            raise ValueError('No records passed support filter')
+
+        return order[record_index[adequate_support]]
+
+    @staticmethod
+    def _map_to_unique_index(ids):
+        """map a non-unique vector of ids to a unique vector
+
+        args:
+        -----
+        ids: original ids
+
+        returns:
+        --------
+        new indices, unique_ids
+        """
+        id_set = np.unique(np.ravel(ids))
+        # key gives new values original ids should be mapped to
+        key = np.arange(len(id_set))
+        index = np.digitize(ids.ravel(), id_set, right=True)
+        return key[index].reshape(ids.shape), id_set
+
+    def _generate_sparse_matrix(self, counts, record_index):
+        """
+        generate a sparse matrix of cells x genes given a vector of counts, and a
+         record_index to self that identifies the genes and cells associated with each
+         count
+
+        args:
+        -----
+        counts:
+        record_index:
+
+        returns:
+        --------
+        sparse_counts: a seqc.SparseCounts object
+        """
+        row, cells = self._map_to_unique_index(self.data['cell'][record_index])
+        col, genes = self._map_to_unique_index(self.features[record_index])
+        shape = len(cells), len(genes)
+        data = coo_matrix((counts, (row, col)), shape=shape, dtype=np.int32)
+        sparse_counts = seqc.analyze.SparseCounts(data, cells, genes)
+        return sparse_counts
+
     def to_experiment(self, required_support=0):
         """Generate an Experiment containing read and molecule SparseCount objects
 
@@ -1238,82 +1394,42 @@ class UniqueReadArray:
         if self._experiment is not None:
             return self._experiment
 
-        # get sorted index
+        # get lexsorted index to self (see self._sort() for details)
         if self._sorted is None:
             self._sort()
+        order = self._sorted
 
-        sort_ord = self._sorted
+        # get number of records associated with each molecule
+        molecule_boundaries = self._find_boundaries(order, 'cell', 'rmt', 'features')
+        molecule_counts, ua_molecule_positions = self._get_counts(
+            molecule_boundaries)
 
-        # find boundaries between cell, rmt, and feature
-        all_diff = np.zeros(len(self), dtype=np.bool)
-        all_diff[0] = True  # keep the first one; it's different from void (preceding)
-        all_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)  # diff cell
-        all_diff[1:] |= np.diff(self.data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
-        all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
+        # get indices for the subset of unique molecules with counts > required_support
+        supported_molecule_positions = self._filter_low_support_features(
+            order, ua_molecule_positions, molecule_counts, required_support)
 
-        # get key_index (into original ReadArray) and reads per molecule counts
-        # adding required support here will cut any molecules with < required_support from
-        # downstream steps that rely upon ra_molecule_idx (such as reads per molecule
-        # calculations
-        i = np.concatenate((np.where(all_diff)[0], [len(self)]))
-        rpm_count = np.diff(i)
+        # get reads per gene per cell by diffing on the original sort without considering
+        # the RMT. This has the effect of counting the number of reads per gene, per cell.
+        read_gene_cell_boundaries = self._find_boundaries(order, 'cell', 'features')
+        read_counts, ua_gene_cell_positions = self._get_counts(
+            read_gene_cell_boundaries)
 
-        # filter which molecules we want to keep by thresholding ra_molecule_idx
-        ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support, [False]))]]
-
-        # make sure at least one molecule passes, otherwise raise.
-        if len(ra_molecule_idx) == 0:
-            raise ValueError('No molecules passed support filter')
-
-        # to get reads per cell, I discard the notion of molecular correction by diffing
-        # on only cell and feature from the original sort
-        # diff is working as intended
-        rpc_diff = np.zeros(len(self), dtype=np.bool)
-        rpc_diff[0] = True
-        rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
-        rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
-        i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
-        ra_rpc_idx = sort_ord[i[:-1]]
-        rpc_count = np.ravel(np.diff(i))
-
-        # because reads per molecule gives me a list of all molecules, molecules per
-        # cell can be calculated by re-diffing on the reads per molecule without
-        # considering the rmt. This has the effect of counting unique RMTs per molecule
-        # and per cell.
-        mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
-        mpc_diff[0] = True
-        mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
-        mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
-        i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
-        ra_rpm_idx = ra_molecule_idx[i[:-1]]
-        mpc_count = np.ravel(np.diff(i))
-
-        def map_to_unique_index(vector):
-            """function to map a vector of gene or feature ids to an index"""
-            ids = np.unique(np.ravel(vector))
-            # key gives the new values you wish original ids to be mapped to.
-            key = np.arange(ids.shape[0])
-            index = np.digitize(vector.ravel(), ids, right=True)
-            return key[index].reshape(vector.shape), ids
+        # molecules per cell can be calculated from reads per molecule by re-diffing
+        # reads per molecule, without considering the rmt. This has the effect of
+        # counting the number of RMTs per gene, per cell.
+        molecule_gene_cell_boundaries = self._find_boundaries(
+            ua_molecule_positions, 'cell', 'features')
+        molecule_gene_cell_counts, ua_molecule_gene_cell_positions = self._get_counts(
+            molecule_gene_cell_boundaries)
 
         # generate sparse matrices
+        reads = self._generate_sparse_matrix(read_counts, ua_gene_cell_positions)
 
-        # reads per cell
-        row, cells = map_to_unique_index(self.data['cell'][ra_rpc_idx])
-        col, genes = map_to_unique_index(self.features[ra_rpc_idx])
-        shape = (len(cells), len(genes))
-        rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
-        reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
+        molecules = self._generate_sparse_matrix(molecule_gene_cell_counts,
+                                                 ua_molecule_gene_cell_positions)
 
-        # molecules per cell
-        row, cells = map_to_unique_index(self.data['cell'][ra_rpm_idx])
-        col, genes = map_to_unique_index(self.features[ra_rpm_idx])
-        shape = (len(cells), len(genes))
-        mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
-        molecules_per_cell = seqc.analyze.SparseCounts(mpc, cells, genes)
-
-        self._experiment = seqc.analyze.Experiment(reads_per_cell, molecules_per_cell)
-        return self._experiment
+        # return an experiment object
+        return seqc.analyze.Experiment(reads, molecules)
 
     @staticmethod
     def from_read_array(ra, n_poly_t_required):
@@ -1363,6 +1479,234 @@ class UniqueReadArray:
         f.close()
 
         return cls(data, features, positions)
+
+    # @staticmethod
+    # def _map_to_unique_index(ids):
+    #     """map a non-unique vector of ids to a unique vector
+    #
+    #     args:
+    #     -----
+    #     ids: original ids
+    #
+    #     returns:
+    #     --------
+    #     new indices, ids
+    #     """
+    #     ids = np.unique(np.ravel(ids))
+    #     # key gives new values original ids should be mapped to
+    #     key = np.arange(ids.shape[0])
+    #     index = np.digitize(ids.ravel(), ids, right=True)
+    #     return key[index].reshape(ids.shape), ids
+
+    # @staticmethod
+    # def _map_to_unique_index_manu(ids):
+    #     """map a non-unique vector of ids to a unique vector
+    #
+    #     args:
+    #     -----
+    #     ids: original ids
+    #
+    #     returns:
+    #     --------
+    #     new indices, unique_ids
+    #     """
+    #     id_set = set(ids)
+    #     mapping = pd.Series(np.arange(0, len(id_set)), index=list(id_set))
+    #     return list(mapping[ids]), id_set
+
+    # def to_experiment(self, required_support=0):
+    #     """Generate an Experiment containing read and molecule SparseCount objects
+    #
+    #     args:
+    #     -----
+    #     required_support (default: 2): required number of observations of a molecule for
+    #      the molecule to be included in the counts matrix
+    #
+    #     returns:
+    #     seqc.analyze.Experiment object
+    #
+    #     """
+    #
+    #     # don't reprocess
+    #     if self._experiment is not None:
+    #         return self._experiment
+    #
+    #     # get sorted index
+    #     if self._sorted is None:
+    #         self._sort()
+    #
+    #     sort_ord = self._sorted
+    #
+    #     # find boundaries between cell, rmt, and feature
+    #     all_diff = np.zeros(len(self), dtype=np.bool)
+    #     all_diff[0] = True  # keep the first one; it's different from void (preceding)
+    #     all_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)  # diff cell
+    #     all_diff[1:] |= np.diff(self.data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
+    #     all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
+    #
+    #     # get key_index (into original ReadArray) and reads per molecule counts
+    #     # adding required support here will cut any molecules with < required_support from
+    #     # downstream steps that rely upon ra_molecule_idx (such as reads per molecule
+    #     # calculations
+    #     i = np.concatenate((np.where(all_diff)[0], [len(self)]))
+    #     rpm_count = np.diff(i)
+    #
+    #     # filter which molecules we want to keep by thresholding ra_molecule_idx
+    #     ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support,
+    #                                                  [False]))]]
+    #
+    #     # make sure at least one molecule passes, otherwise raise.
+    #     if len(ra_molecule_idx) == 0:
+    #         raise ValueError('No molecules passed support filter')
+    #
+    #     # to get reads per cell, I discard the notion of molecular correction by diffing
+    #     # on only cell and feature from the original sort
+    #     # diff is working as intended
+    #     rpc_diff = np.zeros(len(self), dtype=np.bool)
+    #     rpc_diff[0] = True
+    #     rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
+    #     rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
+    #     i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
+    #     ra_rpc_idx = sort_ord[i[:-1]]
+    #     rpc_count = np.ravel(np.diff(i))
+    #
+    #     # because reads per molecule gives me a list of all molecules, molecules per
+    #     # cell can be calculated by re-diffing on the reads per molecule without
+    #     # considering the rmt. This has the effect of counting unique RMTs per molecule
+    #     # and per cell.
+    #     mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
+    #     mpc_diff[0] = True
+    #     mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
+    #     mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
+    #     i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
+    #     ra_rpm_idx = ra_molecule_idx[i[:-1]]
+    #     mpc_count = np.ravel(np.diff(i))
+    #
+    #     def map_to_unique_index(vector):
+    #         """function to map a vector of gene or feature ids to an index"""
+    #         ids = np.unique(np.ravel(vector))
+    #         # key gives the new values you wish original ids to be mapped to.
+    #         key = np.arange(ids.shape[0])
+    #         index = np.digitize(vector.ravel(), ids, right=True)
+    #         return key[index].reshape(vector.shape), ids
+    #
+    #     # generate sparse matrices
+    #
+    #     # reads per cell
+    #     row, cells = map_to_unique_index(self.data['cell'][ra_rpc_idx])
+    #     col, genes = map_to_unique_index(self.features[ra_rpc_idx])
+    #     shape = (len(cells), len(genes))
+    #     rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
+    #     reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
+    #
+    #     # molecules per cell
+    #     row, cells = map_to_unique_index(self.data['cell'][ra_rpm_idx])
+    #     col, genes = map_to_unique_index(self.features[ra_rpm_idx])
+    #     shape = (len(cells), len(genes))
+    #     mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
+    #     molecules_per_cell = seqc.analyze.SparseCounts(mpc, cells, genes)
+    #
+    #     self._experiment = seqc.analyze.Experiment(reads_per_cell, molecules_per_cell)
+    #     return self._experiment
+    #
+    # def to_experiment2(self, required_support):
+    #
+    #     # don't reprocess
+    #     if self._experiment is not None:
+    #         return self._experiment
+    #
+    #     # get lexsorted index to self (see self._sort() for details)
+    #     if self._sorted is None:
+    #         self._sort()
+    #     order = self._sorted
+    #
+    #     # get number of records associated with each molecule
+    #     molecule_boundaries = self._find_boundaries(order, 'cell', 'rmt', 'features')
+    #     molecule_counts, ua_molecule_positions = self._get_counts(
+    #         molecule_boundaries)
+    #
+    #     # get indices for the subset of unique molecules with counts > required_support
+    #     supported_molecule_positions = self._filter_low_support_features(
+    #         order, ua_molecule_positions, molecule_counts, required_support)
+    #
+    #     # get reads per gene per cell by diffing on the original sort without considering
+    #     # the RMT. This has the effect of counting the number of reads per gene, per cell.
+    #     read_gene_cell_boundaries = self._find_boundaries(order, 'cell', 'features')
+    #     read_counts, ua_gene_cell_positions = self._get_counts(
+    #         read_gene_cell_boundaries)
+    #
+    #     # molecules per cell can be calculated from reads per molecule by re-diffing
+    #     # reads per molecule, without considering the rmt. This has the effect of
+    #     # counting the number of RMTs per gene, per cell.
+    #     molecule_gene_cell_boundaries = self._find_boundaries(
+    #         ua_molecule_positions, 'cell', 'features')
+    #     molecule_gene_cell_counts, ua_molecule_gene_cell_positions = self._get_counts(
+    #         molecule_gene_cell_boundaries)
+    #
+    #     # generate sparse matrices
+    #     reads = self._generate_sparse_matrix(read_counts, ua_gene_cell_positions,
+    #                                          self._map_to_unique_index)
+    #     molecules = self._generate_sparse_matrix(molecule_gene_cell_counts,
+    #                                              ua_molecule_gene_cell_positions,
+    #                                              self._map_to_unique_index)
+    #
+    #     # return an experiment object
+    #     return seqc.analyze.Experiment(reads, molecules)
+    #
+    # def to_experiment3(self, required_support=0):
+    #     """Generate an Experiment containing read and molecule SparseCount objects
+    #
+    #     args:
+    #     -----
+    #     required_support (default: 2): required number of observations of a molecule for
+    #      the molecule to be included in the counts matrix
+    #
+    #     returns:
+    #     seqc.analyze.Experiment object
+    #
+    #     """
+    #
+    #     # don't reprocess
+    #     if self._experiment is not None:
+    #         return self._experiment
+    #
+    #     # get lexsorted index to self (see self._sort() for details)
+    #     if self._sorted is None:
+    #         self._sort()
+    #     order = self._sorted
+    #
+    #     # get number of records associated with each molecule
+    #     molecule_boundaries = self._find_boundaries(order, 'cell', 'rmt', 'features')
+    #     molecule_counts, ua_molecule_positions = self._get_counts(
+    #         molecule_boundaries)
+    #
+    #     # get indices for the subset of unique molecules with counts > required_support
+    #     supported_molecule_positions = self._filter_low_support_features(
+    #         order, ua_molecule_positions, molecule_counts, required_support)
+    #
+    #     # get reads per gene per cell by diffing on the original sort without considering
+    #     # the RMT. This has the effect of counting the number of reads per gene, per cell.
+    #     read_gene_cell_boundaries = self._find_boundaries(order, 'cell', 'features')
+    #     read_counts, ua_gene_cell_positions = self._get_counts(
+    #         read_gene_cell_boundaries)
+    #
+    #     # molecules per cell can be calculated from reads per molecule by re-diffing
+    #     # reads per molecule, without considering the rmt. This has the effect of
+    #     # counting the number of RMTs per gene, per cell.
+    #     molecule_gene_cell_boundaries = self._find_boundaries(
+    #         ua_molecule_positions, 'cell', 'features')
+    #     molecule_gene_cell_counts, ua_molecule_gene_cell_positions = self._get_counts(
+    #         molecule_gene_cell_boundaries)
+    #
+    #     # generate sparse matrices
+    #     reads = self._generate_sparse_matrix(read_counts, ua_gene_cell_positions,
+    #                                          self._map_to_unique_index2)
+    #     molecules = self._generate_sparse_matrix(molecule_gene_cell_counts,
+    #                                              ua_molecule_gene_cell_positions,
+    #                                              self._map_to_unique_index2)
+    #
+    #     # return an experiment object
+    #     return seqc.analyze.Experiment(reads, molecules)
 
 
 def outer_join(left, right):

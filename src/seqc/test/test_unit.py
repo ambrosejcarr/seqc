@@ -12,9 +12,12 @@ import shutil
 import re
 from nose2.tools import params
 from more_itertools import first
-from itertools import islice
+from itertools import islice, permutations
+from functools import partial
 from numpy.lib.recfunctions import append_fields
+import pandas as pd
 from io import StringIO
+from collections import defaultdict
 
 # todo future test list:
 # tests for downloading s3 inputs: barcodes, index, fastq
@@ -22,6 +25,7 @@ from io import StringIO
 # test that error on remote instance should result in an email
 # test sshutils
 # test cluster_utils
+# test sam reader (multialignments)
 
 # noinspection PyPep8Naming
 class config:
@@ -753,7 +757,7 @@ class CoreFixOutputPathsTest(unittest.TestCase):
             shutil.rmtree(self.target_dir)
 
 
-class CoreCheckIndex(unittest.TestCase):
+class CoreCheckIndexTest(unittest.TestCase):
     def setUp(self):
         self.test_dir = 'test_seqc/'
 
@@ -855,7 +859,7 @@ class ConvertFeaturesConvertGeneCoordinatesTest(unittest.TestCase):
 
     def test_convert_gene_features_empty_input_raises(self):
         self.assertRaises(ValueError, seqc.convert_features.ConvertGeneCoordinates,
-                          {}, {})
+                          {}, {}, {})
 
     def test_convert_gene_features_wrong_input_type_raises(self):
         self.assertRaises(TypeError, seqc.convert_features.ConvertGeneCoordinates,
@@ -1084,7 +1088,7 @@ class ThreeBitInDropTest(unittest.TestCase):
         self.assertEqual(cell, 0)
 
 
-class TestAlignSTAR(unittest.TestCase):
+class AlignSTARTest(unittest.TestCase):
 
     test_dir = 'test_seqc/alignment/%s'
 
@@ -1130,7 +1134,7 @@ class TestAlignSTAR(unittest.TestCase):
             shutil.rmtree('test_seqc/')
 
 
-class TestParallelConstructH5(unittest.TestCase):
+class ParallelConstructH5Test(unittest.TestCase):
 
     test_dir = 'seqc_test/'
     h5_name = test_dir + 'test_seqc.h5'
@@ -1189,7 +1193,7 @@ class TestParallelConstructH5(unittest.TestCase):
 
         # more than 98% of reads should have features.
         n_with_features = sum(1 for f in ra.features if np.any(f))
-        self.assertTrue(n_with_features > len(ra) * .98)
+        self.assertTrue(n_with_features > len(ra) * .95)
 
         # check data types
         self.assertEqual(ra.features.data.dtype, np.int64)
@@ -1204,7 +1208,7 @@ class TestParallelConstructH5(unittest.TestCase):
             shutil.rmtree(cls.test_dir)
 
 
-class TestConvertGeneCoordinates(unittest.TestCase):
+class ConvertGeneCoordinatesTest(unittest.TestCase):
 
     test_dir = 'seqc_test/'
     h5_name = test_dir + 'test_seqc.h5'
@@ -1218,6 +1222,7 @@ class TestConvertGeneCoordinates(unittest.TestCase):
             if not os.path.isfile(config.samfile_pattern % dtype):
                 check_sam(dtype)
             assert os.path.isfile(config.samfile_pattern % dtype)
+
 
     @params(*config.data_types)
     def test_convert_gene_features(self, dtype):
@@ -1236,27 +1241,31 @@ class TestConvertGeneCoordinates(unittest.TestCase):
         both = []
         total = 0
         res = []
+        expected = []
         for records in rd.iter_multialignments():
             if len(records) == 1:
                 if not int(records[0].flag) & 4:
                     strand = records[0].strand
                     chrom = records[0].rname
                     pos = int(records[0].pos)
-                    # forward = cgc.translate('+', chrom, pos)
-                    # reverse = cgc.translate('-', chrom, pos)
-                    # if forward and reverse:
-                    #     both.append([1])
-                    # elif forward:
-                    #     fwd_res.append(forward)
-                    # elif reverse:
-                    #     rev_res.append(reverse)
-                    # total += 1
-                    res.append(cgc.translate(strand, chrom, pos))
+                    try:
+                        res.append(cgc.int2str_id(cgc.translate(strand, chrom, pos)[0]))
+                    except IndexError:
+                        res.append(None)
+                    expected.append(records[0].qname.strip().split(':')[-1])
 
         total = len(res)
-        converted = sum(1 for r in res if r)
-        self.assertTrue(total * .95 < converted, 'Of %d alignments, only %d converted' %
-                        (total, converted))
+        n = 0
+        for r, e in zip(res, expected):
+            if r == e:
+                n += 1
+            elif r:
+                print(r, e)
+        n_correct = sum(1 for r, e in zip(res, expected) if r == e)
+        # print([(r, e) for (r, e) in zip(res[:15], expected[:15])])
+        # print('percentage correct: %f' % (n_correct / len(res)))
+        self.assertTrue(n_correct > 0.95, 'Of %d alignments, only %d converted' %
+                        (total, n_correct))
 
     @classmethod
     def tearDownClass(cls):
@@ -1264,7 +1273,7 @@ class TestConvertGeneCoordinates(unittest.TestCase):
             shutil.rmtree(cls.test_dir)
 
 
-class TestJaggedArray(unittest.TestCase):
+class JaggedArrayTest(unittest.TestCase):
 
     # todo expand testing here.
 
@@ -1286,7 +1295,7 @@ class TestJaggedArray(unittest.TestCase):
         self.assertTrue(jarr._data.shape == (data_size,))
 
 
-class TestUniqueArrayCreation(unittest.TestCase):
+class UniqueArrayCreationTest(unittest.TestCase):
     """
     suspicion -> unique array creation is breaking something in the pipeline;
     could be an earlier method but lets check upstream so we know how each part is
@@ -1353,7 +1362,103 @@ class TestUniqueArrayCreation(unittest.TestCase):
             shutil.rmtree(cls.test_dir)
 
 
-class TestCountingUniqueArray(unittest.TestCase):
+class UniqueArrayToExperimentTest(unittest.TestCase):
+    """Goal: understand if UniqueArray conversion is operating properly"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ua = {}
+        for data_type in config.data_types:
+            h5 = check_h5(data_type)
+            ra = seqc.ReadArray.from_h5(h5)
+            cls.ua[data_type] = ra.to_unique(0)
+
+    @params(*config.data_types)
+    @unittest.skip('commented out old code that was used to test this')
+    def test_order_of_keys_does_not_matter_in_boundary_finding(self, data_type):
+        if self.ua[data_type]._sorted is None:
+            self.ua[data_type]._sort()
+
+        order = self.ua[data_type]._sorted
+
+        input_orders = list(permutations(['cell', 'rmt', 'features'], r=3))
+
+        test_result = self.ua[data_type]._find_boundaries(order, *input_orders[0])
+
+        for argument_ord in input_orders:
+            res = self.ua[data_type]._find_boundaries(order, *argument_ord)
+            self.assertTrue(np.array_equal(test_result, res))
+
+    @params(*config.data_types)
+    @unittest.skip('commented out old code that was used to test this')
+    def test_to_experiment1_and_to_experiment2_give_same_result(self, data_type):
+        """only works so long as old version of map_to_unique_index is used"""
+        e1 = self.ua[data_type].to_experiment(2)
+        e2 = self.ua[data_type].to_experiment2(2)
+        # test that molecule indices are equal
+        self.assertTrue(np.array_equal(e1.molecules.index, e2.molecules.index))
+        self.assertTrue(np.array_equal(e1.molecules.columns, e2.molecules.columns))
+
+        # test that read indices are equal
+        self.assertTrue(np.array_equal(e1.reads.index, e2.reads.index))
+        self.assertTrue(np.array_equal(e1.reads.columns, e2.reads.columns))
+
+        # test that the same number of counts are being detected
+        self.assertEqual(e1.molecules.counts.sum().sum(),
+                         e2.molecules.counts.sum().sum())
+        self.assertEqual(e1.reads.counts.sum().sum(),
+                         e2.reads.counts.sum().sum())
+
+        # test that data is equal
+        self.assertTrue(np.array_equal(e1.molecules.counts.todense(),
+                                       e2.molecules.counts.todense()))
+        self.assertTrue(np.array_equal(e1.reads.counts.todense(),
+                                       e2.reads.counts.todense()))
+
+    @params(*config.data_types)
+    @unittest.skip('commented out old code that was used to test this')
+    def test_map_to_unique_index2_and_manu_methods_give_same_result(self, data_type):
+        """
+        implements updated unique index mapping for both new (e4) and old (e3) methods
+        """
+        ids = np.random.randint(0, 10, (10000,))
+        ac_indices, ac_unique = seqc.arrays.UniqueReadArray._map_to_unique_index2(ids)
+        ms_indices, ms_unique = seqc.arrays.UniqueReadArray._map_to_unique_index_manu(ids)
+
+        self.assertTrue(np.array_equal(ac_indices, ms_indices))
+        self.assertTrue(np.array_equal(ac_unique, ac_unique))
+
+
+    @params(*config.data_types)
+    @unittest.skip('commented out old code that was used to test this')
+    def test_to_experiment_3_and_to_experiment4_give_same_result(self, data_type):
+        """
+        implements updated unique index mapping for both new (e4) and old (e3) methods
+        """
+        e1 = self.ua[data_type].to_experiment3(2)
+        e2 = self.ua[data_type].to_experiment4(2)
+        # test that molecule indices are equal
+        self.assertTrue(np.array_equal(e1.molecules.index, e2.molecules.index))
+        self.assertTrue(np.array_equal(e1.molecules.columns, e2.molecules.columns))
+
+        # test that read indices are equal
+        self.assertTrue(np.array_equal(e1.reads.index, e2.reads.index))
+        self.assertTrue(np.array_equal(e1.reads.columns, e2.reads.columns))
+
+        # test that the same number of counts are being detected
+        self.assertEqual(e1.molecules.counts.sum().sum(),
+                         e2.molecules.counts.sum().sum())
+        self.assertEqual(e1.reads.counts.sum().sum(),
+                         e2.reads.counts.sum().sum())
+
+        # test that data is equal
+        self.assertTrue(np.array_equal(e1.molecules.counts.todense(),
+                                       e2.molecules.counts.todense()))
+        self.assertTrue(np.array_equal(e1.reads.counts.todense(),
+                                       e2.reads.counts.todense()))
+
+
+class CountingUniqueArrayTest(unittest.TestCase):
 
     def setUp(self):
 
@@ -1430,7 +1535,7 @@ class TestCountingUniqueArray(unittest.TestCase):
         self.assertTrue(np.all(mdata == 3))
 
 
-class TestExperimentCreation(unittest.TestCase):
+class ExperimentCreationTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -1461,7 +1566,7 @@ class TestExperimentCreation(unittest.TestCase):
         self.assertEqual(exp.molecules.columns.dtype, np.int64)
 
 
-class TestThreeBitGeneral(unittest.TestCase):
+class ThreeBitGeneralTest(unittest.TestCase):
     def test_3bit_mars_seq(self):
         self.assertRaises(NotImplementedError, seqc.encodings.ThreeBit.default_processors,
                           'mars-seq')
@@ -1532,12 +1637,12 @@ class TestThreeBitGeneral(unittest.TestCase):
         self.assertEqual(result, expected_result)
 
 
-class TestIndexGeneration(unittest.TestCase):
+class IndexGenerationTest(unittest.TestCase):
     # todo import these tests from scseq/seqdb
     pass
 
 
-class TestResolveAlignments(unittest.TestCase):
+class ResolveAlignmentsTest(unittest.TestCase):
     """this may need more tests for more sophisticated input data."""
     # todo rewrite for standard locations
 
@@ -1564,7 +1669,7 @@ class TestResolveAlignments(unittest.TestCase):
         self.assertTrue(np.array_equal(vals, np.array([2, 4])))
 
 
-class TestGeneTable(unittest.TestCase):
+class GeneTableTest(unittest.TestCase):
     def setUp(self):
         self.genome_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/genome/'
 
@@ -1578,7 +1683,7 @@ class TestGeneTable(unittest.TestCase):
 
 
 # todo reimplement these tests
-class TestSMARTSeqSamToCount(unittest.TestCase):
+class SMARTSeqSamToCountTest(unittest.TestCase):
     def setUp(self):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
 
@@ -1613,7 +1718,7 @@ class TestSMARTSeqSamToCount(unittest.TestCase):
         # print(len(gene_index))
 
 
-class TestGenerateSRA(unittest.TestCase):
+class GenerateSRATest(unittest.TestCase):
     def setUp(self):
         self.data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
         self.sra_dir = self.data_dir + '.test_dump_sra/'
@@ -1673,7 +1778,7 @@ class TestGenerateSRA(unittest.TestCase):
         seqc.sra.SRAGenerator.fastq_load(file_directory, run_xml, exp_xml, output_path)
 
 
-class TestGroupForErrorCorrection(unittest.TestCase):
+class GroupForErrorCorrectionTest(unittest.TestCase):
 
     def setUp(self):
         # create a dummy array with 10 records
@@ -1755,7 +1860,7 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                     pass  # not aligned
 
 
-class TestConvertSparseGeneIDs(unittest.TestCase):
+class ConvertSparseGeneIDsTest(unittest.TestCase):
 
     test_dir = 'test_seqc/'
 
@@ -1779,7 +1884,6 @@ class TestConvertSparseGeneIDs(unittest.TestCase):
         exp.convert_gene_ids(gmap)
         self.assertIsInstance(exp.molecules.columns[0], str)
         self.assertIsInstance(exp.molecules.columns[0], str)
-        print(exp.molecules.columns)
 
         # make sure the result is pickleable
         exp.to_npz(self.test_dir + 'test_seqc.npz')
@@ -1791,7 +1895,7 @@ class TestConvertSparseGeneIDs(unittest.TestCase):
 
 
 @unittest.skip('Not implemented')
-class TestDownloadInputFiles(unittest.TestCase):
+class DownloadInputFilesTest(unittest.TestCase):
 
     test_dir = 'test_seqc/'
 
@@ -1947,7 +2051,7 @@ class TestDownloadInputFiles(unittest.TestCase):
 
 
 @unittest.skip('Not implemented')
-class TestDownloadBaseSpace(unittest.TestCase):
+class DownloadBaseSpaceTest(unittest.TestCase):
     """unittests to make sure BaseSpace is correctly functioning"""
 
     def test_download_base_space(self):
@@ -1955,7 +2059,7 @@ class TestDownloadBaseSpace(unittest.TestCase):
 
 
 @unittest.skip('Not implemented')
-class TestSSHTools(unittest.TestCase):
+class SSHToolsTest(unittest.TestCase):
 
     def test_wrong_ssh_key_raises(self):
         # is it possible to test this without creating an instance? Can one ssh into one's
@@ -1964,7 +2068,7 @@ class TestSSHTools(unittest.TestCase):
         self.assertRaises(seqc.ssh_utils.SSHServer())
 
 
-class TestExperiment(unittest.TestCase):
+class ExperimentTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -1982,6 +2086,237 @@ class TestExperiment(unittest.TestCase):
         e = seqc.Experiment.from_npz(config.experiment_pattern % data_type)
         new = e.equalize_cells()
         self.assertTrue(np.array_equal(new.molecules.index, new.reads.index))
+
+
+class DenseCountsTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for dtype in config.data_types:
+            check_experiment(dtype)
+
+    @params(*config.data_types)
+    def test_downsample(self, data_type):
+        e = seqc.Experiment.from_npz(config.experiment_pattern % data_type)
+        dc = e.molecules.to_dense()  # no need for threshold, don't have many counts
+        res = dc.downsample()
+
+
+class SparseCountsTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = {}
+        for data_type in config.data_types:
+            check_sam(data_type)
+            check_experiment(data_type)
+
+            # set poly-t requirements
+            if data_type == 'drop_seq':
+                n_poly_t_required = 0
+            else:
+                n_poly_t_required = 3
+
+            # set required_support
+            required_support = 0
+
+            # molecules per gene per cell = molecules[cell][gene] = set(rmt)
+            molecule_rmts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+
+            # reads per gene per cell = molecules[cell][gene] = #(int)
+            read_counts = defaultdict(lambda: defaultdict(int))
+
+            # process the samfile
+            for r in seqc.sam.Reader(config.samfile_pattern % data_type):
+
+                if r.optional_fields['NH'] != 1:
+                    continue
+                if r.is_unmapped:
+                    continue
+                if r.n_poly_t < n_poly_t_required:
+                    continue
+
+                gene = r.name.split(':')[-1]
+                molecule_rmts[r.cell][gene][r.rmt] += 1
+                read_counts[r.cell][gene] += 1
+
+            # post-process the molecule counts
+            molecule_counts = defaultdict(lambda: defaultdict(int))
+            for cell in molecule_rmts.keys():
+                for gene in molecule_rmts[cell].keys():
+                    for rmt, count in molecule_rmts[cell][gene].items():
+                        if count > required_support:  # filter based on required support
+                            molecule_counts[cell][gene] += 1
+
+            # compare to the count matrix, generated from the samfile
+            h5 = seqc.sam.to_h5(config.samfile_pattern % data_type,
+                                config.h5_name_pattern % data_type,
+                                6, int(1e7), config.gtf)
+            ra = seqc.ReadArray.from_h5(h5)
+
+            # make sure the read array is the right size
+            n_records = len(seqc.sam.Reader(config.samfile_pattern % data_type))
+            assert len(ra) > n_records * 0.95, '%d != %d' % (len(ra), n_records)
+
+            # todo filters make a big difference
+            ua = ra.to_unique(n_poly_t_required)
+
+            # make sure the UniqueArray is the right size
+            n_unique = 0
+            for r in seqc.sam.Reader(config.samfile_pattern % data_type):
+                if r.optional_fields['NH'] == 1:
+                    n_unique += 1
+            assert len(ua) > n_unique * 0.95, '%d != %d' % (len(ua), n_unique)
+
+            e = ua.to_experiment(required_support=required_support)
+
+            # convert sparse counts to dataframe
+            id_map = seqc.convert_features.ConvertGeneCoordinates.from_pickle(
+                config.gene_map_pattern % data_type)
+            e.molecules.convert_gene_ids(id_map)
+            mol_df = e.molecules.to_dense().df
+            e.reads.convert_gene_ids(id_map)
+            read_df = e.reads.to_dense().df
+
+            # convert dict of dicts to df
+            test_mol_df = pd.DataFrame(molecule_counts).T
+            test_read_df = pd.DataFrame(read_counts).T
+
+            if len(test_mol_df.columns) != len(set(test_mol_df.columns)):
+                print('%s: duplicate molecule features detected' % data_type)
+            if len(test_read_df.columns) != len(set(test_read_df.columns)):
+                print('%s: duplicate read features detected' % data_type)
+
+            # remove duplicates
+            test_mol_df = test_mol_df.T
+            test_mol_df = test_mol_df.groupby(test_mol_df.index).sum().T
+
+            test_read_df = test_read_df.T
+            test_read_df = test_read_df.groupby(test_read_df.index).sum().T
+
+            cls.data[data_type] = {
+                'pipeline': {
+                    'molecules': test_mol_df,
+                    'reads': test_read_df
+                }, 'sam': {
+                    'molecules': mol_df,
+                    'reads': read_df
+                }
+            }
+
+    @params(*config.data_types)
+    def test_plot_fraction_mitochondrial(self, data_type):
+        self.e = seqc.Experiment.from_npz(config.experiment_pattern % data_type)
+        self.assertRaises(TypeError, self.e.molecules.plot_fraction_mitochondrial,
+                          molecules=True)
+
+        # convert ids
+        self.e.convert_gene_ids(config.gene_map_pattern % data_type)
+        self.assertRaises(ValueError, self.e.molecules.plot_fraction_mitochondrial,
+                          molecules=True)
+
+        # todo add some mitochondrial RNA to the data somehow; otherwise cannot test.
+        # these tests only test type-checking; very weak.
+
+    @params(*config.data_types)
+    def test_identifies_same_set_of_cells_for_reads(self, data_type):
+        pipeline_cells = self.data[data_type]['pipeline']['reads'].index
+        sam_cells = self.data[data_type]['sam']['reads'].index
+        difference = set(pipeline_cells).symmetric_difference(sam_cells)
+        self.assertEqual(len(difference), 0,
+                         '%s: the following cells are found in either the processed '
+                         'pipeline data or the sam file data but not both: %s'
+                         % (data_type, repr(difference)))
+
+    @params(*config.data_types)
+    def test_identifies_same_set_of_cells_for_molecules(self, data_type):
+        pipeline_cells = self.data[data_type]['pipeline']['molecules'].index
+        sam_cells = self.data[data_type]['sam']['molecules'].index
+        difference = set(pipeline_cells).symmetric_difference(sam_cells)
+        self.assertEqual(len(difference), 0,
+                         '%s: the following cells are found in either the processed '
+                         'pipeline data or the sam file data but not both: %s'
+                         % (data_type, repr(difference)))
+
+    @params(*config.data_types)
+    def test_identifies_same_set_of_genes_for_reads(self, data_type):
+        pipeline_genes = self.data[data_type]['pipeline']['reads'].columns
+        sam_genes = self.data[data_type]['sam']['reads'].columns
+        difference = set(pipeline_genes).symmetric_difference(sam_genes)
+        self.assertEqual(len(difference), 0,
+                         '%s: the following genes are found in either the processed '
+                         'pipeline data or the sam file data but not both: %s'
+                         % (data_type, repr(difference)))
+
+    @params(*config.data_types)
+    def test_identifies_same_set_of_genes_for_molecules(self, data_type):
+        pipeline_genes = self.data[data_type]['pipeline']['molecules'].columns
+        sam_genes = self.data[data_type]['sam']['molecules'].columns
+        difference = set(pipeline_genes).symmetric_difference(sam_genes)
+        self.assertEqual(len(difference), 0,
+                         '%s: the following genes are found in either the processed '
+                         'pipeline data or the sam file data but not both: %s'
+                         % (data_type, repr(difference)))
+
+    @params(*config.data_types)
+    def test_molecule_matrices_are_same_shape(self, data_type):
+        pipeline_shape = self.data[data_type]['pipeline']['molecules'].shape
+        sam_shape = self.data[data_type]['sam']['molecules'].shape
+        self.assertEqual(pipeline_shape, sam_shape)
+
+    @params(*config.data_types)
+    def test_read_matrices_are_same_shape(self, data_type):
+        pipeline_shape = self.data[data_type]['pipeline']['reads'].shape
+        sam_shape = self.data[data_type]['sam']['reads'].shape
+        self.assertEqual(pipeline_shape, sam_shape)
+
+    @params(*config.data_types)
+    def test_read_matrices_have_same_total_counts(self, data_type):
+        pipeline_counts = self.data[data_type]['pipeline']['reads'].sum().sum()
+        sam_counts = self.data[data_type]['sam']['reads'].sum().sum()
+        self.assertEqual(pipeline_counts, sam_counts)
+
+    @params(*config.data_types)
+    def test_molecule_matrices_have_same_total_counts(self, data_type):
+        pipeline_counts = self.data[data_type]['pipeline']['molecules'].sum().sum()
+        sam_counts = self.data[data_type]['sam']['molecules'].sum().sum()
+        self.assertEqual(pipeline_counts, sam_counts)
+
+
+class SamReaderTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for data_type in config.data_types:
+            check_sam(data_type)
+
+    # todo weak test; only tests running without errors
+    @params(*config.data_types)
+    def test_run(self, data_type):
+        reader = seqc.sam.Reader(config.samfile_pattern % data_type)
+        first_record = next(iter(reader))
+
+        # check all the fields
+        self.assertIsInstance(first_record.optional_fields['NH'], int)
+        self.assertIsInstance(first_record.rmt, int)
+        self.assertIsInstance(first_record.cell, int)
+        self.assertIsInstance(first_record.n_poly_t, int)
+        self.assertIsInstance(first_record.valid_cell, int)
+        self.assertIsInstance(first_record.dust_score, int)
+        self.assertIsInstance(first_record.fwd_quality, int)
+        self.assertIsInstance(first_record.qname, str)
+        self.assertIsInstance(first_record.flag, str)
+        self.assertIsInstance(first_record.rname, str)
+        self.assertIsInstance(first_record.pos, str)
+        self.assertIsInstance(first_record.mapq, str)
+        self.assertIsInstance(first_record.cigar, str)
+        self.assertIsInstance(first_record.rnext, str)
+        self.assertIsInstance(first_record.pnext, str)
+        self.assertIsInstance(first_record.tlen, str)
+        self.assertIsInstance(first_record.seq, str)
+        self.assertIsInstance(first_record.qual, str)
+        self.assertTrue(first_record.is_mapped)
+        self.assertFalse(first_record.is_unmapped)
 
 
 if __name__ == '__main__':

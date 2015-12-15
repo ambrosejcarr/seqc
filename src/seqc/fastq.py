@@ -473,9 +473,6 @@ class GenerateFastq:
     # define some general constants
     _alphabet = ['A', 'C', 'G', 'T']
 
-    def __init__(self):
-        pass
-
     @classmethod
     def _forward_in_drop(cls, n, barcodes_):
         barcodes_ = seqc.barcodes.CellBarcodes.from_pickle(barcodes_)
@@ -513,7 +510,7 @@ class GenerateFastq:
         return forward_fastq
 
     @staticmethod
-    def _reverse(n: int, read_length: int, fasta: str, gtf: str, tag_type='gene_id'):
+    def _reverse(n: int, read_length: int, fasta: str, gtf: str, tag_type='gene_name'):
 
         # read gtf
         reader = seqc.gtf.Reader(gtf)
@@ -522,7 +519,7 @@ class GenerateFastq:
             end = int(r.end) - read_length
             start = int(r.start)
             if end > start:
-                intervals.append((r.attribute[tag_type], start, end, r.strand))
+                intervals.append((r.attribute[tag_type].upper(), start, end, r.strand))
 
         # pick intervals
         exon_selections = np.random.randint(0, len(intervals), (n,))
@@ -557,16 +554,18 @@ class GenerateFastq:
 
     @staticmethod
     def _reverse_three_prime(n: int, read_length: int, fasta: str, gtf: str,
-                             tag_type='gene_id', fragment_length=1000):
+                             tag_type='gene_name', fragment_length=1000):
 
         # read gtf
         reader = seqc.gtf.Reader(gtf)
         intervals = []
         for r in reader.iter_genes_final_nbases(fragment_length):
             for iv in r.intervals:
-                start, end = int(iv[0]), int(iv[1])
-            if (end - read_length) > start:
-                intervals.append((r.attribute[tag_type], start, end, r.strand))
+                start, end = map(int, iv)
+                end -= read_length
+            # note that this means I never test small intervals
+            if end > start:
+                intervals.append((r.attribute[tag_type].upper(), start, end, r.strand))
 
         # pick intervals
         exon_selections = np.random.randint(0, len(intervals), (n,))
@@ -600,7 +599,7 @@ class GenerateFastq:
         return reverse_fastq
 
     @classmethod
-    def in_drop(cls, n, prefix, fasta, gtf, barcodes, tag_type='gene_id', replicates=3,
+    def in_drop(cls, n, prefix, fasta, gtf, barcodes, tag_type='gene_name', replicates=3,
                 *args, **kwargs):
 
         if not replicates >= 0:
@@ -624,7 +623,7 @@ class GenerateFastq:
         return prefix + '_r1.fastq', prefix + '_r2.fastq'
 
     @classmethod
-    def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_id', replicates=3, *args,
+    def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_name', replicates=3, *args,
                  **kwargs):
 
         if not replicates >= 0:

@@ -305,7 +305,7 @@ def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: st
 class GenerateSam:
 
     @staticmethod
-    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_id', replicates=3,
+    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_name', replicates=3,
                 n_threads=7, *args, **kwargs):
         """generate an in-drop .sam file"""
 
@@ -341,7 +341,7 @@ class GenerateSam:
         return sam
 
     @staticmethod
-    def drop_seq(n, filename, fasta, gtf, index, tag_type='gene_id', replicates=3,
+    def drop_seq(n, filename, fasta, gtf, index, tag_type='gene_name', replicates=3,
                  n_threads=7, *args, **kwargs):
         """generate a drop-seq .sam file"""
 
@@ -555,8 +555,11 @@ def to_count_multiple_files(sam_files, gtf_file):
 class SamRecord:
     """simple record object to use when iterating over sam files"""
 
-    __slots__  = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
-                  'tlen', 'seq', 'qual', 'optional_fields']
+    __slots__ = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
+                 'tlen', 'seq', 'qual', '_optional_fields', '_parsed_name_field']
+
+    NameField = namedtuple('NameField', ['cell', 'rmt', 'n_poly_t', 'valid_cell',
+                                         'dust_score', 'fwd_quality', 'name'])
 
     def __init__(self, qname, flag, rname, pos, mapq, cigar, rnext, pnext, tlen, seq,
                  qual, *optional_fields):
@@ -571,7 +574,86 @@ class SamRecord:
         self.tlen = tlen
         self.seq = seq
         self.qual = qual
-        self.optional_fields = optional_fields
+        self._optional_fields = optional_fields
+        self._parsed_name_field = None
+
+    def _parse_name_field(self):
+        fields, name = self.qname.split(';')
+        processed_fields = list(map(int, fields.split(':')))
+        processed_fields.append(name)
+        self._parsed_name_field = self.NameField(*processed_fields)
+
+    @property
+    def rmt(self):
+        try:
+            return self._parsed_name_field.rmt
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.rmt
+
+    @property
+    def cell(self):
+        try:
+            return self._parsed_name_field.cell
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.cell
+
+    @property
+    def n_poly_t(self):
+        try:
+            return self._parsed_name_field.n_poly_t
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.n_poly_t
+
+    @property
+    def valid_cell(self):
+        try:
+            return self._parsed_name_field.valid_cell
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.valid_cell
+
+    @property
+    def dust_score(self):
+        try:
+            return self._parsed_name_field.dust_score
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.dust_score
+
+    @property
+    def fwd_quality(self):
+        try:
+            return self._parsed_name_field.fwd_quality
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.fwd_quality
+
+    @property
+    def name(self):
+        try:
+            return self._parsed_name_field.name
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.name
+
+    @property
+    def optional_fields(self):
+        flags_ = {}
+        for f in self._optional_fields:
+            k, _, v = f.split(':')
+            flags_[k] = int(v)
+        return flags_
+
+    @property
+    def is_mapped(self):
+        return False if (int(self.flag) & 4) else True
+
+    @property
+    def is_unmapped(self):
+        return not self.is_mapped
 
     def __repr__(self):
         return ('<SamRecord:' + ' %s' * 12 + '>') % \

@@ -65,8 +65,13 @@ def _plot_fraction_mitochondrial_rna(cell_sums, mt_sums, fig=None, ax=None,
     xlabel = 'Library Size %s' % ctype
     ylabel = 'Mitochondrial fraction size'
     title = 'Mitochondrial fraction separates dying cells'
-    seqc.plot.scatter_density(cell_sums, mt_sums / cell_sums, fig=fig, ax=ax,
+
+    mt_fraction = mt_sums / cell_sums
+    mt_fraction[np.isinf(mt_fraction)] = 1
+    mt_fraction[np.isnan(mt_fraction)] = 1
+    seqc.plot.scatter_density(cell_sums, mt_fraction, fig=fig, ax=ax,
                               xlabel=xlabel, ylabel=ylabel, title=title)
+    return fig, ax
 
 
 def _discard_high_value_outliers():
@@ -278,7 +283,7 @@ class SparseCounts:
 
         return SparseCounts(sub_counts, index, columns)
 
-    def to_dense(self, threshold=None, fgtf=None, scid_map=None):
+    def to_dense(self, threshold=None):
         """
         return a DenseCounts object with rows = cells and columns = scids or genes if
         convert_ids is True. for now, use threshold_cells to cut off "non-cell" barcodes
@@ -291,10 +296,6 @@ class SparseCounts:
             subset = self.threshold_cells(threshold)
         else:
             subset = self
-
-        # convert ids
-        if any([fgtf, scid_map]):
-            subset.convert_ids(fgtf=fgtf, scid_map=scid_map)
 
         # return a DenseCounts object
         dense_counts = np.asarray(subset.counts.todense())
@@ -397,12 +398,19 @@ class SparseCounts:
 
     def plot_fraction_mitochondrial(
             self, fig=None, ax=None, molecules=False, reads=False):
+
+        # check that the ids are strings
+        if not isinstance(self.columns[0], str):
+            raise TypeError('Please convert gene ids to string identifiers using '
+                            'self.convert_gene_ids() before calling this function.')
         cell_sums = self.counts.sum(axis=1)
         csc = self.counts.tocsc()
         mt_genes = np.array([True if g.startswith('MT-') else False
                              for g in self.columns],
                             dtype=np.bool)
         mt_sums = csc[:, mt_genes].tocsr().sum(axis=1)
+        if np.all(mt_sums == 0):
+            raise ValueError('No mitochondrial molecules detected, cannot plot.')
 
         f, ax = _plot_fraction_mitochondrial_rna(
             cell_sums, mt_sums, fig=fig, ax=ax, molecules=molecules, reads=reads)
@@ -557,7 +565,7 @@ class DenseCounts:
         npz_data = np.load(npz_file)
         return cls(npz_data['data'], index=npz_data['index'], columns=npz_data['columns'])
 
-    def convert_ids(self, fgtf=None, scid_map=None):
+    def convert_gene_ids(self, converter):
         """
         Convert scids to gene identifiers either by parsing the gtf file (slow) or by
         directly mapping scids to genes (fast). In the latter case, the gtf_map must be
@@ -566,39 +574,30 @@ class DenseCounts:
         see seqc.gtf.Reader.scid_to_gene(gtf, save=<output_file>) to save this gtf_map for
         repeat-use.
         """
-        raise NotImplementedError  # below code is from sparse counts.
-        if not any([fgtf, scid_map]):
-            raise ValueError('one of gtf or scid_map must be passed for conversion to'
-                             'occur')
+        ids = [converter.int2str_id(id_) for id_ in self.df.columns]
+        self.df.columns = ids
 
-        # load the gene map (gmap)
-        if not scid_map:
-            r = gtf.Reader(fgtf)
-            gmap = r.scid_to_gene()
-        elif isinstance(scid_map, str):
-            # try to load pickle
-            if not os.path.isfile(scid_map):
-                raise FileNotFoundError('scid_map not found: %s' % scid_map)
-            with open(scid_map, 'rb') as f:
-                gmap = pickle.load(f)
-                if not isinstance(gmap, Mapping):
-                    raise TypeError('scid_map file object did not contain a '
-                                    'dictionary')
-        elif isinstance(scid_map, Mapping):
-            gmap = scid_map
-        else:
-            raise TypeError('scid_map must be the location of the scid_map pickle file '
-                            'or the loaded dictionary object, not type: %s' %
-                            type(scid_map))
+    def downsample(self, percentile: int=0):
+        """downsample to equalize observations per row (cell)
 
-        # convert ids
-        new_ids = np.zeros(len(self._columns), dtype=object)
-        for i, val in enumerate(self._columns):
-            try:
-                new_ids[i] = gmap[val]
-            except KeyError:
-                new_ids[i] = None
-        self._columns = np.array(new_ids)
+        args:
+        -----
+        percentile: which percentile to downsample to (default 0). In some cases, it may
+         be advantageous to set this higher (10-25) in order to reduce data loss from
+         extremely low-value cells
+
+        returns:
+        seqc.analyze.DenseCounts object with downsampled observations
+        """
+        cell_sums = self.df.sum(axis=1)
+        threshold = np.percentile(cell_sums, percentile)
+        multinomial_probabilities = self.df.div(cell_sums, axis=0)
+        downsampled = []
+        for gene_probability_vector in multinomial_probabilities.values:
+            downsampled.append(np.random.multinomial(threshold, gene_probability_vector))
+        downsampled = pd.DataFrame(np.vstack(downsampled), index=self.df.index,
+                                   columns=self.df.columns)
+        return DenseCounts(downsampled)
 
 
 class Experiment:
@@ -692,6 +691,7 @@ class Experiment:
         molecules = SparseCounts(data, index, columns)
         return cls(reads, molecules)
 
+    # todo add support for merging duplicate ids
     def convert_gene_ids(self, converter: str) -> None:
         """
         convert integer gene identifiers into string identifiers for downstream analysis
