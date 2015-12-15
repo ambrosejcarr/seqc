@@ -101,6 +101,26 @@ def _iterate_chunk(samfile, n=int(1e9)):
             else:
                 break
 
+
+def _iterate_chunk_complete_records(samfile, n=int(1e9)):
+    """
+    open a sam file, yield chunks of size n bytes; default ~ 1GB.
+
+    Guarantees that complete records will be generated
+    """
+    with open(samfile, 'rb') as f:
+        partial_record = b''  # the first record gets no data from the last iteration
+        while True:
+            d = partial_record + f.read(n)
+            try:
+                final_complete_record_end = d.rindex(b'\n') + 1
+            except ValueError: # exhausted samfile yields chunk lacking newline; break
+                break
+            partial_record = d[final_complete_record_end:]
+            if d:  # may be unnecessary
+                yield d[:final_complete_record_end]
+
+
 def _average_quality(quality_string):
     """calculate the average quality of a sequencing read from ASCII quality string"""
     n_bases = len(quality_string)
@@ -165,7 +185,10 @@ def _process_multialignment(alignments, feature_converter):
 def _process_chunk(chunk, feature_converter):
     """process the samfile chunk"""
     # decode the data, discarding the first and last record which may be incomplete
-    records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')[1:-1]]
+    # records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')[1:-1]]
+
+    # todo this is for use with complete records
+    records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')]
 
     # discard any headers
     while records[0][0].startswith('@'):
@@ -296,7 +319,7 @@ def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: st
     process_kwargs = dict(feature_converter=fc)
     write_kwargs = dict(expectedrows=expectedrows)
     seqc.parallel.process_parallel(
-        n_processes, h5_name, _iterate_chunk, _process_chunk, ReadArrayH5Writer,
+        n_processes, h5_name, _iterate_chunk_complete_records, _process_chunk, ReadArrayH5Writer,
         read_kwargs=read_kwargs, process_kwargs=process_kwargs, write_kwargs=write_kwargs)
 
     return h5_name
