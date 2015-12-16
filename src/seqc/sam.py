@@ -181,13 +181,13 @@ def _process_multialignment(alignments, feature_converter):
 
     return rec, features, positions
 
-
+# todo this is missing the first or last read
 def _process_chunk(chunk, feature_converter):
     """process the samfile chunk"""
     # decode the data, discarding the first and last record which may be incomplete
     # records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')[1:-1]]
 
-    # todo this is for use with complete records
+    # decode the data
     records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')]
 
     # discard any headers
@@ -224,8 +224,6 @@ def _process_chunk(chunk, feature_converter):
                 print(records[e])
 
         multialignment = records[s:e]
-        s = e
-        e = s + 1
 
         # process the multialignment
         rec, feat, pos = _process_multialignment(multialignment, feature_converter)
@@ -243,9 +241,32 @@ def _process_chunk(chunk, feature_converter):
         else:
             index[i, :] = (j, j)
 
+        # increment indices
         i += 1
+        s = e
+        e = s + 1
 
-    # trim all of the arrays
+    # process the last record.
+    multialignment = records[s:]  # note that s should always be unique if e > len.
+    rec, feat, pos = _process_multialignment(multialignment, feature_converter)
+
+    # fill data array
+    data[i] = rec
+
+    # fill the JaggedArrays
+    if feat:
+        n_features = len(feat)
+        features[j:j + n_features] = feat
+        positions[j:j + n_features] = pos
+        index[i, :] = (j, j + n_features)
+        j += n_features
+    else:
+        index[i, :] = (j, j)
+    i += 1
+    s = e
+    e = s + 1
+
+    # trim the arrays
     data = data[:i]
     index = index[:i]
     features = features[:j]
@@ -677,6 +698,14 @@ class SamRecord:
     @property
     def is_unmapped(self):
         return not self.is_mapped
+
+    @property
+    def is_multimapped(self):
+        return True if self.optional_fields['NH'] == 1 else False
+
+    @property
+    def is_uniquely_mapped(self):
+        return not self.is_multimapped
 
     def __repr__(self):
         return ('<SamRecord:' + ' %s' * 12 + '>') % \

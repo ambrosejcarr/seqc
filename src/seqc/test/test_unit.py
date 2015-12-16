@@ -357,8 +357,8 @@ class FastqMergeTest(unittest.TestCase):
         if not os.path.isdir(cls.test_dir):
             os.makedirs(cls.test_dir)
 
+    # @unittest.skip('~6s; multiprocessing has some basic time-lag built in')
     @params(*config.data_types)
-    @unittest.skip('~6s; multiprocessing has some basic time-lag built in')
     def test_merge_fastq(self, data_type):
         # merge fastq should take lists of files and should work on both single and
         # multiple length lists
@@ -389,16 +389,15 @@ class FastqMergeTest(unittest.TestCase):
         # read the merged file and run some additional tests:
         with open(merged) as f:
             data = f.readlines()
+        merged_size = len(data)
 
         # get the size of the original file:
         with open(forward[0]) as f:
-            fsize = 2 * sum(1 for _ in f)
+            original_size = 2 * sum(1 for _ in f)
 
-        # file object should have approximately same number of lines as input files
-        # this number should be within 2 * 4 * n_million, where n_million is the number of
-        # lines in the file
-        margin = 2 * 4 * int(len(data) / (1e6 * 4))
-        self.assertTrue(len(data) - margin <= len(data) <= fsize)
+        # no data is lost, original and merged files should have same amount of data
+        self.assertEqual(original_size, merged_size)
+
 
         # merged file should be a valid fastq object (final character == '\n')
         self.assertEqual(data[-1][-1], '\n')
@@ -1149,8 +1148,6 @@ class ParallelConstructH5Test(unittest.TestCase):
                 check_sam(dtype)
             assert os.path.isfile(config.samfile_pattern % dtype)
 
-
-    # @unittest.skip('slow; parallel has baked in waiting time')
     @params(*config.data_types)
     def test_parallel_construct_h5(self, dtype):
         chunk_size = int(1e7)
@@ -1168,17 +1165,19 @@ class ParallelConstructH5Test(unittest.TestCase):
         # figure out the number of records in the input samfile
         fastq_reader = seqc.fastq.Reader(config.merged_pattern % dtype)
         n_records = len(fastq_reader)
-        n_chunks = np.ceil(os.path.getsize(samfile) / chunk_size)
+
+        sam_reader = seqc.sam.Reader(samfile)
+        n_multialignments = sum(1 for ma in sam_reader.iter_multialignments())
+        n_alignments = len(sam_reader)
+
+        # should have equal numbers of multialignments, records, and readarray records
+        self.assertEqual(n_records, n_multialignments)
+        self.assertEqual(n_multialignments, len(ra))
+
+        # n_chunks = np.ceil(os.path.getsize(samfile) / chunk_size)
 
         # get expected minimum number of alignments if no reads multi-mapped
-        min_alignments = n_records - (n_chunks * 2) - 2
-
-        # check that at least the minimum number of reads are present
-        self.assertGreaterEqual(len(ra), min_alignments)
-
-        # check that at least the minimum number of reads align
-        n_aligned = sum(ra.data['is_aligned'])
-        # self.assertGreaterEqual(n_aligned, min_alignments)
+        # min_alignments = n_records - (n_chunks * 2) - 2
 
         # all reads should have a valid cell
         self.assertTrue(np.all(ra.data['valid_cell']))
@@ -1191,9 +1190,9 @@ class ParallelConstructH5Test(unittest.TestCase):
         self.assertTrue(np.all(ra.data['rev_quality'] == 40))
         self.assertTrue(np.all(ra.data['fwd_quality'] == 40))
 
-        # more than 98% of reads should have features.
+        # todo all reads that are not ambiguous should have features; how many fail this?
         n_with_features = sum(1 for f in ra.features if np.any(f))
-        self.assertTrue(n_with_features > len(ra) * .95)
+        self.assertTrue(n_with_features > len(ra) * .98)
 
         # check data types
         self.assertEqual(ra.features.data.dtype, np.int64)
@@ -1362,6 +1361,7 @@ class UniqueArrayCreationTest(unittest.TestCase):
             shutil.rmtree(cls.test_dir)
 
 
+# todo these tests need to be expanded
 class UniqueArrayToExperimentTest(unittest.TestCase):
     """Goal: understand if UniqueArray conversion is operating properly"""
 
@@ -1372,90 +1372,436 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
             h5 = check_h5(data_type)
             ra = seqc.ReadArray.from_h5(h5)
             cls.ua[data_type] = ra.to_unique(0)
+            cls.ua[data_type]._sort()
 
     @params(*config.data_types)
-    @unittest.skip('commented out old code that was used to test this')
     def test_order_of_keys_does_not_matter_in_boundary_finding(self, data_type):
-        if self.ua[data_type]._sorted is None:
-            self.ua[data_type]._sort()
 
         order = self.ua[data_type]._sorted
-
         input_orders = list(permutations(['cell', 'rmt', 'features'], r=3))
-
         test_result = self.ua[data_type]._find_boundaries(order, *input_orders[0])
-
         for argument_ord in input_orders:
             res = self.ua[data_type]._find_boundaries(order, *argument_ord)
             self.assertTrue(np.array_equal(test_result, res))
 
     @params(*config.data_types)
-    @unittest.skip('commented out old code that was used to test this')
-    def test_to_experiment1_and_to_experiment2_give_same_result(self, data_type):
-        """only works so long as old version of map_to_unique_index is used"""
-        e1 = self.ua[data_type].to_experiment(2)
-        e2 = self.ua[data_type].to_experiment2(2)
-        # test that molecule indices are equal
-        self.assertTrue(np.array_equal(e1.molecules.index, e2.molecules.index))
-        self.assertTrue(np.array_equal(e1.molecules.columns, e2.molecules.columns))
+    def test_find_boundaries(self, data_type):
+        order = self.ua[data_type]._sorted
+        molecule_boundaries = self.ua[data_type]._find_boundaries(
+            order, 'cell', 'rmt', 'features')
 
-        # test that read indices are equal
-        self.assertTrue(np.array_equal(e1.reads.index, e2.reads.index))
-        self.assertTrue(np.array_equal(e1.reads.columns, e2.reads.columns))
+        # lengths should be identical
+        self.assertEqual(len(molecule_boundaries), len(order))
 
-        # test that the same number of counts are being detected
-        self.assertEqual(e1.molecules.counts.sum().sum(),
-                         e2.molecules.counts.sum().sum())
-        self.assertEqual(e1.reads.counts.sum().sum(),
-                         e2.reads.counts.sum().sum())
+        # data_type should be a boolean
+        self.assertEqual(molecule_boundaries.dtype, np.bool)
 
-        # test that data is equal
-        self.assertTrue(np.array_equal(e1.molecules.counts.todense(),
-                                       e2.molecules.counts.todense()))
-        self.assertTrue(np.array_equal(e1.reads.counts.todense(),
-                                       e2.reads.counts.todense()))
+        # there should be as many ones as unique values
+        boundaries = self.ua[data_type]._find_boundaries(order, 'cell')
+        self.assertEqual(np.sum(boundaries.astype(int)),
+                         len(np.unique(self.ua[data_type].data['cell'])))
+
+        # make sure the wrong input raises a TypeError
+        self.assertRaises(TypeError, self.ua[data_type]._find_boundaries, boundaries,
+                          'cell')
 
     @params(*config.data_types)
-    @unittest.skip('commented out old code that was used to test this')
-    def test_map_to_unique_index2_and_manu_methods_give_same_result(self, data_type):
-        """
-        implements updated unique index mapping for both new (e4) and old (e3) methods
-        """
-        ids = np.random.randint(0, 10, (10000,))
-        ac_indices, ac_unique = seqc.arrays.UniqueReadArray._map_to_unique_index2(ids)
-        ms_indices, ms_unique = seqc.arrays.UniqueReadArray._map_to_unique_index_manu(ids)
+    def test_get_counts(self, data_type):
+        order = self.ua[data_type]._sorted
+        molecule_boundaries = self.ua[data_type]._find_boundaries(
+            order, 'cell', 'rmt', 'features')
+        counts, index = self.ua[data_type]._get_counts(molecule_boundaries)
 
-        self.assertTrue(np.array_equal(ac_indices, ms_indices))
-        self.assertTrue(np.array_equal(ac_unique, ac_unique))
+        # there should be fewer or equal numbers of counts than molecule boundaries,
+        # but equal numbers of counts and indices
+        self.assertLessEqual(len(counts), len(molecule_boundaries))
+        self.assertEqual(len(counts), len(index))
 
+        # there should be counts for as many as there are unique records
+        # here's a simpler example
+        boundaries = self.ua[data_type]._find_boundaries(order, 'cell')
+        counts, index = self.ua[data_type]._get_counts(boundaries)
+        self.assertEqual(len(counts), len(np.unique(self.ua[data_type].data['cell'])))
+
+        # the sum of counts should be equal to the length of the input boundaries
+        self.assertEqual(len(boundaries), np.sum(counts))
+
+        # index should always be non-negative and less than the input length
+        self.assertTrue(np.all((index >= 0) & (index < len(boundaries))))
 
     @params(*config.data_types)
-    @unittest.skip('commented out old code that was used to test this')
-    def test_to_experiment_3_and_to_experiment4_give_same_result(self, data_type):
+    def test_filter_low_support_features(self, data_type):
+        """this test is too weak; needs intermediate data with low support to test."""
+        order = self.ua[data_type]._sorted
+        molecule_boundaries = self.ua[data_type]._find_boundaries(
+            order, 'cell', 'rmt', 'features')
+        counts, index = self.ua[data_type]._get_counts(molecule_boundaries)
+
+        supp_index, supp_counts = self.ua[data_type]._filter_low_support_features(
+            index, counts, 1)
+        self.assertEqual(len(supp_index), len(index))
+
+        # when required_support is 1, all molecules should pass
+        supported_idx, supported_counts = self.ua[data_type]._filter_low_support_features(
+            index, counts, 1)
+        self.assertTrue(np.array_equal(supported_idx, index))
+        self.assertEqual(len(supported_counts), len(supported_idx))
+
+        # when required_support is high, ValueError is raised if it causes all counts
+        # to fail the filter
+        self.assertRaises(ValueError, self.ua[data_type]._filter_low_support_features,
+            index, counts, 10)
+
+    @params(*config.data_types)
+    def test_map_to_unique_index(self, data_type):
+
+        # presents a set of indices which should multi-index cell or rmt, thus be
+        # mappable down to a unique index
+        order = self.ua[data_type]._sorted
+        molecule_boundaries = self.ua[data_type]._find_boundaries(
+            order, 'cell', 'rmt', 'features')
+        counts, index = self.ua[data_type]._get_counts(molecule_boundaries)
+
+        # test validity of input data; set of cells should be smaller than indexed cells
+        cells = self.ua[data_type].data['cell']
+        self.assertLess(len(set(cells)), len(cells))
+
+        # test that np.unique generates the same list as set()
+        id_set_np = np.unique(np.ravel(cells))
+        id_set = set(cells)
+        self.assertEqual(sorted(list(id_set_np)), sorted(list(id_set)))
+
+        # since this is a map of ids to id_set, the returned new indices should be the
+        # same shape as input ids, and the returned cells should be smaller than
+        # the input cells (we required this above)
+        index, cell_set = seqc.arrays.UniqueReadArray._map_to_unique_index(cells)
+        self.assertEqual(len(index), len(cells))
+        self.assertLess(len(cell_set), len(cells))
+
+        # all new cells should be found in the original set, and all cells in the original
+        # set should be found in the new cells.
+        intersection = set(cells).intersection(cell_set)
+        self.assertEqual(len(intersection), len(set(cells)))
+
+        # returned index should be a vector of integers whose values are within the range
+        # [0, len(cell_set))
+        self.assertTrue(np.all((index >= 0) & (index < len(cell_set))))
+
+    @params(*config.data_types)
+    def test_reads_per_gene_per_cell_and_sparse_matrix_generation(self, data_type):
         """
-        implements updated unique index mapping for both new (e4) and old (e3) methods
+        reads per cell is the simplest sparse matrix generation method, test together
         """
-        e1 = self.ua[data_type].to_experiment3(2)
-        e2 = self.ua[data_type].to_experiment4(2)
-        # test that molecule indices are equal
-        self.assertTrue(np.array_equal(e1.molecules.index, e2.molecules.index))
-        self.assertTrue(np.array_equal(e1.molecules.columns, e2.molecules.columns))
+        order = self.ua[data_type]._sorted
+        read_gene_cell_boundaries = self.ua[data_type]._find_boundaries(
+            order, 'cell', 'features')
+        read_counts, ua_gene_cell_positions = self.ua[data_type]._get_counts(
+            read_gene_cell_boundaries)
 
-        # test that read indices are equal
-        self.assertTrue(np.array_equal(e1.reads.index, e2.reads.index))
-        self.assertTrue(np.array_equal(e1.reads.columns, e2.reads.columns))
+        sm = self.ua[data_type]._generate_sparse_read_matrix(
+            read_counts, ua_gene_cell_positions, order)
 
-        # test that the same number of counts are being detected
-        self.assertEqual(e1.molecules.counts.sum().sum(),
-                         e2.molecules.counts.sum().sum())
-        self.assertEqual(e1.reads.counts.sum().sum(),
-                         e2.reads.counts.sum().sum())
+        # sm should be a SparseCounts object
+        self.assertIsInstance(sm, seqc.SparseCounts)
 
-        # test that data is equal
-        self.assertTrue(np.array_equal(e1.molecules.counts.todense(),
-                                       e2.molecules.counts.todense()))
-        self.assertTrue(np.array_equal(e1.reads.counts.todense(),
-                                       e2.reads.counts.todense()))
+        # sm should contain an equal number of counts as ua
+        self.assertEqual(len(self.ua[data_type]), sm.counts.sum().sum())
+
+        # the shape of sm should be equal to the set of all cells times all features
+        all_cells = set(self.ua[data_type].data['cell'])
+        all_features = set(self.ua[data_type].features)
+        self.assertEqual(sm.counts.shape, (len(all_cells), len(all_features)))
+
+        # when sorted, the indices should equal a sorted set of all cells and features in
+        # ua
+        self.assertEqual(sorted(all_cells), sorted(sm.index))
+        self.assertEqual(sorted(all_features), sorted(sm.columns))
+
+        # the row sums should equal the number of times a given cell was observed in ua
+        cell_counts = pd.Series(np.zeros(len(all_cells)), index=all_cells)
+        for c in self.ua[data_type].data['cell']:
+            cell_counts[c] += 1
+
+        # index of cell_counts and sm should be identical when sorted
+        self.assertEqual(sorted(sm.index), sorted(cell_counts.index))
+
+        # get cell counts from sm; should be equal shape to index
+        sm_cell_counts = np.ravel(sm.counts.sum(axis=1))
+        self.assertEqual(sm_cell_counts.shape, sm.index.shape)
+
+        # check that cell sums are identical
+        self.assertTrue(np.array_equal(sm_cell_counts, cell_counts[sm.index].values))
+
+        # repeat the above process for genes
+        gene_counts = pd.Series(np.zeros(len(all_features)), index=all_features)
+        for f in self.ua[data_type].features:
+            gene_counts[f] += 1
+
+        # index of cell_counts and sm should be identical when sorted
+        self.assertEqual(sorted(sm.columns), sorted(gene_counts.index))
+
+        # get cell counts from sm; should be equal shape to index
+        sm_gene_counts = np.ravel(sm.counts.sum(axis=0))
+        self.assertEqual(sm_gene_counts.shape, sm.columns.shape)
+
+        # check that cell sums are identical
+        self.assertTrue(np.array_equal(sm_gene_counts, gene_counts[sm.columns].values))
+
+    @params(*config.data_types)
+    def test_molecules_per_cell_per_gene(self, data_type):
+
+        ua = self.ua[data_type]
+        order = ua._sorted
+
+        # get number of records associated with each molecule
+        molecule_boundaries = ua._find_boundaries(
+            order, 'cell', 'rmt', 'features')
+        molecule_counts, ua_molecule_positions = ua._get_counts(
+            molecule_boundaries)
+
+        # create molecules; allow filter to pass-through for now, and confirm that pass-
+        # through is occuring
+        res = ua._filter_low_support_features(
+            ua_molecule_positions, molecule_counts, required_support=1)
+        supported_molecule_positions, supported_molecule_counts = res
+        self.assertTrue(np.array_equal(supported_molecule_positions,
+                                       ua_molecule_positions))
+        self.assertTrue(np.array_equal(supported_molecule_counts, molecule_counts))
+
+        #################################################################################
+        # This part doesn't matter for molecule generation, included in case bugs
+        # get indices for the subset of unique molecules with counts > required_support
+
+        # get reads per gene per cell by diffing on the original sort without considering
+        # the RMT. This has the effect of counting the number of reads per gene, per cell.
+        read_gene_cell_boundaries = ua._find_boundaries(
+            order, 'cell', 'features')
+        read_counts, ua_gene_cell_positions = ua._get_counts(
+            read_gene_cell_boundaries)
+        #################################################################################
+
+        # if we call find_boundaries again with the SAME inputs (not the reduced one used
+        # to find gene/cell boundaries), we should get a vector of all 1s. Note that we
+        # need to pass the index created in find_counts() not find_boundaries() otherwise
+        # the function gets the length wrong.
+        ones = ua._find_boundaries(ua_molecule_positions, 'cell', 'rmt', 'features')
+        self.assertEqual(sum(ones), len(ones))
+
+        # get the gene/cell positions in molecule space
+        molecule_gene_cell_boundaries = ua._find_boundaries(
+            supported_molecule_positions, 'cell', 'features')
+
+        # get the number of molecules per gene, per cell, and their indices
+        molecule_gene_cell_counts, ua_molecule_gene_cell_positions = ua._get_counts(
+            molecule_gene_cell_boundaries)
+
+        # count the molecules in the original data; we should have the same number
+        molecules = defaultdict(int)
+        for i, row in enumerate(ua.data):
+            key = (row[0], row[1], ua.features[i])
+            molecules[key] += 1
+        self.assertEqual(len(molecules), np.sum(molecule_gene_cell_counts))
+
+        # check that the index is correctly identifying all cells
+        cells = set(ua.data['cell'][ua_molecule_gene_cell_positions])
+        all_cells = set(ua.data['cell'])
+        self.assertEqual(cells, all_cells)
+
+        # ... and all genes
+        features = set(ua.features[ua_molecule_gene_cell_positions])
+        all_features = set(ua.features)
+        self.assertEqual(features, all_features)
+
+        sm = ua._generate_sparse_molecule_matrix(
+            molecule_gene_cell_counts, ua_molecule_gene_cell_positions)
+
+    @params(*config.data_types)
+    def test_molecules_sparse_matrix_generation(self, data_type):
+        """
+        test molecules per cell
+        """
+
+        # set a short-hand variable to the ua-appropriate data_type
+        ua = self.ua[data_type]
+        order = ua._sorted
+
+        # get number of records associated with each molecule
+        molecule_boundaries = ua._find_boundaries(
+            order, 'cell', 'rmt', 'features')
+        molecule_counts, ua_molecule_positions = ua._get_counts(
+            molecule_boundaries)
+
+        #################################################################################
+        # This part doesn't matter for molecule generation, included in case bugs
+        # get indices for the subset of unique molecules with counts > required_support
+
+        # create molecules; allow filter to pass-through for now.
+        res = ua._filter_low_support_features(
+            ua_molecule_positions, molecule_counts, required_support=1)
+        supported_molecule_positions, supported_molecule_counts = res
+
+        # get reads per gene per cell by diffing on the original sort without considering
+        # the RMT. This has the effect of counting the number of reads per gene, per cell.
+        read_gene_cell_boundaries = ua._find_boundaries(
+            order, 'cell', 'features')
+        read_counts, ua_gene_cell_positions = ua._get_counts(
+            read_gene_cell_boundaries)
+        #################################################################################
+
+        # molecules per cell can be calculated from reads per molecule by re-diffing
+        # reads per molecule, without considering the rmt. This has the effect of
+        # counting the number of RMTs per gene, per cell.
+        molecule_gene_cell_boundaries = ua._find_boundaries(
+            supported_molecule_positions, 'cell', 'features')
+        molecule_gene_cell_counts, ua_molecule_gene_cell_positions = ua._get_counts(
+            molecule_gene_cell_boundaries)
+
+        sm = ua._generate_sparse_molecule_matrix(
+            molecule_gene_cell_counts, ua_molecule_gene_cell_positions)
+
+        #################################################################################
+        # tests
+
+        # sm should be a SparseCounts object
+        self.assertIsInstance(sm, seqc.SparseCounts)
+
+        # count molecules in ua; sm should contain this many molecules
+        test_molecules = defaultdict(int)
+        for i, row in enumerate(ua.data):
+            key = (row[0], row[1], ua.features[i])
+            test_molecules[key] += 1
+        self.assertEqual(len(dict(test_molecules)), sm.counts.sum().sum())
+
+        # the shape of the matrix should be equal to its indices and columns
+        self.assertEqual(sm.counts.shape, (len(sm.index), len(sm.columns)))
+
+        # the features in sm should be equal to the features in ua
+        all_features = set(ua.features)
+        self.assertEqual(sorted(sm.columns), sorted(all_features))
+
+        # the cells in sm should be equal to the cells in ua
+        all_cells = set(ua.data['cell'])
+        self.assertEqual(sorted(sm.index), sorted(all_cells))
+
+        # when sorted, the indices should equal a sorted set of all cells and features in
+        # ua, since no molecules are being discarded
+        self.assertEqual(sorted(all_cells), sorted(sm.index))
+        self.assertEqual(sorted(all_features), sorted(sm.columns))
+
+        # the row sums should equal the number of molecules observed for each cell
+        cell_counts = pd.Series(np.zeros(len(all_cells)), index=all_cells)
+        for cell, rmt, feature in test_molecules:
+            cell_counts[cell] += 1
+
+        # index of cell_counts and sm should be identical when sorted
+        self.assertEqual(sorted(sm.index), sorted(cell_counts.index))
+
+        # convert to ndarray of correct dtype; check indices and types
+        cell_counts = cell_counts[sm.index].values.astype(np.int32)
+        sm_cell_counts = np.ravel(sm.counts.sum(axis=1))
+        self.assertEqual(sm_cell_counts.shape, sm.index.shape)
+        self.assertEqual(sm_cell_counts.dtype, cell_counts.dtype)
+
+        # make sure the total number of molecules are all equal
+        self.assertEqual(cell_counts.sum(), len(dict(test_molecules)))
+        self.assertEqual(cell_counts.sum(), sm.counts.sum().sum())
+        self.assertEqual(cell_counts.sum(), sm_cell_counts.sum())
+
+        print(np.sum(sm_cell_counts != cell_counts))
+
+        # could the below problem be that the index isn't properly sorted? Nope!
+        self.assertTrue(np.array_equal(sorted(sm_cell_counts), sorted(cell_counts)))
+
+        # todo cell_counts inconsistently 1 less than sm_cell_counts (per bin)
+        self.assertTrue(np.array_equal(sm_cell_counts, cell_counts))
+
+
+        # repeat the above process for genes
+        gene_counts = pd.Series(np.zeros(len(all_features)), index=all_features)
+        for f in ua.features:
+            gene_counts[f] += 1
+
+        # index of cell_counts and sm should be identical when sorted
+        self.assertEqual(sorted(sm.columns), sorted(gene_counts.index))
+
+        # get cell counts from sm; should be equal shape to index
+        sm_gene_counts = np.ravel(sm.counts.sum(axis=0))
+        self.assertEqual(sm_gene_counts.shape, sm.columns.shape)
+
+        # check that cell sums are identical
+        self.assertTrue(np.array_equal(sm_gene_counts, gene_counts[sm.columns].values))
+
+    #
+    # @params(*config.data_types)
+    # def test_generate_experiment(self, data_type):
+    #     pass
+
+    # @params(*config.data_types)
+    # @unittest.skip('commented out old code that was used to test this')
+    # def test_to_experiment1_and_to_experiment2_give_same_result(self, data_type):
+    #     """only works so long as old version of map_to_unique_index is used"""
+    #     e1 = ua.to_experiment(2)
+    #     e2 = ua.to_experiment2(2)
+    #     # test that molecule indices are equal
+    #     self.assertTrue(np.array_equal(e1.molecules.index, e2.molecules.index))
+    #     self.assertTrue(np.array_equal(e1.molecules.columns, e2.molecules.columns))
+    #
+    #     # test that read indices are equal
+    #     self.assertTrue(np.array_equal(e1.reads.index, e2.reads.index))
+    #     self.assertTrue(np.array_equal(e1.reads.columns, e2.reads.columns))
+    #
+    #     # test that the same number of counts are being detected
+    #     self.assertEqual(e1.molecules.counts.sum().sum(),
+    #                      e2.molecules.counts.sum().sum())
+    #     self.assertEqual(e1.reads.counts.sum().sum(),
+    #                      e2.reads.counts.sum().sum())
+    #
+    #     # test that data is equal
+    #     self.assertTrue(np.array_equal(e1.molecules.counts.todense(),
+    #                                    e2.molecules.counts.todense()))
+    #     self.assertTrue(np.array_equal(e1.reads.counts.todense(),
+    #                                    e2.reads.counts.todense()))
+    #
+    # @params(*config.data_types)
+    # @unittest.skip('commented out old code that was used to test this')
+    # def test_map_to_unique_index2_and_manu_methods_give_same_result(self, data_type):
+    #     """
+    #     implements updated unique index mapping for both new (e4) and old (e3) methods
+    #     """
+    #     ids = np.random.randint(0, 10, (10000,))
+    #     ac_indices, ac_unique = seqc.arrays.UniqueReadArray._map_to_unique_index2(ids)
+    #     ms_indices, ms_unique = seqc.arrays.UniqueReadArray._map_to_unique_index_manu(ids)
+    #
+    #     self.assertTrue(np.array_equal(ac_indices, ms_indices))
+    #     self.assertTrue(np.array_equal(ac_unique, ac_unique))
+    #
+    # @params(*config.data_types)
+    # @unittest.skip('commented out old code that was used to test this')
+    # def test_to_experiment_3_and_to_experiment4_give_same_result(self, data_type):
+    #     """
+    #     implements updated unique index mapping for both new (e4) and old (e3) methods
+    #     """
+    #     e1 = ua.to_experiment3(2)
+    #     e2 = ua.to_experiment4(2)
+    #     # test that molecule indices are equal
+    #     self.assertTrue(np.array_equal(e1.molecules.index, e2.molecules.index))
+    #     self.assertTrue(np.array_equal(e1.molecules.columns, e2.molecules.columns))
+    #
+    #     # test that read indices are equal
+    #     self.assertTrue(np.array_equal(e1.reads.index, e2.reads.index))
+    #     self.assertTrue(np.array_equal(e1.reads.columns, e2.reads.columns))
+    #
+    #     # test that the same number of counts are being detected
+    #     self.assertEqual(e1.molecules.counts.sum().sum(),
+    #                      e2.molecules.counts.sum().sum())
+    #     self.assertEqual(e1.reads.counts.sum().sum(),
+    #                      e2.reads.counts.sum().sum())
+    #
+    #     # test that data is equal
+    #     self.assertTrue(np.array_equal(e1.molecules.counts.todense(),
+    #                                    e2.molecules.counts.todense()))
+    #     self.assertTrue(np.array_equal(e1.reads.counts.todense(),
+    #                                    e2.reads.counts.todense()))
 
 
 class CountingUniqueArrayTest(unittest.TestCase):
@@ -2102,6 +2448,7 @@ class DenseCountsTest(unittest.TestCase):
         res = dc.downsample()
 
 
+@unittest.skip('too much printing at the moment')
 class SparseCountsTest(unittest.TestCase):
 
     @classmethod
