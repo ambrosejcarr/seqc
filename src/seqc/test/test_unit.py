@@ -616,14 +616,6 @@ class GTFReaderTest(unittest.TestCase):
             self.assertTrue(int(record.end) > int(record.start),
                             'potentially malformed record #%d: %s' % (i, repr(record)))
 
-    @unittest.skip('This does not appear to be true for ENSEMBL GTF files.')
-    def test_gtf_file_no_duplicate_exons_within_transcripts(self):
-        rd = seqc.gtf.Reader(self.gtf)
-        for exons in rd.iter_exon_sets():
-            all_intervals = [(int(r.start), int(r.end)) for r in exons]
-            unique_intervals = set(all_intervals)
-            self.assertEqual(len(all_intervals), len(unique_intervals))
-
     def test_reader__take_final_n_returns_correct_number_bases(self):
         rd = seqc.gtf.Reader(self.gtf)
 
@@ -1361,7 +1353,7 @@ class UniqueArrayCreationTest(unittest.TestCase):
             shutil.rmtree(cls.test_dir)
 
 
-# todo these tests need to be expanded
+@unittest.skip('These tests are for to_experiment_new()')
 class UniqueArrayToExperimentTest(unittest.TestCase):
     """Goal: understand if UniqueArray conversion is operating properly"""
 
@@ -1675,18 +1667,46 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         # the shape of the matrix should be equal to its indices and columns
         self.assertEqual(sm.counts.shape, (len(sm.index), len(sm.columns)))
 
+        ################################ TEST GENES #####################################
+
         # the features in sm should be equal to the features in ua
         all_features = set(ua.features)
         self.assertEqual(sorted(sm.columns), sorted(all_features))
 
+        # the row sums should equal the number of molecules observed for each cell
+        gene_counts = pd.Series(np.zeros(len(all_features)), index=all_features)
+        for cell, rmt, feature in test_molecules:
+            gene_counts[feature] += 1
+
+        # index of cell_counts and sm should be identical when sorted
+        self.assertEqual(sorted(sm.columns), sorted(gene_counts.index))
+
+        # convert to ndarray of correct dtype; check indices and types
+        gene_counts = gene_counts[sm.columns].values.astype(np.int32)
+        sm_gene_counts = np.ravel(sm.counts.sum(axis=0))
+        self.assertEqual(sm_gene_counts.shape, sm.columns.shape)
+        self.assertEqual(sm_gene_counts.dtype, gene_counts.dtype)
+
+        # make sure the total number of molecules are all equal
+        self.assertEqual(gene_counts.sum(), len(dict(test_molecules)))
+        self.assertEqual(gene_counts.sum(), sm.counts.sum().sum())
+        self.assertEqual(gene_counts.sum(), sm_gene_counts.sum())
+
+        print(np.sum(sm_gene_counts != gene_counts))
+        res = sm_gene_counts - gene_counts
+        print(res[np.where(res)])
+
+        # could the below problem be that the index isn't properly sorted? Nope!
+        # self.assertTrue(np.array_equal(sorted(sm_gene_counts), sorted(gene_counts)))
+
+        # todo gene_counts inconsistently 1 less than sm_gene_counts (per bin)
+        self.assertTrue(np.array_equal(sm_gene_counts, gene_counts))
+
+        ################################ TEST CELLS #####################################
+
         # the cells in sm should be equal to the cells in ua
         all_cells = set(ua.data['cell'])
         self.assertEqual(sorted(sm.index), sorted(all_cells))
-
-        # when sorted, the indices should equal a sorted set of all cells and features in
-        # ua, since no molecules are being discarded
-        self.assertEqual(sorted(all_cells), sorted(sm.index))
-        self.assertEqual(sorted(all_features), sorted(sm.columns))
 
         # the row sums should equal the number of molecules observed for each cell
         cell_counts = pd.Series(np.zeros(len(all_cells)), index=all_cells)
@@ -1708,6 +1728,8 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         self.assertEqual(cell_counts.sum(), sm_cell_counts.sum())
 
         print(np.sum(sm_cell_counts != cell_counts))
+        res = sm_cell_counts - cell_counts
+        print(res[np.where(res)])
 
         # could the below problem be that the index isn't properly sorted? Nope!
         self.assertTrue(np.array_equal(sorted(sm_cell_counts), sorted(cell_counts)))
@@ -1716,12 +1738,13 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         self.assertTrue(np.array_equal(sm_cell_counts, cell_counts))
 
 
+
         # repeat the above process for genes
         gene_counts = pd.Series(np.zeros(len(all_features)), index=all_features)
         for f in ua.features:
             gene_counts[f] += 1
 
-        # index of cell_counts and sm should be identical when sorted
+        # index of gene_counts and sm should be identical when sorted
         self.assertEqual(sorted(sm.columns), sorted(gene_counts.index))
 
         # get cell counts from sm; should be equal shape to index
@@ -1731,7 +1754,6 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         # check that cell sums are identical
         self.assertTrue(np.array_equal(sm_gene_counts, gene_counts[sm.columns].values))
 
-    #
     # @params(*config.data_types)
     # def test_generate_experiment(self, data_type):
     #     pass
@@ -1881,6 +1903,8 @@ class CountingUniqueArrayTest(unittest.TestCase):
         self.assertTrue(np.all(mdata == 3))
 
 
+@unittest.skip('These only work when create_experiment() -> create_experiment_old() and '
+               'create_experiment_new() -> create_experiment()')
 class ExperimentCreationTest(unittest.TestCase):
 
     @classmethod
@@ -1903,13 +1927,43 @@ class ExperimentCreationTest(unittest.TestCase):
 
         exp = ua.to_experiment(0)
         self.assertEqual(len(ua), exp.reads.counts.sum().sum())
-        # this one is a bit artificial; should figure out precisely how many reads we
-        # expect to see.
-        self.assertGreaterEqual(exp.molecules.counts.sum().sum(), len(ua) / 2)
 
         # check that the types are correct
         self.assertEqual(exp.reads.columns.dtype, np.int64)
         self.assertEqual(exp.molecules.columns.dtype, np.int64)
+
+        exp2 = ua.to_experiment_old(0)
+
+        # create molecules from the uniquearray
+        test_data = defaultdict(lambda: defaultdict(list))
+        for i, row in enumerate(ua.data):
+            cell, rmt, feature = row[0], row[1], ua.features[i]
+            test_data[feature][cell].append(rmt)
+
+        # convert to counts, reads
+        reads = defaultdict(lambda: defaultdict(int))
+        molecules = defaultdict(lambda: defaultdict(int))
+        for feature in test_data:
+            for cell, rmts in test_data[feature].items():
+                reads[feature][cell] = len(rmts)
+                molecules[feature][cell] = len(set(rmts))
+
+        # make comparison DataFrames
+        reads = pd.DataFrame(reads).fillna(0).astype(np.int32)
+        molecules = pd.DataFrame(molecules).fillna(0).astype(np.int32)
+
+        # index so they equal the exp2
+        reads_matching_exp2 = reads.ix[exp2.reads.index, exp2.reads.columns].values
+        molecules_matching_exp2 = molecules.ix[exp2.molecules.index,
+                                               exp2.molecules.columns].values
+
+        self.assertTrue(np.array_equal(reads_matching_exp2, exp2.reads.counts.todense()))
+        self.assertTrue(np.array_equal(molecules_matching_exp2,
+                                        exp2.molecules.counts.todense()))
+
+        # todo these are to test refactored to_experiment()
+        # self.assertTrue(np.array_equal(exp.reads.counts, exp2.reads.counts))
+        # self.assertTrue(np.array_equal(exp.molecules.counts, exp2.molecules.counts))
 
 
 class ThreeBitGeneralTest(unittest.TestCase):
@@ -2448,7 +2502,7 @@ class DenseCountsTest(unittest.TestCase):
         res = dc.downsample()
 
 
-@unittest.skip('too much printing at the moment')
+# @unittest.skip('too much printing at the moment')
 class SparseCountsTest(unittest.TestCase):
 
     @classmethod
@@ -2502,8 +2556,11 @@ class SparseCountsTest(unittest.TestCase):
             ra = seqc.ReadArray.from_h5(h5)
 
             # make sure the read array is the right size
-            n_records = len(seqc.sam.Reader(config.samfile_pattern % data_type))
-            assert len(ra) > n_records * 0.95, '%d != %d' % (len(ra), n_records)
+            sam_reader = seqc.sam.Reader(config.samfile_pattern % data_type)
+            n_records = sum(1 for _ in sam_reader.iter_multialignments())
+            print(len(ra), n_records)
+            assert len(ra) == n_records, '%d != %d' % (len(ra), n_records)
+            # assert len(ra) == n_records * 0.95, '%d != %d' % (len(ra), n_records)
 
             # todo filters make a big difference
             ua = ra.to_unique(n_poly_t_required)
@@ -2513,7 +2570,8 @@ class SparseCountsTest(unittest.TestCase):
             for r in seqc.sam.Reader(config.samfile_pattern % data_type):
                 if r.optional_fields['NH'] == 1:
                     n_unique += 1
-            assert len(ua) > n_unique * 0.95, '%d != %d' % (len(ua), n_unique)
+            assert len(ua) == n_unique
+            # assert len(ua) > n_unique * 0.95, '%d != %d' % (len(ua), n_unique)
 
             e = ua.to_experiment(required_support=required_support)
 

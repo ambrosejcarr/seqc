@@ -9,6 +9,7 @@ from scipy.sparse import coo_matrix
 import numbers
 import pickle
 import tables as tb
+import pandas as pd
 from types import *
 import os
 from scipy.special import gammaln
@@ -1335,38 +1336,6 @@ class UniqueReadArray:
         # the array and this needs to be removed.
         return counts, index[:-1]
 
-    # def _get_cells(self, order, index):
-    #     """
-    #     get the cells that correspond to the passed index, given the sorted order
-    #
-    #     args:
-    #     -----
-    #     order: the lexsorted order of self
-    #     index: the positions of unique records
-    #
-    #     returns:
-    #     --------
-    #     cells: a numpy array of cell ids that correspnd to index, given the sorted order
-    #     """
-    #
-    #     return self.data['cell'][order][index]
-    #
-    # def _get_features(self, order, index):
-    #     """
-    #     get the cells that correspond to the passed index, given the sorted order
-    #
-    #     args:
-    #     -----
-    #     order: the lexsorted order of self
-    #     index: the positions of unique records
-    #
-    #     returns:
-    #     --------
-    #     features: a numpy array of cell ids that correspnd to index, given the sorted order
-    #     """
-    #
-    #     return self.features[order][index]
-
     @staticmethod
     def _filter_low_support_features(record_index, counts, required_support):
         """
@@ -1466,7 +1435,8 @@ class UniqueReadArray:
         sparse_counts = seqc.analyze.SparseCounts(data, cells, genes)
         return sparse_counts
 
-    def to_experiment(self, required_support=0):
+    # todo swap for to_experiment
+    def to_experiment_new(self, required_support=0):
         """Generate an Experiment containing read and molecule SparseCount objects
 
         args:
@@ -1605,100 +1575,105 @@ class UniqueReadArray:
     #     mapping = pd.Series(np.arange(0, len(id_set)), index=list(id_set))
     #     return list(mapping[ids]), id_set
 
-    # def to_experiment(self, required_support=0):
-    #     """Generate an Experiment containing read and molecule SparseCount objects
-    #
-    #     args:
-    #     -----
-    #     required_support (default: 2): required number of observations of a molecule for
-    #      the molecule to be included in the counts matrix
-    #
-    #     returns:
-    #     seqc.analyze.Experiment object
-    #
-    #     """
-    #
-    #     # don't reprocess
-    #     if self._experiment is not None:
-    #         return self._experiment
-    #
-    #     # get sorted index
-    #     if self._sorted is None:
-    #         self._sort()
-    #
-    #     sort_ord = self._sorted
-    #
-    #     # find boundaries between cell, rmt, and feature
-    #     all_diff = np.zeros(len(self), dtype=np.bool)
-    #     all_diff[0] = True  # keep the first one; it's different from void (preceding)
-    #     all_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)  # diff cell
-    #     all_diff[1:] |= np.diff(self.data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
-    #     all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
-    #
-    #     # get key_index (into original ReadArray) and reads per molecule counts
-    #     # adding required support here will cut any molecules with < required_support from
-    #     # downstream steps that rely upon ra_molecule_idx (such as reads per molecule
-    #     # calculations
-    #     i = np.concatenate((np.where(all_diff)[0], [len(self)]))
-    #     rpm_count = np.diff(i)
-    #
-    #     # filter which molecules we want to keep by thresholding ra_molecule_idx
-    #     ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support,
-    #                                                  [False]))]]
-    #
-    #     # make sure at least one molecule passes, otherwise raise.
-    #     if len(ra_molecule_idx) == 0:
-    #         raise ValueError('No molecules passed support filter')
-    #
-    #     # to get reads per cell, I discard the notion of molecular correction by diffing
-    #     # on only cell and feature from the original sort
-    #     # diff is working as intended
-    #     rpc_diff = np.zeros(len(self), dtype=np.bool)
-    #     rpc_diff[0] = True
-    #     rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
-    #     rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
-    #     i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
-    #     ra_rpc_idx = sort_ord[i[:-1]]
-    #     rpc_count = np.ravel(np.diff(i))
-    #
-    #     # because reads per molecule gives me a list of all molecules, molecules per
-    #     # cell can be calculated by re-diffing on the reads per molecule without
-    #     # considering the rmt. This has the effect of counting unique RMTs per molecule
-    #     # and per cell.
-    #     mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
-    #     mpc_diff[0] = True
-    #     mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
-    #     mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
-    #     i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
-    #     ra_rpm_idx = ra_molecule_idx[i[:-1]]
-    #     mpc_count = np.ravel(np.diff(i))
-    #
-    #     def map_to_unique_index(vector):
-    #         """function to map a vector of gene or feature ids to an index"""
-    #         ids = np.unique(np.ravel(vector))
-    #         # key gives the new values you wish original ids to be mapped to.
-    #         key = np.arange(ids.shape[0])
-    #         index = np.digitize(vector.ravel(), ids, right=True)
-    #         return key[index].reshape(vector.shape), ids
-    #
-    #     # generate sparse matrices
-    #
-    #     # reads per cell
-    #     row, cells = map_to_unique_index(self.data['cell'][ra_rpc_idx])
-    #     col, genes = map_to_unique_index(self.features[ra_rpc_idx])
-    #     shape = (len(cells), len(genes))
-    #     rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
-    #     reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
-    #
-    #     # molecules per cell
-    #     row, cells = map_to_unique_index(self.data['cell'][ra_rpm_idx])
-    #     col, genes = map_to_unique_index(self.features[ra_rpm_idx])
-    #     shape = (len(cells), len(genes))
-    #     mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
-    #     molecules_per_cell = seqc.analyze.SparseCounts(mpc, cells, genes)
-    #
-    #     self._experiment = seqc.analyze.Experiment(reads_per_cell, molecules_per_cell)
-    #     return self._experiment
+    def to_experiment(self, required_support=0):
+        """Generate an Experiment containing read and molecule SparseCount objects
+
+        args:
+        -----
+        required_support (default: 2): required number of observations of a molecule for
+         the molecule to be included in the counts matrix
+
+        returns:
+        seqc.analyze.Experiment object
+
+        """
+
+        # don't reprocess
+        if self._experiment is not None:
+            return self._experiment
+
+        # get sorted index
+        if self._sorted is None:
+            self._sort()
+
+        sort_ord = self._sorted
+
+        # find boundaries between cell, rmt, and feature
+        all_diff = np.zeros(len(self), dtype=np.bool)
+        all_diff[0] = True  # keep the first one; it's different from void (preceding)
+        all_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)  # diff cell
+        all_diff[1:] |= np.diff(self.data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
+        all_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)  # diff feature
+
+        # get key_index (into original ReadArray) and reads per molecule counts
+        # adding required support here will cut any molecules with < required_support from
+        # downstream steps that rely upon ra_molecule_idx (such as reads per molecule
+        # calculations
+        i = np.concatenate((np.where(all_diff)[0], [len(self)]))
+        rpm_count = np.diff(i)
+
+        # filter which molecules we want to keep by thresholding ra_molecule_idx
+        ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support,
+                                                     [False]))]]
+
+        # make sure at least one molecule passes, otherwise raise.
+        if len(ra_molecule_idx) == 0:
+            raise ValueError('No molecules passed support filter')
+
+        # to get reads per cell, I discard the notion of molecular correction by diffing
+        # on only cell and feature from the original sort
+        # diff is working as intended
+        rpc_diff = np.zeros(len(self), dtype=np.bool)
+        rpc_diff[0] = True
+        rpc_diff[1:] |= np.diff(self.data['cell'][sort_ord]).astype(np.bool)
+        rpc_diff[1:] |= np.diff(self.features[sort_ord]).astype(np.bool)
+        i = np.concatenate((np.where(rpc_diff)[0], [len(self)]))
+        ra_rpc_idx = sort_ord[i[:-1]]
+        rpc_count = np.ravel(np.diff(i))
+
+        # because reads per molecule gives me a list of all molecules, molecules per
+        # cell can be calculated by re-diffing on the reads per molecule without
+        # considering the rmt. This has the effect of counting unique RMTs per molecule
+        # and per cell.
+        mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
+        mpc_diff[0] = True
+        mpc_diff[1:] |= np.diff(self.data['cell'][ra_molecule_idx]).astype(np.bool)
+        mpc_diff[1:] |= np.diff(self.features[ra_molecule_idx]).astype(np.bool)
+        i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
+        ra_rpm_idx = ra_molecule_idx[i[:-1]]
+        mpc_count = np.ravel(np.diff(i))
+
+        def map_to_unique_index(vector):
+            mapping = pd.Series(np.arange(0, len(set(vector))), index=list(set(vector)))
+            key = np.array(list(mapping[vector]))
+            ids = np.array(list(mapping.index))
+            return key, ids
+
+        # def map_to_unique_index(vector):
+        #     """function to map a vector of gene or feature ids to an index"""
+        #     ids = np.unique(np.ravel(vector))
+        #     # key gives the new values you wish original ids to be mapped to.
+        #     key = np.arange(ids.shape[0])
+        #     index = np.digitize(vector.ravel(), ids, right=True)
+        #     return key[index].reshape(vector.shape), ids
+        # generate sparse matrices
+
+        # reads per cell
+        row, cells = map_to_unique_index(self.data['cell'][ra_rpc_idx])
+        col, genes = map_to_unique_index(self.features[ra_rpc_idx])
+        shape = (len(cells), len(genes))
+        rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
+        reads_per_cell = seqc.analyze.SparseCounts(rpc, cells, genes)
+
+        # molecules per cell
+        row, cells = map_to_unique_index(self.data['cell'][ra_rpm_idx])
+        col, genes = map_to_unique_index(self.features[ra_rpm_idx])
+        shape = (len(cells), len(genes))
+        mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
+        molecules_per_cell = seqc.analyze.SparseCounts(mpc, cells, genes)
+
+        self._experiment = seqc.analyze.Experiment(reads_per_cell, molecules_per_cell)
+        return self._experiment
     #
     # def to_experiment2(self, required_support):
     #
