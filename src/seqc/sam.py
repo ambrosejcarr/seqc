@@ -777,4 +777,4 @@ class Reader:
             else:
                 yield tuple(fq)
                 fq = [record]
-        yield fq
+        yield tuple(fq)
