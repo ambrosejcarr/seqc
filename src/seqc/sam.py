@@ -246,9 +246,10 @@ def _process_chunk(chunk, feature_converter):
         s = e
         e = s + 1
 
-    # process the last record.
+    # process the last record, if it is not a multialignment
     multialignment = records[s:]  # note that s should always be unique if e > len.
-    rec, feat, pos = _process_multialignment(multialignment, feature_converter)
+    if len(multialignment):
+        rec, feat, pos = _process_multialignment(multialignment, feature_converter)
 
     # fill data array
     data[i] = rec

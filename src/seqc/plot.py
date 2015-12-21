@@ -100,7 +100,7 @@ def density_coloring(x, y):
 def scatter_density(x, y, fig=None, ax=None, xlabel='', ylabel='', title=''):
     """2d scatter plot, colored by density"""
     fig, ax = get_axes(fig=fig, ax=ax)
-    x, y, z = density_coloring(x, y)
+x, y, z = density_coloring(x, y)
     ax.scatter(x, y, edgecolor='none', c=z, cmap=cmap, s=20)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)

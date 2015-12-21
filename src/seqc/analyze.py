@@ -396,6 +396,23 @@ class SparseCounts:
         return _plot_cell_gc_content_bias(cell_sums, self.index, fig=fig, ax=ax,
                                           molecules=molecules, reads=reads)
 
+    def get_mitochondrial_fraction(self, return_sums=True):
+        """return the fraction of reads that are mitochondrial"""
+        cell_sums = self.counts.sum(axis=1)
+        csc = self.counts.tocsc()
+        mt_genes = np.array([True if g.startswith('MT-') else False
+                             for g in self.columns],
+                            dtype=np.bool)
+        mt_sums = csc[:, mt_genes].tocsr().sum(axis=1)
+        if np.all(mt_sums == 0):
+            raise ValueError('No mitochondrial molecules detected, fractions are '
+                             'undefined')
+        mt_fraction = mt_sums / cell_sums
+        if return_sums:
+            return mt_fraction, cell_sums
+        else:
+            return mt_fraction
+
     def plot_fraction_mitochondrial(
             self, fig=None, ax=None, molecules=False, reads=False):
 

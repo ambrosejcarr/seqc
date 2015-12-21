@@ -27,7 +27,7 @@ class TestFunctionalRemote(unittest.TestCase):
         '--index', 's3://dplab-data/genomes/mm38_chr19/',
         '--output-prefix', '/data/software/output',
         '--frag-len', '1000',
-        '--email-status', 'ambrosejcarr@gmail.com',
+        '--email-status', None,
         '--barcodes', 's3://dplab-data/barcodes/in_drop/serial/barcodes.p',
         '--remote'
     ]
