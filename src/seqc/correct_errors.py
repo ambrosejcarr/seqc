@@ -4,14 +4,16 @@ from scipy.special import gammaincinv
 from itertools import permutations
 from sys import maxsize
 import time
-from three_bit import ThreeBit as bin_rep		#Using Ambrose coder for unity
+from three_bit import ThreeBit as bin_rep       #Using Ambrose coder for unity
+import numpy as np
 
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence  
 
-NUM_OF_ERROR_CORRECTION_METHODS = 5
+NUM_OF_ERROR_CORRECTION_METHODS = 4
 ERROR_CORRECTION_AJC = 0
 ERROR_CORRECTION_STEN = 1
 ERROR_CORRECTION_JAITLIN = 2
+ERROR_CORRECTION_ALLON = 3
 
 
 def from_thinair(barcodes_files, num_reads = 1000000, err_rate = 0.02, num_features = 1, reverse_complement=True):
@@ -217,16 +219,16 @@ def list_errors(code, correct_barcodes):
     
     return err_list
 
-	
-	# deprecated, do not use or update
+    
+    # deprecated, do not use or update
 def correct_errors_orig(alignment_dic, barcode_files, convert_to_ra = True, reverse_complement=True, donor_cutoff=1, P_VALUE=0.1):
     """calculate and correct errors in barcode sets"""
     start = time.process_time()
-	# conversion is not needed when using an alignment_dic that is a result of from_thinair.
-	if convert_to_ra:
-		d = prepare_dic(alignment_dic)
-	else:
-		d = alignment_dic
+    # conversion is not needed when using an alignment_dic that is a result of from_thinair.
+    if convert_to_ra:
+        d = prepare_dic(alignment_dic)
+    else:
+        d = alignment_dic
 #   print('version 6.0 - using readArray')
 
     error_count = 0
@@ -293,7 +295,7 @@ def correct_errors_orig(alignment_dic, barcode_files, convert_to_ra = True, reve
                     error_count+=1
                     break
     for (gene, r_seq) in for_removal:
-		alignment_dic
+        alignment_dic
         del d[gene][r_seq]
     
     print (error_count, ' errors were found')
@@ -309,29 +311,32 @@ def prepare_dic(read_array):
         d[k_lv1] = tmp[k_lv1]
         for k_lv2 in tmp[k_lv1].keys():
             d[k_lv1][k_lv2] = tmp[k_lv1][k_lv2].shape[0]
-			tmp[k_lv1][k_lv2] = tmp[k_lv1][k_lv2], np.zeros(NUM_OF_ERROR_CORRECTION_METHODS)
+            tmp[k_lv1][k_lv2] = tmp[k_lv1][k_lv2], np.zeros(NUM_OF_ERROR_CORRECTION_METHODS)
     return d
-	
+    
 def correct_errors(alignments_ra, barcode_files = [], reverse_complement = True, donor_cutoff=1, P_VALUE=0.1):
-	#TODO - so RA is a list of reads and a bunch of data, but they are not grouped.
-	# after grouping for err_correction the dic[gene][seq] holds a list of indices that can be used back on the original ra where all these
-	# reads are stored. What needs to be done is to create a dic of errors with the same structure as ra and use the indices from the grouped
-	# ra to update the err_correction bool vector for each entry.
-	# positions can be accessed directly from ra using these indices.
-	# in general I should try and use the indices as much as I can to have a smoother interface.
-	
-	err_correction_res = np.zeros(ra.shape[0], NUM_OF_ERROR_CORRECTION_METHODS)
-	ra_grouped = alignment_ra.group_for_error_correction(required_poly_t = 1)
-	correct_errors_AJC(ra, ra_grouped, err_correction_res, barcode_files, reverse_complement, donor_cutoff, P_VALUE)
-	#correct_errors_sten(ra, ra_grouped, err_correction_res, reverse_complement)
-		
-	
-	
-		
+    # RA is a list of reads and a bunch of data, but they are not grouped.
+    # after grouping for err_correction the dic[gene][seq] holds a list of indices that can be used back on the original ra where all these
+    # reads are stored.
+    
+    err_correction_res = np.zeros((alignments_ra.shape[0], NUM_OF_ERROR_CORRECTION_METHODS))
+    ra_grouped = alignments_ra.group_for_error_correction(required_poly_t = 1)
+    print ('doing AJC')
+    correct_errors_AJC(alignments_ra, ra_grouped, err_correction_res, barcode_files, reverse_complement, donor_cutoff, P_VALUE)
+    print ('doing Sten')
+    correct_errors_sten(alignments_ra, ra_grouped, err_correction_res, reverse_complement)
+    print ('doing Jaitlin')
+    correct_errors_jaitlin(alignments_ra, ra_grouped, err_correction_res, reverse_complement)
+    print ('doing Allon')
+    correct_errors_allon(alignments_ra, ra_grouped, err_correction_res, barcode_files, reverse_complement)
+        
+    return err_correction_res
+    
+        
 def correct_errors_AJC(alignment_ra, ra_grouped, err_correction_res, barcode_files, reverse_complement=True, donor_cutoff=1, P_VALUE=0.1):
     """calculate and correct errors in barcode sets"""
     start = time.process_time()
-	d = ra_grouped
+    d = ra_grouped
 #   print('version 6.0 - using readArray')
 
     error_count = 0
@@ -396,19 +401,19 @@ def correct_errors_AJC(alignment_ra, ra_grouped, err_correction_res, barcode_fil
                     error_count+=1
                     break
     for (gene, r_seq) in for_removal:
-		err_correction_res[ra_grouped[gene][r_seq],:][ERROR_CORRECTION_AJC] = 1		#TODO: check that this is the correct way to address the array
+        err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_AJC]] = 1     #TODO: check that this is the correct way to address the array
     
     print ('AJC error_count: ', error_count)
     tot_time=time.process_time()-start
     print('total AJC error_correction runtime: ',tot_time)
     return
-	
-def correct_errors_sten(alignment_ra, ra_grouped, err_correction_res reverse_complement=True):
+    
+def correct_errors_sten(alignment_ra, ra_grouped, err_correction_res, reverse_complement=True):
     """Correct errors using the method in Sten's paper.
        Remove any molecule supported by only a single read"""
     
     # for python 3
-    start = time.process_time()	
+    start = time.process_time() 
 
     # comment out for testing with from_thin_air
     d = ra_grouped
@@ -422,38 +427,36 @@ def correct_errors_sten(alignment_ra, ra_grouped, err_correction_res reverse_com
     for feature in d.keys():
         for r_seq in d[feature].keys():
             if bin_rep.contains(r_seq, N):
-				continue
+                continue
 
-			gene = feature
-			r_num_occurences = d[gene][r_seq].shape[0]
+            gene = feature
+            r_num_occurences = d[gene][r_seq].shape[0]
 
             if(r_num_occurences <= 1):
-				for_removal.append((gene, r_seq))
-				error_count+=1
+                for_removal.append((gene, r_seq))
+                error_count+=1
 
     for (gene, r_seq) in for_removal:
-		err_correction_res[ra_grouped[gene][r_seq],:][ERROR_CORRECTION_STEN] = 1		#TODO: check that this is the correct way to address the array
-
+        err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_STEN]] = 1        #TODO: check that this is the correct way to address the array
     print ('Sten error_count: ', error_count)
     tot_time=time.process_time()-start
     print('total Sten error_correction runtime: ',tot_time)
     return   
-	
-def correct_errors_Jaitlin(alignment_ra, ra_grouped, reverse_complement=True):
-	# TODO: get the positions from the original ra (need to use hstack and subset or something)
-	# Also - sten and ajc might not need the original ra and only the grouped one
-	
-	#sort reads by number of positions
-	#go from least to most:
-	#	go over all d_seq:
-	#		if d_seq is 1 dist from r_seq and covers the same positions:
-	#			remove r_seq.
-	#
-	# Note: the sorting isn't really important, it just saves time.
-	
-	"""calculate and correct errors in barcode sets"""
+    
+def correct_errors_jaitlin(alignment_ra, ra_grouped, err_correction_res, reverse_complement=True):
+    """Correct errors according to Jaitlin method """
+    
+    #sort reads by number of positions
+    #go from least to most:
+    #   go over all d_seq:
+    #       if d_seq is 1 dist from r_seq and covers the same positions:
+    #           remove r_seq.
+    #
+    # Note: the sorting isn't really important, it just saves time.
+    
+    """calculate and correct errors in barcode sets"""
     start = time.process_time()
-	d = ra_grouped
+    d = ra_grouped
 #   print('version 6.0 - using readArray')
 
     error_count = 0
@@ -461,7 +464,7 @@ def correct_errors_Jaitlin(alignment_ra, ra_grouped, reverse_complement=True):
     N = bin_rep._str2bindict['N']
     for_removal = []
     tot=0
-    for feature in d.keys():	
+    for feature in d.keys():    
         for r_seq in d[feature].keys(): #TODO: sort by number of positions actually, though it only saves time not change the result
             
             if bin_rep.contains(r_seq, N):
@@ -469,20 +472,76 @@ def correct_errors_Jaitlin(alignment_ra, ra_grouped, reverse_complement=True):
             
             gene = feature
             r_rmt = bin_rep.rmt_from_int(r_seq)
-			r_pos_list = alignment_ra.positions[d[feature][r_seq]] #TODO - check this works, I might have to use hstack
+            r_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]]) #TODO - check this works, I might have to use hstack
 
             for d_seq in d[feature].keys():
                 d_rmt = bin_rep.rmt_from_int(d_seq)
-				d_pos_list = alignment_ra.positions[d[feature][r_seq]] #TODO - check this works, I might have to use hstack
+                d_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]]) #TODO - check this works, I might have to use hstack
 
-                if hamm_dist_bin(r_rmt, d_rmt) == 1 and set(r_pos_list).issubset(set(d_pos_list)):
-					for_removal.append((gene, r_seq))
+                if hamming_dist_bin(r_rmt, d_rmt) == 1 and set(r_pos_list).issubset(set(d_pos_list)):
+                    for_removal.append((gene, r_seq))
                     error_count+=1
                     break
     for (gene, r_seq) in for_removal:
-        err_correction_res[ra_grouped[gene][r_seq],:][ERROR_CORRECTION_JAITLIN] = 1		#TODO: check that this is the correct way to address the array
+        err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_JAITLIN]] = 1     #TODO: check that this is the correct way to address the array
     
-    print ('Jaitkin error_count: ', error_count)
+    print ('Jaitlin error_count: ', error_count)
     tot_time=time.process_time()-start
     print('total Jaitlin error_correction runtime: ',tot_time)
     return
+
+def correct_errors_allon(alignment_ra, ra_grouped, err_correction_res, barcode_files, reverse_complement=True):
+    """Correct errors using the method in Allon paper.
+       Compare barcodes to list and discard any reads that have more
+       than two mismatches from all barcodes on the list"""
+
+    start = time.process_time()
+
+    # comment out for testing with from_thin_air
+    d = ra_grouped
+    
+    error_count = 0
+    N = bin_rep._str2bindict['N']
+    for_removal = []
+
+    #create barcode list from barcode_files
+    correct_barcodes = []
+    if reverse_complement:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(bin_rep.str2bin(rev_comp(line.strip()))
+                                            for line in f.readlines()))
+    else:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(bin_rep.str2bin(line.strip())
+                                            for line in f.readlines()))
+
+    for feature in d.keys():
+        for r_seq in d[feature].keys():
+            if bin_rep.contains(r_seq, N):
+                continue
+
+            gene = feature
+            r_c1 = bin_rep.c1_from_int(r_seq)
+            r_c2 = bin_rep.c2_from_int(r_seq)
+            if(len(list_errors(r_c1, correct_barcodes[0])) + len(list_errors(r_c2, correct_barcodes[1])) > 2):
+                for_removal.append((gene, r_seq))
+                error_count+=1
+
+    for (gene, r_seq) in for_removal:
+        err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_ALLON]] = 1
+
+    print ('Allon error count: ', error_count)
+
+    tot_time=time.process_time()-start
+    print('total Allon error_correction runtime: ',tot_time)
+    return 
+
+def compare_methods(err_res_mat):
+    """Return a matrix containig the Jaccard score between each two methods"""
+    jac_mat = np.zeros((NUM_OF_ERROR_CORRECTION_METHODS,NUM_OF_ERROR_CORRECTION_METHODS))
+    for i in range(jac_mat.shape[0]):
+        for j in range(jac_mat.shape[1]):
+            jac_mat[i,j] = sum(err_res_mat[:,i]*err_res_mat[:,j]) / (sum(err_res_mat)[i]+sum(err_res_mat)[j]-sum(err_res_mat[:,i]*err_res_mat[:,j]))
+    return jac_mat
