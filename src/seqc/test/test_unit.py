@@ -1,5 +1,6 @@
 __author__ = "Ambrose J. Carr"
 
+from copy import deepcopy
 import nose2
 import unittest
 import os
@@ -14,6 +15,7 @@ from nose2.tools import params
 from more_itertools import first
 from itertools import islice, permutations
 from functools import partial
+from operator import attrgetter
 from numpy.lib.recfunctions import append_fields
 import pandas as pd
 from io import StringIO
@@ -344,6 +346,10 @@ class FastqGenerateTest(unittest.TestCase):
 
         # todo test that reads align
         # todo test that reads are converted properly
+
+    def test_generate_reverse_complex(self):
+        """"""
+        raise NotImplementedError
 
 
 class FastqMergeTest(unittest.TestCase):
@@ -706,16 +712,255 @@ class GTFReaderTest(unittest.TestCase):
     def test_reader_get_mitochondrial_ids(self):
         pass  # todo implement
 
-        # @classmethod
-        # def tearDownClass(cls):
-        #     if os.path.isdir(cls.test_dir):
-        #         shutil.rmtree(cls.test_dir)
-        #     pass
-
     @classmethod
     def tearDownClass(cls):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
+
+
+class GTFTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        check_index()
+        cls.gtf = config.gtf
+        cls._gene_id_pattern = b'(.*?gene_id ")(\D+)(\d+)(\.?)(\d*)(.*)'
+        cls.fasta = config.fasta
+
+    def test_reader_init(self):
+        seqc.gtf_new.Reader(self.gtf)
+
+    def test_reader_iter(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        first(rd)  # check iterable
+
+    def test_reader_iter_genes(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        for i in rd.iter_gene_sets():
+            break
+
+        # make sure the gene_id is identical for each value
+        gene_ids = set()
+        for r in i:
+            try:
+                gene_ids.add(re.match(self._gene_id_pattern, r[-1]).groups()[2])
+            except AttributeError:
+                print(r)
+        self.assertEqual(len(gene_ids), 1)
+
+    def test_exon(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+
+        gene_records = first(rd.iter_gene_sets())
+
+        # get an exon from this gene record
+        for record in gene_records:
+            if record[2] != b'exon':
+                continue
+            exon = seqc.gtf_new.Exon(record)
+            break
+
+        # test that all the properties are working
+        self.assertIsInstance(exon.seqname, bytes)
+        self.assertIsInstance(exon.chromosome, bytes)
+        self.assertIsInstance(exon.source, bytes)
+        self.assertIsInstance(exon.feature, bytes)
+        self.assertIsInstance(exon.start, int)
+        self.assertIsInstance(exon.end, int)
+        self.assertIsInstance(exon.score, bytes)
+        self.assertIn(exon.strand, [b'+', b'-'])
+        self.assertIsInstance(exon.frame, bytes)
+
+        # test that attribute parsing works
+        try:
+            self.assertIsInstance(exon.attribute(b'exon_id'), bytes)
+        except:
+            print(exon._fields[-1])
+            raise
+
+        # test repr & str
+        self.assertIsInstance(repr(exon), str)
+        self.assertIsInstance(str(exon), str)
+
+        # test slicing
+        plus_exon = deepcopy(exon)
+        plus_exon._fields[6] = b'+'
+        minus_exon = deepcopy(exon)
+        minus_exon._fields[6] = b'-'
+        size = exon.end - exon.start
+
+        # one of these tests is yielding incorrect output!
+        self.assertEqual(plus_exon[:round(size * .25)].end,
+                         plus_exon.start + round(size * .25))
+        self.assertEqual(plus_exon[-round(size * .25):].start,
+                         plus_exon.end - round(size * .25))
+        self.assertEqual(plus_exon[10:50].end, plus_exon.start + 50)
+        self.assertEqual(plus_exon[10:50].start, plus_exon.start + 10)
+
+        self.assertEqual(minus_exon[:round(size * .25)].end, minus_exon.end)
+        self.assertEqual(minus_exon[:round(size * .25)].start,
+                         minus_exon.end - round(size * .25))
+        self.assertEqual(minus_exon[-round(size * .25):].start, minus_exon.start)
+        self.assertEqual(minus_exon[-round(size * .25):].end, minus_exon.start +
+                         round(size * .25))
+        self.assertEqual(minus_exon[10:50].end, minus_exon.end - 10)
+        self.assertEqual(minus_exon[10:50].start, minus_exon.end - 50)
+
+    def test_transcript(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        gene_records = first(rd.iter_gene_sets())
+
+        iter_gene = iter(gene_records)
+
+        # get the transcript record
+        transcript_record = next(iter_gene)
+        while transcript_record[2] != b'transcript':
+            transcript_record = next(iter_gene)
+
+        # now get all the UTRs
+        exons = []
+        record = next(iter_gene)  # get the first non-transcript record
+        while record[2] not in [b'transcript', b'gene']:
+            if record[2] in [b'exon', b'UTR']:
+                exons.append(record)
+            record = next(iter_gene)
+
+        transcript = seqc.gtf_new.Transcript.from_records(transcript_record, *exons)
+
+        # create a minus and plus transcript for testing
+        if transcript._fields[6] == b'+':
+            plus_transcript = transcript
+
+            minus_transcript = deepcopy(transcript)
+            minus_transcript._fields[6] = b'-'
+            minus_transcript._exons = sorted(minus_transcript._exons,
+                                             key=attrgetter('start'), reverse=True)
+            for exon in minus_transcript:
+                exon._fields[6] = b'-'
+        else:
+            minus_transcript = transcript
+            plus_transcript = deepcopy(transcript)
+            plus_transcript._fields[6] = b'+'
+            plus_transcript._exons = sorted(plus_transcript._exons,
+                                            key=attrgetter('start'))
+            for exon in plus_transcript:
+                exon._fields[6] = b'+'
+
+        # test that all the properties are working
+        self.assertIsInstance(transcript.seqname, bytes)
+        self.assertIsInstance(transcript.chromosome, bytes)
+        self.assertIsInstance(transcript.source, bytes)
+        self.assertIsInstance(transcript.feature, bytes)
+        self.assertIsInstance(transcript.start, int)
+        self.assertIsInstance(transcript.end, int)
+        self.assertIsInstance(transcript.score, bytes)
+        self.assertIn(transcript.strand, [b'+', b'-'])
+        self.assertIsInstance(transcript.frame, bytes)
+
+        # test transcript slicing
+        self.assertEqual(plus_transcript.size, minus_transcript.size)
+        subset = round(plus_transcript.size * .25)
+
+        self.assertEqual(plus_transcript[:subset].size, subset)
+        self.assertEqual(plus_transcript[-subset:].size, subset)
+        self.assertEqual(plus_transcript.start, plus_transcript[:subset].start)
+        self.assertEqual(plus_transcript[-subset:].end, plus_transcript.end)
+
+        self.assertEqual(minus_transcript[-subset:].size, subset)
+        self.assertEqual(minus_transcript[:subset].size, subset)
+        self.assertEqual(minus_transcript.end, minus_transcript[:subset].end)
+        self.assertEqual(minus_transcript.start, minus_transcript[-subset:].start)
+
+        self.assertEqual(plus_transcript[:subset].size, minus_transcript[:subset].size)
+        self.assertEqual(plus_transcript[:-subset].size, minus_transcript[:-subset].size)
+        self.assertEqual(plus_transcript[-subset:].size, minus_transcript[-subset:].size)
+        self.assertEqual(plus_transcript[subset:].size, minus_transcript[subset:].size)
+        self.assertEqual(plus_transcript[1:5].size, 4)
+        self.assertEqual(minus_transcript[1:5].size, 4)
+        self.assertEqual(plus_transcript[1:5].start, plus_transcript.start + 1)
+        self.assertEqual(plus_transcript[1:5].end, plus_transcript.start + 5)
+        self.assertEqual(minus_transcript[1:5].end, minus_transcript.end - 1)
+        self.assertEqual(minus_transcript[1:5].start, minus_transcript.end - 5)
+
+    def test_gene(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        minus_gene = None
+        plus_gene = None
+        gene_iterator = rd.iter_gene_sets()
+        while not all((minus_gene, plus_gene)):
+            gene_records = list(next(gene_iterator))
+            gene = seqc.gtf_new.Gene.from_records(*gene_records)
+            if len(gene) > 1 and gene.strand == b'+':
+                plus_gene = gene
+            if len(gene) > 1 and gene.strand == b'-':
+                minus_gene = gene
+
+        plus_subset = int(np.mean([tx.size * .75 for tx in plus_gene]))
+        minus_subset = int(np.mean([tx.size * .75 for tx in minus_gene]))
+
+        for gene in (plus_gene, minus_gene):
+            subset = int(np.mean([tx.size * .75 for tx in gene]))
+            sliced_gene = gene[-subset:]
+            self.assertTrue(all(tx.size == min(subset, original.size) for
+                                tx, original in zip(sliced_gene, gene)))
+
+        # test merge intervals
+        res = list(plus_gene._merge_intervals([(1, 5), (4, 9)]))
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], (1, 9))
+
+        res = list(plus_gene._merge_intervals([(1, 5), (4, 9), (-1, 3)]))
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], (-1, 9))
+
+        res = list(plus_gene._merge_intervals([(4, 9), (-1, 3)]))
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res, [(-1, 3), (4, 9)])
+
+        # test intervals
+        for gene in (plus_gene, minus_gene):
+            subset = int(np.mean([tx.size * .75 for tx in gene]))
+            res = gene.intervals(-1000)
+
+    def test_annotation(self):
+
+        anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
+
+        # test properties
+        self.assertIsInstance(len(anno), int)
+        self.assertIsInstance(repr(anno), str)
+        self.assertIsInstance(anno.chromosomes, dict)
+
+        # test __getitem__
+        sample_gene = anno.genes[0]
+        chromosome = sample_gene.chromosome
+        gene_id = sample_gene.string_gene_id
+        self.assertIsInstance(anno[chromosome][gene_id], seqc.gtf_new.Gene)
+
+        prefix = sample_gene.organism_prefix
+        int_id = sample_gene.integer_gene_id
+        string_id = sample_gene.string_gene_id.split(b'.')[0]
+        self.assertEqual(string_id, seqc.gtf_new.Record.int2str_gene_id(int_id, prefix))
+
+        print(list(anno.random_genes(10)))
+
+
+class TestFastaReader(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fasta = config.fasta
+
+    def test_fasta_reader(self):
+        rd = seqc.fasta.Reader(self.fasta)
+        for name, desc, seq in rd:
+            print(name)
+            print(desc)
+            print(seq[:20] + b'...')
+
+
+
+
 
 
 class CoreFixOutputPathsTest(unittest.TestCase):
@@ -2763,7 +3008,16 @@ class SamReaderTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    nose2.main()
+    suite = unittest.TestSuite()
+    suite.addTest(GTFTest("test_exon"))
+    suite.addTest(GTFTest("test_transcript"))
+    suite.addTest(GTFTest("test_gene"))
+    suite.addTest(GTFTest("test_annotation"))
+    suite.addTest(TestFastaReader("test_fasta_reader"))
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
+
+    # nose2.main()
     # final cleanup
     if os.path.isdir('test_seqc'):
         shutil.rmtree('test_seqc')

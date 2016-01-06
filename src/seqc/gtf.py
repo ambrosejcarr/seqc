@@ -13,10 +13,13 @@ import seqc
 import pickle
 import random
 
+
+# todo refactor to make "gene", "transcript", and "exon" objects
+# last can probably be a namedtuple. Will be easier to test
+
 # create a simple mock-class for returned gtf records
 Record = namedtuple('Record', ['seqname', 'source', 'feature', 'start', 'end',
                                'score', 'strand', 'frame', 'attribute'])
-
 
 # same as Record except 'start' and 'end' are replaced by 'intervals', a list of
 #   [(start, end)] coordinates
@@ -230,6 +233,78 @@ class Reader:
             template.score, template.strand, template.frame, template.attribute)
 
     @staticmethod
+    def _split_final_n(exons: list, n: int, strand: str) -> (MultiRecord, MultiRecord):
+        """
+        return a pair of MultiRecords, one containing all intervals within n bases of
+        the TTS for the exons of a given transcript, and another containing everything
+        else.
+
+        If the input are the exons of a single transcript from a properly formatted
+        gtf file, then the sorting is superfluous, and the set operation should do
+        nothing, however both seem necessary for ENSEMBL gtf files.
+
+        Note that initial intervals may return an empty list for the intervals field in
+        the case that the gene's transcripts are all fewer than 1000 bases.
+
+        args:
+        -----
+        n: the number of bases from the TTS at which to split the multirecords
+        strand: whether the intervals are found on the + or - strand. Options: '+', '-'
+
+        returns:
+        MultiRecord object whose start and end fields are lists of intervals that
+          fall within n bases of the TTS.
+
+        """
+
+        if n <= 0:
+            raise ValueError('n must be a positive integer')
+
+        # convert exons into intervals and eliminate duplicates
+        intervals = set((int(r.start), int(r.end)) for r in exons)
+
+        terminal_intervals = []
+        initial_intervals = []
+        template = exons[0]
+
+        # flag to indicate that we have exhausted the final kb of the transcript, and
+        # now any remaining exons are to be added to the initial_intervals
+        initial = False
+
+        # process exons
+        intervals = sorted(intervals, key=itemgetter(1, 0), reverse=True)
+        for start, end in intervals:
+
+            if not initial:
+                # add complete exon
+                if end - start < n:
+                    terminal_intervals.append((start, end))
+                    n -= end - start  # decrement n
+
+                # exon is larger than remaining bases; add part of exon
+                else:
+                    initial = True
+                    if strand is '+':
+                        terminal_intervals.append((end - n, end))
+                        initial_intervals.append((start, end - n))
+                    elif strand is '-':
+                        terminal_intervals.append((start, start + n))
+                        initial_intervals.append((start + n, end))
+                    else:
+                        raise ValueError('strand must be "+" or "-", not %s' % repr(strand))
+            else:
+                initial_intervals.append((start, end))
+
+        # exons exhausted, transcript was smaller than n; return entire list
+        terminal_multi_record = MultiRecord(
+            template.seqname, template.source, template.feature, terminal_intervals,
+            template.score, template.strand, template.frame, template.attribute)
+        initial_multi_record = MultiRecord(
+            template.seqname, template.source, template.feature, initial_intervals,
+            template.score, template.strand, template.frame, template.attribute)
+        return initial_multi_record, terminal_multi_record
+
+    @staticmethod
     def _merge_transcripts(transcripts: list) -> MultiRecord:
         """
         returns a MultiRecord whose start and stop fields are tuples containing all
@@ -270,6 +345,53 @@ class Reader:
         template['intervals'] = list(merge_intervals(sorted_intervals))
 
         return MultiRecord(**template)
+
+    def iter_split_genes_final_nbases(self, n: int=1000) -> Iterator:
+        """
+        Iterator of pairs of MultiRecords containing all intervals (1) outside of the
+         last n bases of each transcript of a gene, and (2) all bases within n bases
+         of the final transcript for a gene. Collectively, accounts for the entire
+         transcript sequence
+
+        Note that if only the intervals corresponding to the final n bases of each record
+         are desired, iter_genes_final_nbases() will yeild those records.
+
+        args:
+        -----
+        n: the number of bases from the TTS at which to split intervals
+
+        returns:
+        --------
+        iterator: iterator of pairs of Multirecords containing all sequence before and
+         after the -nth base of each gene.
+
+        """
+
+        seqc.util.check_type(n, int, 'n')
+
+        exon_set_iterator = self.iter_exon_sets()
+
+        # create the first transcript
+        first_exon_set = next(exon_set_iterator)
+        first = self._split_final_n(first_exon_set, n, strand=first_exon_set[0].strand)
+        init_transcripts, final_transcripts = [[txs] for txs in first]
+
+        for exons in self.iter_exon_sets():
+            initial, final = self._split_final_n(exons, n, exons[0].strand)
+            if initial.attribute['gene_id'] == init_transcripts[0].attribute['gene_id']:
+                init_transcripts.append(initial)
+                final_transcripts.append(final)
+            else:  # new gene; merge and yield the last one
+                initial_gene = self._merge_transcripts(init_transcripts)
+                final_gene = self._merge_transcripts(final_transcripts)
+                yield initial_gene, final_gene
+                init_transcripts = [initial]
+                final_transcripts = [final]
+
+        # yield the final gene
+        initial_gene = self._merge_transcripts(init_transcripts)
+        final_gene = self._merge_transcripts(final_transcripts)
+        yield initial_gene, final_gene
 
     def iter_genes_final_nbases(self, n: int=1000) -> Iterator:
         """

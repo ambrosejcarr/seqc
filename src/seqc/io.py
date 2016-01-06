@@ -580,13 +580,19 @@ class BaseSpace:
         return forward_fastq, reverse_fastq
 
 
-def open_file(filename):
-    if filename.endswith('.gz'):
-        return gzip.open(filename, 'rt')
-    elif filename.endswith('.bz2'):
-        return bz2.open(filename, 'rt')
+def open_file(filename, as_bytes=False):
+    if as_bytes:
+        zip_flag = 'rb'
+        flag = 'rb'
     else:
-        return open(filename)
+        zip_flag = 'rt'
+        flag = 'r'
+    if filename.endswith('.gz'):
+        return gzip.open(filename, zip_flag)
+    elif filename.endswith('.bz2'):
+        return bz2.open(filename, zip_flag)
+    else:
+        return open(filename, flag)
 
 
 class DummyFTPClient(threading.Thread):

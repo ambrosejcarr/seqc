@@ -32,9 +32,10 @@ class TestFunctionalRemote(unittest.TestCase):
         '--remote'
     ]
 
-    if args[16] is None:
-        raise ValueError('Please input user email for testing on line 30 of '
-                         'test_functional_remote.py, then rerun the test.')
+    # todo comment this back in; removed for testing purposes
+    # if args[16] is None:
+    #     raise ValueError('Please input user email for testing on line 30 of '
+    #                      'test_functional_remote.py, then rerun the test.')
 
     def test_seqc_raw_fastq_input_remote_test(self):
 
