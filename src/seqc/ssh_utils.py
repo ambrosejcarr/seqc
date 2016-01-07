@@ -29,9 +29,9 @@ class SSHServer(object):
             #     print('instance not ready for connection, sleeping...')
             #     self.instance.reload()
             #     time.sleep(30)
-            # except FileNotFoundError:
-            #     print('the key %s was not found!' %self.key)
-            #     sys.exit(2)
+            except FileNotFoundError:
+                print('the key %s was not found!' % self.key)
+                sys.exit(2)
             # except paramiko.BadHostKeyException:
             #     print('the host key %s could not be verified!' %self.key)
             #     sys.exit(2)
