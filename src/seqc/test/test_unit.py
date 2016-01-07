@@ -974,9 +974,7 @@ class GTFTest(unittest.TestCase):
         self.assertTrue(all(len(s) == seqlen for s in seqs))
         self.assertEqual(len(genes), n_seqs)
 
-        # finally, want to be able to generate giberish sequences
-
-
+        # finally, want to be able to generate giberish sequences; this is in align
 
 
 class TestFastaReader(unittest.TestCase):
@@ -1365,6 +1363,7 @@ class AlignSTARTest(unittest.TestCase):
             if not os.path.isdir(cls.test_dir % dtype):
                 os.makedirs(cls.test_dir % dtype)
             check_merged_fastq(dtype)
+        cls.n_threads = 7
 
     @params(*config.data_types)
     @unittest.skip('slow; genome loading takes time.')
@@ -1374,8 +1373,7 @@ class AlignSTARTest(unittest.TestCase):
         merged = config.merged_pattern % dtype
         self.assertTrue(os.path.isfile(merged), '%s is not a file' % merged)
 
-        n_threads = 7
-        samfile = seqc.align.STAR.align(merged, config.index, n_threads,
+        samfile = seqc.align.STAR.align(merged, config.index, self.n_threads,
                                         self.test_dir % dtype)
 
         # check that file was created
@@ -1394,6 +1392,13 @@ class AlignSTARTest(unittest.TestCase):
             if not int(record.flag) & 4:
                 aligned += 1
         self.assertGreaterEqual(aligned, n)
+
+    def test_align_giberish(self):
+        res = seqc.align.STAR.generate_unalignable_sequences(
+            1000, 100, config.index, self.n_threads)
+        print(type(res))
+        print(len(res))
+        print(res[:5])
 
     @classmethod
     def tearDownClass(cls):
@@ -3045,7 +3050,8 @@ if __name__ == '__main__':
     # suite.addTest(GTFTest("test_gene"))
     # suite.addTest(GTFTest("test_gene_slicing"))
     # suite.addTest(GTFTest("test_annotation"))
-    suite.addTest(GTFTest("test_random_sequences"))
+    # suite.addTest(GTFTest("test_random_sequences"))
+    suite.addTest(AlignSTARTest('test_align_giberish'))
     # suite.addTest(TestFastaReader("test_fasta_reader"))
     runner = unittest.TextTestRunner()
     runner.run(suite)
