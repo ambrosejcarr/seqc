@@ -19,7 +19,7 @@ def get(queue, pids=None):
         except Empty:
             if pids:
                 if any_alive(pids):
-                    sleep(1)
+                    sleep(.05)
                     continue
                 else:
                     break
@@ -38,7 +38,7 @@ def put(data, queue, pids=None):
         except Full:
             if pids:
                 if any_alive(pids):
-                    sleep(1)
+                    sleep(.05)
                     continue
                 else:
                     raise RuntimeError('Attempt to place data on a queue after all '
@@ -94,11 +94,10 @@ def process_parallel(
         """
 
         while not all([pids['read'], pids['process'], pids['write']]):
-            sleep(1)
+            sleep(.05)
 
         for i, chunk in enumerate(read_func_(**kwargs)):
             put((i, chunk), process_queue_, pids['process'])
-            seqc.log.info('Read chunk %d.' % i)
 
     def process(process_func_, process_queue_, write_queue_, kwargs, pids):
         """
@@ -106,10 +105,9 @@ def process_parallel(
         Queue is empty and the read process is dead.
         """
         while not all([pids['read'], pids['process'], pids['write']]):
-            sleep(1)
+            sleep(.05)
 
         for i, data in get(process_queue_, pids['read']):
-            seqc.log.info('Processing chunk %d.' % i)
             processed_data = process_func_(data, **kwargs)
             put((i, processed_data), write_queue_, pids['write'])
 
@@ -120,21 +118,18 @@ def process_parallel(
         write.
         """
         while not all([pids['read'], pids['process'], pids['write']]):
-            sleep(1)
+            sleep(.05)
 
         # open file
         h5writer = write_func_(filename)
         h5writer.create(**kwargs)
         for i, data in get(write_queue_, pids['process']):
-            seqc.log.info('Writing chunk %d.' % i)
             h5writer.write(data)
         h5writer.close()
 
     if n_proc < 3:
         raise ValueError('Cannot multiprocess with fewer than 3 processors, n_proc must '
                          'be >= 3, not %d' % n_proc)
-
-    seqc.log.setup_logger()
 
     # set up shared dictionary to track whether processes have started
     manager = Manager()

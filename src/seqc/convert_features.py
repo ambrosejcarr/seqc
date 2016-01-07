@@ -309,8 +309,7 @@ class ConvertGeneCoordinates:
         err_msg = 'dict_of_interval_trees must contain only IntervalTree leaves, not %s'
         for tree in dict_of_interval_trees.values():
             if not isinstance(tree, IntervalTree):
-                    raise TypeError('all dictionary values must be IntervalTrees not %s'
-                                    % type(tree))
+                    raise TypeError(err_msg % type(tree))
 
         # set self.data; self.id_map
         self._data = dict_of_interval_trees
@@ -344,17 +343,19 @@ class ConvertGeneCoordinates:
         try:
             ivs = self._data[(chromosome, strand)].search(position)
         except KeyError:  # should only happen with malformed input
+            return []  # we can align to chromosomes that don't have any genes.
 
-            # check for bad input
-            if not isinstance(chromosome, str):
-                raise TypeError('chromosome must be <class "str">, not %s' %
-                                type(chromosome))
-            elif not strand in ('-', '+'):
-                raise ValueError('strand must be one of "-" or "+"')
-            else:  # not sure what the problem is here, raise original exception
-                raise
+            # old checks, invalid given the above.
+            # # check for bad input
+            # if not isinstance(chromosome, str):
+            #     raise TypeError('chromosome must be <class "str">, not %s' %
+            #                     type(chromosome))
+            # elif strand not in ('-', '+'):
+            #     raise ValueError('strand must be one of "-" or "+"')
+            # else:  # not sure what the problem is here, raise original exception
+            #     raise
 
-        if len(ivs) >= 1:
+        if len(ivs) == 1:
             return [first(ivs).data]
         else:
             return []
@@ -376,15 +377,15 @@ class ConvertGeneCoordinates:
             raise ValueError('fname must be the name of a file, not a directory')
 
         # check that directory exists
-        *dir, name = fname.split('/')
-        if not os.path.isdir('/'.join(dir)):
+        *dir_, name = fname.split('/')
+        if not os.path.isdir('/'.join(dir_)):
             raise FileNotFoundError('the directory fname should be saved in does not '
                                     'exist')
         with open(fname, 'wb') as f:
             pickle.dump({'dict_of_interval_trees': self._data, 'id_map': self._id_map}, f)
 
     @classmethod
-    def from_pickle(cls, fname: str) -> None:
+    def from_pickle(cls, fname: str):
         """load a ConvertGeneCoordinates object from a serialized file"""
         with open(fname, 'rb') as f:
             data = pickle.load(f)
@@ -426,7 +427,7 @@ class ConvertGeneCoordinates:
             # check if gene is in map
             gene = record.attribute['gene_id']
             int_id = hash(gene)
-            if not int_id in id_map:
+            if int_id not in id_map:
                 id_map[int_id] = gene
 
             for iv in record.intervals:

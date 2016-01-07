@@ -7,7 +7,6 @@ import shutil
 import seqc
 import sys
 import json
-import re
 
 
 def create_parser():
@@ -19,12 +18,12 @@ def create_parser():
     # add subparsers for each library construction method
     subparsers = parser.add_subparsers(help='library construction method types',
                                        dest='subparser_name')
-    parse_in_drop = subparsers.add_parser('in-drop', help='in-drop help')
-    parse_drop_seq = subparsers.add_parser('drop-seq', help='drop-seq help')
-    parse_mars_seq = subparsers.add_parser('mars-seq', help='mars-seq help')
-    parse_cel_seq = subparsers.add_parser('cel-seq', help='cel-seq help')
-    parse_avo_seq = subparsers.add_parser('avo-seq', help='avo-seq help')
-    parse_strt_seq = subparsers.add_parser('strt-seq', help='strt-seq help')
+    parse_in_drop = subparsers.add_parser('in-drop', help='process process in-drop')
+    parse_drop_seq = subparsers.add_parser('drop-seq', help='process drop-seq data')
+    parse_mars_seq = subparsers.add_parser('mars-seq', help='process mars-seq data')
+    parse_cel_seq = subparsers.add_parser('cel-seq', help='process cel-seq data')
+    parse_avo_seq = subparsers.add_parser('avo-seq', help='process avo-seq data')
+    parse_strt_seq = subparsers.add_parser('strt-seq', help='process strt-seq data')
 
     # get a list of parsers, set-up pipeline function for each parser
     subparser_list = [parse_in_drop, parse_mars_seq, parse_cel_seq,
@@ -51,6 +50,9 @@ def create_parser():
         r.add_argument('-k', '--aws-upload-key', metavar='K', default=None,
                        help='upload processed results to this AWS folder. Required if '
                             '--remote is passed')
+        if i < 5:  # for all experiments except drop-seq, barcodes are a required arg.
+            r.add_argument('-b', '--barcodes', metavar='B', default=None,
+                           help='local or s3 location of serialized barcode object.')
         r.add_argument('--remote', default=False, action='store_true',
                        help='run the requested SEQC command remotely')
         r.add_argument('--email-status', default='', metavar='E',
@@ -58,10 +60,6 @@ def create_parser():
         r.add_argument('--no-terminate', default=False, action='store_true',
                        help='Decide if the cluster will terminate upon completion.')
 
-        # for all experiments except drop-seq, barcodes are a required input argument
-        if i < 5:
-            r.add_argument('-b', '--barcodes', metavar='B', default=None,
-                           help='local or s3 location of serialized barcode object.')
 
         i = p.add_argument_group(
             title='Input Files',
@@ -78,9 +76,8 @@ def create_parser():
         i.add_argument('-m', '--merged-fastq', metavar='M', default='',
                        help='s3 link or filesystem location of fastq file containing '
                             'merged, pre-processed records')
-        i.add_argument('--basespace', nargs=2, default=None, metavar='BS',
-                       help='takes 2 arguments: a basespace sample id, and a basespace '
-                            'oAuth token. If provided, fastq input data will be '
+        i.add_argument('--basespace', default=None, metavar='BS',
+                       help='Basespace sample ID. If provided, fastq input data will be '
                             'downloaded from BaseSpace for processing.')
 
         # disambiguation arguments
@@ -103,7 +100,7 @@ def create_parser():
         sys.exit(2)
 
     # add a sub-parser for building the index
-    pindex = subparsers.add_parser('index', help='SEQC index functions')
+    pindex = subparsers.add_parser('index', help='create or test a SEQC index')
     pindex.add_argument('-b', '--build', action='store_true', default=False,
                         help='build a SEQC index')
     pindex.add_argument('-t', '--test', action='store_true', default=False,
@@ -128,6 +125,29 @@ def create_parser():
                         help='email results to this address')
     pindex.add_argument('--no-terminate', default=False, action='store_true',
                         help='Decide if the cluster will terminate upon completion.')
+    pindex.set_defaults(remote=False, email_status=False)
+
+    # add a sub-parser for cleaning up instances and volumes on AWS
+    pcleanup = subparsers.add_parser('clean', help='clean up AWS resources')
+    pcleanup.add_argument('-i', '--instances', action='store_true', default=False,
+                          help='clean up any leftover security groups produced by '
+                               'remote instance creation')
+    pcleanup.add_argument('-v', '--volumes', action='store_true', default=False,
+                          help='clean up any leftover volumes produced by remote '
+                               'instance creation')
+    pcleanup.set_defaults(remote=False, email_status=False)
+
+    # add a sub-parser for creating and testing barcode files
+    pbc = subparsers.add_parser('barcode', help='build a serialized barcode object')
+    pbc.add_argument('-f', '--barcode-files', nargs='+', default=None,
+                     help='text barcode file(s).', metavar='F')
+    pbc.add_argument('--reverse-complement', action='store_true', default=False,
+                     help=('indicates that barcodes in fastq files are '
+                           'reverse complements of the barcodes in the '
+                           'barcode files'))
+    pbc.add_argument('-o', '--output', metavar = 'O',
+                     help='Name for the barcode file that is to be generated')
+    pbc.set_defaults(remote=False, email_status=False)
 
     # allow user to check version
     parser.add_argument('-v', '--version', help='print version and exit',
@@ -154,6 +174,16 @@ def parse_args(parser, args=None):
             print('SEQC index: error: one but not both of the following arguments must '
                   'be provided: -b/--build, -t/--test')
             sys.exit(2)
+    elif arguments.subparser_name == 'clean':
+        if arguments.volumes:
+            clean_volumes()
+        elif arguments.instances:
+            clean_instances()
+        else:
+            print('SEQC clean: error: one but not both of the following arguments must '
+                  'be provided: -v/--volumes, -i/--instances')
+    elif arguments.subparser_name == 'barcode':
+        arguments.func = create_barcodes
     else:
         # list star args if requested, then exit
         if arguments.list_default_star_args:
@@ -183,20 +213,42 @@ def parse_args(parser, args=None):
                 print('SEQC %s: error: the following arguments are required: -i/--index, '
                       '-n/--n-threads, -o/--output-prefix')
 
-    if arguments.remote:
-        if not arguments.aws_upload_key:
-            print('SEQC: %s: error: if requesting a remote run with --remote, '
-                  '-k/--aws-upload-key must be specified. Otherwise results are '
-                  'discarded when the cluster is terminated.' % arguments.subparser_name)
-            sys.exit(2)
-        if not arguments.email_status:
-            print('SEQC: %s: error: if requesting a remote run with --remote, '
-                  '--email-status must specify the email address that updates or errors '
-                  'should be sent to.')
-            sys.exit(2)
+        if arguments.remote:
+            if not arguments.aws_upload_key:
+                print('SEQC: %s: error: if requesting a remote run with --remote, '
+                      '-k/--aws-upload-key must be specified. Otherwise results are '
+                      'discarded when the cluster is terminated.' %
+                      arguments.subparser_name)
+                sys.exit(2)
+            if not arguments.email_status:
+                print('SEQC: %s: error: if requesting a remote run with --remote, '
+                      '--email-status must specify the email address that updates or '
+                      'errors should be sent to.')
+                sys.exit(2)
 
     return vars(arguments)
 
+
+# todo write this function; iss#77
+def quick_verify_input_arguments(kwargs):
+    """
+    runs quick checks on each input argument prior to starting a cluster or downloading
+    data to catch as many errors as possible prior to beginning the run in earnest.
+
+    to check:
+    forward, reverse, merged, sam, barcodes, index:
+      make sure they exist, and point to valid files or folders.
+
+    if any aws links are passed, make sure we have permissions to read and write to those
+    folders (if appropriate)
+
+    if additional star arguments are passed, check if possible that they are valid
+    arguments
+
+    if basespace is passed, check that the key is valid to access (might need a testing
+    function for this).
+    """
+    raise NotImplementedError
 
 def run_remote(kwargs: dict) -> None:
     """
@@ -209,6 +261,7 @@ def run_remote(kwargs: dict) -> None:
     --------
     None
     """
+    seqc.log.notify('Beginning remote SEQC run...')
     cmd = 'SEQC '
 
     # get the positional argument; doesn't need a '--' prefix
@@ -239,7 +292,6 @@ def run_remote(kwargs: dict) -> None:
     cluster = seqc.cluster_utils.ClusterServer()
     cluster.cluster_setup(clustname)
     cluster.serv.connect()
-    seqc.log.info('Remote server set-up complete.')
 
     # writing instance id and security group id into file for cluster cleanup
     temp_path = seqc.__path__[0]
@@ -249,13 +301,13 @@ def run_remote(kwargs: dict) -> None:
         f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
     # running SEQC on the cluster
-    seqc.log.info('Beginning remote run.')
+    seqc.log.notify('Beginning remote run.')
     # writing name of instance in /data/software/instance.txt for clean up
     cluster.serv.exec_command('cd /data/software; echo %s > instance.txt'
                               % str(cluster.inst_id.instance_id))
     cluster.serv.exec_command('cd /data/software; nohup %s > /dev/null 2>&1 &' % cmd)
-    seqc.log.info('Terminating local client. Email will be sent when remote run '
-                  'completes')
+    seqc.log.notify('Terminating local client. Email will be sent when remote run '
+                    'completes.')
 
 
 def fix_output_paths(output_prefix: str) -> (str, str):
@@ -349,7 +401,7 @@ def check_index(index: str, output_dir: str='') -> (str, str):
     return index, gtf
 
 
-def check_and_load_barcodes(
+def check_barcodes(
         barcodes: str='', output_dir='') -> seqc.barcodes.CellBarcodes:
     """
     check if barcodes points to a valid s3 link or file object. If it does, load and
@@ -493,7 +545,6 @@ def check_input_data(
             name = link_or_file.split('/')[-1]
             new_file = prefix + name
             seqc.io.S3.download_file(bucket, key, new_file)
-            print(new_file)
             return new_file
 
     if forward_fastq or reverse_fastq:
@@ -527,78 +578,13 @@ def check_input_data(
                           'merged_fastq')
             merged = download_s3_files(merged, 'merged_fastq', output_dir)
     elif basespace:
+        seqc.log.info('BaseSpace sample id provided for fastq data. Downloading fastq.')
         prefix = output_dir + 'fastq/'
-        sample_id, access_token = basespace
-        seqc.io.BaseSpace.download_sample(sample_id, access_token, prefix)
-        forward_pattern = r'_R1_.*?\.fastq\.gz'
-        reverse_pattern = r'_R2_.*?\.fastq\.gz'
-        forward_fastq = [f for f in os.listdir(prefix) if re.search(forward_pattern, f)]
-        reverse_fastq = [f for f in os.listdir(prefix) if re.search(reverse_pattern, f)]
+        sample_id = basespace
+        forward_fastq, reverse_fastq = seqc.io.BaseSpace.download_sample(
+            sample_id, prefix)
 
     return forward_fastq, reverse_fastq, merged, samfile
-
-
-def set_up(output_prefix, index, barcodes):
-    """
-    create temporary directory for run, find gtf in index, and create or load a
-    serialized barcode object
-    """
-
-    # temporary directory should be made in the same directory as the output prefix
-    *stem, final_prefix = output_prefix.split('/')
-    output_dir = '/'.join(stem + ['.' + final_prefix])
-
-    # create temporary directory based on experiment name
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    if not output_dir.endswith('/'):
-        output_dir += '/'
-
-    # check that index exists. If index is an aws link, download the index
-    if index.startswith('s3://'):
-        seqc.log.info('AWS s3 link provided for index. Downloading index.')
-        bucket, prefix = seqc.io.S3.split_link(index)
-        index = output_dir + 'index/'
-        cut_dirs = prefix.count('/')
-        seqc.io.S3.download_files(bucket, prefix, index, cut_dirs)
-
-    # obtain gtf file from index argument
-    gtf = index + 'annotations.gtf'
-    if not os.path.isfile(gtf):
-        raise FileNotFoundError('no file named "annotations.gtf" found in index: %s' % index)
-
-    # get cell barcode files
-    if not barcodes:
-        cb = seqc.barcodes.DropSeqCellBarcodes()
-    else:
-        if barcodes.startswith('s3://'):
-            seqc.log.info('AWS s3 link provided for barcodes. Downloading barcodes')
-            bucket, key = seqc.io.S3.split_link(barcodes)
-            output_prefix = output_dir + 'barcodes.p'
-            try:
-                barcodes = seqc.io.S3.download_file(bucket, key, output_prefix)
-            except FileExistsError:
-                barcodes = output_prefix
-                pass  # already have the file in this location from a previous run
-
-        # now, we should definitely have the binary file. Load it.
-        with open(barcodes, 'rb') as f:
-            cb = pickle.load(f)
-
-    return output_dir, gtf, cb, index
-
-# todo commented out until dependencies are installed automatically.
-# todo should be coded to pep8 standards
-# def htqc(output_dir, forward, reverse, r, t):
-#     seqc.log.info('getting QC')
-#     def run_htqc():
-#         call(["ht-sample","-P","-q","-o",output_dir + "sample","-r",str(r),"-z","-i"] + [i for i in forward] + [i for i in reverse])
-#         call(["ht-stat","-P","-o",output_dir,"-t",str(t),"-z","-i",output_dir + "sample_1.fastq.gz",output_dir + "sample_2.fastq.gz"])
-#         call(["ht-stat-draw.pl", "--dir", output_dir])
-#         os.remove(output_dir + "sample_1.fastq.gz")
-#         os.remove(output_dir + "sample_2.fastq.gz")
-#     p = Process(target=run_htqc, args=(), daemon=True)
-#     p.start()
 
 
 def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb, n_threads):
@@ -640,27 +626,6 @@ def process_samfile(samfile, output_prefix, n_threads, gtf, frag_len):
     return read_array
 
 
-def correct_errors():
-    # try:
-    #     info('Correcting errors')
-    #     if not barcode_dir.endswith('/'):
-    #         barcode_dir += '/'
-    #     barcode_files = glob(barcode_dir + '*')
-    #     corrected, nerr, err_rate = correct_errors(
-    #         unambiguous, barcode_files, processor_name, meta, p_val=0.1)
-    #
-    #     # store metadata from these runs in post-processing summary
-    #     # post_processing_summary(h5db, exp_name, dis_meta, nerr)
-    #
-    #     # store error rates
-    #     # store_error_rate(h5db, exp_name, err_rate)
-    #
-    # except:  # fail gracefully on error_correction; not all methods can do this!
-    #     logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
-    #     corrected = unambiguous
-    raise NotImplementedError
-
-
 def resolve_alignments(index, arr, n, output_prefix):
     seqc.log.info('Resolving ambiguous alignments.')
     try:
@@ -679,22 +644,8 @@ def save_counts_matrices(output_prefix, arr, n):
     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     uniq = arr.to_unique(n_poly_t_required=n)
     del arr
-    experiment = uniq.to_experiment()
+    experiment = uniq.to_experiment(2)  # require 2 reads per molecule; correct for errors
     experiment.to_npz(output_prefix + '_sp_counts.npz')
-
-
-def select_cells():
-    ################################### SELECT CELLS ####################################
-    # # filter cells with < threshold # reads. todo | add gc, length, maybe size biases
-    # mols, meta = filter_cells_mols(mols, meta, 10)
-    # reads, meta = filter_cells_reads(reads, meta, 100)
-    #
-    # # store files
-    # if location:
-    #     location += '/'
-    # with open(location + exp_name + '_read_and_mol_frames.p', 'wb') as f:
-    #     pickle.dump(((reads, rrow, rcol), (mols, mrow, mcol)), f)
-    raise NotImplementedError
 
 
 def store_results(output_prefix, arr):
@@ -723,12 +674,10 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
 
     index, gtf = check_index(index, output_dir)
 
-    cb = check_and_load_barcodes(barcodes, output_dir)
+    cb = check_barcodes(barcodes, output_dir)
 
     forward, reverse, merged_fastq, samfile = check_input_data(
         output_dir, forward, reverse, merged_fastq, samfile, basespace)
-
-    # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          output_dir, cb, n_threads)
@@ -754,12 +703,10 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
 
     index, gtf = check_index(index, output_dir)
 
-    cb = check_and_load_barcodes(barcodes, output_dir)
+    cb = check_barcodes(barcodes, output_dir)
 
     forward, reverse, merged_fastq, samfile = check_input_data(
         output_dir, forward, reverse, merged_fastq, samfile, basespace)
-
-    # htqc(temp_dir, forward, reverse, 1000, 1)
 
     merged_fastq = merge(forward, reverse, samfile, merged_fastq, subparser_name,
                          output_dir, cb, n_threads)
@@ -795,3 +742,29 @@ def strt_seq():
     This method assumes STRT-seq datasets are being retrieved from GEO, where Sten
     Linnarsson has demultiplexed the data into multiple, individual fastq files."""
     raise NotImplementedError
+
+
+def clean_instances():
+    """remove any leftover security groups and terminate clusters"""
+    filepath = os.path.expanduser('~/.seqc/instances.txt')
+    if os.path.isfile(filepath):
+        with open(filepath, 'r') as f:
+            inst_id = f.readline().strip('\n')
+            sg_id = f.readline().strip('\n')
+        seqc.cluster_utils.terminate_cluster(inst_id)
+        seqc.cluster_utils.remove_sg(sg_id)
+        os.remove(filepath)
+
+
+def clean_volumes():
+    seqc.io.EC2.clean_volumes()
+
+
+def create_barcodes(output, barcode_files, reverse_complement, *args, **kwargs):
+    cb = seqc.barcodes.CellBarcodes.from_files(*barcode_files,
+                                               reverse_complement=reverse_complement)
+    if not output.endswith('.p'):
+        output += '.p'
+    cb.pickle(output)
+    seqc.log.notify('Barcode object saved to "%s"' % output)
+

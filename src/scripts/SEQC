@@ -22,7 +22,6 @@ if __name__ == "__main__":
     parser = seqc.core.create_parser()
     kwargs = seqc.core.parse_args(parser)
     seqc.log.setup_logger()
-
     if kwargs['remote']:
         try:
             # log command line arguments for debugging
@@ -54,7 +53,7 @@ if __name__ == "__main__":
                                           email_address=kwargs['email_status'])
             sys.exit(1)
         finally:
-            #we are currently within a cluster:
+            # we are currently within a cluster:
             if not kwargs['no_terminate']:
                 if os.path.isfile('/data/software/instance.txt'):
                     with open('/data/software/instance.txt','r') as f:

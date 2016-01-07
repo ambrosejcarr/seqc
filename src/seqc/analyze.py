@@ -44,7 +44,7 @@ def _plot_cell_gc_content_bias(cell_counts, sequences, fig=None, ax=None,
     title = 'Cell Sequencing Coverage vs. GC Content'
 
     # get gc content of sequences
-    gc_content = np.array([seqc.three_bit.ThreeBit.gc_content(s) for s in sequences])
+    gc_content = np.array([seqc.encodings.ThreeBit.gc_content(s) for s in sequences])
     fig, ax = seqc.plot.scatter_density(gc_content, cell_counts, fig=fig, ax=ax,
                                         xlabel=xlabel, ylabel=ylabel, title=title)
     return fig, ax
@@ -120,9 +120,9 @@ class SparseCounts:
         else:
             raise NotImplementedError
 
-
     @classmethod
-    def from_read_array(cls, read_array, collapse_molecules=True, n_poly_t_required=0):
+    def _deprecated_from_read_array(cls, read_array, collapse_molecules=True,
+                                    n_poly_t_required=0):
         """
         Construct a SparseCounts object from a ReadArray object.
 
@@ -301,16 +301,27 @@ class SparseCounts:
         df = pd.DataFrame(dense_counts, subset.index, subset.columns)
         return DenseCounts(df)
 
-    def convert_ids(self, fgtf=None, scid_map=None):
-        # todo delete the 'zero' column corresponding to all the genes that got no alignments
+    def convert_gene_ids(self, converter):
         """
-        Convert scids to gene identifiers either by parsing the gtf file (slow) or by
-        directly mapping scids to genes (fast). In the latter case, the gtf_map must be
-        pre-processed and saved to the index folder.
+        convert integer gene ids into gene names for downstream analysis
 
-        see seqc.gtf.Reader.scid_to_gene(gtf, save=<output_file>) to save this gtf_map for
-        repeat-use.
+        args:
+        -----
+        converter: a seqc.convert_features.ConvertGeneCoordinates object. This is
+         typically saved as output_stem + '_gene_id_map.p' during a SEQC run.
+
+        returns:
+        --------
+        None
+
+        modifies:
+        ---------
+        self.columns (int ids -> str ids)
         """
+        ids = [converter.int2str_id(id_) for id_ in self.columns]
+        self._columns = np.array(ids)
+
+    def _convert_ids_deprecated(self, fgtf, scid_map):
         if not any([fgtf, scid_map]):
             raise ValueError('one of gtf or scid_map must be passed for conversion to'
                              'occur')
@@ -616,9 +627,20 @@ class Experiment:
         return self._molecules
 
     @staticmethod
-    def from_read_array(ra):
-        ua = ra.to_unique()
-        return ua.to_experiment()
+    def from_read_array(ra, n, s):
+        """create an experiment from a ReadArray object.
+
+        args:
+        -----
+        ra: ReadArray object
+        n: the number of T nulceotides that must follow the cell barcodes for the
+         alignment to be considered valid
+        s: the number of times a molecule must be observed to be included in the final
+         read or molecule matrices
+
+        """
+        ua = ra.to_unique(n)
+        return ua.to_experiment(s)
 
     @staticmethod
     def from_unique_read_array(ua):
@@ -669,6 +691,36 @@ class Experiment:
         columns = npz_data['m_columns']
         molecules = SparseCounts(data, index, columns)
         return cls(reads, molecules)
+
+    def convert_gene_ids(self, converter: str) -> None:
+        """
+        convert integer gene identifiers into string identifiers for downstream analysis
+
+        args:
+        -----
+        converter: a filepath pointing to a serialized
+         seqc.convert_features.ConvertGeneCoordinates object. or a loaded
+         ConvertGeneCoordinates object. This object is usually saved as
+         output_stem + '_gene_id_map.p' during a SEQC run.
+
+        returns:
+        --------
+        None
+
+        modifies:
+        ---------
+        self.reads.columns (int ids -> string ids)
+        self.molecules.columns (int ids -> string ids)
+        """
+        if isinstance(converter, str):
+            gmap = seqc.convert_features.ConvertGeneCoordinates.from_pickle(converter)
+        elif isinstance(converter, seqc.convert_features.ConvertGeneCoordinates):
+            gmap = converter
+        else:
+            raise TypeError('converter must either be a loaded ConvertGeneCoordinates '
+                            'object or the filename of a serialized version')
+        self._molecules.convert_gene_ids(gmap)
+        self._reads.convert_gene_ids(gmap)
 
     def plot_umi_correction(self, log=False):
         """
@@ -863,7 +915,7 @@ class Experiment:
         mask = (mol_counts > min_mols) & (ratios > min_ratio)
 
         cells = self.molecules.index[mask]
-        gc_content = np.array([seqc.three_bit.ThreeBit.gc_content(i) for i in cells])
+        gc_content = np.array([seqc.encodings.ThreeBit.gc_content(i) for i in cells])
         ratios = ratios[mask]
 
         xlabel = 'cell GC content'
@@ -873,6 +925,51 @@ class Experiment:
                                           ylabel=ylabel, title=title)
         plt.ylim(0, 300)
         return f, ax
+
+    def summary(self, alignment_summary, fout=None):
+        """print a basic summary of the run for technological debugging purposes
+
+        args:
+        -----
+        alignment_summary:  name of alignment summary file. Found in output directory
+         of SEQC run.
+        fout: name of the file in which to save the summary.
+        """
+        read_counts = self.reads.counts.sum(axis=1)
+        mol_counts = self.molecules.counts.sum(axis=1)
+        stats = pd.Series()
+
+        def get_val(frame, val):
+            idx = np.array([True if val in l else False for l in frame.index])
+            return frame.ix[idx][0]
+
+        # parse alignment
+        lines = pd.DataFrame.from_csv(alignment_summary, sep='\t').iloc[:, 0]
+        stats['Reverse Read Length'] = get_val(lines, 'Average input read length')
+        stats['No of reads'] = get_val(lines, 'Number of input reads')
+        stats['Uniquely mapping reads'] = '%s (%s)' % (
+            get_val(lines, 'Uniquely mapped reads number'),
+            get_val(lines, 'Uniquely mapped reads %'))
+        stats['Unmapped reads (includes phiX)'] = get_val(
+            lines, '% of reads unmapped: too short')
+
+        # Molecule counts
+        stats['Total molecules'] = '%d' % mol_counts.sum()
+        stats['Reads contributing to molecules'] = '%d (%.2f%%)' % (
+            read_counts.sum(), read_counts.sum() / int(stats['No of reads']) * 100)
+        stats['Reads per molecule'] = '%d' % (read_counts.sum() / mol_counts.sum())
+
+        # Cell counts
+        stats['Cells: > 500 mols.'] = str(int(sum(mol_counts > 500)[0]))
+        stats['Cells: > 1k mols.'] = str(int(sum(mol_counts > 1000)[0]))
+        stats['Cells: > 5k mols.'] = str(int(sum(mol_counts > 5000)[0]))
+        stats['Cells: > 10k mols.'] = str(int(sum(mol_counts > 10000)[0]))
+
+        if fout:
+            with open(fout, 'w') as f:
+                f.write(repr(stats))
+
+        return stats
 
 
 class CompareExperiments:

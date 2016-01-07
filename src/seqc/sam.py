@@ -55,15 +55,16 @@ class ReadArrayH5Writer:
     def create(self, expectedrows):
         if not self._is_open:
             self.open()
-        a = tb.UInt32Atom()
+        index_atom = tb.UInt32Atom()
+        value_atom = tb.Int64Atom()
         # create the tables and arrays needed to store data
         self._fobj.create_table(self._fobj.root, 'data', self._DataTable, 'ReadArray.data',
                                 filters=self._filters, expectedrows=expectedrows)
-        self._fobj.create_earray(self._fobj.root, 'index', a, (0, 2), filters=self._filters,
-                                 expectedrows=expectedrows)
-        self._fobj.create_earray(self._fobj.root, 'features', a, (0,),
+        self._fobj.create_earray(self._fobj.root, 'index', index_atom, (0, 2),
                                  filters=self._filters, expectedrows=expectedrows)
-        self._fobj.create_earray(self._fobj.root, 'positions', a, (0,),
+        self._fobj.create_earray(self._fobj.root, 'features', value_atom, (0,),
+                                 filters=self._filters, expectedrows=expectedrows)
+        self._fobj.create_earray(self._fobj.root, 'positions', value_atom, (0,),
                                  filters=self._filters, expectedrows=expectedrows)
 
     def write(self, data):
@@ -176,7 +177,7 @@ def _process_chunk(chunk, feature_converter):
     data = np.zeros((n,), dtype=_dtype)
     index = np.zeros((n, 2), dtype=np.uint32)
     features = np.zeros(n, dtype=np.int64)  # changed feature storage for hashed genes
-    positions = np.zeros(n, dtype=np.uint32)
+    positions = np.zeros(n, dtype=np.int64)  # positions need to be int64s
 
     # process multi-alignments
     i = 0  # index for: data array, features & positions JaggedArray index
@@ -245,7 +246,8 @@ class EmptyAligmentFile(Exception):
     pass
 
 
-def to_h5(samfile, h5_name, n_processes, chunk_size, gtf, fragment_length=1000):
+def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: str,
+          fragment_length=1000) -> str:
     """Process a samfile in parallel, dump results into an h5 database.
 
     Note that this method uses several shortcuts that have minor adverse consequences for

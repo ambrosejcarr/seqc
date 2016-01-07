@@ -2,6 +2,8 @@ import paramiko
 import sys
 import time
 import boto3
+import seqc
+import os
 
 
 class SSHServer(object):
@@ -9,16 +11,22 @@ class SSHServer(object):
     def __init__(self, inst_id, keypath):
         ec2 = boto3.resource('ec2')
         self.instance = ec2.Instance(inst_id)
+
+        seqc.util.check_type(keypath, str, 'keypath')
+        if not os.path.isfile(keypath):
+            raise ValueError('ssh key not found at provided keypath: %s' % keypath)
         self.key = keypath
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
-        max_attempts = 5
+        max_attempts = 25
+        attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         dns = self.instance.public_dns_name
-        for attempt in range(max_attempts):
+        while True:
             try:
                 self.ssh.connect(dns, username='ubuntu', key_filename=self.key)
+                break
             # except paramiko.AuthenticationException:
             #     print('autherror')
             #     print('instance not ready for connection, sleeping...')
@@ -35,10 +43,14 @@ class SSHServer(object):
             # except paramiko.BadHostKeyException:
             #     print('the host key %s could not be verified!' %self.key)
             #     sys.exit(2)
-            except Exception as e:
-                print('not yet connected, sleeping...')
-                time.sleep(30)
-                # continue
+            except:
+                seqc.log.notify('Not yet connected, sleeping (try %d of %d)' % (
+                    attempt, max_attempts))
+                time.sleep(4)
+                attempt += 1
+                if attempt > max_attempts:
+                    raise
+
         # gname = self.instance.security_groups[0]['GroupName']
         # gid = self.instance.security_groups[0]['GroupId']
         # self.instance.terminate()
@@ -61,7 +73,7 @@ class SSHServer(object):
 
     def get_file(self, localfile, remotefile):
         if not self.is_connected():
-            print('you are not connected!')
+            seqc.log.notify('You are not connected!')
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.get(remotefile, localfile)
@@ -69,7 +81,7 @@ class SSHServer(object):
 
     def put_file(self, localfile, remotefile):
         if not self.is_connected():
-            print('you are not connected!')
+            seqc.log.notify('You are not connected!')
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.put(localfile, remotefile)
@@ -78,12 +90,10 @@ class SSHServer(object):
 
     def exec_command(self, args):
         if not self.is_connected():
-            print('you are not connected!')
+            seqc.log.notify('You are not connected!')
             sys.exit(2)
         stdin, stdout, stderr = self.ssh.exec_command(args)
         stdin.flush()
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
-        # print(data)
-        # print(errs)
         return data, errs

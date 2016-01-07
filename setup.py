@@ -4,9 +4,8 @@ from setuptools import setup
 from warnings import warn
 import os
 import shutil
-import nose2
 
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 # pip3 cannot install external dependencies for python; warn user if external dependencies
 # are missing; do this at the end so that the users are more likely to see it.
@@ -30,8 +29,7 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      # test_suite=nose2.collector.collector,
-      # note: requires numpy > 1.10.0
+      test_suite='nose2.collector.collector',
       packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
       install_requires=[
           'numpy>=1.10.0',
@@ -44,6 +42,7 @@ setup(name='seqc',
           'boto3',
           'pyftpdlib',
           'intervaltree',
+          # 'sklearn>=0.17',  # doesn't find this for some reason; it is on pypi... todo
           # 'tsne',
           'tables',
           'nose2',
@@ -51,8 +50,6 @@ setup(name='seqc',
           'more_itertools',
           'paramiko', 'requests'],
       scripts=['src/scripts/SEQC',
-               'src/scripts/PROCESS_BARCODES',
-               'src/scripts/TEST_BARCODES',
                'src/scripts/process_multi_file_scseq_experiment.py',
                'src/scripts/process_single_file_scseq_experiment.py'],
       )
@@ -62,10 +59,10 @@ if h5fail:
     warn("""
 SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/,
 /usr/lib/, /usr/hdf5/lib/, or /usr/local/lib/hdf5/.
-tables will not find h5lib and installation will likely fail unless the
-HDF5_DIR environment variable has been set to the location that HDF5 was
-installed into. If HDF5 is not installed, please install it prior to
-installing SEQC.
+
+"tables" will not find h5lib and installation will likely fail unless the HDF5_DIR
+environment variable has been set to the location that HDF5 was installed into. If HDF5
+is not installed, please install it prior to installing SEQC.
 """)
 
 # look for star

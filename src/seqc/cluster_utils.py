@@ -9,6 +9,9 @@ import seqc
 from subprocess import Popen, PIPE
 from botocore.exceptions import ClientError
 
+class EC2RuntimeError(Exception):
+    pass
+
 
 # TODO check if any errors in the arguments here
 # maybe keep track of all the volumes associated with it too
@@ -17,6 +20,7 @@ class ClusterServer(object):
     allows for the creation/manipulation of EC2 instances and executions
     of commands on the remote server"""
 
+    # todo many of these parameters aren't used. Either integrate or remove.
     def __init__(self, private_key=None, security_group=None,
                  image_id=None, zone=None, server=None,
                  instance_type=None, subnet_id=None):
@@ -37,44 +41,44 @@ class ClusterServer(object):
 
     def create_security_group(self, name=None):
         """Creates a new security group for the cluster"""
-        if name == None:
-            name = 'seqc_' + str(random.randint(1, int(1e12)))
-            print('no name assigned, chose %s' % name)
+        if name is None:
+            name = 'SEQC-%07d' % random.randint(1, int(1e7))
+            seqc.log.notify('No instance name provided, assigned %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                  ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
-            print('created security group %s (%s)' % (name, sg.id))
+
+            seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
         except ClientError:
-            print('the cluster %s already exists!' % name)
+            seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
     # todo catch errors in cluster configuration
     def configure_cluster(self, config_file):
-        """configures the newly created cluster according to aws.config"""
+        """configures the newly created cluster according to config"""
         config = configparser.ConfigParser()
         config.read(config_file)
-        template = config['global']['DEFAULT_TEMPLATE']
-        self.keyname = config['key']['KEY_NAME']
-        self.keypath = os.path.expanduser(config['key']['KEY_LOCATION'])
-        self.image_id = config[template]['NODE_IMAGE_ID']
-        self.inst_type = config[template]['NODE_INSTANCE_TYPE']
+        template = config['global']['default_template']
+        self.keyname = config['key']['rsa_key_name']
+        self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
+        self.image_id = config[template]['node_image_id']
+        self.inst_type = config[template]['node_instance_type']
         if template == 'c4':
-            self.subnet = config[template]['SUBNET_ID']
-        self.zone = config[template]['AVAILABILITY_ZONE']
+            self.subnet = config[template]['subnet_id']
+        self.zone = config[template]['availability_zone']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
-        self.aws_id = config['aws_info']['AWS_ACCESS_KEY_ID']
-        self.aws_key = config['aws_info']['AWS_SECRET_ACCESS_KEY']
+        self.aws_id = config['aws_info']['aws_access_key_id']
+        self.aws_key = config['aws_info']['aws_secret_access_key']
 
     def create_cluster(self):
-        """creates a new AWS cluster with specifications from aws.config"""
+        """creates a new AWS cluster with specifications from config"""
         if 'c4' in self.inst_type:
             if not self.subnet:
-                print('You must specify a subnet-id for C4 instances!')
-                sys.exit(2)
+                ValueError('A subnet-id must be specified for C4 instances!')
             else:
                 clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
                                                   MaxCount=1,
@@ -91,17 +95,21 @@ class ClusterServer(object):
                                               InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
+        else:
+            raise ValueError('self.inst_type must be a c3 or c4 instance')
         instance = clust[0]
-        print('created new instance %s' % instance)
+        seqc.log.notify('Created new instance %s. Waiting until instance is running' %
+                        instance)
         instance.wait_until_exists()
         instance.wait_until_running()
+        seqc.log.notify('Instance %s now running.' % instance)
         self.inst_id = instance
 
     def cluster_is_running(self):
         """checks whether a cluster is running"""
         if self.inst_id is None:
-            print('No instance created!')
-            sys.exit(2)
+            raise EC2RuntimeError('No inst_id assigned. Instance was not successfully '
+                                  'created!')
         self.inst_id.reload()
         if self.inst_id.state['Name'] == 'running':
             return True
@@ -113,18 +121,18 @@ class ClusterServer(object):
         if self.inst_id.state['Name'] == 'stopped':
             self.inst_id.start()
             self.inst_id.wait_until_running()
-            print('stopped instance %s has restarted' % self.inst_id.id)
+            seqc.log.notify('Stopped instance %s has restarted.' % self.inst_id.id)
         else:
-            print('instance %s is not in a stopped state!' % self.inst_id.id)
+            seqc.log.notify('Instance %s is not in a stopped state!' % self.inst_id.id)
 
     def stop_cluster(self):
         """stops a running cluster"""
         if self.cluster_is_running():
             self.inst_id.stop()
             self.inst_id.wait_until_stopped()
-            print('instance %s is now stopped' % self.inst_id)
+            seqc.log.notify('Instance %s is now stopped.' % self.inst_id)
         else:
-            print('instance %s is not running!' % self.inst_id)
+            seqc.log.notify('Instance %s is not running!' % self.inst_id)
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
@@ -137,7 +145,7 @@ class ClusterServer(object):
             time.sleep(3)
             vol.reload()
             vol_state = vol.state
-        print('volume %s created successfully' % vol_id)
+        seqc.log.notify('Volume %s created successfully.' % vol_id)
         return vol_id
 
     # todo deal with volume creation errors
@@ -145,69 +153,72 @@ class ClusterServer(object):
         """attaches a vol_id to inst_id at dev_id"""
         vol = self.ec2.Volume(vol_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
+        # todo potential infinite loop
         while vol.state != 'in-use':
             time.sleep(3)
             vol.reload()
         resp = self.inst_id.modify_attribute(
-            BlockDeviceMappings=[{'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
-                                                                'DeleteOnTermination': True}}])
+            BlockDeviceMappings=[
+                {'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
+                                               'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
-            print('Something went wrong modifying the attribute of the Volume!')
-            sys.exit(2)
+            EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
 
         # wait until all volumes are attached
         device_info = self.inst_id.block_device_mappings
-        for i in range(1,len(device_info)):
+        for i in range(1, len(device_info)):
             status = device_info[i]['Ebs']['Status']
+            # todo possibly infinite loop
             while status != 'attached':
-                time.sleep(5)
+                time.sleep(1)
                 self.inst_id.reload()
                 device_info = self.inst_id.block_device_mappings
                 status = device_info[i]['Ebs']['Status']
-        print(self.inst_id.block_device_mappings)
-        print('volume %s attached to %s at %s' % (vol_id, self.inst_id.id, dev_id))
+        seqc.log.notify('Volume %s attached to %s at %s.' %
+                        (vol_id, self.inst_id.id, dev_id))
 
     def connect_server(self):
         """connects to the aws instance"""
         ssh_server = seqc.ssh_utils.SSHServer(self.inst_id.id, self.keypath)
-        print('connecting to instance %s...' % self.inst_id.id)
+        seqc.log.notify('Connecting to instance %s...' % self.inst_id.id)
         ssh_server.connect()
         if ssh_server.is_connected():
-            print('connection successful!')
+            seqc.log.notify('Connection successful!')
         self.serv = ssh_server
 
     def create_raid(self):
         """creates a raid array of a specified number of volumes on /data"""
+        seqc.log.notify('Creating and attaching storage volumes.')
         dev_base = "/dev/xvd"
         alphabet = string.ascii_lowercase[5:]  # starts at f
         dev_names = []
         for i in range(int(self.n_tb)):
-            print("creating volume %s of %s..." % (i + 1, self.n_tb))
+            seqc.log.notify("Creating volume %s of %s..." % (i + 1, self.n_tb))
             vol_id = self.create_volume()
             dev_id = dev_base + alphabet[i]
             dev_names.append(dev_id)
             self.attach_volume(vol_id, dev_id)
-        print("successfully attached %s TB in %s volumes!" % (self.n_tb, self.n_tb))
-        print("creating logical RAID device...")
+        seqc.log.notify("Successfully attached %s TB in %s volumes." %
+                        (self.n_tb, self.n_tb))
+        seqc.log.notify("Creating logical RAID device...")
         all_dev = ' '.join(dev_names)
 
         # check if this sleep is necessary for successful execution of mdadm function
-        time.sleep(10)
-        num_retries = 5
+        num_retries = 30
         mdadm_failed = True
         for i in range(num_retries):
             _, res = self.serv.exec_command(
-                "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid --raid-devices=%s %s" % (
+                "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
+                "--raid-devices=%s %s" % (
                     self.n_tb, all_dev))
             if 'started' in ''.join(res):
                 mdadm_failed = False
                 break
             else:
-                print('retrying sudo mdadm')
-                time.sleep(5)
+                seqc.log.notify('Retrying sudo mdadm.')
+                time.sleep(1)
         if mdadm_failed:
-            print('error creating raid array md0 with mdadm function')
-            sys.exit(2)
+            EC2RuntimeError('Error creating raid array md0 with mdadm function.')
 
         # todo | may not need to do repeated checks
         ls_failed = True
@@ -217,10 +228,9 @@ class ClusterServer(object):
                 ls_failed = False
                 break
             else:
-                time.sleep(5)
+                time.sleep(1)
         if ls_failed:
-            print('error creating raid array md0 with mdadm function')
-            sys.exit(2)
+            EC2RuntimeError('Error creating raid array md0 with mdadm function.')
         self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount LABEL=my_raid /data")
@@ -230,15 +240,14 @@ class ClusterServer(object):
         for i in range(num_retries):
             output, err = self.serv.exec_command('df -h | grep /dev/md0')
             if output and output[0].endswith('/data'):
-                print("successfully created RAID array in /data!")
+                seqc.log.notify("Successfully created RAID array in /data.")
                 md0_failed = False
                 break
             else:
-                print('retrying df -h')
-                time.sleep(5)
+                seqc.log.notify('retrying df -h')
+                time.sleep(1)
         if md0_failed:
-            print("error occurred in mounting RAID array to /data")
-            sys.exit(2)
+            EC2RuntimeError("Error occurred in mounting RAID array to /data! Exiting.")
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
@@ -249,7 +258,7 @@ class ClusterServer(object):
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
         folder = self.dir_name
-        print('installing seqc.tar.gz...')
+        seqc.log.notify('Installing SEQC on remote instance.')
         self.serv.exec_command("sudo mkdir %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
@@ -258,10 +267,11 @@ class ClusterServer(object):
         # todo | get rid of "nuke_sc" branch here, just for testing
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/nuke_sc | sudo tee %s > /dev/null' % location)
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/testing_overhaul | '
+            'sudo tee %s > /dev/null' % location)
         # todo implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
-        print('successfully installed seqc.tar.gz in %s on the cluster!' % folder)
+        seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
@@ -270,8 +280,8 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name):
-        print('setting up cluster %s...' % name)
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/aws.config'
+        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/config'
+        config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
@@ -279,7 +289,7 @@ class ClusterServer(object):
         self.create_raid()
         self.git_pull()
         self.set_credentials()
-        print('sucessfully set up the remote cluster environment!')
+        seqc.log.notify('Remote instance successfully configured.')
 
 
 def terminate_cluster(instance_id):
@@ -291,11 +301,11 @@ def terminate_cluster(instance_id):
         if instance.state['Name'] == 'running':
             instance.terminate()
             instance.wait_until_terminated()
-            print('termination complete!')
+            seqc.log.notify('termination complete!')
         else:
-            print('instance %s is not running!' % instance_id)
+            seqc.log.notify('instance %s is not running!' % instance_id)
     except ClientError:
-        print('instance %s does not exist!' % instance_id)
+        seqc.log.notify('instance %s does not exist!' % instance_id)
 
 
 def remove_sg(sg_id):
@@ -304,30 +314,35 @@ def remove_sg(sg_id):
     sg_name = sg.group_name
     try:
         sg.delete()
-        print('security group %s (%s) successfully removed' % (sg_name, sg_id))
+        seqc.log.notify('security group %s (%s) successfully removed' % (sg_name, sg_id))
     except ClientError:
-        print('security group %s (%s) is still in use!' % (sg_name, sg_id))
+        seqc.log.notify('security group %s (%s) is still in use!' % (sg_name, sg_id))
 
 
-def email_user(attachment, email_body, email_address: str) -> None:
+def email_user(attachment: str, email_body: str, email_address: str) -> None:
     """
-    todo document me!
+    sends an email to email address with text contents of email_body and attachment
+    attached. Email will come from "Ubuntu@<ec2-instance-ip-of-aws-instance>
 
     args:
     -----
+    attachment: the file location of the attachment to append to the email
+    email_body: text to send in the body of the email
+    email_address: the address to which the email should be sent.
 
     returns:
     --------
     None
     """
-    seqc.log.exception()
+    if isinstance(email_body, str):
+        email_body = email_body.encode()
+    # Note: exceptions used to be logged here, but this is not the right place for it.
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
-    message = Popen(['echo', email_body], stdout=PIPE, stderr=PIPE)
-    email_process = Popen(email_args, stdin=message.stdout, stdout=PIPE, stderr=PIPE)
-    email_process.communicate()
+    email_process = Popen(email_args, stdin=PIPE)
+    email_process.communicate(email_body)
 
 
-def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> None:
+def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) -> None:
     """
     todo document me!
 
@@ -340,17 +355,14 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
     """
     prefix, directory = seqc.core.fix_output_paths(output_prefix)
 
-    # todo
-    # at some point, script should write a metadata summary and upload that in place of
-    # the alignment summary
-
     samfile = directory + 'Aligned.out.sam'
     h5_archive = prefix + '.h5'
     merged_fastq = directory + 'merged.fastq'
     counts = prefix + '_sp_counts.npz'
     id_map = prefix + '_gene_id_map.p'
-    summary = prefix + '_alignment_summary.txt'
-    files = [samfile, h5_archive, merged_fastq, counts, id_map, summary]
+    alignment_summary = prefix + '_alignment_summary.txt'
+    log = 'seqc.log'
+    files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
 
     # gzip everything and upload to aws_upload_key
     archive_name = prefix + '.tar.gz'
@@ -360,13 +372,17 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key) -> No
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     seqc.io.S3.upload_file(archive_name, bucket, key)
 
-    # gzip small files for email
-    attachment = prefix + '_counts_and_metadata.tar.gz'
-    gzip_args = ['tar', '-czf', attachment, counts, id_map, summary]
-    gzip = Popen(gzip_args)
-    gzip.communicate()
+    # generate a run summary and append to the email
+    exp = seqc.Experiment.from_npz(counts)
+    run_summary = exp.summary(alignment_summary)
+
+    # get the name of the output file
+    archive_suffix = archive_name.split('/')[-1]
 
     # email results to user
-    body = ('SEQC run complete -- see attached .npz file. The rest of the output is '
-            'available as %s in your specified S3 bucket.' % archive_name)
-    email_user(attachment, body, email_address)
+    body = ('SEQC RUN COMPLETE.\n\n'
+            'The run log has been attached to this email and '
+            'results are now available in the S3 location you specified: '
+            '"%s%s"\n\n'
+            'RUN SUMMARY:\n\n%s' % (aws_upload_key, archive_suffix, repr(run_summary)))
+    email_user(log, body, email_address)
