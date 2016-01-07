@@ -116,6 +116,14 @@ def scatter_colored_by_data(
     projection of data by the expression value of a gene or the result of a filter
     """
     fig, ax = get_axes(fig=fig, ax=ax)
+
+    # sort data by color to ensure that largest values are most visible
+    color_values = np.array(color_values)
+    i = np.argsort(color_values)
+    x = np.array(x)[i]
+    y = np.array(y)[i]
+    color_values = color_values[i]
+
     ax.scatter(x, y, edgecolor='none', c=color_values, cmap=cmap, s=20)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)

@@ -101,6 +101,26 @@ def _iterate_chunk(samfile, n=int(1e9)):
             else:
                 break
 
+
+def _iterate_chunk_complete_records(samfile, n=int(1e9)):
+    """
+    open a sam file, yield chunks of size n bytes; default ~ 1GB.
+
+    Guarantees that complete records will be generated
+    """
+    with open(samfile, 'rb') as f:
+        partial_record = b''  # the first record gets no data from the last iteration
+        while True:
+            d = partial_record + f.read(n)
+            try:
+                final_complete_record_end = d.rindex(b'\n') + 1
+            except ValueError: # exhausted samfile yields chunk lacking newline; break
+                break
+            partial_record = d[final_complete_record_end:]
+            if d:  # may be unnecessary
+                yield d[:final_complete_record_end]
+
+
 def _average_quality(quality_string):
     """calculate the average quality of a sequencing read from ASCII quality string"""
     n_bases = len(quality_string)
@@ -161,11 +181,14 @@ def _process_multialignment(alignments, feature_converter):
 
     return rec, features, positions
 
-
+# todo this is missing the first or last read
 def _process_chunk(chunk, feature_converter):
     """process the samfile chunk"""
     # decode the data, discarding the first and last record which may be incomplete
-    records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')[1:-1]]
+    # records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')[1:-1]]
+
+    # decode the data
+    records = [r.split('\t') for r in chunk.decode().strip('\n').split('\n')]
 
     # discard any headers
     while records[0][0].startswith('@'):
@@ -201,8 +224,6 @@ def _process_chunk(chunk, feature_converter):
                 print(records[e])
 
         multialignment = records[s:e]
-        s = e
-        e = s + 1
 
         # process the multialignment
         rec, feat, pos = _process_multialignment(multialignment, feature_converter)
@@ -220,9 +241,33 @@ def _process_chunk(chunk, feature_converter):
         else:
             index[i, :] = (j, j)
 
+        # increment indices
         i += 1
+        s = e
+        e = s + 1
 
-    # trim all of the arrays
+    # process the last record, if it is not a multialignment
+    multialignment = records[s:]  # note that s should always be unique if e > len.
+    if len(multialignment):
+        rec, feat, pos = _process_multialignment(multialignment, feature_converter)
+
+    # fill data array
+    data[i] = rec
+
+    # fill the JaggedArrays
+    if feat:
+        n_features = len(feat)
+        features[j:j + n_features] = feat
+        positions[j:j + n_features] = pos
+        index[i, :] = (j, j + n_features)
+        j += n_features
+    else:
+        index[i, :] = (j, j)
+    i += 1
+    s = e
+    e = s + 1
+
+    # trim the arrays
     data = data[:i]
     index = index[:i]
     features = features[:j]
@@ -296,7 +341,7 @@ def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: st
     process_kwargs = dict(feature_converter=fc)
     write_kwargs = dict(expectedrows=expectedrows)
     seqc.parallel.process_parallel(
-        n_processes, h5_name, _iterate_chunk, _process_chunk, ReadArrayH5Writer,
+        n_processes, h5_name, _iterate_chunk_complete_records, _process_chunk, ReadArrayH5Writer,
         read_kwargs=read_kwargs, process_kwargs=process_kwargs, write_kwargs=write_kwargs)
 
     return h5_name
@@ -305,7 +350,7 @@ def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: st
 class GenerateSam:
 
     @staticmethod
-    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_id', replicates=3,
+    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_name', replicates=3,
                 n_threads=7, *args, **kwargs):
         """generate an in-drop .sam file"""
 
@@ -341,7 +386,7 @@ class GenerateSam:
         return sam
 
     @staticmethod
-    def drop_seq(n, filename, fasta, gtf, index, tag_type='gene_id', replicates=3,
+    def drop_seq(n, filename, fasta, gtf, index, tag_type='gene_name', replicates=3,
                  n_threads=7, *args, **kwargs):
         """generate a drop-seq .sam file"""
 
@@ -555,8 +600,11 @@ def to_count_multiple_files(sam_files, gtf_file):
 class SamRecord:
     """simple record object to use when iterating over sam files"""
 
-    __slots__  = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
-                  'tlen', 'seq', 'qual', 'optional_fields']
+    __slots__ = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
+                 'tlen', 'seq', 'qual', '_optional_fields', '_parsed_name_field']
+
+    NameField = namedtuple('NameField', ['cell', 'rmt', 'n_poly_t', 'valid_cell',
+                                         'dust_score', 'fwd_quality', 'name'])
 
     def __init__(self, qname, flag, rname, pos, mapq, cigar, rnext, pnext, tlen, seq,
                  qual, *optional_fields):
@@ -571,7 +619,94 @@ class SamRecord:
         self.tlen = tlen
         self.seq = seq
         self.qual = qual
-        self.optional_fields = optional_fields
+        self._optional_fields = optional_fields
+        self._parsed_name_field = None
+
+    def _parse_name_field(self):
+        fields, name = self.qname.split(';')
+        processed_fields = list(map(int, fields.split(':')))
+        processed_fields.append(name)
+        self._parsed_name_field = self.NameField(*processed_fields)
+
+    @property
+    def rmt(self):
+        try:
+            return self._parsed_name_field.rmt
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.rmt
+
+    @property
+    def cell(self):
+        try:
+            return self._parsed_name_field.cell
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.cell
+
+    @property
+    def n_poly_t(self):
+        try:
+            return self._parsed_name_field.n_poly_t
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.n_poly_t
+
+    @property
+    def valid_cell(self):
+        try:
+            return self._parsed_name_field.valid_cell
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.valid_cell
+
+    @property
+    def dust_score(self):
+        try:
+            return self._parsed_name_field.dust_score
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.dust_score
+
+    @property
+    def fwd_quality(self):
+        try:
+            return self._parsed_name_field.fwd_quality
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.fwd_quality
+
+    @property
+    def name(self):
+        try:
+            return self._parsed_name_field.name
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.name
+
+    @property
+    def optional_fields(self):
+        flags_ = {}
+        for f in self._optional_fields:
+            k, _, v = f.split(':')
+            flags_[k] = int(v)
+        return flags_
+
+    @property
+    def is_mapped(self):
+        return False if (int(self.flag) & 4) else True
+
+    @property
+    def is_unmapped(self):
+        return not self.is_mapped
+
+    @property
+    def is_multimapped(self):
+        return True if self.optional_fields['NH'] == 1 else False
+
+    @property
+    def is_uniquely_mapped(self):
+        return not self.is_multimapped
 
     def __repr__(self):
         return ('<SamRecord:' + ' %s' * 12 + '>') % \
@@ -643,4 +778,4 @@ class Reader:
             else:
                 yield tuple(fq)
                 fq = [record]
-        yield fq
+        yield tuple(fq)

@@ -292,13 +292,14 @@ def construct_gene_table(gtf):
 class ConvertGeneCoordinates:
     """Converts alignments in chromosome coordinates to gene coordinates"""
 
-    def __init__(self, dict_of_interval_trees, id_map):
+    def __init__(self, dict_of_interval_trees, str2int, int2str):
         """
         see from_gtf() method for in-depth documentation
         """
 
         seqc.util.check_type(dict_of_interval_trees, dict, 'dict_of_interval_trees')
-        seqc.util.check_type(id_map, dict, 'id_map')
+        seqc.util.check_type(int2str, dict, 'int2str')
+        seqc.util.check_type(str2int, dict, 'str2int')
 
         # check that input dictionary isn't empty
         if not dict_of_interval_trees:
@@ -313,7 +314,8 @@ class ConvertGeneCoordinates:
 
         # set self.data; self.id_map
         self._data = dict_of_interval_trees
-        self._id_map = id_map
+        self._int2str = int2str
+        self._str2int = str2int
 
     def translate_unstranded(self, strand: str, chromosome: str, position: int) -> list:
         # todo implement
@@ -362,12 +364,11 @@ class ConvertGeneCoordinates:
 
     def int2str_id(self, identifier: int) -> str:
         """accessory function to convert integer ids back into string gene names"""
-        return self._id_map[identifier]
+        return self._int2str[identifier]
 
-    @staticmethod
-    def str2int_id(identifier: str) -> int:
+    def str2int_id(self, identifier: str) -> int:
         """accessory function to convert string ids into integers"""
-        return hash(identifier)
+        return self._str2int[identifier]
 
     def pickle(self, fname: str) -> None:
         """Serialize self and save it to disk as fname"""
@@ -382,7 +383,8 @@ class ConvertGeneCoordinates:
             raise FileNotFoundError('the directory fname should be saved in does not '
                                     'exist')
         with open(fname, 'wb') as f:
-            pickle.dump({'dict_of_interval_trees': self._data, 'id_map': self._id_map}, f)
+            pickle.dump({'dict_of_interval_trees': self._data, 'int2str': self._int2str,
+                         'str2int': self._str2int}, f)
 
     @classmethod
     def from_pickle(cls, fname: str):
@@ -391,52 +393,84 @@ class ConvertGeneCoordinates:
             data = pickle.load(f)
         return cls(**data)
 
+    # @classmethod
+    # def from_gtf(cls, gtf: str, fragment_length: int=1000):
+    #     """
+    #     construct a ConvertGeneCoordinates object from a gtf file. Also creates a map
+    #     of integer ids to genes, which can be saved with using pickle
+    #
+    #     # todo improve this
+    #     The map of strings to ints can be done by assigning sequential integers to values
+    #     as they are detected. This means that runs using different gtf files will
+    #     obtain different integer values. Hashing is another option, but the methods I've
+    #     looked up cannot generate integers compatible with uint32, which is preferred
+    #     downstream. A superior method would deterministically map gene ids to
+    #     uint32s.
+    #
+    #     Current methods use python hash, require the gene field be int64, and that
+    #     a map be saved.
+    #
+    #     args;
+    #     -----
+    #     gtf: str file identifier corresponding to the gtf file to construct the
+    #      ConvertGeneCoordinates object from.
+    #
+    #     returns:
+    #     --------
+    #     ConvertGeneCoordinates object built from gtf
+    #
+    #     """
+    #     data = {}
+    #     id_map = {}
+    #     gtf_reader = seqc.gtf.Reader(gtf)
+    #
+    #     for record in gtf_reader.iter_genes_final_nbases(fragment_length):
+    #
+    #         # check if gene is in map
+    #         gene = record.attribute['gene_name'].upper()
+    #         int_id = hash(gene)
+    #         if int_id not in id_map:
+    #             id_map[int_id] = gene
+    #
+    #         for iv in record.intervals:
+    #             if iv[0] < iv[1]:
+    #                 try:
+    #                     data[(record.seqname, record.strand)].addi(
+    #                         iv[0], iv[1], int_id)
+    #                 except KeyError:
+    #                     data[record.seqname, record.strand] = IntervalTree()
+    #                     data[record.seqname, record.strand].addi(
+    #                         iv[0], iv[1], int_id)
+    #     return cls(data, id_map)
+
+
     @classmethod
     def from_gtf(cls, gtf: str, fragment_length: int=1000):
-        """
-        construct a ConvertGeneCoordinates object from a gtf file. Also creates a map
-        of integer ids to genes, which can be saved with using pickle
 
-        # todo improve this
-        The map of strings to ints can be done by assigning sequential integers to values
-        as they are detected. This means that runs using different gtf files will
-        obtain different integer values. Hashing is another option, but the methods I've
-        looked up cannot generate integers compatible with uint32, which is preferred
-        downstream. A superior method would deterministically map gene ids to
-        uint32s.
-
-        Current methods use python hash, require the gene field be int64, and that
-        a map be saved.
-
-        args;
-        -----
-        gtf: str file identifier corresponding to the gtf file to construct the
-         ConvertGeneCoordinates object from.
-
-        returns:
-        --------
-        ConvertGeneCoordinates object built from gtf
-
-        """
         data = {}
-        id_map = {}
+        str2int = {}
         gtf_reader = seqc.gtf.Reader(gtf)
+        next_id = 0
 
         for record in gtf_reader.iter_genes_final_nbases(fragment_length):
 
             # check if gene is in map
-            gene = record.attribute['gene_id']
-            int_id = hash(gene)
-            if int_id not in id_map:
-                id_map[int_id] = gene
+            gene = record.attribute['gene_name'].upper()
+            if gene not in str2int:
+
+                str2int[gene] = next_id
+                next_id += 1
 
             for iv in record.intervals:
                 if iv[0] < iv[1]:
                     try:
                         data[(record.seqname, record.strand)].addi(
-                            iv[0], iv[1], int_id)
+                            iv[0], iv[1], str2int[gene])
                     except KeyError:
                         data[record.seqname, record.strand] = IntervalTree()
                         data[record.seqname, record.strand].addi(
-                            iv[0], iv[1], int_id)
-        return cls(data, id_map)
+                            iv[0], iv[1], str2int[gene])
+
+        int2str = {v: k for k, v in str2int.items()}
+
+        return cls(data, str2int, int2str)

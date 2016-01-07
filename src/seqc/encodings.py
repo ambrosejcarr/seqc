@@ -160,6 +160,8 @@ class ThreeBit:
 
     @staticmethod
     def gc_content(s):
+        if not isinstance(s, int):
+            s = int(s)
         t = 0
         gc = 0
         while s > 0:

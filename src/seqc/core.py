@@ -640,11 +640,11 @@ def resolve_alignments(index, arr, n, output_prefix):
         raise
 
 
-def save_counts_matrices(output_prefix, arr, n):
+def save_counts_matrices(output_prefix, arr, n, s):
     seqc.log.info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     uniq = arr.to_unique(n_poly_t_required=n)
     del arr
-    experiment = uniq.to_experiment(2)  # require 2 reads per molecule; correct for errors
+    experiment = uniq.to_experiment(required_support=s)
     experiment.to_npz(output_prefix + '_sp_counts.npz')
 
 
@@ -689,9 +689,10 @@ def in_drop(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
 
     # resolve_alignments(index, arr, n=0, output_prefix=output_prefix)
 
+    # todo is this necessary?
     store_results(output_prefix, arr)
 
-    save_counts_matrices(output_prefix, arr, n=3)
+    save_counts_matrices(output_prefix, arr, n=3, s=2)
 
     run_complete()
 
@@ -720,7 +721,7 @@ def drop_seq(output_prefix, forward, reverse, samfile, merged_fastq, basespace,
 
     arr.save_h5(output_prefix + '.h5')
 
-    save_counts_matrices(output_prefix, arr, n=0)
+    save_counts_matrices(output_prefix, arr, n=0, s=2)
 
     run_complete()
 

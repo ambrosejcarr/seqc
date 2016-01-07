@@ -24,6 +24,7 @@ elif os.path.isfile('/usr/local/hdf5/lib/libhdf5.so'):
     h5fail = False
 
 setup(name='seqc',
+
       version=__version__,
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
