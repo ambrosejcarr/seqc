@@ -279,8 +279,8 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name):
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
-        # config_file = os.path.expanduser('~/.seqc/config') # changed this for testing
+        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
+        config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
