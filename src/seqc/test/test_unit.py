@@ -155,7 +155,11 @@ def check_fastq(data_type: str) -> (str, str):
 
     if not all(os.path.isfile(f) for f in [forward, reverse]):
         gen_func = getattr(seqc.fastq.GenerateFastq, data_type)
-        gen_func(10000, prefix, config.fasta, config.gtf, barcodes=barcodes)
+        loc, unloc, unalign = 3000, 3000, 3000
+        seqlen, fraglen, rep = 100, 1000, 3
+        gen_func(loc, unloc, unalign, prefix, config.fasta, config.gtf, config.index,
+                 replicates=rep, n_threads=config.n_threads, fragment_length=fraglen,
+                 sequence_length=seqlen, barcodes=barcodes)
 
     return forward, reverse
 
@@ -337,6 +341,15 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
 
 class FastqGenerateTest(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.localized = 1000
+        cls.unlocalized = 1000
+        cls.unalignable = 1000
+        cls.sequence_length = 100
+        cls.fragment_length = 1000
+        cls.n_threads=7
+
     def test_reverse_three_prime(self):
         fasta = config.fasta
         gtf = config.gtf
@@ -344,12 +357,28 @@ class FastqGenerateTest(unittest.TestCase):
             5, read_length=30, fasta=fasta, gtf=gtf)
         self.assertTrue(True) # this test only tests that the data runs.
 
-        # todo test that reads align
-        # todo test that reads are converted properly
-
     def test_generate_reverse_complex(self):
+        """generate a set of reads, only some of which align to expected locations"""
+
+        res = seqc.fastq.GenerateFastq._reverse_split(
+            self.localized, self.unlocalized, self.unalignable, config.index,
+            config.fasta, config.gtf, self.fragment_length,
+            self.sequence_length, self.n_threads)
+
+    @params(*config.data_types)
+    def test_generate_typed_fastq(self, data_type):
         """"""
-        raise NotImplementedError
+        if data_type == 'drop_seq':
+            barcodes = seqc.barcodes.DropSeqCellBarcodes()
+        else:
+            barcodes = config.barcode_partial_serial_pattern % data_type
+
+        fgen = getattr(seqc.fastq.GenerateFastq, data_type)
+        res = fgen(
+            self.localized, self.unlocalized, self.unalignable, './', config.fasta,
+            config.gtf, config.index, replicates=3, n_threads=self.n_threads,
+            fragment_length=self.fragment_length, sequence_length=self.sequence_length,
+            barcodes=barcodes)
 
 
 class FastqMergeTest(unittest.TestCase):
@@ -3045,14 +3074,9 @@ class SamReaderTest(unittest.TestCase):
 
 if __name__ == '__main__':
     suite = unittest.TestSuite()
-    # suite.addTest(GTFTest("test_exon"))
-    # suite.addTest(GTFTest("test_transcript"))
-    # suite.addTest(GTFTest("test_gene"))
-    # suite.addTest(GTFTest("test_gene_slicing"))
-    # suite.addTest(GTFTest("test_annotation"))
-    # suite.addTest(GTFTest("test_random_sequences"))
-    suite.addTest(AlignSTARTest('test_align_giberish'))
-    # suite.addTest(TestFastaReader("test_fasta_reader"))
+    # suite.addTest(AlignSTARTest('test_align_giberish'))
+    # suite.addTest(FastqGenerateTest('test_generate_reverse_complex'))
+    suite.addTest(FastqGenerateTest('test_generate_typed_fastq'))
     runner = unittest.TextTestRunner()
     runner.run(suite)
 
