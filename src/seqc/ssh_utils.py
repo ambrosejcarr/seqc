@@ -5,7 +5,6 @@ import boto3
 import seqc
 import os
 
-
 class SSHServer(object):
 
     def __init__(self, inst_id, keypath):
