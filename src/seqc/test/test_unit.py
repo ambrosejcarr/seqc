@@ -922,6 +922,19 @@ class GTFTest(unittest.TestCase):
             subset = int(np.mean([tx.size * .75 for tx in gene]))
             res = gene.intervals(-1000)
 
+    def test_gene_slicing(self):
+
+        anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
+
+        # test slicing
+        sliced = [g[-1000:] for g in anno.genes]
+        self.assertEqual(sum(1 for s in sliced if s.start and s.end), len(anno.genes))
+
+        # test intervals
+        ivs = [g.intervals(-1000, None) for g in anno.genes]
+        self.assertTrue(all(len(iv) != 0 for iv in ivs))
+
+
     def test_annotation(self):
 
         anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
@@ -942,7 +955,28 @@ class GTFTest(unittest.TestCase):
         string_id = sample_gene.string_gene_id.split(b'.')[0]
         self.assertEqual(string_id, seqc.gtf_new.Record.int2str_gene_id(int_id, prefix))
 
-        print(list(anno.random_genes(10)))
+    def test_random_sequences(self):
+
+        anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
+
+        n_seqs = 1000
+        seqlen = 98
+
+        # check that we can generate sequences inside expected region
+        seqs, genes = anno.random_sequences(n_seqs, seqlen, True, -1000, None)
+        self.assertEqual(len(seqs), n_seqs)
+        self.assertTrue(all(len(s) == seqlen for s in seqs))
+        self.assertEqual(len(genes), n_seqs)
+
+        # check that we can generate sequences outside of expected region
+        seqs, genes = anno.random_sequences(n_seqs, seqlen, True, None, -1000)
+        self.assertEqual(len(seqs), n_seqs)
+        self.assertTrue(all(len(s) == seqlen for s in seqs))
+        self.assertEqual(len(genes), n_seqs)
+
+        # finally, want to be able to generate giberish sequences
+
+
 
 
 class TestFastaReader(unittest.TestCase):
@@ -954,13 +988,10 @@ class TestFastaReader(unittest.TestCase):
     def test_fasta_reader(self):
         rd = seqc.fasta.Reader(self.fasta)
         for name, desc, seq in rd:
-            print(name)
-            print(desc)
-            print(seq[:20] + b'...')
-
-
-
-
+            pass
+            # print(name)
+            # print(desc)
+            # print(seq[:20] + b'...')
 
 
 class CoreFixOutputPathsTest(unittest.TestCase):
@@ -3009,11 +3040,13 @@ class SamReaderTest(unittest.TestCase):
 
 if __name__ == '__main__':
     suite = unittest.TestSuite()
-    suite.addTest(GTFTest("test_exon"))
-    suite.addTest(GTFTest("test_transcript"))
-    suite.addTest(GTFTest("test_gene"))
-    suite.addTest(GTFTest("test_annotation"))
-    suite.addTest(TestFastaReader("test_fasta_reader"))
+    # suite.addTest(GTFTest("test_exon"))
+    # suite.addTest(GTFTest("test_transcript"))
+    # suite.addTest(GTFTest("test_gene"))
+    # suite.addTest(GTFTest("test_gene_slicing"))
+    # suite.addTest(GTFTest("test_annotation"))
+    suite.addTest(GTFTest("test_random_sequences"))
+    # suite.addTest(TestFastaReader("test_fasta_reader"))
     runner = unittest.TextTestRunner()
     runner.run(suite)
 
