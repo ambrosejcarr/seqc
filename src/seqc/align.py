@@ -638,7 +638,8 @@ class STAR:
                 f.write(b'>' + i + b'\n' + b''.join(row) + b'\n')
 
         # try to align them
-        temp_alignment_dir = '.temp_alignment_output/'
+        id_ = str(np.random.randint(0, int(10e7)))
+        temp_alignment_dir = '.temp_alignment_output_%s/' % id_
         os.mkdir(temp_alignment_dir)
         cls.align(tempfile, index, n_threads, output_dir=temp_alignment_dir)
 

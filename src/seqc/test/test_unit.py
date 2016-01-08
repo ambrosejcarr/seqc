@@ -1425,9 +1425,9 @@ class AlignSTARTest(unittest.TestCase):
     def test_align_giberish(self):
         res = seqc.align.STAR.generate_unalignable_sequences(
             1000, 100, config.index, self.n_threads)
-        print(type(res))
-        print(len(res))
-        print(res[:5])
+        # print(type(res))
+        # print(len(res))
+        # print(res[:5])
 
     @classmethod
     def tearDownClass(cls):
@@ -2907,6 +2907,8 @@ class SparseCountsTest(unittest.TestCase):
             # make sure the read array is the right size
             sam_reader = seqc.sam.Reader(config.samfile_pattern % data_type)
             n_records = sum(1 for _ in sam_reader.iter_multialignments())
+
+            # todo 1-off error here; 39570 vs 39569
             assert len(ra) == n_records, '%d != %d' % (len(ra), n_records)
             # assert len(ra) == n_records * 0.95, '%d != %d' % (len(ra), n_records)
 

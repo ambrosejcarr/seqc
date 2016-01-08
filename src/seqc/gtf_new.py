@@ -2,10 +2,10 @@ import seqc
 import gzip
 import bz2
 from copy import deepcopy
-from collections import Counter, defaultdict
+from collections import defaultdict
 from sys import maxsize
-from operator import attrgetter, itemgetter
-from functools import lru_cache, partial
+from operator import attrgetter
+from functools import lru_cache
 from collections.abc import Iterator
 from random import randint
 import numpy as np
@@ -158,7 +158,7 @@ class Record:
             return self._attribute[item]
         except KeyError:
             if not self._attribute:
-                self._parse_attribute()  # todo implement
+                self._parse_attribute()
                 return self._attribute[item]
             else:
                 raise KeyError('%s is not a stored attribute of this gtf record' %

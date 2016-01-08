@@ -350,8 +350,8 @@ def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: st
 class GenerateSam:
 
     @staticmethod
-    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_name', replicates=3,
-                n_threads=7, *args, **kwargs):
+    def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_name',
+                replicates=3, n_threads=7, *args, **kwargs):
         """generate an in-drop .sam file"""
 
         # get barcodes
@@ -362,6 +362,7 @@ class GenerateSam:
             os.mkdir(output_dir)
         fastq_prefix = '.generate_sam/temp'
 
+        # todo this is bad; have them generate from a merged fastq file!
         # get fastq files
         forward, reverse = seqc.fastq.GenerateFastq.in_drop(
             n, fastq_prefix, fasta, gtf, barcodes, tag_type=tag_type,
