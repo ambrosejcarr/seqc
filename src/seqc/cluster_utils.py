@@ -12,7 +12,6 @@ from botocore.exceptions import ClientError
 class EC2RuntimeError(Exception):
     pass
 
-
 # TODO check if any errors in the arguments here
 # maybe keep track of all the volumes associated with it too
 class ClusterServer(object):
@@ -280,7 +279,7 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name):
-        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/src/plugins/config'
+        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
