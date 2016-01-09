@@ -46,7 +46,7 @@ class ClusterServer(object):
             seqc.log.notify('No instance name provided, assigned %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
-            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
+            sg.authorize_ingress(IpProtocol="tcp", CiIp="0.0.0.0/0", FromPort=22,
                                  ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
@@ -267,7 +267,7 @@ class ClusterServer(object):
         # todo | get rid of "nuke_sc" branch here, just for testing
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/testing_overhaul | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/develop | '
             'sudo tee %s > /dev/null' % location)
         # todo implement some sort of ls grep check system here
         self.serv.exec_command('sudo pip3 install %s' % location)
