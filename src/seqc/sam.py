@@ -350,6 +350,27 @@ def to_h5(samfile: str, h5_name: str, n_processes: int, chunk_size: int, gtf: st
 class GenerateSam:
 
     @staticmethod
+    def from_merged_fastq(filename, merged_fastq, index, n_threads=7,
+                          *args, **kwargs):
+
+        output_dir = '.generate_sam_%d/' % np.random.randint(int(1e7))
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+
+        sam = seqc.align.STAR.align(merged_fastq, index, n_threads, output_dir)
+
+        # move the alignment file to the desired filename
+        # directory = '/'.join(filename.split('/')[:-1])
+        # if not os.path.isdir(directory):
+        #     os.makedirs(directory)
+        shutil.move(sam, filename)
+
+        # remove temporary files
+        shutil.rmtree(output_dir)
+
+        return filename
+
+    @staticmethod
     def in_drop(n, filename, fasta, gtf, index, barcodes, tag_type='gene_name',
                 replicates=3, n_threads=7, *args, **kwargs):
         """generate an in-drop .sam file"""

@@ -29,6 +29,7 @@ from collections import defaultdict
 # test cluster_utils
 # test sam reader (multialignments)
 
+
 # noinspection PyPep8Naming
 class config:
     """
@@ -188,6 +189,8 @@ def check_merged_fastq(data_type: str) -> str:
                (merged, config.merged_pattern % data_type))
         assert merged == config.merged_pattern % data_type, msg
 
+    return config.merged_pattern % data_type
+
 
 def check_sam(data_type: str) -> str:
     """check if the required sam files are present, else generate them"""
@@ -195,23 +198,20 @@ def check_sam(data_type: str) -> str:
     # replace any dashes with underscores
     data_type = data_type.replace('-', '_')
 
-    # generation params
-    n = 10000
-    samfile = config.samfile_pattern % data_type
-    prefix = config.seqc_dir + 'test_data/%s/fastq/seqc_test' % data_type
-    barcodes = config.barcode_partial_serial_pattern % data_type
+    merged = check_merged_fastq(data_type)
 
-    expected_samfile = config.samfile_pattern % data_type
-    sam_dir = '/'.join(expected_samfile.strip('/')[:-1])
+    # generation params
+    samfile = config.samfile_pattern % data_type
+    sam_dir = '/' + '/'.join(samfile.strip('/').split('/')[:-1])
     if not os.path.isdir(sam_dir):
         os.makedirs(sam_dir)
 
     if not os.path.isfile(samfile):
-        gen_func = getattr(seqc.sam.GenerateSam, data_type)
-        gen_func(n=n, filename=samfile, prefix=prefix, fasta=config.fasta, gtf=config.gtf,
-                 index=config.index, barcodes=barcodes)
+        gen_func = seqc.sam.GenerateSam.from_merged_fastq
+        gen_func(samfile, merged, config.index, n_threads=config.n_threads)
 
     assert os.path.isfile(samfile)
+
     return samfile
 
 
@@ -775,6 +775,7 @@ class GTFTest(unittest.TestCase):
                 gene_ids.add(re.match(self._gene_id_pattern, r[-1]).groups()[2])
             except AttributeError:
                 print(r)
+                raise
         self.assertEqual(len(gene_ids), 1)
 
     def test_exon(self):
@@ -1497,6 +1498,7 @@ class ParallelConstructH5Test(unittest.TestCase):
         # we can check this by parsing the IntervalTree to see which overlaps have
         # multiple features. If they do, then they will not show up.
         n_with_features = sum(1 for f in ra.features if np.any(f))
+
         self.assertTrue(n_with_features > len(ra) * .98)
 
         # check data types
@@ -1600,7 +1602,8 @@ class ConvertGeneCoordinatesTest(unittest.TestCase):
             if r == e:
                 n += 1
             elif r:
-                print(r, e)
+                pass
+                # print(r, e)
         n_correct = sum(1 for r, e in zip(res, expected) if r == e)
         # print([(r, e) for (r, e) in zip(res[:15], expected[:15])])
         # print('percentage correct: %f' % (n_correct / len(res)))
@@ -1689,8 +1692,27 @@ class UniqueArrayCreationTest(unittest.TestCase):
         self.assertTrue(ua2.shape == ua.shape, 'Incongruent number of unique reads: '
                                                '%d != %d' % (ua2.shape[0], ua.shape[0]))
 
+        # figure out how many reads of each type should be in the sam file by parsing
+        total_reads = 0
+        unique_reads = 0
+        unaligned_reads = 0
+        multi_aligned_reads = 0
+        rd = seqc.sam.Reader(config.samfile_pattern % dtype)
+        for a in rd.iter_multialignments():
+            if a.is_unmapped:
+                unaligned_reads += 1
+            elif a.is_uniquely_mapped:
+                unique_reads += 1
+            else:
+                multi_aligned_reads += 1
+            total_reads += 1
+        self.assertEqual(unaligned_reads + unique_reads + multi_aligned_reads,
+                         total_reads)
+
         # we lose a few genes (<5%) by requiring uniqueness
-        self.assertTrue(len(ua) > len(ra) * .95, 'ua: %d << ra: %d' % (len(ua), len(ra)))
+        self.assertEqual(len(ua), unique_reads)
+        self.assertEqual(len(ra), total_reads)
+        # self.assertTrue(len(ua) > len(ra) * .95, 'ua: %d << ra: %d' % (len(ua), len(ra)))
 
         # check that features and positions have the right type
         self.assertEqual(ua.features.dtype, np.int64)
@@ -2041,9 +2063,9 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         self.assertEqual(gene_counts.sum(), sm.counts.sum().sum())
         self.assertEqual(gene_counts.sum(), sm_gene_counts.sum())
 
-        print(np.sum(sm_gene_counts != gene_counts))
+        # print(np.sum(sm_gene_counts != gene_counts))
         res = sm_gene_counts - gene_counts
-        print(res[np.where(res)])
+        # print(res[np.where(res)])
 
         # could the below problem be that the index isn't properly sorted? Nope!
         # self.assertTrue(np.array_equal(sorted(sm_gene_counts), sorted(gene_counts)))
@@ -2076,9 +2098,9 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         self.assertEqual(cell_counts.sum(), sm.counts.sum().sum())
         self.assertEqual(cell_counts.sum(), sm_cell_counts.sum())
 
-        print(np.sum(sm_cell_counts != cell_counts))
+        # print(np.sum(sm_cell_counts != cell_counts))
         res = sm_cell_counts - cell_counts
-        print(res[np.where(res)])
+        # print(res[np.where(res)])
 
         # could the below problem be that the index isn't properly sorted? Nope!
         self.assertTrue(np.array_equal(sorted(sm_cell_counts), sorted(cell_counts)))
@@ -2916,7 +2938,6 @@ class SparseCountsTest(unittest.TestCase):
             ua = ra.to_unique(n_poly_t_required)
 
             # make sure the UniqueArray is the right size
-            # todo some get lost here; need to parse ReadArray to see how many.
             n_unique = 0
             for r in seqc.sam.Reader(config.samfile_pattern % data_type):
                 if r.optional_fields['NH'] == 1:
