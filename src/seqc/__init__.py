@@ -7,11 +7,15 @@ __version__ = '0.1.5'
 import warnings
 warnings.filterwarnings("ignore")
 
+import pyximport; pyximport.install()
+from . import gtf_new
+
 from . import align
 from . import arrays
 from . import analyze
 from . import barcodes
 from . import convert_features
+from . import fasta
 from . import fastq
 from . import gtf
 from . import h5

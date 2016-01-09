@@ -223,7 +223,7 @@ def parse_args(parser, args=None):
             if not arguments.email_status:
                 print('SEQC: %s: error: if requesting a remote run with --remote, '
                       '--email-status must specify the email address that updates or '
-                      'errors should be sent to.')
+                      'errors should be sent to.' % arguments.subparser_name)
                 sys.exit(2)
 
     return vars(arguments)
@@ -469,7 +469,7 @@ def check_input_data(
     seqc.util.check_type(forward_fastq, list, 'forward_fastq')
     seqc.util.check_type(reverse_fastq, list, 'reverse_fastq')
     seqc.util.check_type(samfile, str, 'samfile')
-    seqc.util.check_type(samfile, str, 'samfile')
+    seqc.util.check_type(merged, str, 'merged')
     if basespace:
         if not len(basespace) == 2:
             raise ValueError('BaseSpace argument must provide a tuple or list containing '
@@ -573,7 +573,7 @@ def check_input_data(
             seqc.log.info('AWS s3 link provided for samfile. Downloading samfile')
             samfile = download_s3_files(samfile, 'sam', output_dir)
     elif merged:
-        if samfile.startswith('s3://'):
+        if merged.startswith('s3://'):
             seqc.log.info('AWS s3 link provided for merged_fastq. Downloading '
                           'merged_fastq')
             merged = download_s3_files(merged, 'merged_fastq', output_dir)

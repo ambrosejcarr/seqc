@@ -1,5 +1,6 @@
 __author__ = "Ambrose J. Carr"
 
+from copy import deepcopy
 import nose2
 import unittest
 import os
@@ -14,6 +15,7 @@ from nose2.tools import params
 from more_itertools import first
 from itertools import islice, permutations
 from functools import partial
+from operator import attrgetter
 from numpy.lib.recfunctions import append_fields
 import pandas as pd
 from io import StringIO
@@ -26,6 +28,7 @@ from collections import defaultdict
 # test sshutils
 # test cluster_utils
 # test sam reader (multialignments)
+
 
 # noinspection PyPep8Naming
 class config:
@@ -153,7 +156,11 @@ def check_fastq(data_type: str) -> (str, str):
 
     if not all(os.path.isfile(f) for f in [forward, reverse]):
         gen_func = getattr(seqc.fastq.GenerateFastq, data_type)
-        gen_func(10000, prefix, config.fasta, config.gtf, barcodes=barcodes)
+        loc, unloc, unalign = 3000, 3000, 3000
+        seqlen, fraglen, rep = 100, 1000, 3
+        gen_func(loc, unloc, unalign, prefix, config.fasta, config.gtf, config.index,
+                 replicates=rep, n_threads=config.n_threads, fragment_length=fraglen,
+                 sequence_length=seqlen, barcodes=barcodes)
 
     return forward, reverse
 
@@ -182,6 +189,8 @@ def check_merged_fastq(data_type: str) -> str:
                (merged, config.merged_pattern % data_type))
         assert merged == config.merged_pattern % data_type, msg
 
+    return config.merged_pattern % data_type
+
 
 def check_sam(data_type: str) -> str:
     """check if the required sam files are present, else generate them"""
@@ -189,23 +198,20 @@ def check_sam(data_type: str) -> str:
     # replace any dashes with underscores
     data_type = data_type.replace('-', '_')
 
-    # generation params
-    n = 10000
-    samfile = config.samfile_pattern % data_type
-    prefix = config.seqc_dir + 'test_data/%s/fastq/seqc_test' % data_type
-    barcodes = config.barcode_partial_serial_pattern % data_type
+    merged = check_merged_fastq(data_type)
 
-    expected_samfile = config.samfile_pattern % data_type
-    sam_dir = '/'.join(expected_samfile.strip('/')[:-1])
+    # generation params
+    samfile = config.samfile_pattern % data_type
+    sam_dir = '/' + '/'.join(samfile.strip('/').split('/')[:-1])
     if not os.path.isdir(sam_dir):
         os.makedirs(sam_dir)
 
     if not os.path.isfile(samfile):
-        gen_func = getattr(seqc.sam.GenerateSam, data_type)
-        gen_func(n=n, filename=samfile, prefix=prefix, fasta=config.fasta, gtf=config.gtf,
-                 index=config.index, barcodes=barcodes)
+        gen_func = seqc.sam.GenerateSam.from_merged_fastq
+        gen_func(samfile, merged, config.index, n_threads=config.n_threads)
 
     assert os.path.isfile(samfile)
+
     return samfile
 
 
@@ -335,6 +341,15 @@ class FastqEstimateSequenceLengthTest(unittest.TestCase):
 
 class FastqGenerateTest(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.localized = 1000
+        cls.unlocalized = 1000
+        cls.unalignable = 1000
+        cls.sequence_length = 100
+        cls.fragment_length = 1000
+        cls.n_threads=7
+
     def test_reverse_three_prime(self):
         fasta = config.fasta
         gtf = config.gtf
@@ -342,8 +357,28 @@ class FastqGenerateTest(unittest.TestCase):
             5, read_length=30, fasta=fasta, gtf=gtf)
         self.assertTrue(True) # this test only tests that the data runs.
 
-        # todo test that reads align
-        # todo test that reads are converted properly
+    def test_generate_reverse_complex(self):
+        """generate a set of reads, only some of which align to expected locations"""
+
+        res = seqc.fastq.GenerateFastq._reverse_split(
+            self.localized, self.unlocalized, self.unalignable, config.index,
+            config.fasta, config.gtf, self.fragment_length,
+            self.sequence_length, self.n_threads)
+
+    @params(*config.data_types)
+    def test_generate_typed_fastq(self, data_type):
+        """"""
+        if data_type == 'drop_seq':
+            barcodes = seqc.barcodes.DropSeqCellBarcodes()
+        else:
+            barcodes = config.barcode_partial_serial_pattern % data_type
+
+        fgen = getattr(seqc.fastq.GenerateFastq, data_type)
+        res = fgen(
+            self.localized, self.unlocalized, self.unalignable, './', config.fasta,
+            config.gtf, config.index, replicates=3, n_threads=self.n_threads,
+            fragment_length=self.fragment_length, sequence_length=self.sequence_length,
+            barcodes=barcodes)
 
 
 class FastqMergeTest(unittest.TestCase):
@@ -706,16 +741,285 @@ class GTFReaderTest(unittest.TestCase):
     def test_reader_get_mitochondrial_ids(self):
         pass  # todo implement
 
-        # @classmethod
-        # def tearDownClass(cls):
-        #     if os.path.isdir(cls.test_dir):
-        #         shutil.rmtree(cls.test_dir)
-        #     pass
-
     @classmethod
     def tearDownClass(cls):
         if os.path.isdir(cls.test_dir):
             shutil.rmtree(cls.test_dir)
+
+
+class GTFTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        check_index()
+        cls.gtf = config.gtf
+        cls._gene_id_pattern = b'(.*?gene_id ")(\D+)(\d+)(\.?)(\d*)(.*)'
+        cls.fasta = config.fasta
+
+    def test_reader_init(self):
+        seqc.gtf_new.Reader(self.gtf)
+
+    def test_reader_iter(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        first(rd)  # check iterable
+
+    def test_reader_iter_genes(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        for i in rd.iter_gene_sets():
+            break
+
+        # make sure the gene_id is identical for each value
+        gene_ids = set()
+        for r in i:
+            try:
+                gene_ids.add(re.match(self._gene_id_pattern, r[-1]).groups()[2])
+            except AttributeError:
+                print(r)
+                raise
+        self.assertEqual(len(gene_ids), 1)
+
+    def test_exon(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+
+        gene_records = first(rd.iter_gene_sets())
+
+        # get an exon from this gene record
+        for record in gene_records:
+            if record[2] != b'exon':
+                continue
+            exon = seqc.gtf_new.Exon(record)
+            break
+
+        # test that all the properties are working
+        self.assertIsInstance(exon.seqname, bytes)
+        self.assertIsInstance(exon.chromosome, bytes)
+        self.assertIsInstance(exon.source, bytes)
+        self.assertIsInstance(exon.feature, bytes)
+        self.assertIsInstance(exon.start, int)
+        self.assertIsInstance(exon.end, int)
+        self.assertIsInstance(exon.score, bytes)
+        self.assertIn(exon.strand, [b'+', b'-'])
+        self.assertIsInstance(exon.frame, bytes)
+
+        # test that attribute parsing works
+        try:
+            self.assertIsInstance(exon.attribute(b'exon_id'), bytes)
+        except:
+            print(exon._fields[-1])
+            raise
+
+        # test repr & str
+        self.assertIsInstance(repr(exon), str)
+        self.assertIsInstance(str(exon), str)
+
+        # test slicing
+        plus_exon = deepcopy(exon)
+        plus_exon._fields[6] = b'+'
+        minus_exon = deepcopy(exon)
+        minus_exon._fields[6] = b'-'
+        size = exon.end - exon.start
+
+        # one of these tests is yielding incorrect output!
+        self.assertEqual(plus_exon[:round(size * .25)].end,
+                         plus_exon.start + round(size * .25))
+        self.assertEqual(plus_exon[-round(size * .25):].start,
+                         plus_exon.end - round(size * .25))
+        self.assertEqual(plus_exon[10:50].end, plus_exon.start + 50)
+        self.assertEqual(plus_exon[10:50].start, plus_exon.start + 10)
+
+        self.assertEqual(minus_exon[:round(size * .25)].end, minus_exon.end)
+        self.assertEqual(minus_exon[:round(size * .25)].start,
+                         minus_exon.end - round(size * .25))
+        self.assertEqual(minus_exon[-round(size * .25):].start, minus_exon.start)
+        self.assertEqual(minus_exon[-round(size * .25):].end, minus_exon.start +
+                         round(size * .25))
+        self.assertEqual(minus_exon[10:50].end, minus_exon.end - 10)
+        self.assertEqual(minus_exon[10:50].start, minus_exon.end - 50)
+
+    def test_transcript(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        gene_records = first(rd.iter_gene_sets())
+
+        iter_gene = iter(gene_records)
+
+        # get the transcript record
+        transcript_record = next(iter_gene)
+        while transcript_record[2] != b'transcript':
+            transcript_record = next(iter_gene)
+
+        # now get all the UTRs
+        exons = []
+        record = next(iter_gene)  # get the first non-transcript record
+        while record[2] not in [b'transcript', b'gene']:
+            if record[2] in [b'exon', b'UTR']:
+                exons.append(record)
+            record = next(iter_gene)
+
+        transcript = seqc.gtf_new.Transcript.from_records(transcript_record, *exons)
+
+        # create a minus and plus transcript for testing
+        if transcript._fields[6] == b'+':
+            plus_transcript = transcript
+
+            minus_transcript = deepcopy(transcript)
+            minus_transcript._fields[6] = b'-'
+            minus_transcript._exons = sorted(minus_transcript._exons,
+                                             key=attrgetter('start'), reverse=True)
+            for exon in minus_transcript:
+                exon._fields[6] = b'-'
+        else:
+            minus_transcript = transcript
+            plus_transcript = deepcopy(transcript)
+            plus_transcript._fields[6] = b'+'
+            plus_transcript._exons = sorted(plus_transcript._exons,
+                                            key=attrgetter('start'))
+            for exon in plus_transcript:
+                exon._fields[6] = b'+'
+
+        # test that all the properties are working
+        self.assertIsInstance(transcript.seqname, bytes)
+        self.assertIsInstance(transcript.chromosome, bytes)
+        self.assertIsInstance(transcript.source, bytes)
+        self.assertIsInstance(transcript.feature, bytes)
+        self.assertIsInstance(transcript.start, int)
+        self.assertIsInstance(transcript.end, int)
+        self.assertIsInstance(transcript.score, bytes)
+        self.assertIn(transcript.strand, [b'+', b'-'])
+        self.assertIsInstance(transcript.frame, bytes)
+
+        # test transcript slicing
+        self.assertEqual(plus_transcript.size, minus_transcript.size)
+        subset = round(plus_transcript.size * .25)
+
+        self.assertEqual(plus_transcript[:subset].size, subset)
+        self.assertEqual(plus_transcript[-subset:].size, subset)
+        self.assertEqual(plus_transcript.start, plus_transcript[:subset].start)
+        self.assertEqual(plus_transcript[-subset:].end, plus_transcript.end)
+
+        self.assertEqual(minus_transcript[-subset:].size, subset)
+        self.assertEqual(minus_transcript[:subset].size, subset)
+        self.assertEqual(minus_transcript.end, minus_transcript[:subset].end)
+        self.assertEqual(minus_transcript.start, minus_transcript[-subset:].start)
+
+        self.assertEqual(plus_transcript[:subset].size, minus_transcript[:subset].size)
+        self.assertEqual(plus_transcript[:-subset].size, minus_transcript[:-subset].size)
+        self.assertEqual(plus_transcript[-subset:].size, minus_transcript[-subset:].size)
+        self.assertEqual(plus_transcript[subset:].size, minus_transcript[subset:].size)
+        self.assertEqual(plus_transcript[1:5].size, 4)
+        self.assertEqual(minus_transcript[1:5].size, 4)
+        self.assertEqual(plus_transcript[1:5].start, plus_transcript.start + 1)
+        self.assertEqual(plus_transcript[1:5].end, plus_transcript.start + 5)
+        self.assertEqual(minus_transcript[1:5].end, minus_transcript.end - 1)
+        self.assertEqual(minus_transcript[1:5].start, minus_transcript.end - 5)
+
+    def test_gene(self):
+        rd = seqc.gtf_new.Reader(self.gtf)
+        minus_gene = None
+        plus_gene = None
+        gene_iterator = rd.iter_gene_sets()
+        while not all((minus_gene, plus_gene)):
+            gene_records = list(next(gene_iterator))
+            gene = seqc.gtf_new.Gene.from_records(*gene_records)
+            if len(gene) > 1 and gene.strand == b'+':
+                plus_gene = gene
+            if len(gene) > 1 and gene.strand == b'-':
+                minus_gene = gene
+
+        plus_subset = int(np.mean([tx.size * .75 for tx in plus_gene]))
+        minus_subset = int(np.mean([tx.size * .75 for tx in minus_gene]))
+
+        for gene in (plus_gene, minus_gene):
+            subset = int(np.mean([tx.size * .75 for tx in gene]))
+            sliced_gene = gene[-subset:]
+            self.assertTrue(all(tx.size == min(subset, original.size) for
+                                tx, original in zip(sliced_gene, gene)))
+
+        # test merge intervals
+        res = list(plus_gene._merge_intervals([(1, 5), (4, 9)]))
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], (1, 9))
+
+        res = list(plus_gene._merge_intervals([(1, 5), (4, 9), (-1, 3)]))
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], (-1, 9))
+
+        res = list(plus_gene._merge_intervals([(4, 9), (-1, 3)]))
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res, [(-1, 3), (4, 9)])
+
+        # test intervals
+        for gene in (plus_gene, minus_gene):
+            subset = int(np.mean([tx.size * .75 for tx in gene]))
+            res = gene.intervals(-1000)
+
+    def test_gene_slicing(self):
+
+        anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
+
+        # test slicing
+        sliced = [g[-1000:] for g in anno.genes]
+        self.assertEqual(sum(1 for s in sliced if s.start and s.end), len(anno.genes))
+
+        # test intervals
+        ivs = [g.intervals(-1000, None) for g in anno.genes]
+        self.assertTrue(all(len(iv) != 0 for iv in ivs))
+
+
+    def test_annotation(self):
+
+        anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
+
+        # test properties
+        self.assertIsInstance(len(anno), int)
+        self.assertIsInstance(repr(anno), str)
+        self.assertIsInstance(anno.chromosomes, dict)
+
+        # test __getitem__
+        sample_gene = anno.genes[0]
+        chromosome = sample_gene.chromosome
+        gene_id = sample_gene.string_gene_id
+        self.assertIsInstance(anno[chromosome][gene_id], seqc.gtf_new.Gene)
+
+        prefix = sample_gene.organism_prefix
+        int_id = sample_gene.integer_gene_id
+        string_id = sample_gene.string_gene_id.split(b'.')[0]
+        self.assertEqual(string_id, seqc.gtf_new.Record.int2str_gene_id(int_id, prefix))
+
+    def test_random_sequences(self):
+
+        anno = seqc.gtf_new.Annotation(self.gtf, self.fasta)
+
+        n_seqs = 1000
+        seqlen = 98
+
+        # check that we can generate sequences inside expected region
+        seqs, genes = anno.random_sequences(n_seqs, seqlen, True, -1000, None)
+        self.assertEqual(len(seqs), n_seqs)
+        self.assertTrue(all(len(s) == seqlen for s in seqs))
+        self.assertEqual(len(genes), n_seqs)
+
+        # check that we can generate sequences outside of expected region
+        seqs, genes = anno.random_sequences(n_seqs, seqlen, True, None, -1000)
+        self.assertEqual(len(seqs), n_seqs)
+        self.assertTrue(all(len(s) == seqlen for s in seqs))
+        self.assertEqual(len(genes), n_seqs)
+
+        # finally, want to be able to generate giberish sequences; this is in align
+
+
+class TestFastaReader(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fasta = config.fasta
+
+    def test_fasta_reader(self):
+        rd = seqc.fasta.Reader(self.fasta)
+        for name, desc, seq in rd:
+            pass
+            # print(name)
+            # print(desc)
+            # print(seq[:20] + b'...')
 
 
 class CoreFixOutputPathsTest(unittest.TestCase):
@@ -1089,6 +1393,7 @@ class AlignSTARTest(unittest.TestCase):
             if not os.path.isdir(cls.test_dir % dtype):
                 os.makedirs(cls.test_dir % dtype)
             check_merged_fastq(dtype)
+        cls.n_threads = 7
 
     @params(*config.data_types)
     @unittest.skip('slow; genome loading takes time.')
@@ -1098,8 +1403,7 @@ class AlignSTARTest(unittest.TestCase):
         merged = config.merged_pattern % dtype
         self.assertTrue(os.path.isfile(merged), '%s is not a file' % merged)
 
-        n_threads = 7
-        samfile = seqc.align.STAR.align(merged, config.index, n_threads,
+        samfile = seqc.align.STAR.align(merged, config.index, self.n_threads,
                                         self.test_dir % dtype)
 
         # check that file was created
@@ -1118,6 +1422,13 @@ class AlignSTARTest(unittest.TestCase):
             if not int(record.flag) & 4:
                 aligned += 1
         self.assertGreaterEqual(aligned, n)
+
+    def test_align_giberish(self):
+        res = seqc.align.STAR.generate_unalignable_sequences(
+            1000, 100, config.index, self.n_threads)
+        # print(type(res))
+        # print(len(res))
+        # print(res[:5])
 
     @classmethod
     def tearDownClass(cls):
@@ -1187,6 +1498,7 @@ class ParallelConstructH5Test(unittest.TestCase):
         # we can check this by parsing the IntervalTree to see which overlaps have
         # multiple features. If they do, then they will not show up.
         n_with_features = sum(1 for f in ra.features if np.any(f))
+
         self.assertTrue(n_with_features > len(ra) * .98)
 
         # check data types
@@ -1290,7 +1602,8 @@ class ConvertGeneCoordinatesTest(unittest.TestCase):
             if r == e:
                 n += 1
             elif r:
-                print(r, e)
+                pass
+                # print(r, e)
         n_correct = sum(1 for r, e in zip(res, expected) if r == e)
         # print([(r, e) for (r, e) in zip(res[:15], expected[:15])])
         # print('percentage correct: %f' % (n_correct / len(res)))
@@ -1379,8 +1692,27 @@ class UniqueArrayCreationTest(unittest.TestCase):
         self.assertTrue(ua2.shape == ua.shape, 'Incongruent number of unique reads: '
                                                '%d != %d' % (ua2.shape[0], ua.shape[0]))
 
+        # figure out how many reads of each type should be in the sam file by parsing
+        total_reads = 0
+        unique_reads = 0
+        unaligned_reads = 0
+        multi_aligned_reads = 0
+        rd = seqc.sam.Reader(config.samfile_pattern % dtype)
+        for a in rd.iter_multialignments():
+            if a.is_unmapped:
+                unaligned_reads += 1
+            elif a.is_uniquely_mapped:
+                unique_reads += 1
+            else:
+                multi_aligned_reads += 1
+            total_reads += 1
+        self.assertEqual(unaligned_reads + unique_reads + multi_aligned_reads,
+                         total_reads)
+
         # we lose a few genes (<5%) by requiring uniqueness
-        self.assertTrue(len(ua) > len(ra) * .95, 'ua: %d << ra: %d' % (len(ua), len(ra)))
+        self.assertEqual(len(ua), unique_reads)
+        self.assertEqual(len(ra), total_reads)
+        # self.assertTrue(len(ua) > len(ra) * .95, 'ua: %d << ra: %d' % (len(ua), len(ra)))
 
         # check that features and positions have the right type
         self.assertEqual(ua.features.dtype, np.int64)
@@ -1731,9 +2063,9 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         self.assertEqual(gene_counts.sum(), sm.counts.sum().sum())
         self.assertEqual(gene_counts.sum(), sm_gene_counts.sum())
 
-        print(np.sum(sm_gene_counts != gene_counts))
+        # print(np.sum(sm_gene_counts != gene_counts))
         res = sm_gene_counts - gene_counts
-        print(res[np.where(res)])
+        # print(res[np.where(res)])
 
         # could the below problem be that the index isn't properly sorted? Nope!
         # self.assertTrue(np.array_equal(sorted(sm_gene_counts), sorted(gene_counts)))
@@ -1766,9 +2098,9 @@ class UniqueArrayToExperimentTest(unittest.TestCase):
         self.assertEqual(cell_counts.sum(), sm.counts.sum().sum())
         self.assertEqual(cell_counts.sum(), sm_cell_counts.sum())
 
-        print(np.sum(sm_cell_counts != cell_counts))
+        # print(np.sum(sm_cell_counts != cell_counts))
         res = sm_cell_counts - cell_counts
-        print(res[np.where(res)])
+        # print(res[np.where(res)])
 
         # could the below problem be that the index isn't properly sorted? Nope!
         self.assertTrue(np.array_equal(sorted(sm_cell_counts), sorted(cell_counts)))
@@ -2597,6 +2929,8 @@ class SparseCountsTest(unittest.TestCase):
             # make sure the read array is the right size
             sam_reader = seqc.sam.Reader(config.samfile_pattern % data_type)
             n_records = sum(1 for _ in sam_reader.iter_multialignments())
+
+            # todo 1-off error here; 39570 vs 39569
             assert len(ra) == n_records, '%d != %d' % (len(ra), n_records)
             # assert len(ra) == n_records * 0.95, '%d != %d' % (len(ra), n_records)
 
@@ -2604,7 +2938,6 @@ class SparseCountsTest(unittest.TestCase):
             ua = ra.to_unique(n_poly_t_required)
 
             # make sure the UniqueArray is the right size
-            # todo some get lost here; need to parse ReadArray to see how many.
             n_unique = 0
             for r in seqc.sam.Reader(config.samfile_pattern % data_type):
                 if r.optional_fields['NH'] == 1:
@@ -2763,7 +3096,14 @@ class SamReaderTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    nose2.main()
+    suite = unittest.TestSuite()
+    # suite.addTest(AlignSTARTest('test_align_giberish'))
+    # suite.addTest(FastqGenerateTest('test_generate_reverse_complex'))
+    suite.addTest(FastqGenerateTest('test_generate_typed_fastq'))
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
+
+    # nose2.main()
     # final cleanup
     if os.path.isdir('test_seqc'):
         shutil.rmtree('test_seqc')

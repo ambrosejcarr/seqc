@@ -9,6 +9,7 @@ from subprocess import Popen, PIPE, call, check_output, CalledProcessError
 from shutil import rmtree, copyfileobj
 from collections import defaultdict
 import seqc
+import numpy as np
 
 
 # download links for supported genomes on GEO
@@ -283,7 +284,6 @@ class STAR:
             index + 'p_coalignment_array.p')
         seqc.sa_postprocess.create_gtf_reduced.create_gtf(
             names['gtf'], scid_to_tx, index + 'annotations.gtf')
-
 
     @classmethod
     def _generate_coalignment(cls, index, organism, phix=True):
@@ -622,6 +622,43 @@ class STAR:
         call(['rm', '-r', '_STARtmp/'])
         call(['rm', './Aligned.out.sam', './Log.out', './Log.progress.out'])
         return
+
+    @classmethod
+    def generate_unalignable_sequences(cls, n, sequence_length, index, n_threads=7):
+        alphabet = np.array([b'A', b'C', b'G', b'T'], dtype='|S1')
+        # generate 10x the necessary items
+        sequences = np.random.choice(alphabet, size=n * 10 * sequence_length)
+        sequences = np.reshape(sequences, (n * 10, sequence_length))
+
+        # generate a temporary file to hold these random sequences
+        indices = [str(i).encode() for i in range(len(sequences))]
+        tempfile = '.temp_unalignable_sequences.fa'
+        with open(tempfile, 'wb') as f:
+            for i, row in zip(indices, sequences):
+                f.write(b'>' + i + b'\n' + b''.join(row) + b'\n')
+
+        # try to align them
+        id_ = str(np.random.randint(0, int(10e7)))
+        temp_alignment_dir = '.temp_alignment_output_%s/' % id_
+        os.mkdir(temp_alignment_dir)
+        cls.align(tempfile, index, n_threads, output_dir=temp_alignment_dir)
+
+        # parse the alignments
+        unaligned = np.zeros_like(indices, dtype=np.bool)
+        rd = seqc.sam.Reader(temp_alignment_dir + 'Aligned.out.sam')
+        for i, ma in enumerate(rd.iter_multialignments()):
+            # check first alignment in the multialignment -- if more than one alignment,
+            # then ma[0] will be mapped
+            if ma[0].is_unmapped:
+                unaligned[i] = True
+
+        # get first n sequences
+        sequences = sequences[unaligned, :][:n,:]
+
+        rmtree(temp_alignment_dir)
+        os.remove(tempfile)
+
+        return [b''.join(s) for s in sequences]
 
     @staticmethod
     def clean_up(directory):

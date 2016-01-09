@@ -610,9 +610,56 @@ class GenerateFastq:
         reverse_fastq = StringIO('\n'.join(records) + '\n')
         return reverse_fastq, len(records)
 
+    @staticmethod
+    def _reverse_split(localized: int, unlocalized: int, unalignable: int, index: str,
+                       fasta: str, gtf: str, fragment_length=1000, sequence_length=100,
+                       n_threads=7):
+
+        # containers for generated data
+        sequences = []
+        donor_genes = []
+
+        # read gtf
+        annotation = seqc.gtf_new.Annotation(gtf, fasta)
+
+        # generate sequences localized in expected locations
+        seqs, genes = annotation.random_sequences(
+            localized, sequence_length, return_genes=True,
+            start=-fragment_length, stop=None)
+        sequences.extend(seqs)
+        donor_genes.extend([g.string_gene_id for g in genes])
+
+        # generate sequences outside of expected locations
+        seqs, genes = annotation.random_sequences(
+            unlocalized, sequence_length, return_genes=True,
+            start=None, stop=-fragment_length)
+        sequences.extend(seqs)
+        donor_genes.extend([g.string_gene_id for g in genes])
+
+        # generate unalignable sequences
+        seqs = seqc.align.STAR.generate_unalignable_sequences(
+            unalignable, sequence_length, index, n_threads)
+        sequences.extend(seqs)
+        donor_genes.extend([b'unalignable'] * len(seqs))
+
+        # generate the fastq file
+        assert(len(sequences) == len(donor_genes))
+
+        name1 = [b'@' + str(i).encode() + b':' + gene
+                 for i, gene in enumerate(donor_genes)]
+        name2 = b'+'
+        quality = b'I' * sequence_length
+        records = []
+        for n, s in zip(name1, sequences):
+            records.append(b'\n'.join([n, s, name2, quality]))
+        data = (b'\n'.join(records) + b'\n').decode()
+        reverse_fastq = StringIO(data)  # todo not efficient to operate on string
+        return reverse_fastq, len(records)
+
     @classmethod
-    def in_drop(cls, n, prefix, fasta, gtf, barcodes, tag_type='gene_name', replicates=3,
-                *args, **kwargs):
+    def in_drop(cls, localized, unlocalized, unalignable, prefix, fasta, gtf, index,
+                barcodes, replicates=3, n_threads=7, fragment_length=1000,
+                sequence_length=100, *args, **kwargs):
 
         if not replicates >= 0:
             raise ValueError('Cannot generate negative replicates')
@@ -622,9 +669,8 @@ class GenerateFastq:
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
-        fwd_len = 50
-        rev_len = 100
-        reverse, n = cls._reverse_three_prime(n, rev_len, fasta, gtf, tag_type=tag_type)
+        reverse, n = cls._reverse_split(localized, unlocalized, unalignable, index, fasta,
+                                        gtf, fragment_length, sequence_length, n_threads)
         reverse = reverse.read()  # consume the StringIO object
         forward = cls._forward_in_drop(n, barcodes)
         forward = forward.read()  # consume the StringIO object
@@ -634,9 +680,35 @@ class GenerateFastq:
             r.write(''.join([reverse] * (replicates + 1)))
         return prefix + '_r1.fastq', prefix + '_r2.fastq'
 
+    # @classmethod
+    # def in_drop(cls, n, prefix, fasta, gtf, barcodes, tag_type='gene_name', replicates=3,
+    #             *args, **kwargs):
+    #
+    #     if not replicates >= 0:
+    #         raise ValueError('Cannot generate negative replicates')
+    #
+    #     # create directory if it doesn't exist
+    #     directory = '/'.join(prefix.split('/')[:-1])
+    #     if not os.path.isdir(directory):
+    #         os.makedirs(directory)
+    #
+    #     fwd_len = 50
+    #     rev_len = 100
+    #
+    #     reverse, n = cls._reverse_three_prime(n, rev_len, fasta, gtf, tag_type=tag_type)
+    #     reverse = reverse.read()  # consume the StringIO object
+    #     forward = cls._forward_in_drop(n, barcodes)
+    #     forward = forward.read()  # consume the StringIO object
+    #     with open(prefix + '_r1.fastq', 'w') as f:
+    #         f.write(''.join([forward] * (replicates + 1)))
+    #     with open(prefix + '_r2.fastq', 'w') as r:
+    #         r.write(''.join([reverse] * (replicates + 1)))
+    #     return prefix + '_r1.fastq', prefix + '_r2.fastq'
+
     @classmethod
-    def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_name', replicates=3, *args,
-                 **kwargs):
+    def drop_seq(cls, localized, unlocalized, unalignable, prefix, fasta, gtf, index,
+                 replicates=3, n_threads=7, fragment_length=1000, sequence_length=100,
+                 *args, **kwargs):
 
         if not replicates >= 0:
             raise ValueError('Cannot generate negative replicates')
@@ -646,16 +718,39 @@ class GenerateFastq:
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
-        rev_len = 100
-        reverse, n = cls._reverse_three_prime(n, rev_len, fasta, gtf, tag_type=tag_type)
-        reverse = reverse.read()  # consume the StringIO object
+        reverse, n = cls._reverse_split(localized, unlocalized, unalignable, index, fasta,
+                                        gtf, fragment_length, sequence_length, n_threads)
+        reverse = reverse.read()
         forward = cls._forward_drop_seq(n)
-        forward = forward.read()  # consume the StringIO object
+        forward = forward.read()
         with open(prefix + '_r1.fastq', 'w') as f:
             f.write(''.join([forward] * (replicates + 1)))
         with open(prefix + '_r2.fastq', 'w') as r:
             r.write(''.join([reverse] * (replicates + 1)))
         return prefix + '_r1.fastq', prefix + '_r2.fastq'
+
+    # @classmethod
+    # def drop_seq(cls, n, prefix, fasta, gtf, tag_type='gene_name', replicates=3, *args,
+    #              **kwargs):
+    #
+    #     if not replicates >= 0:
+    #         raise ValueError('Cannot generate negative replicates')
+    #
+    #     # create directory if it doesn't exist
+    #     directory = '/'.join(prefix.split('/')[:-1])
+    #     if not os.path.isdir(directory):
+    #         os.makedirs(directory)
+    #
+    #     rev_len = 100
+    #     reverse, n = cls._reverse_three_prime(n, rev_len, fasta, gtf, tag_type=tag_type)
+    #     reverse = reverse.read()  # consume the StringIO object
+    #     forward = cls._forward_drop_seq(n)
+    #     forward = forward.read()  # consume the StringIO object
+    #     with open(prefix + '_r1.fastq', 'w') as f:
+    #         f.write(''.join([forward] * (replicates + 1)))
+    #     with open(prefix + '_r2.fastq', 'w') as r:
+    #         r.write(''.join([reverse] * (replicates + 1)))
+    #     return prefix + '_r1.fastq', prefix + '_r2.fastq'
 
     @classmethod
     def simple_fastq(cls, n, length):
