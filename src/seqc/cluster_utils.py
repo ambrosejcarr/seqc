@@ -45,7 +45,7 @@ class ClusterServer(object):
             seqc.log.notify('No instance name provided, assigned %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
-            sg.authorize_ingress(IpProtocol="tcp", CiIp="0.0.0.0/0", FromPort=22,
+            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                  ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
             self.sg = sg.id
