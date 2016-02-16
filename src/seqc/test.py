@@ -2,11 +2,13 @@ __author__ = 'ambrose'
 
 import hashlib
 from memory_profiler import profile, memory_usage
+from numpy.lib.recfunctions import append_fields
 import unittest
 import os
 import pickle
 import seqc
-from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
+import tables as tb
+from seqc import three_bit, fastq, align, sam, convert_features, barcodes, io_lib
 from seqc import arrays
 from io import StringIO
 from itertools import product
@@ -29,12 +31,10 @@ from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.authorizers import DummyAuthorizer
 
-# tests to add:
-# 1. test for processing of multi-aligned reads. Right now there is no test for lines
-#    92-102 of sam.py
-# 2. add a test for masking of filtered reads in qc.py for resolve_alignments() and
-#    error_correction() At the moment, the data generation doesn't produce any reads that
-#    get filtered.
+
+# this is the universal data dir for these tests
+_seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
+_data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
 
 
 class SRAGenerator:
@@ -1328,7 +1328,7 @@ class TestSamToReadArray(unittest.TestCase):
         ra = arrays.ReadArray.from_h5(self.h5name)
         pr = cProfile.Profile()
         pr.enable()
-        ra.unique_features_to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
+        ra.to_sparse_counts(collapse_molecules=True, n_poly_t_required=0)
         pr.disable()
         p = Stats(pr)
         p.strip_dirs()
@@ -1905,6 +1905,249 @@ class TestGroupForErrorCorrection(unittest.TestCase):
                 else:
                     print('Returned None')
 
+
+@unittest.skip('')
+class TestParallelConstructSam(unittest.TestCase):
+
+    def setUp(self):
+        data_dir = '/'.join(seqc.__file__.split('/')[:-2]) + '/data/'
+        self.samfile = data_dir + 'in_drop/Aligned.out.sam'
+        self.gtf = data_dir + 'genome/mm38_chr19/annotations.gtf'
+
+    @unittest.skip('')
+    def test_parallel_construct_sam(self):
+        h5_name = 'test.h5'
+        n_processes = 7
+        chunk_size = 10000
+        seqc.sam.to_h5(self.samfile, h5_name, n_processes, chunk_size,
+                       self.gtf, fragment_length=1000)
+
+    @unittest.skip('')
+    def test_writing_non_parallel(self):
+        h5_name = 'test.h5'
+        n_processes = 7
+        chunk_size = 100000
+        # seqc.sam.to_h5(self.samfile, h5_name, n_processes, chunk_size,
+        #                self.gtf, fragment_length=1000)
+
+        filesize = os.stat(self.samfile).st_size
+
+        # get a bunch of records to check average size of a record
+        with open(self.samfile) as f:
+            records = []
+            for line in f:
+                if line.startswith('@'):
+                    continue
+                records.append(line)
+                if len(records) > 1000:
+                    break
+        average_record_size = np.mean([len(r) for r in records])
+
+        # estimate expected rows for the h5 database
+        expectedrows = filesize / average_record_size
+
+        # create a feature_converter object to convert genomic -> transcriptomic features
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+
+        # open all our tables
+        blosc5 = tb.Filters(complevel=5, complib='blosc')
+        h5f = tb.open_file(h5_name, mode='w', filters=blosc5,
+                           title='Data for ReadArray constructed from %s' % self.samfile)
+        try:
+            # description = tb.descr_from_dtype(_dtype)
+            a = tb.UInt32Atom()
+            # create the tables and arrays needed to store data
+            h5f.create_table(h5f.root, 'data', seqc.sam._DataTable, 'ReadArray.data',
+                             filters=blosc5, expectedrows=expectedrows)
+            h5f.create_earray(h5f.root, 'index', a, (0,), filters=blosc5,
+                              expectedrows=expectedrows)
+            h5f.create_earray(h5f.root, 'features', a, (0,), filters=blosc5,
+                              expectedrows=expectedrows)
+            h5f.create_earray(h5f.root, 'positions', a, (0,), filters=blosc5,
+                              expectedrows=expectedrows)
+
+            itersam = seqc.sam._iterate_chunk(self.samfile, n=chunk_size)
+            for chunk in itersam:
+                processed = seqc.sam._process_chunk(chunk, fc)
+                seqc.sam._write_chunk(processed, h5f)
+            # read_kwargs = dict(samfile=self.samfile, n=chunk_size)
+            # process_kwargs = dict(feature_converter=fc)
+            # write_kwargs = dict(h5_file=h5f)
+            # seqc.parallel.process_parallel(n_processes, sam._iterate_chunk,
+            #                                sam._process_chunk,
+            #                                sam._write_chunk, read_kwargs=read_kwargs,
+            #                                process_kwargs=process_kwargs,
+            #                                write_kwargs=write_kwargs)
+        finally:
+            h5f.close()
+
+    @unittest.skip('')
+    def test_writing_non_parallel_writeobj(self):
+        h5_name = 'test.h5'
+        chunk_size = 1000000
+
+        filesize = os.stat(self.samfile).st_size
+
+        # get a bunch of records to check average size of a record
+        with open(self.samfile) as f:
+            records = []
+            for line in f:
+                if line.startswith('@'):
+                    continue
+                records.append(line)
+                if len(records) > 1000:
+                    break
+        average_record_size = np.mean([len(r) for r in records])
+
+        # estimate expected rows for the h5 database
+        expectedrows = filesize / average_record_size
+
+        # create a feature_converter object to convert genomic -> transcriptomic features
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+
+        # open all our tables
+        h5f = seqc.sam.ReadArrayH5Writer(h5_name)
+        h5f.create(expectedrows)
+        itersam = seqc.sam._iterate_chunk(self.samfile, n=chunk_size)
+        for chunk in itersam:
+            processed = seqc.sam._process_chunk(chunk, fc)
+            h5f.write(processed)
+        h5f.close()
+
+    def test_writing_parallel_writeobj(self):
+        h5_name = 'test.h5'
+        n_processes = 7
+        chunk_size = 100000
+        seqc.sam.to_h5(self.samfile, h5_name, n_processes, chunk_size,
+                       self.gtf, fragment_length=1000)
+        nlines = self.samfile
+
+@unittest.skip('')
+class TestCounting(unittest.TestCase):
+
+    def setUp(self):
+
+        # design a UniqueReadArray to test validity of method
+        dtype = seqc.arrays.ReadArray._dtype
+
+        # several fields don't matter; only using cell, rmt, features
+        def create_records(rmt, cell, feature, n):
+            n_poly_t = 5
+            valid_cell = True
+            dust_score = 0
+            rev_quality = 40
+            fwd_quality = 40
+            is_aligned = True
+            alignment_score = 100
+            records = [(cell, rmt, n_poly_t, valid_cell, dust_score, rev_quality,
+                        fwd_quality, is_aligned, alignment_score) for _ in range(n)]
+            positions = np.zeros(n)
+            features_ = np.array([feature] * n)
+            return records, features_, positions
+
+        def create_unique_read_array(rmts, cells, features):
+            assert len(rmts) == len(cells) == len(features)
+            # start with an easy case where the method should get things right
+            # use these ids
+
+            n = len(rmts)
+            i = 0
+            j = 0
+            udata = np.zeros((n,), dtype=dtype)
+            ufeatures = np.zeros(n, dtype=np.int32)
+            upositions = np.zeros(n, dtype=np.int32)
+            for (r, c, f) in zip(rmts, cells, features):
+                recs, feats, posn = create_records(r, c, f, 1)
+                for v in recs:
+                    udata[i] = v
+                    i += 1
+                ufeatures[j: j + len(feats)] = feats
+                upositions[j: j + len(posn)] = posn
+                j += len(feats)
+
+            # these are all unique; should fail when required support > 0 and return empty
+            # molecule and read arrays
+            return seqc.arrays.UniqueReadArray(udata, ufeatures, upositions)
+
+        rmts = [10] * 9 + [6] * 9 + [111] * 9
+        cells = [1, 2, 3] * 9
+        features = [7, 7, 7, 8, 8, 8, 9, 9, 9] * 3
+        self.simple_unique = create_unique_read_array(rmts, cells, features)
+        self.simple_duplicate = create_unique_read_array(rmts * 2, cells * 2, features * 2)
+
+    @unittest.skip('')
+    def test_print_data(self):
+        self.simple_unique._sort()
+        data = append_fields(self.simple_unique.data, 'features', self.simple_unique.features)
+        print(data[self.simple_unique._sorted][['cell', 'features', 'rmt']])
+
+    @unittest.skip('')
+    def test_counting_filter_too_high(self):
+
+        # test that sorting is working
+        # seems to be sorting cell, feature, rmt
+        self.assertRaises(ValueError, self.simple_unique.to_experiment, 1)
+
+    # @unittest.skip('')
+    def test_counting_simple(self):
+        exp = self.simple_unique.to_experiment(0)
+        rdata = np.array(exp.reads.counts.todense())
+        mdata = np.array(exp.molecules.counts.todense())
+        print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
+        print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
+
+    def test_counting_doublets(self):
+        exp = self.simple_duplicate.to_experiment(0)
+        rdata = np.array(exp.reads.counts.todense())
+        mdata = np.array(exp.molecules.counts.todense())
+        print(pd.DataFrame(rdata, exp.reads.index, exp.reads.columns))
+        print(pd.DataFrame(mdata, exp.molecules.index, exp.molecules.columns))
+
+
+class TestUniqueArrayCreation(unittest.TestCase):
+    """
+    suspicion -> unique array creation is breaking something in the pipeline;
+    could be an earlier method but lets check upstream so we know how each part is
+    working.
+
+    method: find the smallest real dataset that breaks it and use that to test.
+    """
+
+    def setUp(self):
+        # verify that Aligned.out.sam doesn't produce correct results.
+        self.samfile = _seqc_dir + '.test_download_index/Aligned.out.sam'
+        self.gtf = _data_dir + 'genome/mm38_chr19/annotations.gtf'
+
+    def test_num_unique_samfile(self):
+        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(self.gtf, 1000)
+        ra = seqc.arrays.ReadArray.from_samfile(self.samfile, fc)
+
+        # verify that the reads aren't all unique
+        # n_unique = 21984; n = 29999
+        n_unique = sum([1 for f in ra.features if f.shape == (1,)])
+        self.assertTrue(n_unique > 0, 'Zero unique reads.')
+        self.assertTrue(n_unique < ra.shape[0], 'All reads were unique.')
+
+        # determine if JaggedArray to_unique() is generating the right result
+        unique = ra.features.to_unique()
+        self.assertTrue(unique.shape[0] == n_unique, '%d != %d' %
+                        (unique.shape[0], n_unique))
+
+        # determine if ReadArray to_unique() is generating the right result
+        fbool = ra.features.is_unique()  # not yet tested explicitly, but implicitly working based on jagged.to_unique()
+        data = ra._data[fbool]
+        features = ra.features.to_unique(fbool)
+        positions = ra.positions.to_unique(fbool)
+        ua = seqc.arrays.UniqueReadArray(data, features, positions)
+        self.assertTrue(ua.shape[0] == n_unique, 'Incorrect number of unique reads: '
+                                                 '%d != %d' % (ua.shape[0], n_unique))
+
+        # check if other filters are causing it to fail
+        ua2 = ra.to_unique(3)
+        self.assertTrue(ua2.shape == ua.shape, 'Incongruent number of unique reads: '
+                                               '%d != %d' % (ua2.shape[0], ua.shape[0]))
+
+        self.assertTrue(ua2.shape[0] == 21984)  # double check that the number is right
 
 if __name__ == '__main__':
     unittest.main(failfast=True, warnings='ignore')

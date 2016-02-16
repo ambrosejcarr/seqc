@@ -1,10 +1,9 @@
 __author__ = "Ambrose J. Carr"
 
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from intervaltree import IntervalTree
 import pickle
 import re
-from sys import argv, exit
 
 # define containers for Exons and Transcripts
 # Exon = namedtuple('Exon', ['start', 'end'])
@@ -201,19 +200,21 @@ class ConvertFeatureCoordinates:
         """
         translate a strand, chromosome, and position into all associated SCIDs, which
         correspond to groups of overlapping transcripts.
+
+        If no feature, returns None to reduce memory footprint.
         """
         rounded_position = position // 100 * 100
         try:
             potential_ids = self._table[(strand, chromosome, rounded_position)]
         except KeyError:
-            return 0  # todo change to return None to sparsify JaggedArrays
+            return []
 
         # purge end cases
         for scid in potential_ids:
             if any(s < position < e for (s, e) in self._positions[scid]):
-                return scid  # todo write test to ensure there is never more than one feat
+                return [scid]  # todo write test to ensure there is never more than one feat
             else:
-                return 0  # todo change to return None to sparsify JaggedArrays
+                return []
 
     def add_mtDNA(self, gtf):
         """
@@ -289,12 +290,3 @@ def construct_gene_table(gtf):
                     interval_table[chromosome][strand] = IntervalTree()
                     interval_table[chromosome][strand].addi(start, end, gene_id)
     return interval_table
-
-
-
-if __name__ == "__main__":
-    if not len(argv) == 3:
-        print('usage: python convert_features.py gtf_file (string) insert_size (int)')
-        exit(1)
-    else:
-        construct_feature_table(argv[1], argv[2])
