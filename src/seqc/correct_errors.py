@@ -13,77 +13,11 @@ high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 NUM_OF_ERROR_CORRECTION_METHODS = 4
 ERROR_CORRECTION_AJC = 0
 ERROR_CORRECTION_STEN = 1
+ERROR_CORRECTION_FILTERS = 1		# recycling the column in the matrix to save room
 ERROR_CORRECTION_jaitin = 2
 ERROR_CORRECTION_ALLON = 3
 
 
-def from_thinair(barcode_files = ['/mnt/gel_barcode1_list_10.txt','/mnt/gel_barcode2_list_10.txt'], num_reads = 10000, err_rate = 0.01, num_features = 1, reverse_complement=True):
-    '''
-    USED FOR DEVELOPMENT ONLY
-    Return a simulated grouped ReadArray for testing
-    '''
-    bases = ['A','C','G','T']
-    alignment_d = {}
-    
-    def apply_error(str, err_rate):
-        res = list(str)
-        error = False
-        for i in range(len(str)):
-            if random.uniform(0,1)<err_rate:
-                res[i] = random.choice(bases)   #There's a 1/4 chance for the same base to be elected so the actual err_rate is a bit smaller
-                error = True
-        return ''.join(res), error
-    
-    def generate_correct_rmt(rmt_length = 6):
-        #return 'AAAAAA'
-        res = ['A','A','A','A'] # To make sure erroneous rmt's are not as common as correct ones, we limit the range of correct rmt's to be only those starting with 'AA...'
-        for i in range(rmt_length-len(res)):
-            res.append(random.choice(bases))
-        return ''.join(res)
-    
-    #TODO: this can be moved outside and merged with the snippet inside estimate error rate, also change to binary
-    def get_codes(barcode_files, reverse_complement):
-        correct_barcodes = []
-        if reverse_complement:
-            for barcode_file in barcode_files:
-                with open(barcode_file) as f:
-                    correct_barcodes.append(list(set(rev_comp(line.strip())
-                                                for line in f.readlines())))
-        else:
-            for barcode_file in barcode_files:
-                with open(barcode_file) as f:
-                    correct_barcodes.append(list(set(line.strip()
-                                                for line in f.readlines())))
-        return correct_barcodes
-        
-    feature_list = range(num_features)
-    codes = get_codes(barcode_files=barcode_files, reverse_complement=reverse_complement)
-    validation_arr = np.zeros(num_reads)
-    
-    for i in range(num_reads):
-        error = False
-        c1, err = apply_error(random.choice(codes[0]), err_rate)
-        c1 = bin_rep.str2bin(c1)
-        error |= err
-        c2, err = apply_error(random.choice(codes[1]), err_rate)
-        c2 = bin_rep.str2bin(c2)
-        error|= err
-        rmt, err = apply_error(generate_correct_rmt(), err_rate)
-        rmt = bin_rep.str2bin(rmt)
-        error |= err
-        feature = random.choice(feature_list)
-        seq = bin_rep.ints2int([c1, c2, rmt])
-        if feature in alignment_d.keys():
-            try:    #TODO: try and use a list instead of an ndarray to save memory
-                alignment_d[feature][seq] = np.append(alignment_d[feature][seq],i)    # Since we don't have a real RA to link back to, we use the index i itself
-            except KeyError:
-                alignment_d[feature][seq] = np.array([i])
-        else:
-            alignment_d[feature] = {}
-            alignment_d[feature][seq] = np.array([i])
-        if error:
-            validation_arr[i] = 1
-    return alignment_d, validation_arr
     
 # Return the hamming distance bewteen two numbers representing a sequence (3 bits per base)
 def hamming_dist_bin(c1, c2):
@@ -231,13 +165,12 @@ def list_errors(code, correct_barcodes):
         code>>=3
     return err_list
     
-def correct_errors(alignments_ra, barcode_files = [], reverse_complement = True, donor_cutoff=1, P_VALUE=0.1, compare_methods = False):
+def correct_errors(alignments_ra, barcode_files = [], reverse_complement = True, donor_cutoff=1, P_VALUE=0.05, compare_methods = False):
     '''Recieve an RA and return a bool matrix of identified errors according to each method'''
     res_time_cnt = {}
-    
     err_correction_res = np.zeros((alignments_ra.shape[0], NUM_OF_ERROR_CORRECTION_METHODS))
     ra_grouped = alignments_ra.group_for_error_correction(required_poly_t = 1)
-    print ('doing AJC')
+    print ('doing error correction')
     res_time_cnt[ERROR_CORRECTION_AJC] = correct_errors_AJC(ra_grouped, err_correction_res, barcode_files, reverse_complement, donor_cutoff, P_VALUE)
     if compare_methods:
         print ('doing Sten')
@@ -387,11 +320,13 @@ def correct_errors_jaitin(alignment_ra, ra_grouped, err_correction_res):
     for_removal = []
     tot=0
     for feature in d.keys():
-        #sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) + ' features processed. ('+str((100*cur_f)/tot_feats)+'%)')
+        sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) + ' features processed. ('+str((100*cur_f)/tot_feats)+'%)')
         cur_f += 1
         cur_seq=0
         tot_seq=len(d[feature].keys())
-        for r_seq in d[feature].keys(): #TODO: sort by number of positions actually, though it only saves time not change the result
+        sorted_seq_l = sorted([(seq, len(set(np.hstack(alignment_ra.positions[d[feature][seq]])))) for seq in d[feature].keys()], key=lambda x:x[1])
+        for idx, r_seqs in enumerate(sorted_seq_l):
+            r_seq = r_seqs[0]
             cur_seq+=1
             sys.stdout.write('\rfeature: '+str(cur_f) + '/' + str(tot_feats) + ', seq: ' + str(cur_seq) + '/' + str(tot_seq))
             if bin_rep.contains(r_seq, N):
@@ -401,7 +336,8 @@ def correct_errors_jaitin(alignment_ra, ra_grouped, err_correction_res):
             r_rmt = bin_rep.rmt_from_int(r_seq)
             r_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]])
 
-            for d_seq in d[feature].keys():
+            for d_idx in range(idx-1, -1, -1):
+                d_seq = sorted_seq_l[d_idx][0]
                 d_rmt = bin_rep.rmt_from_int(d_seq)
                 d_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]])
 
@@ -472,142 +408,5 @@ def correct_errors_allon(ra_grouped, err_correction_res, barcode_files, reverse_
     return error_count, tot_time
 
 
-def compare_methods(err_res_mat):
-    """Return a matrix containig the Jaccard score between each two methods"""
-    jac_mat = np.zeros((NUM_OF_ERROR_CORRECTION_METHODS,NUM_OF_ERROR_CORRECTION_METHODS))
-    for i in range(jac_mat.shape[0]):
-        for j in range(jac_mat.shape[1]):
-            jac_mat[i,j] = sum(err_res_mat[:,i]*err_res_mat[:,j]) / (sum(err_res_mat)[i]+sum(err_res_mat)[j]-sum(err_res_mat[:,i]*err_res_mat[:,j]))
-    return jac_mat
 
-def compare_methods_venn(err_res_mat):
-    ''' Return the size of each area in the 4 venn diagram'''
-    r = {'none': 0, 
-          'AJC': 0,
-          'sten': 0,
-          'allon': 0,
-          'jaitin': 0,
-          'AJC-sten': 0,
-          'AJC-allon': 0,
-          'AJC-jaitin':0,
-          'sten-allon': 0,
-          'sten-jaitin': 0,
-          'allon-jaitin': 0,
-          'AJC-sten-allon': 0,
-          'AJC-allon-jaitin': 0,
-          'sten-allon-jaitin': 0,
-          'all': 0}
-          
-    #Doing the calculations beforehand saves time by storing the result and avoiding duplicate calculations
-    sums = sum(err_res_mat)         # area of all 4 methods
-    aj_s = sum(err_res_mat[:,ERROR_CORRECTION_AJC]*err_res_mat[:,ERROR_CORRECTION_STEN])    #|AJC /\ sten|
-    aj_al = sum(err_res_mat[:,ERROR_CORRECTION_AJC]*err_res_mat[:,ERROR_CORRECTION_ALLON])  #|AJC /\ allon|
-    aj_j = sum(err_res_mat[:,ERROR_CORRECTION_AJC]*err_res_mat[:,ERROR_CORRECTION_jaitin]) #|AJC /\ jaitin|
-    s_al = sum(err_res_mat[:,ERROR_CORRECTION_ALLON]*err_res_mat[:,ERROR_CORRECTION_STEN])  #|sten /\ allon|
-    s_j = sum(err_res_mat[:,ERROR_CORRECTION_jaitin]*err_res_mat[:,ERROR_CORRECTION_STEN]) #|sten /\ jaitin|
-    al_j = sum(err_res_mat[:,ERROR_CORRECTION_ALLON]*err_res_mat[:,ERROR_CORRECTION_jaitin])   #|allon /\ jaitin|
-    aj_s_a = sum(err_res_mat[:,ERROR_CORRECTION_ALLON]*err_res_mat[:,ERROR_CORRECTION_STEN]*err_res_mat[:,ERROR_CORRECTION_AJC])    #|allon /\ sten /\ AJC|
-    aj_s_j = sum(err_res_mat[:,ERROR_CORRECTION_AJC]*err_res_mat[:,ERROR_CORRECTION_STEN]*err_res_mat[:,ERROR_CORRECTION_jaitin])  #|AJC /\ sten /\ jaitin|
-    s_a_j = sum(err_res_mat[:,ERROR_CORRECTION_ALLON]*err_res_mat[:,ERROR_CORRECTION_STEN]*err_res_mat[:,ERROR_CORRECTION_jaitin]) #|allon /\ sten /\ jaitin|
-    aj_a_j = sum(err_res_mat[:,ERROR_CORRECTION_ALLON]*err_res_mat[:,ERROR_CORRECTION_jaitin]*err_res_mat[:,ERROR_CORRECTION_AJC]) #|allon /\ jaitin /\ AJC|
-
-    r['all'] = sum(err_res_mat[:,ERROR_CORRECTION_AJC]*err_res_mat[:,ERROR_CORRECTION_STEN]*err_res_mat[:,ERROR_CORRECTION_jaitin]*err_res_mat[:,ERROR_CORRECTION_ALLON]) #|AJC /\ sten /\ allon /\ jaitin|
-
-    r['AJC-sten-allon'] = aj_s_a - r['all']
-    r['AJC-sten-jaitin'] = aj_s_j - r['all']
-    r['AJC-allon-jaitin'] = aj_a_j - r['all']
-    r['sten-allon-jaitin'] = s_a_j - r['all']
-
-    r['AJC-allon'] = aj_al - r['AJC-sten-allon'] - r['AJC-allon-jaitin'] - r['all']
-    r['AJC-sten'] = aj_s - r['AJC-sten-allon'] - r['AJC-sten-jaitin'] - r['all']
-    r['AJC-jaitin'] = aj_j - r['AJC-sten-jaitin'] - r['AJC-allon-jaitin'] - r['all']
-    r['sten-allon'] = s_al - r['AJC-sten-allon'] - r['sten-allon-jaitin'] - r['all']
-    r['sten-jaitin'] = s_j - r['AJC-sten-jaitin'] - r['sten-allon-jaitin'] - r['all']
-    r['allon-jaitin'] = al_j - r['AJC-allon-jaitin'] - r['sten-allon-jaitin'] - r['all']
-
-    r['AJC'] = sums[ERROR_CORRECTION_AJC] - r['AJC-sten-allon'] - r['AJC-sten-jaitin'] - r['AJC-allon-jaitin'] - r['AJC-allon'] - r['AJC-sten'] - r['AJC-jaitin'] - r['all']
-    r['sten'] = sums[ERROR_CORRECTION_STEN] - r['AJC-sten-allon'] - r['AJC-sten-jaitin'] -  r['sten-allon-jaitin'] - r['AJC-sten'] - r['sten-allon'] - r['sten-jaitin'] - r['all']
-    r['allon'] = sums[ERROR_CORRECTION_ALLON] - r['AJC-sten-allon'] - r['AJC-allon-jaitin'] - r['sten-allon-jaitin'] - r['AJC-allon'] - r['sten-allon'] - r['allon-jaitin'] - r['all']
-    r['jaitin'] = sums[ERROR_CORRECTION_jaitin] - r['AJC-sten-jaitin'] - r['AJC-allon-jaitin'] - r['sten-allon-jaitin'] - r['AJC-jaitin'] - r['sten-jaitin'] - r['allon-jaitin'] - r['all']
-
-    r['none']  = err_res_mat.shape[0] - sum(r.values())
-    
-    return r
-
-def test_err_correction(fname, barcodes = ['/mnt/gel_barcode1_list.txt','/mnt/gel_barcode2_list.txt'], annotations = '/mnt/annotations.gtf', fl = 1000):
-    '''run the error correction on all 4 methods and analyse the results'''
-    
-    fout = open(fname+'_out.txt','w+')
-    print('converting features')
-    cf = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(annotations, fl)
-    print ('reading from samfile')
-    ra = seqc.arrays.ReadArray.from_samfile(fname,cf)
-    fout.write('len ra: '+str(len(ra))+'\n\n')
-    print('correcting errors')  
-    res_full, res_sum = correct_errors(ra, barcodes, compare_methods=True)
-    fout.write(str(res_sum)+'\n\n')
-    print('analyzing results - jaccard score')
-    r1 = compare_methods(res_full)
-    fout.write(str(r1)+'\n\n')
-    print('analyzing results - venn')
-    r2 = compare_methods_venn(res_full)
-    fout.write(str(r2)+'\n\n')
-    fout.close()
-    
-def calc_read_dist(fname, barcodes = ['/mnt/gel_barcode1_list.txt','/mnt/gel_barcode2_list.txt'], annotations = '/mnt/annotations.gtf', fl = 1000):
-    '''return a histogram of numbers of reads per gene/seq'''
-    
-    fout = open(fname+'_dist.txt','w+')
-    print('converting features')
-    cf = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(annotations, fl)
-    print ('reading from samfile')
-    ra = seqc.arrays.ReadArray.from_samfile(fname,cf)
-    
-    print('grouping ReadArray')  
-    ra_grouped = ra.group_for_error_correction(required_poly_t = 1)
-    
-    print('Counting read appearence frequency')
-    hist = {}
-    for feature in ra_grouped.keys():
-        for seq in ra_grouped[feature].keys():
-            q = ra_grouped[feature][seq].shape[0]
-            if q in hist.keys():
-                hist[q] += 1
-            else:
-                hist[q] = 1
-    for k,v in hist.items():
-        fout.write(str(k)+'\t'+str(v)+'\n')
-    
-    fout.close()
-
-def validate_correct_errors(num_reads = 10000, err_rate = 0.01, num_features = 1, barcode_files = ['/mnt/gel_barcode1_list_10.txt','/mnt/gel_barcode2_list_10.txt'], reverse_complement = True, donor_cutoff=1, P_VALUE=0.1):
-    ''' Use a simulation model to validate error_correction. The jaitin method is not validated and instead its column in the matrix is used for the
-        true errors.'''
-    
-    fname = 'r'+str(num_reads)+'_er'+str(err_rate)+'_f'+str(num_features)
-    fout = open(fname+'_simul.txt','w+')
-    
-    res_time_cnt = {}
-    
-    err_correction_res = np.zeros((num_reads, NUM_OF_ERROR_CORRECTION_METHODS))
-    print('simulationg data')
-    ra_grouped, validation = from_thinair(barcode_files, num_reads, err_rate, num_features)
-    # The ra is not needed for these 3 methods and should also be removed as a parameter...
-    print ('doing AJC')
-    res_time_cnt[ERROR_CORRECTION_AJC] = correct_errors_AJC(ra_grouped, err_correction_res, barcode_files, reverse_complement, donor_cutoff, P_VALUE)
-    print ('doing Sten')
-    res_time_cnt[ERROR_CORRECTION_STEN] = correct_errors_sten(ra_grouped, err_correction_res)
-    print ('doing Allon')
-    res_time_cnt[ERROR_CORRECTION_ALLON] = correct_errors_allon(ra_grouped, err_correction_res, barcode_files, reverse_complement)
-    err_correction_res[:,ERROR_CORRECTION_jaitin] = validation
-    
-    fout.write(str(res_time_cnt)+'\n\n')
-    print('analyzing results - jaccard score')
-    r1 = compare_methods(err_correction_res)
-    fout.write(str(r1)+'\n\n')
-    print('analyzing results - venn')
-    r2 = compare_methods_venn(err_correction_res)
-    fout.write(str(r2)+'\n\n')
-        
-    fout.close()
     
