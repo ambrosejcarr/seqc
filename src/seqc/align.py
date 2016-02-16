@@ -6,7 +6,7 @@ from shutil import rmtree, copyfileobj
 from collections import defaultdict
 from seqc.sa_preprocess import prepare_fasta
 from seqc.sa_postprocess import ordering_out_stacks, create_gtf_reduced
-from seqc.log import log_info
+from seqc.log import info
 import seqc
 import ftplib
 import gzip
@@ -274,7 +274,7 @@ class STAR:
                         '/scripts/complete_sa.jl')
 
         # process with julia script
-        log_info('Generating co-alignment suffix array.')
+        info('Generating co-alignment suffix array.')
         call(['julia', julia_script, labeled_fasta, index, '50'])
 
         # complete processing
@@ -346,7 +346,7 @@ class STAR:
             cls._generate_coalignment(index, organism)  # organism -> list of organisms
 
         # make index
-        log_info('Beginning to generate STAR index.')
+        info('Beginning to generate STAR index.')
         star_args = [
             'STAR',
             '--genomeDir', index,
@@ -359,7 +359,7 @@ class STAR:
         _, err = star.communicate()
         if err:
             raise ChildProcessError(err)
-        log_info('Finished successfully. Run Complete.')
+        info('Finished successfully. Run Complete.')
 
     @classmethod
     def _build_index(cls, index, organism, n_threads, phix=True):
@@ -383,7 +383,7 @@ class STAR:
             cls._generate_coalignment(index, organism, phix=phix)
 
         # make index
-        log_info('Beginning to generate STAR index.')
+        info('Beginning to generate STAR index.')
         star_args = [
             'STAR',
             '--genomeDir', index,
@@ -396,7 +396,7 @@ class STAR:
         out, err = star.communicate()
         if err:
             raise ChildProcessError(err)
-        log_info('Finished successfully. Run Complete.')
+        info('Finished successfully. Run Complete.')
 
     @classmethod
     def build_index(cls, index, organism, n_threads, phix=True, **kwargs):
@@ -410,7 +410,7 @@ class STAR:
                      'Genome', 'scid_to_feature.txt']
         for_removal = []  # container for all the files we're downloading.
 
-        log_info("Downloading genome files.")
+        info("Downloading genome files.")
         if not all(os.path.isfile(index + f) for f in all_files):
             for org in organism:
                 for file_type, name in _file_names[org].items():

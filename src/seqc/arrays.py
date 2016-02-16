@@ -340,11 +340,11 @@ class ArrayCounter:
 class ReadArray:
 
     _dtype = [
-        ('cell', np.int64),
-        ('rmt', np.int32),
+        ('cell', np.uint64),
+        ('rmt', np.uint32),
         ('n_poly_t', np.uint8),
         ('valid_cell', np.bool),
-        ('trimmed_bases', np.uint8),
+        ('dust_score', np.uint8),
         ('rev_quality', np.uint8),
         ('fwd_quality', np.uint8),
         ('is_aligned', np.bool),
@@ -557,10 +557,17 @@ class ReadArray:
 
         # filter, then merge cell & rmt; this creates a copy of cell + rmt
         # memory overhead = n * 16b
-        seq_data = np.vstack([self.data['cell'][mask],
-                              self.data['rmt'][mask].astype(np.int64)]).T
-        seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
-                                  arr=seq_data)
+        cells = self.data['cell'][mask]
+        rmts = self.data['rmt'][mask]
+
+        # try:
+        #     seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
+        #                               arr=seq_data)
+        # except TypeError:
+        #     print(seq_data.dtype)
+        #     raise
+
+        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (rmt/cell pair)
@@ -606,12 +613,19 @@ class ReadArray:
         mask = self.mask_failing_records(n_poly_t_required=required_poly_t)
 
         # filter and merge cell/rmt
-        seq_data = np.vstack([self.data['cell'][mask],
-                              self.data['rmt'][mask].astype(np.int64)]).T
-        # todo may not need to build this
-        seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
-                                  arr=seq_data)
+        # seq_data = np.vstack([self.data['cell'][mask],
+        #                       self.data['rmt'][mask].astype(np.uint64)]).T
+        cells = self.data['cell'][mask]
+        rmts = self.data['rmt'][mask]
 
+        # try:
+        #     seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
+        #                               arr=seq_data)
+        # except TypeError:
+        #     print(seq_data.dtype)
+        #     raise
+
+        seq = [ThreeBit.ints2int([int(c), int(r)]) for c, r in zip(cells, rmts)]
         indices = indices[mask]
 
         # get indices of reads associated with each putative molecule (gene/rmt/cell)
@@ -844,25 +858,51 @@ class ReadArray:
         """
         mask any molecule supported by fewer than <required_support> reads
         """
-        # use the minimum number of columns to construct the dataframe, not sure if
-        # pandas copies data.
-        view = self.data[['cell', 'rmt']]
-        df = pd.DataFrame(view)
-        grouped = df.groupby(['cell', 'rmt'])
-        failing = []
-        for idx, g in grouped:
-            if len(g) < required_support:
-                failing.extend(g.index)
-        failing.sort()
-        ifail = 0
-        imask = 0
-        mask = np.ones(len(self.data), dtype=np.bool)
-        while ifail < len(failing):
-            if imask == failing[ifail]:
-                mask[imask] = 0
-                ifail += 1
-            imask += 1
+
+        # goal: track whether a given index has > molecule associated with it
+        # need to track molecule counts; defined as a combination of cell & rmt.
+        # simple way to track seems like a tuple of ints; can use defaultdict to build?
+
+        # then, to build boolean mask, run through the list a second time
+
+        # get counts
+        n = self.data.shape[0]
+        if required_support <= 1:
+            return np.ones(n, dtype=np.bool)
+
+        mol_counts = defaultdict(int)
+        for row in self.data:
+            # 0 = cell; 1 = rmt -- integer indexing is faster than row['cell'], row['rmt']
+            mol_counts[(row[0], row[1])] += 1
+
+        mol_counts = dict(mol_counts)  # defaultdict indexing can produce odd results
+
+        # build mask
+        mask = np.zeros(n, dtype=np.bool)
+        for i, row in enumerate(self.data):
+            if mol_counts[(row[0], row[1])] >= required_support:
+                mask[i] = 1
+
         return mask
+        #
+        #
+        # view = self.data[['cell', 'rmt']].copy()
+        # df = pd.DataFrame(view)
+        # grouped = df.groupby(['cell', 'rmt'])
+        # failing = []
+        # for idx, g in grouped:
+        #     if len(g) < required_support:
+        #         failing.extend(g.index)
+        # failing.sort()
+        # ifail = 0
+        # imask = 0
+        # mask = np.ones(len(self.data), dtype=np.bool)
+        # while ifail < len(failing):
+        #     if imask == failing[ifail]:
+        #         mask[imask] = 0
+        #         ifail += 1
+        #     imask += 1
+        # return mask
 
     @staticmethod
     def translate_feature(reference_name, strand, true_position, feature_table,
@@ -1023,12 +1063,15 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
-    def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required):
+    def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required,
+                                         support_required=2):
 
         # mask failing cells and molecules with < 2 reads supporting them.
         read_mask = self.mask_failing_records(n_poly_t_required)
-        low_coverage_mask = self.mask_low_support_molecules()
+        low_coverage_mask = self.mask_low_support_molecules(support_required)
         unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
+        if unmasked_inds.shape[0] == 0:
+            raise ValueError('Zero reads passed filters. Cannot save sparse matrix')
         molecule_counts = defaultdict(dict)
 
         if collapse_molecules:

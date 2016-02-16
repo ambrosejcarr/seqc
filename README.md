@@ -51,6 +51,28 @@ store SEQC output.
 3. SEQC depends on several python3 packages that are automatically installed and updated.
 to view these packages, please view the `setup.py` file packaged with SEQC.
 
+### Setting up HDF5 on your local computer:
+#### Installing from Source:
+1. After downloading libhdf5 from source, it can be installed by typing:
+
+        $> ./configure --prefix=/usr/local/
+        $> make
+        $> make install
+
+2. Install pytables by typing: `pip3 install tables`
+
+#### Installing without previous configuration
+1. If you installed libhdf5 without giving arguments in the "configure" step, make sure
+that you have the necessary prereqs already installed:
+    * numpy
+    * numexpr
+    * cython
+2. Then set the $HDF_DIR environment variable by typing: 
+
+        $> export HDF_DIR=/your/installation/directory/for/hdf5
+
+3. You should now be able to install pytables: `pip3 install tables`
+
 ### Setting up AWS, SEQC, and starcluster
 
 Once all dependencies have been installed, SEQC can be installed on any machine by typing:
@@ -90,6 +112,14 @@ wish to create an account.
     `KEY_LOCATION=~/.ssh/<keyname>.rsa`
 5. Under templates, find `[cluster c3.large]`
     1. change key to `<your_key_name>`
+    
+#### Install and Configure AWS CLI (AWS Command Line Interface).
+1. You can install by typing `pip install awscli`
+2. Then, configure it by typing `aws configure`:
+    * AWS Access Key ID [*******]: `access_id`
+    * AWS Secret Access Key [*******]: `secret_key`
+    * Default region name [us-west-2]: `us-east-1` (Adjust accordingly)
+    * Default output format [None]: `text`
 
 #### Start a cluster:
 1. `$> starcluster start -c <template_name> <cluster_name>`

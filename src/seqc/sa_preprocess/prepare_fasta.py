@@ -3,7 +3,7 @@
 
 from seqc.sa_preprocess import load_fasta as lf
 from seqc.sa_preprocess import buffered_printer as bf
-from seqc.log import log_info
+from seqc.log import info
 import random
 import gzip
 import pickle
@@ -127,7 +127,7 @@ def standard_run(annotations_gtf="annotations.gtf",
     of cdna.fa and ncrna.fa for organism of interest. output_file is the desired local
     path of the file to be outputted by this program.
     """
-    log_info("Preprocessing fasta and gtf files")
+    info("Preprocessing fasta and gtf files")
     accepted_dict = find_acceptable(annotations_gtf, cdna_plus_ncrna_fa)
     process_sequences(accepted_dict, output_file)
 
