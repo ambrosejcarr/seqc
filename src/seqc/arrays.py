@@ -766,7 +766,8 @@ class ReadArray:
         # the experiment.
 
         molecules = defaultdict(dict)
-        for i, s, f in zip(indices, seq, self.features):
+        for i, s in zip(indices, seq):
+            f = self.features[i]
             try:
                 molecules[hash(f.tobytes())][s].append(i)
             except AttributeError:  # f is not an array
