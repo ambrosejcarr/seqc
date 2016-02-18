@@ -12,7 +12,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from seqc.qc import deobfuscate
-from seqc.three_bit import ThreeBit
+from seqc.encodings import DNA3Bit
 import matplotlib.pyplot as plt
 import seaborn as sns
 from copy import copy
@@ -578,7 +578,7 @@ def characterize_cells(arr_or_df, fname, experiment_name):
 
     count_molecules = lambda x: len(x.groupby(['rmt', 'features']))
     average_reads_per_molecule = lambda x: x.groupby(['rmt', 'features']).size().mean()
-    gc_content = lambda x: [ThreeBit.gc_content(c) for c, _ in x]
+    gc_content = lambda x: [DNA3Bit.gc_content(c) for c, _ in x]
 
     # ideally this comes after error correction
     cells = df.groupby('cell')
@@ -588,7 +588,7 @@ def characterize_cells(arr_or_df, fname, experiment_name):
         'rpc': cells.size(),
         'mpc': cells.apply(count_molecules),
         'arpm': cells.apply(average_reads_per_molecule),
-        'gc': pd.Series({c: ThreeBit.gc_content(c) for c, _ in cells}),
+        'gc': pd.Series({c: DNA3Bit.gc_content(c) for c, _ in cells}),
         'atb': cells['trimmed_bases'].apply(np.mean),
         'align_failure': cells.apply(lambda x: ~x['is_aligned'].sum() / x.shape[0]),
         'align_score': cells.apply(lambda x: x['alignment_score'].mean()),
@@ -652,7 +652,7 @@ def characterize_cells_no_table(arr_or_df, fname, experiment_name):
 
     count_molecules = lambda x: len(x.groupby(['rmt', 'features']))
     average_reads_per_molecule = lambda x: x.groupby(['rmt', 'features']).size().mean()
-    gc_content = lambda x: [ThreeBit.gc_content(c) for c, _ in x]
+    gc_content = lambda x: [DNA3Bit.gc_content(c) for c, _ in x]
 
     # ideally this comes after error correction
     cells = df.groupby('cell')
@@ -662,7 +662,7 @@ def characterize_cells_no_table(arr_or_df, fname, experiment_name):
         'rpc': cells.size(),
         'mpc': cells.apply(count_molecules),
         'arpm': cells.apply(average_reads_per_molecule),
-        'gc': pd.Series({c: ThreeBit.gc_content(c) for c, _ in cells}),
+        'gc': pd.Series({c: DNA3Bit.gc_content(c) for c, _ in cells}),
         'atb': cells['trimmed_bases'].apply(np.mean),
         'align_failure': cells.apply(lambda x: ~x['is_aligned'].sum() / x.shape[0]),
         'align_score': cells.apply(lambda x: x['alignment_score'].mean()),

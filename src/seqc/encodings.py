@@ -3,7 +3,7 @@ __author__ = 'Ambrose J. Carr'
 # from copy import deepcopy
 
 
-class ThreeBit:
+class DNA3Bit:
     """
     method to extract cell barcodes and rmts given variable lengths of barcodes
     """
@@ -110,7 +110,7 @@ class ThreeBit:
         try:
             p = proc[key]
             if key == 'in-drop':
-                return ThreeBitInDrop(*p)
+                return DNA3BitInDrop(*p)
             else:
                 return cls(*p)
         except KeyError:
@@ -193,7 +193,7 @@ class ThreeBit:
         return bitlen
 
 
-class ThreeBitInDrop(ThreeBit):
+class DNA3BitInDrop(DNA3Bit):
     """
     method to extract cell barcodes and rmts given variable lengths of barcodes
     """
@@ -268,11 +268,6 @@ class ThreeBitInDrop(ThreeBit):
             cb1 = s >> cb2_length + spacer_length
 
             return self.ints2int([cb1, cb2]), rmt, num_poly_t
-
-
-# todo need different expectations for n_poly t since there should be a different number
-# todo for each cell barcode length
-
 
     @staticmethod
     def split_cell(s):

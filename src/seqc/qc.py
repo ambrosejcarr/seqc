@@ -5,7 +5,7 @@ import numpy.lib.recfunctions as rf
 import pandas as pd
 from collections import defaultdict, Counter
 import pickle
-from seqc import three_bit
+from seqc import encodings
 from seqc.convert_features import GeneTable
 from scipy.special import gammaln, gammaincinv
 from scipy.stats import chi2
@@ -232,7 +232,7 @@ def disambiguate(data, expectations, n_poly_t_required=0, alpha=0.1):
 
     # filter, then merge cell & rmt
     seq_data = np.vstack([data['cell'][mask], data['rmt'][mask].astype(np.int64)]).T
-    seq = np.apply_along_axis(three_bit.ThreeBit.ints2int, axis=1,
+    seq = np.apply_along_axis(encodings.DNA3Bit.ints2int, axis=1,
                               arr=seq_data)
     indices = indices[mask]
 
@@ -503,7 +503,7 @@ high_value = sys.maxsize
 
 
 def hamming_dist_bin(c1, c2):
-    if three_bit.ThreeBit.seq_len(c1) != three_bit.ThreeBit.seq_len(c2):
+    if encodings.DNA3Bit.seq_len(c1) != encodings.DNA3Bit.seq_len(c2):
         return high_value
     d = 0
     while c1 > 0:
@@ -517,14 +517,14 @@ def hamming_dist_bin(c1, c2):
 def generate_close_seq(seq):
     """Return a list of all sequences that are up to 2 hamm distance from seq"""
     res = []
-    l = three_bit.ThreeBit.seq_len(seq)
+    l = encodings.DNA3Bit.seq_len(seq)
 
     # genereta all sequences that are dist 1
     for i in range(l):
         mask = 0b111 << (i * 3)
         cur_chr = (seq & mask) >> (i * 3)
         res += [seq & (~mask) | (new_chr << (i * 3)) for new_chr in
-                three_bit.ThreeBit.bin_nums if new_chr != cur_chr]
+                encodings.DNA3Bit.bin_nums if new_chr != cur_chr]
 
     # genereta all sequences that are dist 2
     for i in range(l):
@@ -535,8 +535,8 @@ def generate_close_seq(seq):
             chr_j = (seq & mask_j) >> (j * 3)
             mask = mask_i | mask_j
             res += [seq & (~mask) | (new_chr_i << (i * 3)) | (new_chr_j << (j * 3)) for
-                    new_chr_i in three_bit.ThreeBit.bin_nums if new_chr_i != chr_i for
-                    new_chr_j in three_bit.ThreeBit.bin_nums if new_chr_j != chr_j]
+                    new_chr_i in encodings.DNA3Bit.bin_nums if new_chr_i != chr_i for
+                    new_chr_j in encodings.DNA3Bit.bin_nums if new_chr_j != chr_j]
 
     return res
 
@@ -547,13 +547,13 @@ def prob_d_to_r_bin(d_seq, r_seq, err_rate):
     (all binary)
     """
 
-    if three_bit.ThreeBit.seq_len(d_seq) != three_bit.ThreeBit.seq_len(r_seq):
+    if encodings.DNA3Bit.seq_len(d_seq) != encodings.DNA3Bit.seq_len(r_seq):
         return 1
 
     p = 1.0
     while d_seq > 0:
         if d_seq & 0b111 != r_seq & 0b111:
-            p *= err_rate[three_bit.ThreeBit.ints2int([d_seq & 0b111, r_seq & 0b111])]
+            p *= err_rate[encodings.DNA3Bit.ints2int([d_seq & 0b111, r_seq & 0b111])]
         d_seq >>= 3
         r_seq >>= 3
     return p
@@ -572,8 +572,8 @@ def estimate_error_rate(cell_barcodes, cell_barcode_data):
 
     # create table of error types to hold number of occurrences
     errors = list(
-        three_bit.ThreeBit.ints2int([p[0], p[1]]) for p in
-        permutations(three_bit.ThreeBit.bin_nums, r=2))
+            encodings.DNA3Bit.ints2int([p[0], p[1]]) for p in
+            permutations(encodings.DNA3Bit.bin_nums, r=2))
     error_table = dict(zip(errors, [0] * len(errors)))
 
     correct_instances = 0
@@ -587,9 +587,9 @@ def estimate_error_rate(cell_barcodes, cell_barcode_data):
             for err_type in errors:
                 error_table[err_type] += 1
             # some of the barcodes were correct
-            correct_instances += three_bit.ThreeBit.seq_len(code) - len(errors)
+            correct_instances += encodings.DNA3Bit.seq_len(code) - len(errors)
         else:
-            correct_instances += three_bit.ThreeBit.seq_len(code)
+            correct_instances += encodings.DNA3Bit.seq_len(code)
 
     # convert to error rates
     default_error_rate = 0.02
@@ -649,11 +649,11 @@ def correct_errors(data, cell_barcodes, donor_cutoff=1, p_val=0.1):
     is_error = np.zeros(data.shape[0], dtype=np.bool)
     err_rate = estimate_error_rate(cell_barcodes, data['cell'])
 
-    N = three_bit.ThreeBit._str2bindict['N']
+    N = encodings.DNA3Bit._str2bindict['N']
 
     # merge sequences
     seq_data = np.vstack([data['cell'], data['rmt'].astype(np.int64)]).T
-    seq = np.apply_along_axis(three_bit.ThreeBit.ints2int, axis=1,
+    seq = np.apply_along_axis(encodings.DNA3Bit.ints2int, axis=1,
                               arr=seq_data)
     # assert(seq.shape[0] == data.shape[0])
 

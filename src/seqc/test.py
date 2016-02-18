@@ -6,7 +6,7 @@ import unittest
 import os
 import pickle
 import seqc
-from seqc import three_bit, fastq, align, sam, qc, convert_features, barcodes, io_lib
+from seqc import encodings, fastq, align, sam, qc, convert_features, barcodes, io_lib
 from seqc import arrays
 from io import StringIO
 from itertools import product
@@ -210,7 +210,7 @@ def generate_in_drop_read_array(expectations, cell_barcodes, n, k, save=None):
 
     # get two random rmts
     rmts = [''.join(np.random.choice(list('ACGT'), 6)) for _ in range(2)]
-    rmts = [three_bit.ThreeBit.str2bin(r) for r in rmts]
+    rmts = [encodings.DNA3Bit.str2bin(r) for r in rmts]
 
     n_poly_t = 5
     valid_cell = 1
@@ -280,7 +280,7 @@ def generate_in_drop_disambiguation_data(expectations, cell_barcodes, n, k, save
 
     # get two random rmts
     rmts = [''.join(np.random.choice(list('ACGT'), 6)) for _ in range(2)]
-    rmts = [three_bit.ThreeBit.str2bin(r) for r in rmts]
+    rmts = [encodings.DNA3Bit.str2bin(r) for r in rmts]
 
     n_poly_t = 5
     valid_cell = 1
@@ -691,7 +691,7 @@ class TestGenerateFastq(unittest.TestCase):
 class TestThreeBitInDrop(unittest.TestCase):
 
     def setUp(self):
-        self.tb = three_bit.ThreeBit.default_processors('in-drop')
+        self.tb = encodings.DNA3Bit.default_processors('in-drop')
         # note: don't test with palindromic sequences, these can produce unexpected
         # errors, given the rotation occuring in the method.
         c11 = 'TAAAAAAA'
@@ -705,28 +705,28 @@ class TestThreeBitInDrop(unittest.TestCase):
                              self.rmt + 'TTTAT') for c1 in self.c1s]
 
     def test_bin2str_inverts_str2bin(self):
-        s = three_bit.ThreeBit.str2bin(self.example_seqs[0])
-        seq = three_bit.ThreeBit.bin2str(s)
+        s = encodings.DNA3Bit.str2bin(self.example_seqs[0])
+        seq = encodings.DNA3Bit.bin2str(s)
         self.assertTrue(seq == self.example_seqs[0])
 
     def test_bin2str_inverts_str2bin_with_ints2int(self):
-        b1 = three_bit.ThreeBit.str2bin(self.c1s[0])
-        b2 = three_bit.ThreeBit.str2bin(self.c1s[1])
-        b12 = three_bit.ThreeBit.ints2int([b1, b2])
-        self.assertTrue(b12 == three_bit.ThreeBit.str2bin(self.c1s[0] + self.c1s[1]))
+        b1 = encodings.DNA3Bit.str2bin(self.c1s[0])
+        b2 = encodings.DNA3Bit.str2bin(self.c1s[1])
+        b12 = encodings.DNA3Bit.ints2int([b1, b2])
+        self.assertTrue(b12 == encodings.DNA3Bit.str2bin(self.c1s[0] + self.c1s[1]))
 
     def test_str2bin_converts_forwards_not_backwards(self):
-        s = three_bit.ThreeBit.str2bin('ACGT')
+        s = encodings.DNA3Bit.str2bin('ACGT')
         self.assertEqual(s, 0b100110101011)
         self.assertNotEqual(s, 0b011101110100)
 
     def test_ints2int_and_cells(self):
         s1 = 'AAAAAAAA'
         s2 = 'TTTTTTTT'
-        seqs = [three_bit.ThreeBit.str2bin(s) for s in [s1, s2]]
-        c = three_bit.ThreeBit.ints2int(seqs)
+        seqs = [encodings.DNA3Bit.str2bin(s) for s in [s1, s2]]
+        c = encodings.DNA3Bit.ints2int(seqs)
         cells = self.tb.split_cell(c)
-        c1, c2 = [three_bit.ThreeBit.bin2str(c) for c in cells]
+        c1, c2 = [encodings.DNA3Bit.bin2str(c) for c in cells]
         self.assertTrue(s1 == c1)
         self.assertTrue(s2 == c2)
 
@@ -736,7 +736,7 @@ class TestThreeBitInDrop(unittest.TestCase):
         for i, strseq in enumerate(self.example_seqs):
             # note this tracks code in extract cell; test will not reflect function
             # if extract cell is changed (not an ideal test)
-            s = three_bit.ThreeBit.str2bin(strseq)
+            s = encodings.DNA3Bit.str2bin(strseq)
             bitlen = s.bit_length()
 
             # correct for leading T-nucleotide (011) which gets trimmed
@@ -752,7 +752,7 @@ class TestThreeBitInDrop(unittest.TestCase):
             cell, rmt, n_poly_t = self.tb.process_forward_sequence(strseq)
 
             # check cell
-            str_cell = three_bit.ThreeBit.bin2str(cell)
+            str_cell = encodings.DNA3Bit.bin2str(cell)
             self.assertEqual(self.c1s[i] + self.c2, str_cell)
 
             # check rmt
@@ -799,7 +799,7 @@ class TestThreeBitInDrop(unittest.TestCase):
 class TestThreeBitGeneral(unittest.TestCase):
 
     def test_3bit_mars_seq(self):
-        self.assertRaises(NotImplementedError, three_bit.ThreeBit.default_processors,
+        self.assertRaises(NotImplementedError, encodings.DNA3Bit.default_processors,
                           'mars-seq')
 
     def test_3bit_drop_seq(self):
@@ -807,7 +807,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         rmt = 'AACCGGTT'
         poly_t = ''
         sample_seq = cell + rmt
-        tb = three_bit.ThreeBit.default_processors('drop-seq')
+        tb = encodings.DNA3Bit.default_processors('drop-seq')
         icell, irmt, num_poly_t = tb.process_forward_sequence(sample_seq)
         str_cell = tb.bin2str(icell)
         str_rmt = tb.bin2str(irmt)
@@ -820,7 +820,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         rmt = 'AACCGG'
         poly_t = 'TTTATTTAT'
         sample_seq = cell + rmt + poly_t
-        tb = three_bit.ThreeBit.default_processors('cel-seq')
+        tb = encodings.DNA3Bit.default_processors('cel-seq')
         icell, irmt, num_poly_t = tb.process_forward_sequence(sample_seq)
         str_cell = tb.bin2str(icell)
         str_rmt = tb.bin2str(irmt)
@@ -834,7 +834,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         # adding N's breaks the poly-t somehow?
         poly_t = 'TAATTTNTTTT'
         sample_seq = cell + rmt + poly_t
-        tb = three_bit.ThreeBit.default_processors('avo-seq')
+        tb = encodings.DNA3Bit.default_processors('avo-seq')
         icell, irmt, num_poly_t = tb.process_forward_sequence(sample_seq)
         str_cell = tb.bin2str(icell)
         str_rmt = tb.bin2str(irmt)
@@ -848,7 +848,7 @@ class TestThreeBitGeneral(unittest.TestCase):
         truncated_rmt = 'ACGTACGT' + 'AAC'
         no_data = 'ACGTAC'
 
-        tb = three_bit.ThreeBit.default_processors('avo-seq')
+        tb = encodings.DNA3Bit.default_processors('avo-seq')
 
         # results
         cell = tb.str2bin('ACGTACGT')
@@ -863,8 +863,8 @@ class TestThreeBitGeneral(unittest.TestCase):
     def test_gc_content(self):
         test_string = 'TGCGCAAAAG'
         expected_result = 0.5
-        bin_string = three_bit.ThreeBit.str2bin(test_string)
-        result = three_bit.ThreeBit.gc_content(bin_string)
+        bin_string = encodings.DNA3Bit.str2bin(test_string)
+        result = encodings.DNA3Bit.gc_content(bin_string)
         self.assertEqual(result, expected_result)
 
 
@@ -900,7 +900,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         umi = 'AACCGG'
 
         # convert to 3bit
-        tb = three_bit.ThreeBit.default_processors('in-drop')
+        tb = encodings.DNA3Bit.default_processors('in-drop')
         one3bit = tb.str2bin(one)
         two3bit = tb.str2bin(two)
         cell = tb.ints2int([one3bit, two3bit])
@@ -918,8 +918,8 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         cb1 = StringIO('AAA\nTTT\n')
         cb2 = StringIO('CCC\nGGG\n')
         cb = barcodes.CellBarcodes(cb1, cb2)
-        perfect_code = three_bit.ThreeBit.str2bin('AAACCC')
-        error_code = three_bit.ThreeBit.str2bin('NTTCCC')
+        perfect_code = encodings.DNA3Bit.str2bin('AAACCC')
+        error_code = encodings.DNA3Bit.str2bin('NTTCCC')
         self.assertTrue(cb.perfect_match(perfect_code))
         self.assertFalse(cb.perfect_match(error_code))
         self.assertTrue(cb.close_match(perfect_code))
@@ -929,7 +929,7 @@ class TestThreeBitCellBarcodes(unittest.TestCase):
         cb1 = StringIO('AAA\nTTT\n')
         cb2 = StringIO('CCC\nGGG\n')
         cb = barcodes.CellBarcodes(cb1, cb2)
-        error_code = three_bit.ThreeBit.str2bin('NTTCCC')
+        error_code = encodings.DNA3Bit.str2bin('NTTCCC')
 
         errors = cb.map_errors(error_code)
         self.assertEqual({'TN'}, set(errors))
@@ -972,7 +972,7 @@ class TestFastq(unittest.TestCase):
         _ = self.gfq.generate_reverse_fastq(n, self.rev_len)
 
     def test_merge_in_drop_record(self):
-        tbp = three_bit.ThreeBit.default_processors(self.in_drop_processor)
+        tbp = encodings.DNA3Bit.default_processors(self.in_drop_processor)
         with open(self.in_drop_cell_barcode_pickle, 'rb') as f:
             cb = pickle.load(f)
         n = 1
@@ -983,7 +983,7 @@ class TestFastq(unittest.TestCase):
         self.assertEqual(len(fq.split()), 4)
 
     def test_merge_drop_seq_record(self):
-        tbp = three_bit.ThreeBit.default_processors(self.drop_seq_processor)
+        tbp = encodings.DNA3Bit.default_processors(self.drop_seq_processor)
         with open(self.drop_seq_cell_barcode_pickle, 'rb') as f:
             cb = pickle.load(f)
         n = 1

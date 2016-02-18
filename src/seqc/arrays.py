@@ -5,7 +5,7 @@ import numpy as np
 from copy import copy
 from numpy.lib.recfunctions import append_fields
 from itertools import islice, chain
-from seqc.three_bit import ThreeBit
+from seqc.encodings import DNA3Bit
 from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
 from collections import deque, defaultdict
 from seqc import h5
@@ -559,7 +559,7 @@ class ReadArray:
         # memory overhead = n * 16b
         seq_data = np.vstack([self.data['cell'][mask],
                               self.data['rmt'][mask].astype(np.int64)]).T
-        seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
+        seq = np.apply_along_axis(DNA3Bit.ints2int, axis=1,
                                   arr=seq_data)
         indices = indices[mask]
 
@@ -609,7 +609,7 @@ class ReadArray:
         seq_data = np.vstack([self.data['cell'][mask],
                               self.data['rmt'][mask].astype(np.int64)]).T
         # todo may not need to build this
-        seq = np.apply_along_axis(ThreeBit.ints2int, axis=1,
+        seq = np.apply_along_axis(DNA3Bit.ints2int, axis=1,
                                   arr=seq_data)
 
         indices = indices[mask]

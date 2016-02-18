@@ -2,7 +2,7 @@ import gzip
 import bz2
 import numpy as np
 import re
-from seqc.three_bit import ThreeBit
+from seqc.encodings import DNA3Bit
 from seqc.barcodes import CellBarcodes
 import io
 import pickle
@@ -219,7 +219,7 @@ def merge_fastq(forward: list, reverse: list, exp_type, temp_dir, cb, n_low_comp
                 rfile = open_file(rfile)
             try:
                 # initialize the processor
-                tbp = ThreeBit.default_processors(exp_type)
+                tbp = DNA3Bit.default_processors(exp_type)
                 if not isinstance(cb, CellBarcodes):
                     with open(cb, 'rb') as f:
                         cb = pickle.load(f)

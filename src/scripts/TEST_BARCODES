@@ -48,7 +48,7 @@ def main(fastq, merged_fastq, barcode_files, processor):
     revcomp = barcodes.load_barcodes(barcode_files, reverse_complement=True)
 
     # load processor
-    tbp = barcodes.three_bit.ThreeBit.default_processors(processor)
+    tbp = barcodes.encodings.DNA3Bit.default_processors(processor)
     normal = barcodes.codes2bin(normal, tbp)
     revcomp = barcodes.codes2bin(revcomp, tbp)
 

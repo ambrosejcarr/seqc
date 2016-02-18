@@ -2,7 +2,7 @@ __author__ = 'ambrose'
 
 from itertools import product
 from collections import defaultdict, Mapping
-from seqc import three_bit
+from seqc import encodings
 import io
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
@@ -81,7 +81,7 @@ class CellBarcodes:
         # if not barcode_files:
         #     raise ValueError('at least one barcode file must be passed')
 
-        tbp = three_bit.ThreeBit
+        tbp = encodings.DNA3Bit
 
         perfect_codes = load_barcodes(barcode_files, reverse_complement)
         current_codes = add_single_error(perfect_codes)
