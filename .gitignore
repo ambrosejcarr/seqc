@@ -4,3 +4,4 @@
 .idea*
 testfiles*
 *.DS_Store*
+*seqc.log
