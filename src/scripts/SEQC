@@ -1,5 +1,4 @@
-#!/usr/local/bin/python3
-__author__ = 'Ambrose J. Carr'
+#!/usr/local/bin/ipython
 
 import argparse
 import pickle
@@ -13,24 +12,13 @@ from seqc.barcodes import DropSeqCellBarcodes
 from seqc.arrays import ReadArray
 from seqc.log import setup_logger, log_info, log_exception
 from seqc.convert_features import ConvertFeatureCoordinates
-import numpy as np
 import sys
 import json
-# import logging
-# from datetime import datetime
 
 
-# todo | add ability to fetch data from geo (provide additional alt. input argument -g)
-# todo | merge all of the metadata into a dictionary that is written at the end of the
-# todo |   pipeline or when any errors occur
-# todo | add ability to detect and quantify genomic/mitochondrial/other non-tx alignments
-# todo | SLOWEST PIECES ARE:
-# todo | (1) post-process -- this can be sped up by generating in pieces, out of memory
-# todo |     pandas table using all 30 threads. This will drop the time ~ 30x; somewhat
-# todo |     tricky to generate the JaggedArrays; think on this!
-# todo | (2) disambiguation -- profile to check for slow part. One thing that will speed
-# todo |     up the process is sparsifying the arrays; eliminating zeros. Will reduce
-# todo |     overhead by a lot.
+__author__ = 'Ambrose J. Carr'
+
+
 def process_input():
     parser = argparse.ArgumentParser()
 
