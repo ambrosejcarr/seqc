@@ -1,0 +1,6 @@
+*.egg*
+*.idea*
+*__pycache__*
+.idea*
+testfiles*
+*.DS_Store*
