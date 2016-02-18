@@ -1,17 +1,14 @@
-__author__ = 'Ambrose J. Carr'
-
 import gzip
 import bz2
 import numpy as np
-from threading import Thread
-from queue import Queue, Empty, Full
-from time import sleep, time
-from collections import Counter
 import re
 from seqc.three_bit import ThreeBit
 from seqc.barcodes import CellBarcodes
 import io
 import pickle
+
+
+__author__ = 'Ambrose J. Carr'
 
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
@@ -256,111 +253,3 @@ def auto_detect_processor(experiment_name):
     raise NameError('pre-processor could not be auto-detected from experiment name, '
                     'please pass the pre-processor name using [-p, --processor]. '
                     'available processors can be found in seqdb.fastq.py')
-
-
-# # todo not working right now
-# def merge_fastq_threaded(forward, reverse, n_threads, exp_type, temp_dir,
-# cell_barcode_pickle):
-#     """multi-threaded merge of forward and reverse records into a single alignable file"""
-#
-#     def read(forward_, reverse_, in_queue):
-#         """read a forward and reverse record and place on the queue"""
-#         for forward_file, reverse_file in zip(forward_, reverse_):
-#             # todo for production, boost this number up to 1e6 reads at a time
-#             paired = group_paired(forward_file, reverse_file, 10000)
-#             while True:  # loop over all input
-#                 try:
-#                     data = next(paired)
-#                 except StopIteration:
-#                     break
-#                 while True:
-#                     try:
-#                         in_queue.put(data)
-#                         break
-#                     except Full:
-#                         sleep(0.1)
-#                         continue
-#
-#     def process(in_queue, out_queue):
-#         while True:
-#             try:
-#                 # forward_data, reverse_data = in_queue.get_nowait()
-#                 data = in_queue.get_nowait()
-#             except Empty:
-#                 if not read_thread.is_alive():
-#                     break
-#                 else:
-#                     sleep(0.1)  # put on the brakes a bit
-#                     continue
-#
-#             # PROCESS READS HERE
-#             merged = '\n'.join(process_record(f, r, tbp, cb) for (f, r) in data)
-#
-#             while True:
-#                 try:
-#                     out_queue.put(merged)
-#                     break
-#                 except Full:
-#                     sleep(0.1)
-#                     continue
-#
-#     def write(in_queue):
-#         merged = open('%s/merged_temp.fastq' % temp_dir, 'w')
-#         try:
-#             while True:
-#                 try:
-#                     record = in_queue.get_nowait()
-#                     merged.write(record)
-#                 except Empty:
-#                     if not any(t.is_alive() for t in process_threads):
-#                         break
-#                     else:
-#                         sleep(0.1)
-#                         continue
-#         finally:
-#             merged.close()
-#
-#     # initialize the processor
-#     tbp = ThreeBit.default_processors(exp_type)
-#     # cb = CellBarcodes(processor, *cell_barcode_files)
-#     with open(cell_barcode_pickle, 'rb') as f:
-#         cb = pickle.load(f)
-#
-#     # open the files
-#     if not isinstance(forward, io.TextIOBase):
-#         forward = open_file(forward)
-#     if not isinstance(reverse, io.TextIOBase):
-#         reverse = open_file(reverse)
-#
-#     try:  # wrap to make sure files get closed
-#         # read the files
-#         paired_records = Queue(maxsize=2048)
-#         read_thread = Thread(target=read, args=([forward, reverse, paired_records]))
-#         read_thread.start()
-#
-#         # process the data
-#         merged_records = Queue(maxsize=2048)
-#         # max --> make sure at least one thread starts
-#         process_threads = [Thread(target=process, args=([paired_records, merged_records]))
-#                            for _ in range(max(n_threads - 3, 1))]
-#         assert(len(process_threads) > 0)
-#         for t in process_threads:
-#             t.start()
-#
-#         # write the results
-#         write_thread = Thread(target=write, args=[merged_records])
-#         write_thread.start()
-#
-#         # wait for each process to finish
-#         read_thread.join()
-#         print('reading done: %f' % time())
-#         for t in process_threads:
-#             t.join()
-#         print('processing done: %f' % time())
-#         write_thread.join()
-#         print('writing done: %f' % time())
-#     finally:
-#         forward.close()
-#         reverse.close()
-#
-#     return '%s/merged_temp.fastq' % temp_dir
