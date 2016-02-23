@@ -1,5 +1,3 @@
-__author__ = 'ambrose'
-
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
@@ -7,6 +5,7 @@ import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     mpl.use('AGG')
+    import seaborn as sns
 from scipy.stats import gaussian_kde
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
@@ -14,10 +13,12 @@ from sklearn.pipeline import Pipeline
 from seqc.qc import deobfuscate
 from seqc.encodings import DNA3Bit
 import matplotlib.pyplot as plt
-import seaborn as sns
 from copy import copy
 from collections import defaultdict
 sns.set_style('ticks')
+
+
+__author__ = 'ambrose'
 
 
 def _savefig(f, fname):

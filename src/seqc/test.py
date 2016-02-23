@@ -1,33 +1,37 @@
 __author__ = 'ambrose'
 
+import cProfile
+import ftplib
+import gzip
 import hashlib
-from memory_profiler import profile, memory_usage
-import unittest
+import logging
 import os
 import pickle
-import seqc
-from seqc import encodings, fastq, align, sam, qc, convert_features, barcodes, io_lib
-from seqc import arrays
+import random
+import re
+import shutil
+import socket
+import threading
+import unittest
+import xml.dom.minidom
 from io import StringIO
 from itertools import product
-from xml.etree import ElementTree as ET
-from subprocess import Popen, PIPE
-import cProfile
 from pstats import Stats
-import xml.dom.minidom
-import logging
-import socket
-import re
+from subprocess import Popen, PIPE
+from xml.etree import ElementTree as ET
+
 import numpy as np
 import pandas as pd
-import random
-import gzip
-import ftplib
-import shutil
-import threading
+from memory_profiler import profile, memory_usage
+from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
-from pyftpdlib.authorizers import DummyAuthorizer
+
+import seqc
+from seqc import arrays
+from seqc import encodings, align, sam, qc, convert_features, barcodes, io_lib
+from seqc.sequence import fastq
+
 
 # tests to add:
 # 1. test for processing of multi-aligned reads. Right now there is no test for lines

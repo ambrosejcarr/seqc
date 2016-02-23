@@ -1,20 +1,21 @@
 #!/usr/local/bin/ipython
 
 import argparse
-import pickle
-import os
-import shutil
-from copy import copy
-from seqc.io_lib import S3
-from seqc.fastq import merge_fastq
-from seqc.align import STAR, _download_links
-from seqc.barcodes import DropSeqCellBarcodes
-from seqc.arrays import ReadArray
-from seqc.log import setup_logger, log_info, log_exception
-from seqc.convert_features import ConvertFeatureCoordinates
-import sys
 import json
+import os
+import pickle
+import shutil
+import sys
+from copy import copy
+import seqc
 
+from seqc.align import STAR
+from seqc.arrays import ReadArray
+from seqc.barcodes import DropSeqCellBarcodes
+from seqc.convert_features import ConvertFeatureCoordinates
+from seqc.io_lib import S3
+from seqc.log import setup_logger, info, exception
+from seqc.sequence.fastq_old import merge_fastq
 
 __author__ = 'Ambrose J. Carr'
 
@@ -35,7 +36,7 @@ def process_input():
     # get a list of parsers, set-up pipeline function for each parser
     subparser_list = [parse_in_drop, parse_mars_seq, parse_cel_seq,
                       parse_avo_seq, parse_strt_seq, parse_drop_seq]
-    default_functions = [in_drop, mars_seq, cel_seq, avo_seq, strt_seq, drop_seq]
+    default_functions = [in_drop, drop_seq]
     for p, f in zip(subparser_list, default_functions):
         p.set_defaults(func=f)
 
@@ -181,7 +182,7 @@ def set_up(output_file, index, barcodes):
 
     # check that index exists. If index is an aws link, download the index
     if index.startswith('s3://'):
-        log_info('AWS s3 link provided for index. Downloading index.')
+        info('AWS s3 link provided for index. Downloading index.')
         bucket, prefix = S3.split_link(index)
         index = temp_dir + 'index/'
         cut_dirs = prefix.count('/')
@@ -197,7 +198,7 @@ def set_up(output_file, index, barcodes):
         cb = DropSeqCellBarcodes()
     else:
         if barcodes.startswith('s3://'):
-            log_info('AWS s3 link provided for barcodes. Downloading barcodes')
+            info('AWS s3 link provided for barcodes. Downloading barcodes')
             bucket, key = S3.split_link(barcodes)
             output_file = temp_dir + 'barcodes.p'
             try:
@@ -218,7 +219,7 @@ def merge(forward, reverse, samfile, merged_fastq, processor, temp_dir, cb):
     if (forward or reverse) and not (samfile or merged_fastq):
 
         # pre-process reads
-        log_info('Merging fastq files.')
+        info('Merging fastq files.')
         # removed number_low_complexity because we are now scoring with a DUST-based
         # low-quality implementation.
         # merged_fastq, nlc = merge_fastq(forward, reverse, processor, temp_dir, cb)
@@ -240,7 +241,7 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_f
                 kwargs['--' + k] = v
 
         # align fastq files
-        log_info('Aligning merged fastq file')
+        info('Aligning merged fastq file')
         STAR.align(merged_fastq, index, n_threads, temp_dir, **star_args)
         samfile = temp_dir + 'Aligned.out.sam'
 
@@ -250,35 +251,14 @@ def align(merged_fastq, samfile, star_args, temp_dir, n_threads, index, output_f
 
 
 def process_samfile(samfile, gtf, frag_len):
-    log_info('Post-processing alignments')
+    info('Post-processing alignments')
     fc = ConvertFeatureCoordinates.from_gtf(gtf, frag_len)
     arr = ReadArray.from_samfile(samfile, fc)
     return arr
 
 
-def correct_errors():
-    # try:
-    #     log_info('Correcting errors')
-    #     if not barcode_dir.endswith('/'):
-    #         barcode_dir += '/'
-    #     barcode_files = glob(barcode_dir + '*')
-    #     corrected, nerr, err_rate = correct_errors(
-    #         unambiguous, barcode_files, processor_name, meta, p_val=0.1)
-    #
-    #     # store metadata from these runs in post-processing summary
-    #     # post_processing_summary(h5db, exp_name, dis_meta, nerr)
-    #
-    #     # store error rates
-    #     # store_error_rate(h5db, exp_name, err_rate)
-    #
-    # except:  # fail gracefully on error_correction; not all methods can do this!
-    #     logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
-    #     corrected = unambiguous
-    raise NotImplementedError
-
-
 def resolve_alignments(index, arr, n, output_file):
-    log_info('Resolving ambiguous alignments.')
+    info('Resolving ambiguous alignments.')
     try:
         # todo
         # I should store this in a jagged array as well. Indexing is 1/2 as fast
@@ -286,14 +266,14 @@ def resolve_alignments(index, arr, n, output_file):
         expectations = index + 'p_coalignment_array.p'
         arr.resolve_alignments(expectations, required_poly_t=n)
     except:
-        log_info('Caught error in resolve_alignments(), saving data')
+        info('Caught error in resolve_alignments(), saving data')
         arr.save_h5(output_file + '.h5')
         raise
 
 
 def save_counts_matrices(output_file, arr, n):
 
-    log_info('Generating Gene x Cell SparseMatrices for reads and molecules.')
+    info('Generating Gene x Cell SparseMatrices for reads and molecules.')
     mols, mrow, mcol = arr.unique_features_to_sparse_counts(
         collapse_molecules=True, n_poly_t_required=n)
     reads, rrow, rcol = arr.unique_features_to_sparse_counts(
@@ -307,20 +287,29 @@ def save_counts_matrices(output_file, arr, n):
 def store_results(output_file, arr):
     if not output_file.endswith('.h5'):
         output_file += '.h5'
-    log_info('Storing processed data in %s' % output_file)
+    info('Storing processed data in %s' % output_file)
     arr.save_h5(output_file)
 
 
 def run_complete():
-    log_info('Run complete.')
+    info('Run complete.')
 
 
 def clean_up(temp_dir):
-    log_info('Run succeeded. Cleaning up and terminating.')
+    info('Run succeeded. Cleaning up and terminating.')
     if os.path.isdir(temp_dir):
         shutil.rmtree(temp_dir)
     if os.path.isdir('_STARtmp'):
         shutil.rmtree('_STARtmp')
+
+
+def main(output_file, barcode, genomic, samfile, merged_fastq, subparser_name, index,
+         n_threads, frag_len, star_args, barcodes, **kwargs):
+
+    temp_dir, gtf, cb, index = set_up(output_file, index, barcodes)
+
+    fout = output_file + '_merged.fastq'
+    merged_fastq = seqc.fastq.merge_paired(subparser_name, fout, genomic, barcode)
 
 
 def in_drop(output_file, forward, reverse, samfile, merged_fastq, subparser_name, index,
@@ -371,25 +360,6 @@ def drop_seq(output_file, forward, reverse, samfile, merged_fastq, subparser_nam
     run_complete()
 
 
-def mars_seq():
-    raise NotImplementedError
-
-
-def cel_seq():
-    raise NotImplementedError
-
-
-def avo_seq():
-    raise NotImplementedError
-
-
-def strt_seq():
-    """
-    This method assumes STRT-seq datasets are being retrieved from GEO, where Sten
-    Linnarsson has demultiplexed the data into multiple, individual fastq files."""
-    raise NotImplementedError
-
-
 if __name__ == "__main__":
     kwargs = process_input()
     setup_logger()
@@ -397,9 +367,9 @@ if __name__ == "__main__":
         # log command line arguments for debugging
         arg_copy = copy(kwargs)
         del arg_copy['func']  # function is not serializable
-        log_info('SEQC working directory: %s' % os.getcwd())
-        log_info('Passed command line arguments: %s' %
-                 json.dumps(arg_copy, separators=(',', ': '), indent=4))
+        info('SEQC working directory: %s' % os.getcwd())
+        info('Passed command line arguments: %s' %
+             json.dumps(arg_copy, separators=(',', ': '), indent=4))
 
         func = kwargs['func']
         func(**kwargs)
@@ -408,6 +378,6 @@ if __name__ == "__main__":
         #           args.merged_fastq, args.subparser_name, args.index, args.n_threads,
         #           args.frag_len, args.star_args, args.barcodes)
     except:
-        log_exception()
+        exception()
         # logging.exception(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':main:')
         raise

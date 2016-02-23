@@ -2,16 +2,18 @@
 
 __author__ = 'ambrose'
 
-from seqc.io_lib import S3, GEO
-from seqc.align import STAR
-from seqc.qc import sam_to_count_single_file
-from seqc.fastq import merge_fastq
-import os
-import json
-import numpy as np
 import argparse
+import json
 import logging
+import os
 from datetime import datetime
+
+import numpy as np
+
+from seqc.align import STAR
+from seqc.io_lib import S3, GEO
+from seqc.qc import sam_to_count_single_file
+from seqc.sequence.fastq import merge_fastq
 
 
 def setup_logger():
