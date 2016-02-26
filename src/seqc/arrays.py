@@ -562,6 +562,7 @@ class ReadArray:
         seq = np.apply_along_axis(DNA3Bit.ints2int, axis=1,
                                   arr=seq_data)
         indices = indices[mask]
+        seq = seq[mask]
 
         # get indices of reads associated with each putative molecule (rmt/cell pair)
         molecules = defaultdict(list)
