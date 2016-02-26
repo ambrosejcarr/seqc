@@ -870,7 +870,8 @@ class ReadArray:
                 possible_models = set(disjoint_features[0])
                 for molecule_group in disjoint_features:
                     possible_models.intersection_update(molecule_group)
-                    if not possible_models:  # no molecule is supported by data.
+                    if not possible_models:  # no molecule is supported by ALL data.
+                        # effect: results[]  = 0
                         continue  # could not resolve BUT a subset could be unique!
 
                 # check that creating disjoint sets or eliminating unsupported molecules
@@ -879,7 +880,7 @@ class ReadArray:
                     results[disjoint_group_idx] = 2
                     continue
                 # if we no longer have any supported models, we cannot disambiguate this
-                # molecule
+                # molecule; this is never run because of the loop above
                 elif len(possible_models) == 0:
                     results[disjoint_group_idx] = 5
                     continue
