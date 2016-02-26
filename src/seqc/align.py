@@ -230,6 +230,14 @@ class STAR:
                 copyfileobj(fd, wfd, 1024**2 * 128)
 
     @classmethod
+    def _reduce_gtf(cls, gtf):
+        """eliminate records with support > 1 in ENSEMBL annotation parlance.
+
+        this is a quick hack that invokes awk from the shell. Will not work on windows.
+        """
+        call("awk '{if($26~/1/){print $0}}' %s > %s" % (gtf, gtf), shell=True)
+
+    @classmethod
     def _generate_multiorganism_coalignment(cls, index, organism, phix=True):
 
         # keys for coalignment relevant files
@@ -298,6 +306,7 @@ class STAR:
 
         # get the gtf file name
         gtf = index + _file_names[organism]['gtf']
+        cls._reduce_gtf(gtf)
 
         # add phix if requested
         if phix:
