@@ -562,7 +562,6 @@ class ReadArray:
         seq = np.apply_along_axis(DNA3Bit.ints2int, axis=1,
                                   arr=seq_data)
         indices = indices[mask]
-        seq = seq[mask]
 
         # get indices of reads associated with each putative molecule (rmt/cell pair)
         molecules = defaultdict(list)
@@ -571,7 +570,7 @@ class ReadArray:
         for k, v in molecules.items():
             molecules[k] = np.array(v)  # covert all lists to arrays for indexing
 
-        return molecules, seq
+        return molecules
 
     def group_for_error_correction(self, required_poly_t=0):
         """
@@ -621,7 +620,8 @@ class ReadArray:
         # the experiment.
 
         molecules = defaultdict(dict)
-        for i, s, f in zip(indices, seq, self.features):
+        for i, s in zip(indices, seq):
+            f = self.features[i]
             try:
                 molecules[hash(f.tobytes())][s].append(i)
             except AttributeError:  # f is not an array
@@ -674,7 +674,7 @@ class ReadArray:
           5: model failed to remove any ambiguity
         """
 
-        molecules, seqs = self.group_for_disambiguation(required_poly_t)
+        molecules = self.group_for_disambiguation(required_poly_t)
         results = np.zeros(self.data.shape[0], dtype=np.int8)
 
         # load the expectations
@@ -687,7 +687,7 @@ class ReadArray:
         elif isinstance(expectations, dict):
             pass  # expectations already loaded
         else:
-            raise TypeError('invalid expecatation object type, must be a dict expectation'
+            raise TypeError('invalid expectation object type, must be a dict expectation'
                             ' object or a string filepath')
 
         # loop over potential molecules
@@ -695,7 +695,7 @@ class ReadArray:
 
             # get a view of the structarray
             # putative_molecule = self.data[read_indices]
-            putative_features = self.features[read_indices]
+            putative_features = self.features[read_indices]  # indexing JaggedArray
 
             # check if all reads have a single, identical feature
             # can't hash numpy arrays, but can hash .tobytes() of the array

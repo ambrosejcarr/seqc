@@ -7,15 +7,15 @@ import pickle
 import shutil
 import sys
 from copy import copy
-import seqc
 
+import seqc
+from ARCHIVE.fastq_old import merge_fastq
 from seqc.align import STAR
 from seqc.arrays import ReadArray
 from seqc.barcodes import DropSeqCellBarcodes
 from seqc.convert_features import ConvertFeatureCoordinates
 from seqc.io_lib import S3
 from seqc.log import setup_logger, info, exception
-from seqc.sequence.fastq_old import merge_fastq
 
 __author__ = 'Ambrose J. Carr'
 

@@ -2,9 +2,10 @@ import regex as re
 import seqc
 
 _pattern = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCTT){s<=1}(.{8})(.{6})(.*)')
+_pattern_v2 = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCTT){s<=1}(.{8})(.{8})(.*)')
 
 
-def in_drop(g, b):
+def in_drop_old(g, b):
     try:
         cell1, spacer, cell2, rmt, poly_t = re.match(
             _pattern, b.sequence).groups()
@@ -15,11 +16,26 @@ def in_drop(g, b):
     return g
 
 
-def in_drop_for_testing(g, b):
+def in_drop(g, b):
     converter = seqc.encodings.DNA3Bit
     try:
         cell1, spacer, cell2, rmt, poly_t = re.match(
             _pattern, b.sequence).groups()
+        cell = cell1 + cell2
+        cell = str(converter.encode(cell)).encode()
+        rmt = str(converter.encode(rmt)).encode()
+        poly_t = str(poly_t.count(b'T')).encode()
+    except AttributeError:
+        cell, rmt, poly_t = b'0', b'0', b'0'
+    g.add_annotation((cell, rmt, poly_t, b'1', b'0', b'40'))
+    return g
+
+
+def in_drop_v2(g, b):
+    converter = seqc.encodings.DNA3Bit
+    try:
+        cell1, spacer, cell2, rmt, poly_t = re.match(
+            _pattern_v2, b.sequence).groups()
         cell = cell1 + cell2
         cell = str(converter.encode(cell)).encode()
         rmt = str(converter.encode(rmt)).encode()
