@@ -18,7 +18,7 @@ class Reader:
     def filenames(self):
         return self._files
 
-    @lru_cache(maxsize=2)
+    @lru_cache(maxsize=1)
     def __len__(self):
         """
         return the length of the Reader object. This depends on the implementation of

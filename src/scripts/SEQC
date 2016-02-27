@@ -14,7 +14,7 @@ from seqc.align import STAR
 from seqc.arrays import ReadArray
 from seqc.barcodes import DropSeqCellBarcodes
 from seqc.convert_features import ConvertFeatureCoordinates
-from seqc.io_lib import S3
+from seqc.io import S3
 from seqc.log import setup_logger, info, exception
 
 __author__ = 'Ambrose J. Carr'

@@ -29,7 +29,7 @@ from pyftpdlib.servers import FTPServer
 
 import seqc
 from seqc import arrays
-from seqc import encodings, align, sam, qc, convert_features, barcodes, io_lib
+from seqc import encodings, align, sam, qc, convert_features, barcodes, io
 from seqc.sequence import fastq
 
 
@@ -1591,16 +1591,16 @@ class TestS3Client(unittest.TestCase):
     def test_aws_s3_single_upload(self):
         bucket = 'dplab-home'
         key1 = 'ajc2205/testing_aws/'
-        io_lib.S3.upload_file(self.file1, bucket=bucket, key=key1)
+        io.S3.upload_file(self.file1, bucket=bucket, key=key1)
 
         download_key = key1 + self.file1.split('/')[-1]
         fout = '.test_aws_s3/recovered_file1.txt'
 
-        io_lib.S3.download_file(bucket=bucket, key=download_key, fout=fout)
+        io.S3.download_file(bucket=bucket, key=download_key, fout=fout)
         with open(fout, 'r') as f:
             self.assertEqual(f.read(), self.txt1)
 
-        io_lib.S3.remove_file(bucket, download_key)
+        io.S3.remove_file(bucket, download_key)
 
         os.remove('.test_aws_s3/recovered_file1.txt')
 
@@ -1612,9 +1612,9 @@ class TestS3Client(unittest.TestCase):
         file_prefix = '.test_aws_s3/*'
 
         # upload file1, file2, and file3
-        io_lib.S3.upload_files(file_prefix, bucket, key_prefix)
+        io.S3.upload_files(file_prefix, bucket, key_prefix)
 
-        aws_dir = set(io_lib.S3.list(bucket, key_prefix))
+        aws_dir = set(io.S3.list(bucket, key_prefix))
         aws_files = {key_prefix + f for f in
                      ['test_aws_s3_file1.txt', 'test_aws_s3_file2.txt',
                       'test2/subfile.txt']}
@@ -1622,14 +1622,14 @@ class TestS3Client(unittest.TestCase):
 
         # download the files again
         output_prefix = '.test_aws_s3/download_test/'
-        io_lib.S3.download_files(bucket, key_prefix, output_prefix)
+        io.S3.download_files(bucket, key_prefix, output_prefix)
         all_downloaded_files = []
         for path, subdirs, files in os.walk(output_prefix):
             for name in files:
                 all_downloaded_files.append(os.path.join(path, name))
 
         # remove the files that we uploaded
-        io_lib.S3.remove_files(bucket, key_prefix)
+        io.S3.remove_files(bucket, key_prefix)
 
     def tearDown(self):
         shutil.rmtree('.test_aws_s3/')
@@ -1735,7 +1735,7 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         working_directory = self.working_directory
         index_bucket = None
         index_key = None
-        S3 = io_lib.S3
+        S3 = io.S3
         STAR = align.STAR
         n_threads = 7
         sam_to_count_single_file = qc.sam_to_count_single_file
@@ -1780,7 +1780,7 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
         working_directory = self.working_directory
         index_bucket = None
         index_key = None
-        S3 = io_lib.S3
+        S3 = io.S3
         STAR = align.STAR
         n_threads = 7
         sam_to_count_multiple_files = qc.sam_to_count_multiple_files
@@ -1820,7 +1820,7 @@ class TestProcessSingleFileSCSEQExperiment(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.working_directory)
-        io_lib.S3.remove_file(self.s3_bucket, self.s3_key)
+        io.S3.remove_file(self.s3_bucket, self.s3_key)
         os.remove('test_in_drop.npz')
 
 if __name__ == '__main__':

@@ -1,14 +1,11 @@
-__author__ = 'Ambrose J. Carr'
-
 from operator import itemgetter
 import numpy as np
 from copy import copy
 from numpy.lib.recfunctions import append_fields
-from itertools import islice, chain
+from itertools import islice
 from seqc.encodings import DNA3Bit
 from seqc.qc import UnionFind, multinomial_loglikelihood, likelihood_ratio_test
 from collections import deque, defaultdict
-from seqc import h5
 from scipy.sparse import coo_matrix
 import tables as tb
 import pandas as pd
@@ -16,12 +13,12 @@ import numbers
 import pickle
 from types import *
 import os
+import seqc
 
 # register numpy integers as Integrals
 numbers.Integral.register(np.integer)
 
 
-# todo test if id() is faster than .tobytes()
 # todo | it would save more memory to skip "empty" features and give them equal indices
 # todo | to sparsify the structure. e.g. empty index 5 would index into data[7:7],
 # todo | returning array([]); this would also reduce downstream complexity.
@@ -45,8 +42,6 @@ class JaggedArray:
     def __len__(self):
         return self._index.shape[0]
 
-    # todo note that under the current numpy release this is _very_ slow. Need to download
-    # at least 1.11.0.dev0-f428bce
     def __getitem__(self, item):
         """
         returns a selection of the array. There are three valid types with different
@@ -350,7 +345,7 @@ class ReadArray:
         ('is_aligned', np.bool),
         ('alignment_score', np.uint8)]
 
-    def __init__(self, data, features, positions):
+    def __init__(self, data, features, positions, gene_id_map=None):
         """
         n is the total number of reads. The array will contain m multialignments, where
         m == n when all reads are uniquely aligned, and m < n otherwise.
@@ -365,6 +360,7 @@ class ReadArray:
         self._data = data
         self._features = features
         self._positions = positions
+        self._gene_id_map = gene_id_map
 
     def __getitem__(self, item):
         return self._data[item], self._features[item], self._positions[item]
@@ -637,7 +633,7 @@ class ReadArray:
 
         return dict(molecules)
 
-    def resolve_alignments(self, expectations, required_poly_t=0, alpha=0.1):
+    def resolve_alignments(self, index, required_poly_t=0, alpha=0.1):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
         in-place to reflect the more specific gene assignments.
@@ -661,23 +657,24 @@ class ReadArray:
         edits self.features and self.data in-place to reflect resolved alignments. adds
           a column to self.data called 'disambiguation_results', this is an indicator
           column that tracks the result of this method.
-          0: no model is fully supported by the data. This represents a molecule with
-             higher-order complexity. These umi-cell combinations have two molecules
-             associated with overlapping alignments and cannot be differentiated without
-             considering multiple molecule contributions. This problem can be mitigated
-             by increasing the UMI length or decreasing the concentration of input RNA.
+          0: this read failed other filters and was not submitted to this function.
           1: trivial result, molecule was unambiguous
-          2: separating molecules into disjoint sets and limiting the algorithm to
-          supported gene fully disambiguated the molecule
-          3: molecule was partially disambiguated using the multinomial expectation model
-          4: molecule was fully disambiguated using the multinomial expectation model
-          5: model failed to remove any ambiguity
+          2: separating molecules into disjoint sets resolved the molecule(s)
+          3: molecule was fully resolved at the transcript level
+          4: molecule was fully resolved at the gene level
+          5: molecule was partially resolved at the transcript level, but the best model
+             was still selected
+          6: no donor molecule was significantly better than any other, but the best model
+             was still selected
         """
 
+        # pre-allocate result vectors
         molecules = self.group_for_disambiguation(required_poly_t)
         results = np.zeros(self.data.shape[0], dtype=np.int8)
+        features = np.zeros(self.data.shape[0], dtype=np.uint32)
 
         # load the expectations
+        expectations = index + 'p_coalignment_array.p'
         if os.path.isfile(expectations):
             with open(expectations, 'rb') as f:
                 expectations = pickle.load(f)
@@ -690,12 +687,27 @@ class ReadArray:
             raise TypeError('invalid expectation object type, must be a dict expectation'
                             ' object or a string filepath')
 
+        # create map of scid: gene
+        annotations = index + 'annotations.gtf'
+        rd = seqc.gtf.Reader(annotations)
+        scid_to_gene = defaultdict(list)
+        for transcript in rd.iter_transcripts():
+            scseq_id = int(transcript.attribute(b'scseq_id')[2:])
+            gene_name = transcript.attribute(b'gene_name')
+            scid_to_gene[scseq_id].append(gene_name)
+
+        # convert scids mapped to multiple ids into unique "multi-features" and store an
+        # integer index for construction of a UniqueArray
+        for i, (k, v) in enumerate(scid_to_gene.items()):
+            scid_to_gene[k] = (b'-'.join(v).decode(), i)
+        scid_to_gene = dict(scid_to_gene)
+
         # loop over potential molecules
         for read_indices in molecules.values():
 
             # get a view of the structarray
             # putative_molecule = self.data[read_indices]
-            putative_features = self.features[read_indices]  # indexing JaggedArray
+            putative_features = self.features[read_indices]  # list of arrays
 
             # check if all reads have a single, identical feature
             # can't hash numpy arrays, but can hash .tobytes() of the array
@@ -709,7 +721,7 @@ class ReadArray:
             uf.union_all(putative_features)
             set_membership, sets = uf.find_all(putative_features)
 
-            # Loop Over Disjoint molecules
+            # Loop Over disjoint molecules
             for s in sets:
 
                 # disjoint_group = putative_molecule[set_membership == s]
@@ -719,60 +731,38 @@ class ReadArray:
                 # get observed counts
                 obs_counter = ArrayCounter(putative_features)
 
-                # delete failing molecules
-                # this should no longer be necessary due to changes in
-                # mask_failing_records
-                # del obs_counter[0]
-
-                # get the subset of features that are supported by the data
-                # these features should be present in all multi-alignments
-                possible_models = set(disjoint_features[0])
+                # get the set of features present in all alignments
+                intersection = set(disjoint_features[0])
+                union = set(disjoint_features[0])
                 for molecule_group in disjoint_features:
-                    possible_models.intersection_update(molecule_group)
-                    if not possible_models:  # no molecule is supported by data.
-                        continue  # could not resolve BUT a subset could be unique!
+                    intersection.intersection_update(molecule_group)
+                    union.update(molecule_group)
 
-                # check that creating disjoint sets or eliminating unsupported molecules
-                # haven't made this trivial
-                if len(possible_models) == 1:
+                if len(intersection) == 1:
+                    # all reads are supported by only one molecule
                     results[disjoint_group_idx] = 2
-                    continue
-                # if we no longer have any supported models, we cannot disambiguate this
-                # molecule
-                elif len(possible_models) == 0:
-                    results[disjoint_group_idx] = 5
                     continue
 
                 # convert possible models to np.array for downstream indexing
-                possible_models = np.array(list(possible_models))
+                possible_models = np.array(list(union))
 
-                # # check that creating disjoint sets haven't made this trivial
-                # if len(obs_counter) == 1 and len(next(iter(obs_counter))) == 1:
-                #     results[disjoint_group_idx] = 2
-                #     continue  # no need to calculate probabilities for single model
-
-                # # get all potential molecule identities, create container for lh, df
-                # possible_models = np.array(
-                #     list(set(chain(*disjoint_features)))
-                # )
-                # possible_models = possible_models[possible_models != 0]
-
+                # check likelihood of each model
                 model_likelihoods = np.empty_like(possible_models, dtype=np.float)
                 df = np.empty_like(possible_models, dtype=np.int)
 
+                # for each model, check the likelihood given observed counts
                 for i, m in enumerate(possible_models):
                     try:
                         exp_dict = expectations[m]
                     except KeyError:
                         continue
-                    except IndexError:
-                        raise
                     obs, exp = outer_join(obs_counter, exp_dict)
 
-                    # calculate model probability
+                    # calculate model probability and store
                     model_likelihoods[i] = multinomial_loglikelihood(obs, exp)
                     df[i] = len(obs) - 1
 
+                # order models in decreasing order of likelihood
                 likelihood_ordering = np.argsort(model_likelihoods)[::-1]
                 models = possible_models[likelihood_ordering]
                 model_likelihoods = model_likelihoods[likelihood_ordering]
@@ -780,7 +770,7 @@ class ReadArray:
                 # get top model
                 passing_models, top_likelihood = [models[0]], model_likelihoods[0]
 
-                # gauge relative likelihoods
+                # compare relative likelihoods
                 for i in range(1, len(model_likelihoods)):
                     model = models[i]
                     lh = model_likelihoods[i]
@@ -789,24 +779,38 @@ class ReadArray:
                     if p < alpha:
                         passing_models.append(model)
                     else:
-                        break  # no models with lower likelihoods will pass, terminate loop
+                        break  # no models of lower likelihoods will pass, terminate loop
 
-                # adjust models, record results
+                # translate transcripts into gene ids
+                best_gene_model, best_gene_int_id = scid_to_gene[models[0]]
+                genes = {scid_to_gene[m][0] for m in passing_models}
+
+                # fully resolved at transcript level
                 if len(passing_models) == 1:
-                    res = 4
-                elif 1 < len(passing_models) < len(models):
                     res = 3
-                else:  # len(passing_models == len(models); no improvement was made.
+
+                # fully resolved at gene level
+                elif len(genes) == 1:
+                    res = 4
+
+                # partially resolved at transcript level, unresolved at gene level
+                elif 1 < len(passing_models) < len(models):
                     res = 5
+
+                # model not resolved at transcript or gene level
+                else:  # len(passing_models == len(models); no improvement was made.
+                    res = 6
 
                 # set results
                 results[disjoint_group_idx] = res
 
-                # change features
-                self.features[disjoint_group_idx] = passing_models
+                # set feature to top model
+                features[disjoint_group_idx] = best_gene_int_id
 
-        self._data = append_fields(self.data, 'disambiguation_results', results)
-        # self._features = self.features.shrink()
+        # set results
+        self._data = append_fields(self.data, ['disambiguation_results', 'unique_features'],
+                                   [results, features])
+        self._gene_id_map = pd.Series({v[0]: v[1] for v in scid_to_gene.values()})
 
     @staticmethod
     def multi_delete(sorted_deque, *lists):
@@ -929,17 +933,25 @@ class ReadArray:
         #     f.create_table(f.root, 'data', self._data)
 
         # create group for feature-related data and store.
-        feature_group = h5.create_group(
+        feature_group = seqc.h5.create_group(
             f, 'features', '/', 'Data for ReadArray._features')
         store_carray(f, self._features._data, feature_group, 'data')
         store_carray(f, self._features._index, feature_group, 'index')
 
         # store position data
-        positions_group = h5.create_group(
+        positions_group = seqc.h5.create_group(
             f, 'positions', '/', 'Data for ReadArray._features')
         store_carray(f, self._positions._data, positions_group, 'data')
         store_carray(f, self._positions._index, positions_group, 'index')
 
+        # store gene_id_map if it exists
+        if self._gene_id_map is not None:
+            gene_ids = seqc.h5.create_group(
+                f, 'gene_id_map', '/', 'Data for ReadArray._gene_id_map')
+            max_len = max(len(i) for i in self._gene_id_map.index)
+            store_carray(f, np.array(self._gene_id_map.index, dtype='|S%d' % max_len),
+                         gene_ids, 'index')
+            store_carray(f, np.array(self._gene_id_map.values), gene_ids, 'data')
         f.close()
 
     @classmethod
@@ -957,7 +969,14 @@ class ReadArray:
         features = JaggedArray(fdata, findex)
         positions = JaggedArray(pdata, pindex)
 
-        return cls(data, features, positions)
+        try:
+            id_map_data = f.root.gene_ids.data
+            id_map_index = f.root.gene_ids.index
+            gene_id_map = pd.Series(id_map_data, index=id_map_index)
+        except:  # todo figure out what exception this should catch
+            gene_id_map = None
+
+        return cls(data, features, positions, gene_id_map)
 
     def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
 
@@ -1184,7 +1203,6 @@ class ReadArray:
 
         # get record filter percentages
         metadata = {}
-
 
 
 def outer_join(left, right):
