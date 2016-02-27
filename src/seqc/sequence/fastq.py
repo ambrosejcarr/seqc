@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping
 import numpy as np
 import bz2
 from functools import lru_cache
+import seqc
 
 
 class FastqRecord:
@@ -97,7 +98,7 @@ class FastqRecord:
             .astype(int) - 33
 
 
-class FastqReader(simpleseq.reader.Reader):
+class Reader(seqc.reader.Reader):
     """simple Reader Class, designed for inheritance across data types"""
 
     @staticmethod
@@ -140,9 +141,9 @@ def merge_paired(merge_function, fout, genomic, barcode=None):
     directory, filename = os.path.split(fout)
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
-    genomic = FastqReader(genomic)
+    genomic = Reader(genomic)
     if barcode:
-        barcode = FastqReader(barcode)
+        barcode = Reader(barcode)
         with open(fout, 'wb') as f:
             for g, b in zip(genomic, barcode):
                 r = merge_function(g, b)
@@ -158,7 +159,7 @@ def merge_paired(merge_function, fout, genomic, barcode=None):
 
 def truncate_read_length(fastq_files, length):
     for f in fastq_files:
-        rd = FastqReader(f)
+        rd = Reader(f)
         with open(f.replace('.fastq', '_truncated_{}.fastq'.format(length)), 'wb') as o:
             for record in rd:
                 record.sequence = record.sequence[:length] + b'\n'

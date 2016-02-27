@@ -847,7 +847,7 @@ class ReadArray:
           5: model failed to remove any ambiguity
         """
 
-        molecules, seqs = self.group_for_disambiguation(required_poly_t)
+        molecules = self.group_for_disambiguation(required_poly_t)
         results = np.zeros(self.data.shape[0], dtype=np.int8)
 
         # load the expectations
