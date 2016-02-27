@@ -9,6 +9,7 @@ import pickle
 from more_itertools import first
 from itertools import islice
 from operator import attrgetter
+import numpy as np
 # from nose2.tools import params
 
 
@@ -513,9 +514,38 @@ class TestResolveAlignments(unittest.TestCase):
     #  HashableArray([8]): 0.69332330791897157,
     #  HashableArray([   8,  808,  898, 1404]): 0.035605715982132781}
 
+    @classmethod
+    def setUpClass(cls):
+        expectations = config.seqc_dir + 'data_test/p_coalignment_array.p'
+        with open(expectations, 'rb') as f:
+            cls.expectations = pickle.load(f)
+
     def construct_dummy_array(self):
-        raise NotImplementedError
-        np.random.multinomial()
+
+        # unique
+        features, probabilities = zip(*self.expectations[5].items())
+        indices = np.random.multinomial(np.array(list(self.expectations[5])), 50)
+        reads1 = [features[i] for i in indices]  # list of array features
+
+        features, probabilities = zip(*self.expectations[5].items())
+        indices = np.random.multinomial(np.array(list(self.expectations[5])), 1)
+        reads2 = [features[i] for i in indices]  # list of array features
+
+        # ambiguous
+        features, probabilities = zip(*self.expectations[8].items())
+        indices = np.random.multinomial(np.array(list(self.expectations[8])), 100)
+        reads3 = [features[i] for i in indices]  # list of array features
+
+        # 2nd ambiguous
+        features, probabilities = zip(*self.expectations[49].items())
+        indices = np.random.multinomial(np.array(list(self.expectations[49])), 20)
+        reads4 = [features[i] for i in indices]  # list of array features
+
+        # make the rest of the ReadArray fields.
+
+        # same cell
+        # different RMT (later, allow errors/conflation of molecules)
+        # passes all other filters
 
     def test_case0(self):
         raise NotImplementedError

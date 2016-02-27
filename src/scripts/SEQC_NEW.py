@@ -68,7 +68,7 @@ def main():
     h5db = seqc.arrays.ReadArray.from_samfile(samfile, fc)
 
     seqc.log.info('Resolving ambiguous alignments.')
-    h5db.resolve_alignments(index=args.index, required_poly_t=args.min_poly_t)
+    h5db.resolve_alignments_old(index=args.index, required_poly_t=args.min_poly_t)
 
     seqc.log.info('Storing corrected record database.')
     h5db.save_h5(args.output_stem + '.h5')

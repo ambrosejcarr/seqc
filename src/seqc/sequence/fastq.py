@@ -2,7 +2,6 @@ import os
 import gzip
 from collections.abc import Iterable, Mapping
 import numpy as np
-import simpleseq
 import bz2
 from functools import lru_cache
 
