@@ -389,9 +389,10 @@ class ReadArray:
                 self.features._data.nbytes + self.positions._data.nbytes +
                 self.positions._index.nbytes)
 
+    # todo
+    # this is losing either the first or the last read
+    # if necessary, this can be built out-of-memory using an h5 table
     @classmethod
-    # todo this is losing either the first or the last read
-    # todo if necessary, this can be built out-of-memory using an h5 table
     def from_samfile(cls, samfile, feature_converter):
 
         # first pass, get size of file
@@ -710,10 +711,12 @@ class ReadArray:
             putative_features = self.features[read_indices]  # list of arrays
 
             # check if all reads have a single, identical feature
-            # can't hash numpy arrays, but can hash .tobytes() of the array
             check_trivial = ArrayCounter(putative_features)
-            if len(check_trivial) == 1 and len(next(iter(check_trivial))) == 1:
-                results[read_indices] = 1  # trivial
+            first_feature = next(iter(check_trivial))
+            if len(check_trivial) == 1 and len(first_feature) == 1:
+                _, int_id = scid_to_gene[first_feature[0]]
+                features[read_indices] = int_id
+                results[read_indices] = 1
                 continue
 
             # get disjoint set membership
@@ -740,7 +743,9 @@ class ReadArray:
 
                 if len(intersection) == 1:
                     # all reads are supported by only one molecule
-                    results[disjoint_group_idx] = 2
+                    _, int_id = scid_to_gene[first_feature[0]]
+                    features[read_indices] = int_id
+                    results[read_indices] = 2
                     continue
 
                 # convert possible models to np.array for downstream indexing

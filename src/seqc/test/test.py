@@ -1,5 +1,6 @@
 import nose2
 import unittest
+import random
 from copy import deepcopy
 import os
 import seqc
@@ -7,7 +8,7 @@ import numpy as np
 import re
 import pickle
 from more_itertools import first
-from itertools import islice
+from itertools import islice, chain
 from operator import attrgetter
 import numpy as np
 # from nose2.tools import params
@@ -516,39 +517,81 @@ class TestResolveAlignments(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        expectations = config.seqc_dir + 'data_test/p_coalignment_array.p'
+        expectations = config.seqc_dir + 'data_test/mm38_chr19/p_coalignment_array.p'
         with open(expectations, 'rb') as f:
             cls.expectations = pickle.load(f)
 
-    def construct_dummy_array(self):
+    def construct_dummy_array(self, features_and_counts):
 
-        # unique
-        features, probabilities = zip(*self.expectations[5].items())
-        indices = np.random.multinomial(np.array(list(self.expectations[5])), 50)
-        reads1 = [features[i] for i in indices]  # list of array features
+        def get_features(v, n, expectations):
+            features, probabilities = zip(*expectations[v].items())
+            # convert features to nested iterable
+            features = list(map(list, features))
+            # get counts for each feature
+            counts = np.random.multinomial(n, probabilities)
 
-        features, probabilities = zip(*self.expectations[5].items())
-        indices = np.random.multinomial(np.array(list(self.expectations[5])), 1)
-        reads2 = [features[i] for i in indices]  # list of array features
+            # convert to features
+            return list(chain(*[[features[i]] * count for i, count in enumerate(counts)]))
 
-        # ambiguous
-        features, probabilities = zip(*self.expectations[8].items())
-        indices = np.random.multinomial(np.array(list(self.expectations[8])), 100)
-        reads3 = [features[i] for i in indices]  # list of array features
+        features = list(chain(*[get_features(v, n, self.expectations) for v, n in
+                    features_and_counts]))
 
-        # 2nd ambiguous
-        features, probabilities = zip(*self.expectations[49].items())
-        indices = np.random.multinomial(np.array(list(self.expectations[49])), 20)
-        reads4 = [features[i] for i in indices]  # list of array features
+        random_rmt = lambda: random.randint(0, 128)
+        rmts = list(chain(*[[random_rmt()] * n[1] for n in features_and_counts]))
 
         # make the rest of the ReadArray fields.
+        cell = seqc.encodings.DNA3Bit.encode(b'ACGTACGTACGTACGT')
 
-        # same cell
-        # different RMT (later, allow errors/conflation of molecules)
-        # passes all other filters
+        random.choice(b'ACGT')
+        n_poly_t = 5
+        valid_cell = 1
+        dust_score = 0
+        rev_quality = 40
+        fwd_quality = 40
+        is_aligned = True
+        alignment_score = 100
 
-    def test_case0(self):
-        raise NotImplementedError
+        # construct array
+        n = len(features)
+        print(len(rmts))
+        data = np.recarray((n,), dtype=seqc.arrays.ReadArray._dtype)
+        for i, f in enumerate(chain(features)):
+            row = (cell, rmts[i], n_poly_t, valid_cell, dust_score, rev_quality,
+                   fwd_quality, is_aligned, alignment_score)
+            data[i] = row
+        features = seqc.arrays.JaggedArray.from_iterable(features)
+        positions = [[0]] * len(features)
+        positions = seqc.arrays.JaggedArray.from_iterable(positions)
+
+        return seqc.arrays.ReadArray(data, features, positions)
+
+    def test_case1_and_case2(self):
+        # test a bunch of "case 2" objects: ones which will draw unique molecules and
+        # be disambiguated by taking repeated intersections
+        ra = self.construct_dummy_array([(5, 50), (5, 1), (8, 100), (49, 20)])
+        ra.resolve_alignments('data_test/mm38_chr19/')
+        bins, counts = np.unique(ra.data['disambiguation_results'], return_counts=True)
+        print('ra length:', len(ra))
+        print('disambiguation results')
+        print('results code:', bins)
+        print('counts:', counts)
+        print('unique features')
+        bins, counts = np.unique(ra.data['unique_features'], return_counts=True)
+        print('new features:', bins)
+        print('no. observations:', counts)
+
+    def test_case3(self):
+        ra = self.construct_dummy_array([(55, 30)])
+        ra.resolve_alignments('data_test/mm38_chr19/')
+        bins, counts = np.unique(ra.data['disambiguation_results'], return_counts=True)
+        print('ra length:', len(ra))
+        print('disambiguation results')
+        print('results code:', bins)
+        print('counts:', counts)
+        print('unique features')
+        bins, counts = np.unique(ra.data['unique_features'], return_counts=True)
+        print('new features:', bins)
+        print('no. observations:', counts)
 
 
 if __name__ == "__main__":
