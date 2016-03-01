@@ -361,6 +361,8 @@ class ReadArray:
         self._features = features
         self._positions = positions
         self._gene_id_map = gene_id_map
+        self._sorted = None
+        self._failing_mask = None
 
     def __getitem__(self, item):
         return self._data[item], self._features[item], self._positions[item]
@@ -1008,6 +1010,10 @@ class ReadArray:
         --------
         np.ndarray((n,) dtype=bool)  # n = len(self._data)
         """
+
+        if self._failing_mask is not None:
+            return self._failing_mask
+
         vbool = ((self.data['cell'] != 0) &
                  (self.data['rmt'] != 0) &
                  (self.data['n_poly_t'] >= n_poly_t_required) &
@@ -1016,8 +1022,8 @@ class ReadArray:
         no_feature = np.array([0])
         has_feature = np.array([False if np.array_equal(v, no_feature) else True for v in
                                 self._features], dtype=np.bool)
-
-        return vbool & has_feature
+        self._failing_mask = vbool & has_feature
+        return self._failing_mask
 
     def mask_low_support_molecules(self, required_support=2):
         """
@@ -1029,6 +1035,7 @@ class ReadArray:
         # simple way to track seems like a tuple of ints; can use defaultdict to build?
 
         # then, to build boolean mask, run through the list a second time
+
 
         # get counts
         n = self.data.shape[0]
@@ -1049,25 +1056,6 @@ class ReadArray:
                 mask[i] = 1
 
         return mask
-        #
-        #
-        # view = self.data[['cell', 'rmt']].copy()
-        # df = pd.DataFrame(view)
-        # grouped = df.groupby(['cell', 'rmt'])
-        # failing = []
-        # for idx, g in grouped:
-        #     if len(g) < required_support:
-        #         failing.extend(g.index)
-        # failing.sort()
-        # ifail = 0
-        # imask = 0
-        # mask = np.ones(len(self.data), dtype=np.bool)
-        # while ifail < len(failing):
-        #     if imask == failing[ifail]:
-        #         mask[imask] = 0
-        #         ifail += 1
-        #     imask += 1
-        # return mask
 
     @staticmethod
     def translate_feature(reference_name, strand, true_position, feature_table,
@@ -1151,97 +1139,6 @@ class ReadArray:
             gene_id_map = None
 
         return cls(data, features, positions, gene_id_map)
-
-    def to_sparse_counts(self, collapse_molecules, n_poly_t_required):
-
-        # mask failing cells and molecules with < 2 reads supporting them.
-        read_mask = self.mask_failing_records(n_poly_t_required)
-        low_coverage_mask = self.mask_low_support_molecules()
-        unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
-        molecule_counts = defaultdict(dict)
-
-        # get a bytes-representation of each feature object
-        feature_map = {}
-
-        if collapse_molecules:
-            # get molecule counts
-
-            for i in unmasked_inds:
-                feature = self._features[i]
-                hashed = hash(self._features[i].tobytes())
-                feature_map[hashed] = feature
-                cell = self.data['cell'][i]
-                rmt = self.data['rmt'][i]
-                try:
-                    molecule_counts[hashed][cell].add(rmt)
-                except KeyError:
-                    molecule_counts[hashed][cell] = {rmt}
-
-            # convert to molecule counts
-            for f in molecule_counts.keys():
-                for c, rmts in molecule_counts[f].items():
-                    molecule_counts[f][c] = len(rmts)
-        else:
-            for i in unmasked_inds:
-                feature = self._features[i]
-                hashed = hash(self._features[i].tobytes())
-                feature_map[hashed] = feature
-                cell = self.data['cell'][i]
-                try:
-                    molecule_counts[hashed][cell] += 1
-                except KeyError:
-                    molecule_counts[hashed][cell] = 1
-
-        # convert to values, row, col form for scipy.coo
-        # pre-allocate arrays
-        size = sum(len(c) for c in molecule_counts.values())
-        values = np.empty(size, dtype=int)
-        row = np.empty(size, dtype=int)
-        col = np.empty(size, dtype=int)
-        i = 0
-        for hashed_feature in molecule_counts:
-            feature = feature_map[hashed_feature]
-            for cell, count in molecule_counts[hashed_feature].items():
-                values[i] = count
-                row[i] = cell
-                col[i] = feature[0]  # todo this is arbitrary, selecting feature[0] of x
-                i += 1
-
-        # get max count to shrink dtype if possible
-        maxcount = np.max(values)
-
-        # set dtype
-        if 0 < maxcount < 2 ** 8:
-            dtype = np.uint8
-        elif maxcount < 2 ** 16:
-            dtype = np.uint16
-        elif maxcount < 2 ** 32:
-            dtype = np.uint32
-        elif maxcount < 2 ** 64:
-            dtype = np.uint64
-        elif maxcount < 0:
-            raise ValueError('Negative count value encountered. These values are not'
-                             'defined and indicate a probable upstream bug')
-        else:
-            raise ValueError('Count values too large to fit in int64. This is very '
-                             'unlikely, and will often cause Memory errors. Please check '
-                             'input data.')
-
-        # map row and cell to integer values for indexing
-        unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
-        unq_col = np.unique(col)
-        row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
-        col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
-        row_ind = np.array([row_map[i] for i in row])
-        col_ind = np.array([col_map[i] for i in col])
-
-        # change dtype, set shape
-        values = values.astype(dtype)
-        shape = (unq_row.shape[0], unq_col.shape[0])
-
-        # return a sparse array
-        coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
-        return coo, unq_row, unq_col
 
     def unique_features_to_sparse_counts(self, collapse_molecules, n_poly_t_required,
                                          support_required=2):
@@ -1333,6 +1230,220 @@ class ReadArray:
         coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
         return coo, unq_row, unq_col
 
+    def unique_features_to_sparse_counts_cmp(self, collapse_molecules, n_poly_t_required,
+                                             support_required=2):
+
+        # mask failing cells and molecules with < 2 reads supporting them.
+        read_mask = self.mask_failing_records(n_poly_t_required)
+        low_coverage_mask = self.mask_low_support_molecules(support_required)
+        unmasked_inds = np.arange(self.data.shape[0])[read_mask & low_coverage_mask]
+        if unmasked_inds.shape[0] == 0:
+            raise ValueError('Zero reads passed filters. Cannot save sparse matrix')
+        molecule_counts = defaultdict(dict)
+
+        if collapse_molecules:
+            # get molecule counts
+
+            for i in unmasked_inds:
+                feature = self.data['unique_features'][i]
+                # if len(feature) > 1:
+                #     continue
+                cell = self.data['cell'][i]
+                rmt = self.data['rmt'][i]
+                try:
+                    molecule_counts[int(feature)][cell].add(rmt)
+                except KeyError:
+                    molecule_counts[int(feature)][cell] = {rmt}
+
+            # convert to molecule counts
+            for f in molecule_counts.keys():
+                for c, rmts in molecule_counts[f].items():
+                    molecule_counts[f][c] = len(rmts)
+        else:
+            for i in unmasked_inds:
+                feature = self.data['unique_features'][i]
+                # if len(feature) > 1:
+                #     continue
+                cell = self.data['cell'][i]
+                try:
+                    molecule_counts[int(feature)][cell] += 1
+                except KeyError:
+                    molecule_counts[int(feature)][cell] = 1
+
+        # convert to values, row, col form for scipy.coo
+        # pre-allocate arrays
+        size = sum(len(c) for c in molecule_counts.values())
+        values = np.empty(size, dtype=int)
+        row = np.empty(size, dtype=int)
+        col = np.empty(size, dtype=int)
+        i = 0
+        for feature in molecule_counts:
+            for cell, count in molecule_counts[feature].items():
+                values[i] = count
+                row[i] = cell
+                col[i] = feature
+                i += 1
+
+        # get max count to shrink dtype if possible
+        maxcount = np.max(values)
+
+        # set dtype
+        if 0 < maxcount < 2 ** 8:
+            dtype = np.uint8
+        elif maxcount < 2 ** 16:
+            dtype = np.uint16
+        elif maxcount < 2 ** 32:
+            dtype = np.uint32
+        elif maxcount < 2 ** 64:
+            dtype = np.uint64
+        elif maxcount < 0:
+            raise ValueError('Negative count value encountered. These values are not'
+                             'defined and indicate a probable upstream bug')
+        else:
+            raise ValueError('Count values too large to fit in int64. This is very '
+                             'unlikely, and will often cause Memory errors. Please check '
+                             'input data.')
+
+        # map row and cell to integer values for indexing
+        unq_row = np.unique(row)  # these are the ids for the new rows / cols of the array
+        unq_col = np.unique(col)
+        row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
+        col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
+        row_ind = np.array([row_map[i] for i in row])
+        col_ind = np.array([col_map[i] for i in col])
+
+        # change dtype, set shape
+        values = values.astype(dtype)
+        shape = (unq_row.shape[0], unq_col.shape[0])
+
+        # return a sparse array
+        coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=dtype)
+        return coo, unq_row, unq_col
+
+    def _sort_masked(self, min_poly_t):
+        """
+        Lexicographical argsort (indirect) of passing records in self. Will create a mask
+        of records failing filters if this has not been already carried out.
+
+        args:
+        -----
+        molecules: if True, sorts on [cell, rmt, features]. In this case, stores both
+         self._sort_molecules and self._sort_reads because molecule sort is also a read
+         sort.
+        actions:
+        --------
+        store result of lexsort in either self._sort_reads (molecules=False) or
+         self._sort_reads and self._sort_molecules (molecules=True)
+        """
+        if self._failing_mask is None:
+            mask = self.mask_failing_records(min_poly_t)
+        else:
+            mask = self._failing_mask
+        self._sorted = np.lexsort((
+            self.data['rmt'][mask],
+            self.data['unique_features'][mask],
+            self.data['cell'][mask]))
+
+    # todo | reminder | will only work if disambiguation has been run.
+    def to_sparse_counts_diff(self, required_support=0, min_poly_t=3):
+        """Generate an Experiment containing read and molecule SparseCount objects
+        args:
+        -----
+        required_support (default: 2): required number of observations of a molecule for
+         the molecule to be included in the counts matrix
+        returns:
+        seqc.analyze.Experiment object
+        """
+
+        # get sorted index
+        if self._sorted is None:
+            self._sort_masked(min_poly_t)
+
+        sort_ord = self._sorted
+        data = self.data[self._failing_mask]
+
+        # find boundaries between cell, rmt, and feature
+        all_diff = np.zeros(data.shape[0], dtype=np.bool)
+        all_diff[0] = True  # keep the first one; it's different from void (preceding)
+        all_diff[1:] |= np.diff(data['cell'][sort_ord]).astype(np.bool)  # diff cell
+        all_diff[1:] |= np.diff(data['rmt'][sort_ord]).astype(np.bool)  # diff rmt
+        all_diff[1:] |= np.diff(data['unique_features'][sort_ord]).astype(np.bool)  # diff feature
+
+        # get key_index (into original ReadArray) and reads per molecule counts
+        # adding required support here will cut any molecules with < required_support from
+        # downstream steps that rely upon ra_molecule_idx (such as reads per molecule
+        # calculations
+        i = np.concatenate((np.where(all_diff)[0], [data.shape[0]]))
+        rpm_count = np.diff(i)
+
+        # filter which molecules we want to keep by thresholding ra_molecule_idx
+        ra_molecule_idx = sort_ord[i[np.concatenate((rpm_count > required_support,
+                                                     [False]))]]
+
+        # make sure at least one molecule passes, otherwise raise.
+        if len(ra_molecule_idx) == 0:
+            raise ValueError('No molecules passed support filter')
+
+        # to get reads per cell, I discard the notion of molecular correction by diffing
+        # on only cell and feature from the original sort
+        # diff is working as intended
+        rpc_diff = np.zeros(data.shape[0], dtype=np.bool)
+        rpc_diff[0] = True
+        rpc_diff[1:] |= np.diff(data['cell'][sort_ord]).astype(np.bool)
+        rpc_diff[1:] |= np.diff(data['unique_features'][sort_ord]).astype(np.bool)
+        i = np.concatenate((np.where(rpc_diff)[0], [data.shape[0]]))
+        ra_rpc_idx = sort_ord[i[:-1]]
+        rpc_count = np.ravel(np.diff(i))
+
+        # because reads per molecule gives me a list of all molecules, molecules per
+        # cell can be calculated by re-diffing on the reads per molecule without
+        # considering the rmt. This has the effect of counting unique RMTs per molecule
+        # and per cell.
+        mpc_diff = np.zeros(len(ra_molecule_idx), dtype=np.bool)
+        mpc_diff[0] = True
+        mpc_diff[1:] |= np.diff(data['cell'][ra_molecule_idx]).astype(np.bool)
+        mpc_diff[1:] |= np.diff(data['unique_features'][ra_molecule_idx]).astype(np.bool)
+        i = np.concatenate((np.where(mpc_diff)[0], [len(ra_molecule_idx)]))
+        ra_rpm_idx = ra_molecule_idx[i[:-1]]
+        mpc_count = np.ravel(np.diff(i))
+
+        def map_to_unique_index(vector):
+            mapping = pd.Series(np.arange(0, len(set(vector))), index=list(set(vector)))
+            key = np.array(list(mapping[vector]))
+            ids = np.array(list(mapping.index))
+            return key, ids
+
+        # def map_to_unique_index(vector):
+        #     """function to map a vector of gene or feature ids to an index"""
+        #     ids = np.unique(np.ravel(vector))
+        #     # key gives the new values you wish original ids to be mapped to.
+        #     key = np.arange(ids.shape[0])
+        #     index = np.digitize(vector.ravel(), ids, right=True)
+        #     return key[index].reshape(vector.shape), ids
+        # generate sparse matrices
+
+        # reads per cell
+        row, rcells = map_to_unique_index(data['cell'][ra_rpc_idx])
+        col, rgenes = map_to_unique_index(data['unique_features'][ra_rpc_idx])
+        shape = (len(rcells), len(rgenes))
+        rpc = coo_matrix((rpc_count, (row, col)), shape=shape, dtype=np.int32)
+        # reads_per_cell = seqc.analyze.SparseCounts(rpc, rcells, rgenes)
+
+        # molecules per cell
+        row, mcells = map_to_unique_index(data['cell'][ra_rpm_idx])
+        col, mgenes = map_to_unique_index(data['unique_features'][ra_rpm_idx])
+        shape = (len(mcells), len(mgenes))
+        mpc = coo_matrix((mpc_count, (row, col)), shape=shape, dtype=np.int32)
+        # molecules_per_cell = seqc.analyze.SparseCounts(mpc, mcells, mgenes)
+
+        # self._experiment = seqc.analyze.Experiment(reads_per_cell, molecules_per_cell)
+        # return self._experiment
+
+        # todo this is the old style instead of the SparseCounts and Experiments objects
+        return {'reads': {'matrix': rpc, 'row_inds': rcells, 'col_inds': rgenes},
+                'molecules': {'matrix': mpc, 'row_inds': mcells, 'col_inds': mgenes}}
+
+
     def summarize(self, alignment_metadata=None, save_plots=False):
         """return descriptive statistics for this dataset
 
@@ -1377,7 +1488,6 @@ class ReadArray:
 
         # get record filter percentages
         metadata = {}
-
 
 def outer_join(left, right):
     """

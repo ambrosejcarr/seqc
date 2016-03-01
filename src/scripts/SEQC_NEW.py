@@ -68,22 +68,28 @@ def main():
     h5db = seqc.arrays.ReadArray.from_samfile(samfile, fc)
 
     seqc.log.info('Resolving ambiguous alignments.')
-    h5db.resolve_alignments_old(expectations=args.index + 'p_coalignment_array.p',
-                                required_poly_t=args.min_poly_t)
+    # h5db.resolve_alignments_old(expectations=args.index + 'p_coalignment_array.p',
+    #                             required_poly_t=args.min_poly_t)
+    h5db.resolve_alignments(index=args.index, required_poly_t=args.min_poly_t)  # todo
 
     seqc.log.info('Storing corrected record database.')
     h5db.save_h5(args.output_stem + '.h5')
 
     seqc.log.info('Generating molecule x cell and read x cell matrices.')
-    mols, mrow, mcol = h5db.unique_features_to_sparse_counts(
+    # mols, mrow, mcol = h5db.unique_features_to_sparse_counts(
+    mols, mrow, mcol = h5db.unique_features_to_sparse_counts_cmp(
         collapse_molecules=True,
         n_poly_t_required=args.min_poly_t)
-    reads, rrow, rcol = h5db.unique_features_to_sparse_counts(
+    # reads, rrow, rcol = h5db.unique_features_to_sparse_counts(
+    reads, rrow, rcol = h5db.unique_features_to_sparse_counts_cmp(
         collapse_molecules=False,
         n_poly_t_required=args.min_poly_t)
     matrices = {'molecules': {'matrix': mols, 'row_ids': mrow, 'col_ids': mcol},
                 'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
     with open(args.output_stem + '_read_and_mol_matrices.p', 'wb') as f:
+        pickle.dump(matrices, f)
+    matrices = h5db.to_sparse_counts_diff(required_support=2, min_poly_t=args.min_poly_t)
+    with open(args.output_stem + '_read_and_mol_matrices_diff.p', 'wb') as f:
         pickle.dump(matrices, f)
 
     seqc.log.info('Run complete.')
