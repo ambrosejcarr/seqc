@@ -1,17 +1,17 @@
-__author__ = 'ambrose'
-
-
-# interfaces with ftp and s3 go here.
 from glob import glob
 import os
 import ftplib
-from threading import Thread
+from functools import partial
+from multiprocessing import Process, Pool
+import configparser
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
-
 import boto3
 import logging
+import seqc
+import requests
+
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
@@ -21,8 +21,15 @@ class S3:
     """A series of methods to upload and download files from amazon s3"""
 
     @staticmethod
-    def download_file(bucket, key, fout=None, overwrite=False):
+    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False):
         """download the file key located in bucket, sending output to filename fout"""
+
+        # check argument types
+        seqc.util.check_type(bucket, str, 'bucket must be type str, not %s'
+                             % type(bucket))
+        seqc.util.check_type(key, str, 'key must be type str, not %s' % key)
+        seqc.util.check_type(fout, str, 'fout must be type str, not %s' % key)
+
         if not overwrite:
             if os.path.isfile(fout):
                 raise FileExistsError('file "%s" already exists. Set overwrite=True to '
@@ -43,25 +50,29 @@ class S3:
             os.makedirs(dirs)
 
         # download the file
-        client = boto3.client('s3')
-        client.download_file(bucket, key, fout)
+        try:
+            client = boto3.client('s3')
+            client.download_file(bucket, key, fout)
+        except FileNotFoundError:
+            raise FileNotFoundError('No file was found at the specified s3 location: '
+                                    '"%s".' % bucket + '/' + key)
 
         return fout
 
     # todo return all downloaded filenames
+    # todo implement glob-based filtering
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
                        overwrite=False):
         """
         recursively download objects from amazon s3
-
         recursively downloads objects from bucket starting with key_prefix.
         If desired, removes a number of leading directories equal to cut_dirs. Finally,
         can overwrite files lying in the download path if overwrite is True.
         """
         # get bucket and filenames
         client = boto3.client('s3')
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
 
         # output prefix needs to end in '/'
         if not output_prefix.endswith('/'):
@@ -106,7 +117,6 @@ class S3:
     def upload_files(file_prefix, bucket, key_prefix, cut_dirs=True):
         """
         upload all files f found at file_prefix to s3://bucket/key_prefix/f
-
         This function eliminates any uninformative directories. For example, if uploading
         a file_prefix such as '/data/*' to bucket 'MyBucket', at key_prefix 'tmp/', which
         produces the following set of files:
@@ -114,7 +124,6 @@ class S3:
         /data/useless/file2
         /data/useless/dir1/file3
         /data/useless/dir2/dir3/file4
-
         the upload with proceed as follows unless cut_dirs is False:
         s3://MyBucket/tmp/file1
         s3://MyBucket/tmp/file2
@@ -162,10 +171,9 @@ class S3:
             client.upload_file(file_, bucket, key)
 
     @staticmethod
-    def list(bucket, key_prefix):
+    def listdir(bucket, key_prefix):
         """
         list all objects beginning with key_prefix
-
         since amazon stores objects as keys, not as a filesystem, this is synonymous to
         listing the directory defined by key_prefix
         """
@@ -182,7 +190,7 @@ class S3:
 
     @classmethod
     def remove_files(cls, bucket, key_prefix):
-        keys = cls.list(bucket, key_prefix)
+        keys = cls.listdir(bucket, key_prefix)
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
@@ -192,12 +200,10 @@ class S3:
         """
         take an amazon s3 link or link prefix and return the bucket and key for use with
         S3.download_file() or S3.download_files()
-
         args:
         -----
         link_or_prefix: an amazon s3 link, e.g. s3://dplab-data/genomes/mm38/chrStart.txt
           link prefix e.g. s3://dplab-data/genomes/mm38/
-
         returns:
         --------
         bucket: the aws bucket used in the link. Above, this would be dplab-data
@@ -212,6 +218,9 @@ class S3:
 
 
 class GEO:
+    """
+    Group of methods for downloading files from NCBI GEO
+    """
 
     @staticmethod
     def _ftp_login(ip, port=0, username='anonymous', password=''):
@@ -255,7 +264,22 @@ class GEO:
             ftp.close()
 
     @classmethod
-    def download_sra_file(cls, link, prefix, clobber=False, verbose=True, port=0):
+    def download_sra_file(cls, link: str, prefix: str, clobber=False, verbose=True,
+                          port=0) -> str:
+        """
+        Downloads file from ftp server found at link into directory prefix
+        args:
+        -----
+        link: ftp link to file
+        prefix: directory into which file should be downloaded
+        clobber: If False, will not download if a file is already present in prefix with
+         the same name
+        verbose: If True, status updates will be printed throughout file download
+        port: Port for login. for NCBI, this should be zero (default).
+        return:
+        -------
+        downloaded filename
+        """
 
         # check link validity
         if not link.startswith('ftp://'):
@@ -285,9 +309,22 @@ class GEO:
 
 
     @classmethod
-    def download_srp(cls, srp, prefix, max_concurrent_dl, verbose=True, clobber=False,
-                     port=0):
-        """download all files in an SRP experiment into directory 'prefix'."""
+    def download_srp(cls, srp: str, prefix: str, max_concurrent_dl: int, verbose=True,
+                     clobber=False, port=0) -> [str]:
+
+        """
+        Download all files in an SRP experiment into directory prefix
+        args:
+        -----
+        srp: the complete ftp link to the folder for the SRP experiment
+        prefix: the name of the folder in which files should be saved
+        max_concurrent_dl: the number of processes to spawn for parallel downloading
+        verbose: If True, status updates will be printed throughout file download
+        port: Port for login. for NCBI, this should be zero (default).
+        returns:
+        --------
+        list of downloaded files
+        """
 
         if not srp.startswith('ftp://'):
             raise ValueError(
@@ -329,14 +366,14 @@ class GEO:
         for f in files:
             for_download.put(srp + f)
 
-        threads = []
+        processes = []
         for i in range(max_concurrent_dl):
-            threads.append(Thread(target=cls._download_sra_file,
+            processes.append(Process(target=cls._download_sra_file,
                                   args=([for_download, prefix, clobber, verbose])))
 
-            threads[i].start()
+            processes[i].start()
 
-        for t in threads:
+        for t in processes:
             t.join()
 
         # get output files
@@ -390,15 +427,15 @@ class GEO:
         for f in sra_files:
             to_extract.put(f)
 
-        threads = []
+        processes = []
         for i in range(max_concurrent):
-            threads.append(Thread(
+            processes.append(Process(
                 target=cls._extract_fastq,
                 args=([to_extract, working_directory, verbose, paired_end, clobber])
             ))
-            threads[i].start()
+            processes[i].start()
 
-        for t in threads:
+        for t in processes:
             t.join()
 
         # get output files
@@ -409,3 +446,78 @@ class GEO:
         else:
             forward = [f.replace('.sra', '.fastq') for f in sra_files]
             return forward
+
+
+def _download_basespace_content(item_data, access_token, dest_path, index):
+    """gets the content of a file requested from the BaseSpace REST API."""
+    item = item_data[index]
+    response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
+                            item['Id'] + '/content?access_token=' +
+                            access_token, stream=True)
+    path = dest_path + '/' + item['Path']
+    with open(path, "wb") as fd:
+        for chunk in response.iter_content(104857600):  # chunksize = 100MB
+            fd.write(chunk)
+        fd.close()
+
+
+class BaseSpace:
+
+    @classmethod
+    def download_sample(cls, sample_id: str, dest_path: str, access_token: str=None)\
+            -> (list, list):
+        """
+        Downloads all files related to a sample from the basespace API
+        args:
+        -----
+        sample_id: The sample id, taken directory from the basespace link for a
+         sample (experiment). e.g. if the link is:
+         "https://basespace.illumina.com/sample/30826030/Day0-ligation-11-17", then the
+         sample_id is "30826030"
+        access_token: a string access token that allows permission to access the ILLUMINA
+         BaseSpace server and download the requested data. Access tokens can be obtained
+         by (1) logging into https://developer.basespace.illumina.com, (2), creating a
+         "new application", and (3) going to the credentials tab of that application to
+         obtain the access token.
+        dest_path: the location that the downloaded files should be placed.
+        returns:
+        forward, reverse: lists of fastq files
+        """
+
+        # check types
+        seqc.util.check_type(sample_id, str, 'sample_id')
+        seqc.util.check_type(dest_path, str, 'dest_path')
+
+        # if the access token isn't provided, look for it in config
+        if not access_token:
+            config = configparser.ConfigParser()
+            config.read(os.path.expanduser('~/.seqc/config'))
+            access_token = config['BaseSpaceToken']['base_space_token']
+            print(access_token)
+
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+        print(response)
+
+        # check that a valid request was sent
+        if response.status_code != 200:
+            raise ValueError('Invalid access_token or sample_id. BaseSpace could not '
+                             'find the requested data. Response status code: %d'
+                             % response.status_code)
+
+        data = response.json()
+
+        func = partial(_download_basespace_content, data['Response']['Items'],
+                       access_token, dest_path)
+        seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
+        with Pool(len(data['Response']['Items'])) as pool:
+            pool.map(func, range(len(data['Response']['Items'])))
+
+        # get downloaded forward and reverse fastq files
+        filenames = [f['Name'] for f in data['Response']['Items']]
+        forward_fastq = [dest_path + '/' + f for f in filenames if '_R1_' in f]
+        reverse_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
+
+        return forward_fastq, reverse_fastq
