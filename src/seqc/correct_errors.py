@@ -440,7 +440,6 @@ def correct_errors(alignments_ra, scid_to_gene_map, barcode_files = [], reverse_
     '''Recieve an RA and return a bool matrix of identified errors according to each method'''
     res_time_cnt = {}
     err_correction_res = np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
-    ra_grouped = alignments_ra.group_for_error_correction(required_poly_t = 1)
     if AJC:
         print ('Starting likelihood model error detection')
         print ('Applying filterring and barcode correction...')
