@@ -81,6 +81,16 @@ class ThreeBit:
     def c1_from_int(seq):
         """Extract barcode1 from a sequence"""
         return seq >> ((8 + 6) * 3)
+    
+    @staticmethod
+    def c2_from_codes(seq):
+        """Extract barcode2 from a sequence of just codes"""
+        return seq & 0o77777777
+
+    @staticmethod
+    def c1_from_codes(seq):
+        """Extract barcode1 from a sequence of just codes"""
+        return seq >> (8 * 3)
 
     @staticmethod
     def gc_content(s):

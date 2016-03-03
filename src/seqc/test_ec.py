@@ -4,8 +4,9 @@ import pickle
 import time
 from three_bit import ThreeBit as bin_rep       #Using Ambrose coder for unity
 import numpy as np
-import sam_reader
-
+#import sam_reader
+import sys
+from scipy.special import gammaincinv
 
 def from_thinair(barcode_files = ['/mnt/gel_barcode1_list_10.txt','/mnt/gel_barcode2_list_10.txt'], num_reads = 10000, err_rate = 0.01, num_features = 1, reverse_complement=True):
     '''
@@ -437,6 +438,42 @@ def pos_instances(ra, fname = ''):
             fout.write(str(pos)+'\t'+str(pos_dic[pos])+'\n')
         fout.close()
         
+def gene_dist_grouped(ra_g, fname=''):
+    gene_dic={}
+    for gene in ra_g.keys():
+        if gene not in gene_dic.keys():
+            gene_dic[gene]=0
+        for seq in ra_g[gene].keys():
+            #gene_dic[gene]+=ra_g[gene][seq].shape[0]
+            #gene_dic[gene]+=ra_g[gene][seq]
+            gene_dic[gene]+=len(ra_g[gene][seq])
+    if fname != '':
+        fout = open(fname, 'w')
+        fout.write('gene\tnum reads\n')
+        for gene in gene_dic.keys():
+            fout.write(str(gene)+'\t'+str(gene_dic[gene])+'\n')
+        fout.close()
+
+def gene_dist_ra(ra, fname=''):
+    gene_dic={}
+    for r in ra.features:
+        if len(r)!=1:
+            continue
+        gene = r[0]
+        if gene==0:
+            continue
+        try:
+            gene_dic[gene]+=1
+        except KeyError:
+            gene_dic[gene]=1
+        
+    if fname != '':
+        fout = open(fname, 'w')
+        fout.write('gene\tnum reads\n')
+        for gene in gene_dic.keys():
+            fout.write(str(gene)+'\t'+str(gene_dic[gene])+'\n')
+        fout.close()
+
 
 def pos_gene_instances(ra, fname = ''):
     pos_dic = {}
@@ -505,3 +542,165 @@ def n_random_reads(ra, fname='', n=100):
         for avg, frac in res:
             f.write(str(avg) + '\t' + str(frac) + '\n')
         f.close()
+        
+def base_rmt_count(ra_grouped):
+    base_freq = {bin_rep._str2bindict['A']:0, bin_rep._str2bindict['C']:0, bin_rep._str2bindict['G']:0, bin_rep._str2bindict['T']:0}
+    N = bin_rep._str2bindict['N']
+    for gene in ra_grouped.keys():
+        for seq in ra_grouped[gene].keys():
+            if bin_rep.contains(seq, N):
+                continue
+            rmt = bin_rep.rmt_from_int(seq)
+            while rmt>0:
+                base_freq[rmt&0b111]+=len(ra_grouped[gene][seq])
+                rmt>>=3
+    return base_freq
+    
+def correct_errors_AJC(ra_grouped, err_rate, err_correction_res, reverse_complement=True, donor_cutoff=1, P_VALUE=0.1, fname=''):
+    """calculate and correct errors in barcode sets"""
+    start = time.process_time()
+    d = ra_grouped
+
+    threshold_donors_l=[]
+    err_gene_dic = {}
+    error_count = 0
+    #err_rate = err.estimate_error_rate(barcode_files, ra_grouped, reverse_complement)
+    
+    tot_feats = len(ra_grouped)
+    cur_f = 0
+    
+    N = bin_rep._str2bindict['N']
+    for_removal = []
+    for feature in d.keys():
+        sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) + ' features processed. ('+str((100*cur_f)/tot_feats)+'%)')
+        cur_f += 1
+        if feature==0:  
+            continue
+        
+        group_size=0
+        for r_seq in d[feature].keys():
+            if bin_rep.contains(r_seq, N):
+                continue
+            group_size += len(d[feature][r_seq])
+                
+        for r_seq in d[feature].keys():
+            if bin_rep.contains(r_seq, N):
+                continue
+            
+            gene = feature
+            r_c1 = bin_rep.c1_from_int(r_seq)
+            r_c2 = bin_rep.c2_from_int(r_seq)
+            r_rmt = bin_rep.rmt_from_int(r_seq)
+            r_num_occurences = len(d[gene][r_seq])
+
+
+            threshold = gammaincinv(r_num_occurences, P_VALUE)
+            
+            expected_errors = 0
+            tot_donors = 0
+            for d_rmt in err.generate_close_seq(r_rmt):
+                d_seq = bin_rep.ints2int([r_c1,r_c2,d_rmt])
+                try:
+                    d_num_occurences = len(d[gene][d_seq])
+                    tot_donors += d_num_occurences
+                except KeyError:
+                    continue
+                if d_num_occurences<=donor_cutoff:
+                    continue
+                d_rmt = bin_rep.rmt_from_int(d_seq)
+
+                p_dtr = err.prob_d_to_r_bin(d_rmt, r_rmt, err_rate)
+                
+                expected_errors += d_num_occurences * p_dtr
+                if expected_errors > threshold:
+                    for_removal.append((gene, r_seq))
+                    error_count+=r_num_occurences
+                    try:
+                        err_gene_dic[gene] += r_num_occurences
+                    except KeyError:
+                        err_gene_dic[gene] = r_num_occurences
+                    break
+            #if r_num_occurences <= 1:
+            #    threshold_donors_l.append((group_size, tot_donors, expected_errors))
+    for (gene, r_seq) in for_removal:
+        err_correction_res[ra_grouped[gene][r_seq],[err.ERROR_CORRECTION_AJC]] = 1
+    if fname!='':
+        f=open(fname, 'w+')
+        #f.write('Num of potential donors\tnum of actual donors\tlambda')
+        f.write('gene\tnum of errors\n')
+        #for pos_d, act_don, lam in threshold_donors_l:
+            #f.write(str(pos_d) + '\t' + str(act_don) + '\t' + str(lam) + '\n')
+        for gene in err_gene_dic.keys():
+            f.write(str(gene) + '\t' + str(err_gene_dic[gene]) + '\n')
+        f.close()
+    print ('\nAJC error_count: ', error_count)
+    tot_time=time.process_time()-start
+    print('total AJC error_correction runtime: ',tot_time)
+    return error_count, tot_time
+    
+def seq_hist(ra_grouped, gene, fname):
+    f=open(fname,'w')
+    f.write('seq/tnum reads/n')
+    for seq in ra_grouped[gene].keys():
+        f.write(str(seq)+'/t'+str(ra_grouped[gene][seq].shape[0])+'/n')
+    f.close()
+
+def correct_errors_jaitin(alignment_ra, ra_grouped, err_correction_res):
+    """Correct errors according to jaitin method """
+    
+    #sort reads by number of positions
+    #go from least to most:
+    #   go over all d_seq:
+    #       if d_seq is 1 dist from r_seq and covers the same positions:
+    #           remove r_seq.
+    #
+    # Note: the sorting isn't really important, it just saves time.
+    
+    """calculate and correct errors in barcode sets"""
+    start = time.process_time()
+    d = ra_grouped
+#   print('version 6.0 - using readArray')
+
+    error_count = 0
+    
+    tot_feats = len(ra_grouped)
+    cur_f = 0
+    
+    N = bin_rep._str2bindict['N']
+    for_removal = []
+    tot=0
+    for feature in d.keys():
+        sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) + ' features processed. ('+str((100*cur_f)/tot_feats)+'%)')
+        cur_f += 1
+        if feature==0:
+            continue
+        cur_seq=0
+        tot_seq=len(d[feature].keys())
+        sorted_seq_l = sorted([(seq, len(set(np.hstack(alignment_ra.positions[d[feature][seq]])))) for seq in d[feature].keys()], key=lambda x:x[1])
+        for idx, r_seqs in enumerate(sorted_seq_l):
+            r_seq = r_seqs[0]
+            cur_seq+=1
+            sys.stdout.write('\rfeature: '+str(cur_f) + '/' + str(tot_feats) + ', seq: ' + str(cur_seq) + '/' + str(tot_seq))
+            if bin_rep.contains(r_seq, N):
+                continue
+            
+            gene = feature
+            r_rmt = bin_rep.rmt_from_int(r_seq)
+            r_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]])
+
+            for d_idx in range(idx-1, -1, -1):
+                d_seq = sorted_seq_l[d_idx][0]
+                d_rmt = bin_rep.rmt_from_int(d_seq)
+                d_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]])
+
+                if err.hamming_dist_bin(r_rmt, d_rmt) == 1 and set(r_pos_list).issubset(set(d_pos_list)):
+     #               for_removal.append((gene, r_seq))
+                    error_count+=len(d[feature][r_seq])
+                    break
+    for (gene, r_seq) in for_removal:
+        err_correction_res[ra_grouped[gene][r_seq],[err.ERROR_CORRECTION_jaitin]] = 1
+    
+    print ('\njaitin error_count: ', error_count)
+    tot_time=time.process_time()-start
+    print('total jaitin error_correction runtime: ',tot_time)
+    return error_count, tot_time
