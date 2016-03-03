@@ -64,7 +64,7 @@ def group_for_ec_pos(ra, scid_to_gene_map, required_poly_t=1):
     return res
     
 
-def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, reverse_complement=True, max_ed=2, err_correction_mat=None):
+def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, reverse_complement=True, max_ed=2, err_correction_mat=''):
     ''' Prepare the RA for error correction. Apply filters, estimate error correction and correct the barcodes'''
     res = {}
     tot = 0
@@ -153,7 +153,7 @@ def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, rever
         # Filter reads with too many errors in their barcodes
         if ed_1+ed_2 > max_ed:
             bc_filter += 1
-            if err_correction_mat!=None:
+            if err_correction_mat!='':
                 err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
             continue
         
