@@ -197,7 +197,7 @@ def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, rever
             err_rate[k] = default_error_rate            
     #print('total reads: ',tot,' no single gene: ',no_single_gene,' cell is zero: ',cell_0, ' rmt is zero: ',rmt_0,' small poly_t: ',small_poly_t)
     print('total reads: ',tot,' filtered: ',filtered, ' bc_filter: ', bc_filter)
-    print('error_table: ',error_table,' cor_instance_table: ',cor_instance_table)
+    #print('error_table: ',error_table,' cor_instance_table: ',cor_instance_table)
     return res, err_rate
 
 # Return the hamming distance bewteen two numbers representing a sequence (3 bits per base)
