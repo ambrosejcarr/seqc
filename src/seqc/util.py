@@ -5,6 +5,7 @@ import pstats
 from memory_profiler import memory_usage
 from memory_profiler import profile as mem_profile
 import os
+import re
 
 
 def check_type(arg, type_, arg_name):
