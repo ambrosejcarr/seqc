@@ -12,7 +12,8 @@ from seqc import (
     sam,
     sequence,
     encodings,
-    log
+    log,
+    util
 )
 
 __author__ = 'ambrose'
