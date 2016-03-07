@@ -8,6 +8,7 @@ from random import randint
 from sys import maxsize
 import numpy as np
 from intervaltree import IntervalTree
+from collections import defaultdict
 import seqc
 
 
@@ -99,7 +100,7 @@ class Record:
 
         # todo
         # this might break; trying to find a way to make getitem inheritable to subclasses
-        return self.__new__(fields)
+        return Record(fields)
 
     def _parse_attribute(self) -> None:
         for field in self._fields[8].rstrip(b';\n').split(b';'):
@@ -474,7 +475,7 @@ class Annotation:
 
         # create fasta object
         if fasta:
-            self._fasta = seqc.sequence.fasta.Fasta.from_file(fasta)
+            self._fasta = seqc.sequence.fasta.Genome.from_file(fasta)
 
         # create empty interval tree
         self._interval_tree = None
@@ -576,6 +577,31 @@ class Annotation:
 
         return seqs, genes
 
+    def translate_scid(self, strand: bytes, chromosome: bytes, position: int,
+                       filters=None) -> list:
+        # allows multiplicity of mapping.
+        try:
+            ivs = self._interval_tree[(chromosome, strand)].search(position)
+            if ivs:
+                return list(i.data for i in ivs)
+            else:
+                return None
+        except KeyError:
+            return []
+        except TypeError:
+            self.create_interval_tree_scid(filters=filters)
+            try:
+                ivs = self._interval_tree[(chromosome, strand)].search(position)
+                if ivs:
+                    return list(i.data for i in ivs)
+                else:
+                    return None
+                # old version
+                # return [iv.data for iv in
+                #         self._interval_tree[(chromosome, strand)].search(position)]
+            except KeyError:
+                return None
+
     def translate(self, strand: bytes, chromosome: bytes, position: int,
                   filters=None) -> list:
         # todo
@@ -603,6 +629,37 @@ class Annotation:
                 return None
 
     def create_interval_tree(self, filters: dict=None) -> None:
+        """create a tree that maps genomic intervals to their corresponding gene ids
+
+        args:
+        -----
+        filters: remove these types of genes (e.g. gene_type: miRNA)
+        """
+
+        # map scids to intervals
+        data = {}
+
+        if filters is None:
+            candidate_genes = self.values()
+        else:
+            candidate_genes = []
+            for gene in self.values():
+                if not any(gene.attribute(k) == v for k, v in filters.items()):
+                    candidate_genes.append(gene)
+
+        for gene in candidate_genes:
+            for iv in gene.intervals():
+                try:
+                    id_ = gene.gene_name
+                    data[(gene.seqname, gene.strand)].addi(iv[0], iv[1], id_)
+                except KeyError:
+                    data[(gene.seqname, gene.strand)] = IntervalTree()
+                    id_ = gene.gene_name
+                    data[(gene.seqname, gene.strand)].addi(iv[0], iv[1], id_)
+
+        self._interval_tree = data
+
+    def create_interval_tree_scid(self, filters: dict=None) -> None:
         """create a tree that maps genomic intervals to their corresponding gene ids
 
         args:
@@ -721,3 +778,260 @@ class Reader(seqc.reader.Reader):
 
         # yield the final gene record
         yield gene
+
+
+    def iter_transcript_sets(self) -> Iterator:
+        """iterate over all the records for each transcript in passed gtf
+
+        yields:
+        -------
+        iterator of lists of Records objects
+        """
+
+        records = iter(self)
+
+        # get the first gene record
+        record = next(records)
+        while record[2] != b'transcript':
+            record = next(records)
+
+        # aggregate all records until the next gene record pops up
+        gene = [record]
+        record = next(records)
+        while record:
+            if record[2] != b'transcript':
+                gene.append(record)
+            else:
+                yield gene
+                gene = [record]
+            record = next(records)
+
+        # yield the final gene record
+        yield gene
+
+
+class SCID:
+
+    __slots__ = ['_transcripts', '_id']
+
+    def __init__(self, scid: int, transcripts: [Transcript]=list()):
+
+        # define transcripts
+        self._transcripts = transcripts
+        self._id = scid
+
+    @property
+    def transcripts(self):
+        return self._transcripts
+
+    @property
+    def id(self):
+        return self._id
+
+    def __iter__(self) -> Iterator:
+        return iter(self.transcripts)
+
+    def __len__(self) -> int:
+        return len(self.transcripts)
+
+    def __repr__(self) -> str:
+        return '<SCID (composed of %d transcript(s))>' % len(self)
+
+    def __getitem__(self, slice_):
+        """
+        slice each transcript and merge them together to get the valid sections of the
+        SCID record. If a slice would return no data (e.g. gene[:-10000], but gene is
+        100 bases in length), returns None.
+        """
+        tx = []
+        for t in self.transcripts:
+            sliced = t[slice_.start:slice_.stop]
+            if sliced:
+                tx.append(sliced)
+
+        # some slices return no data; in this case, return None
+        if not tx:
+            return None
+        else:
+            return SCID(self.id, tx)
+
+    def append(self, transcript: []):
+        self.transcripts.append(transcript)
+
+    def extend(self, transcripts: [[]]):
+        self.transcripts.extend(transcripts)
+
+    @property
+    def transcript_sizes(self) -> list:
+        if self.transcripts:
+            return [tx.size for tx in self]
+        else:
+            return [0]
+
+    @staticmethod
+    def _merge_intervals(ivs: ((int, int, bytes, bytes),)) -> Iterator:
+        d = defaultdict(list)  # dict to separate chromosome/strand -- don't need merging
+        for iv in ivs:
+            d[(iv[2], iv[3])].append((iv[:2]))
+        for (chrom, strand), ivs in d.items():
+            ivs = sorted(ivs)
+            saved = list(ivs[0])
+            for st, en in ivs:
+                if st <= saved[1]:
+                    saved[1] = max(saved[1], en)
+                else:
+                    yield saved[0], saved[1], chrom, strand
+                    saved[0] = st
+                    saved[1] = en
+            yield saved[0], saved[1], chrom, strand,
+
+    def intervals(self, start=None, stop=None) -> tuple:
+        """
+        return the set of genomic intervals defined by scid, given constraints posed by
+        slice. if the slice would return no data, returns an empty tuple.
+
+        e.g. if slice= scid[-1000:], return the set of intervals formed by the union of
+        the final 1000 bases of all transcripts of scid.
+
+        args:
+        -----
+        slice_: the positions of each transcript to consider. Must be a contiguous section
+         of the transcript
+
+        returns:
+        --------
+        intervals: iterator of merged (start, end) tuples in chromosome coordinates
+
+        """
+        if start or stop:
+            scid = self[start:stop]
+        else:
+            scid = self
+
+        if not scid:
+            return tuple()
+
+        ivs = []
+        for tx in scid:
+            ivs.extend((e.start, e.end, e.seqname, e.strand)
+                       for e in tx if e.end - e.start > 0)
+
+        return tuple(self._merge_intervals(ivs))
+
+
+class SCID_set:
+
+    def __init__(self, gtf: str):
+        """
+        returns a complete genomic annotation from gtf and fasta files
+        """
+
+        # create gtf objects
+        # self._len = 0  # tracker for length
+        gtf_rd = Reader(gtf)
+
+        # organize by gene
+        self._scids = {}
+        for records in gtf_rd.iter_transcript_sets():
+            if len(records) < 2:
+                continue  # not a valid transcript; 2 records needed: tx, exon.
+            tx = Transcript.from_records(*records)
+            id_ = int(tx.attribute(b'scseq_id')[2:])
+            try:
+                self._scids[id_].append(tx)
+            except KeyError:
+                self._scids[id_] = SCID(id_, [tx])
+
+        # create empty interval tree
+        self._interval_tree = None
+
+    @property
+    def scids(self) -> dict:
+        return self._scids
+
+    def __len__(self) -> int:
+        """return the number of genes in the annotation"""
+        return len(self.scids)
+
+    def __repr__(self) -> str:
+        return "<Annotation composed of %d genes>" % len(self)
+
+    def __getitem__(self, id_):
+        """
+        both referencing with self[chromosome] and self[chromosome][gene] will return
+        their respective objects due to heirarchical organization of dictionary
+        """
+        return self.scids[id_]
+
+    def keys(self) -> Iterator:
+        return self.scids.keys()
+
+    def items(self) -> Iterator:
+        return self.scids.items()
+
+    def values(self) -> Iterator:
+        return self.scids.values()
+
+    def __iter__(self) -> Iterator:
+        """equivalent to self.keys()"""
+        for gene in self.keys():
+            yield gene
+
+    def translate_scid(self, strand: bytes, chromosome: bytes, position: int,
+                       filters=None) -> list:
+        # allows multiplicity of mapping.
+        try:
+            ivs = self._interval_tree[(chromosome, strand)].search(position)
+            if ivs:
+                return list(i.data for i in ivs)
+            else:
+                return None
+        except KeyError:
+            return None
+        except TypeError:
+            self.create_interval_tree_scid(filters=filters)
+            try:
+                ivs = self._interval_tree[(chromosome, strand)].search(position)
+                if ivs:
+                    return list(i.data for i in ivs)
+                else:
+                    return None
+                # old version
+                # return [iv.data for iv in
+                #         self._interval_tree[(chromosome, strand)].search(position)]
+            except KeyError:
+                return None
+
+    def create_interval_tree_scid(self, filters: dict=None) -> None:
+        """create a tree that maps genomic intervals to their corresponding gene ids
+
+        args:
+        -----
+        filters: remove these types of scids (e.g. gene_type: miRNA)
+        """
+
+        # map integer ENSEMBL ids to intervals
+        data = {}
+
+        if filters is None:
+            candidate_ids = self.values()
+        else:  # todo will not work; scid does not have attribute
+            candidate_ids = []
+            for scid in self.values():
+                if not any(scid.attribute(k) == v for k, v in filters.items()):
+                    candidate_ids.append(scid)
+
+        for scid in candidate_ids:
+            for iv in scid.intervals():
+                try:
+                    data[(iv[2], iv[3])].addi(iv[0], iv[1], scid.id)
+                except KeyError:
+                    data[(iv[2], iv[3])] = IntervalTree()
+                    data[(iv[2], iv[3])].addi(iv[0], iv[1], scid.id)
+
+        self._interval_tree = data
+
+    def slice_SCIDs(self, start=None, stop=None):
+        """reduce the size of the annotation, slicing the genes; makes changes in-place"""
+        for scid, transcripts in self.items():
+            self._scids[scid] = SCID(scid, [tx[start:stop] for tx in transcripts])

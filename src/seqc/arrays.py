@@ -205,6 +205,29 @@ class JaggedArray:
         pass
 
 
+class SimpleJaggedArray():
+    """list-of-lists implementation of feature or position arrays"""
+
+    def __init__(self, data: [[]]=None):
+        self._data = data
+
+    @property
+    def data(self):
+        return self._data
+
+    @classmethod
+    def from_iterable(cls, iterable):
+        obj = cls()
+        for i in iterable:
+            obj.append(i)
+
+    def append(self, item):
+        self.data.append(item)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
 class ArraySet:
 
     def __init__(self, iterable_of_arrays):

@@ -448,24 +448,27 @@ class GEO:
             return forward
 
 
-def _download_basespace_content(item_data, access_token, dest_path, index):
-    """gets the content of a file requested from the BaseSpace REST API."""
-    item = item_data[index]
-    response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
-                            item['Id'] + '/content?access_token=' +
-                            access_token, stream=True)
-    path = dest_path + '/' + item['Path']
-    with open(path, "wb") as fd:
-        for chunk in response.iter_content(104857600):  # chunksize = 100MB
-            fd.write(chunk)
-        fd.close()
-
-
 class BaseSpace:
 
+    @staticmethod
+    def _download_basespace_content(item_data, access_token, dest_path, index):
+        """gets the content of a file requested from the BaseSpace REST API."""
+        item = item_data[index]
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
+                                item['Id'] + '/content?access_token=' +
+                                access_token, stream=True)
+        path = dest_path + '/' + item['Path']
+        with open(path, "wb") as fd:
+            for chunk in response.iter_content(104857600):  # chunksize = 100MB
+                fd.write(chunk)
+            fd.close()
+
     @classmethod
-    def download_sample(cls, sample_id: str, dest_path: str, access_token: str=None)\
-            -> (list, list):
+    def download_sample(
+            cls, platform, sample_id: str, dest_path: str, access_token: str=None
+    ) -> (list, list):
+
+
         """
         Downloads all files related to a sample from the basespace API
         args:
@@ -509,7 +512,7 @@ class BaseSpace:
 
         data = response.json()
 
-        func = partial(_download_basespace_content, data['Response']['Items'],
+        func = partial(cls._download_basespace_content, data['Response']['Items'],
                        access_token, dest_path)
         seqc.log.info('BaseSpace API link provided, downloading files from BaseSpace.')
         with Pool(len(data['Response']['Items'])) as pool:
@@ -517,7 +520,11 @@ class BaseSpace:
 
         # get downloaded forward and reverse fastq files
         filenames = [f['Name'] for f in data['Response']['Items']]
-        forward_fastq = [dest_path + '/' + f for f in filenames if '_R1_' in f]
-        reverse_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
+        if 'mars' not in platform:
+            barcode_fastq = [dest_path + '/' + f for f in filenames if '_R1_' in f]
+            genomic_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
+        else:
+            genomic_fastq = [dest_path + '/' + f for f in filenames if '_R1_' in f]
+            barcode_fastq = [dest_path + '/' + f for f in filenames if '_R2_' in f]
 
-        return forward_fastq, reverse_fastq
+        return barcode_fastq, genomic_fastq
