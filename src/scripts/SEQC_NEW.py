@@ -118,10 +118,14 @@ def main():
                     args.merged_fastq, args.index, n_processes, alignment_directory)
 
         seqc.log.info('Filtering alignments and constructing record database.')
-        fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(
-                args.index + 'annotations.gtf',
-                args.max_insert_size)
-        h5db = seqc.arrays.ReadArray.from_samfile(args.samfile, fc)
+        # fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(
+        #         args.index + 'annotations.gtf',
+        #         args.max_insert_size)
+        fc = seqc.gtf.SCID_set(args.index + 'annotations.gtf')
+        fc.slice_SCIDs(start=-args.max_insert_size)  # limit to 3'
+        fc.create_interval_tree_scid()
+        h5db = seqc.arrays.SimpleReadArray.from_samfile(args.samfile, fc)
+        h5db.save_h5(args.output_stem + '.h5')
 
         seqc.log.info('Resolving ambiguous alignments.')
         # h5db.resolve_alignments_old(expectations=args.index + 'p_coalignment_array.p',

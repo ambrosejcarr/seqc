@@ -977,7 +977,7 @@ class SCID_set:
         for gene in self.keys():
             yield gene
 
-    def translate_scid(self, strand: bytes, chromosome: bytes, position: int,
+    def translate(self, strand: bytes, chromosome: bytes, position: int,
                        filters=None) -> list:
         # allows multiplicity of mapping.
         try:
@@ -985,9 +985,9 @@ class SCID_set:
             if ivs:
                 return list(i.data for i in ivs)
             else:
-                return None
+                return []
         except KeyError:
-            return None
+            return []
         except TypeError:
             self.create_interval_tree_scid(filters=filters)
             try:
@@ -995,12 +995,12 @@ class SCID_set:
                 if ivs:
                     return list(i.data for i in ivs)
                 else:
-                    return None
+                    return []
                 # old version
                 # return [iv.data for iv in
                 #         self._interval_tree[(chromosome, strand)].search(position)]
             except KeyError:
-                return None
+                return []
 
     def create_interval_tree_scid(self, filters: dict=None) -> None:
         """create a tree that maps genomic intervals to their corresponding gene ids
