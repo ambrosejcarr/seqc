@@ -11,8 +11,8 @@ import pickle
 def parse_args():
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
-                   choices=['in_drop', 'drop_seq', 'mars1_seq',
-                            'mars2_seq', 'in_drop_v2'],
+                   choices=['in_drop_patched', 'drop_seq', 'mars1_seq',
+                            'mars2_seq', 'in_drop_v2_patched'],
                    help='which platform are you merging annotations from?')
     p.add_argument('-g', '--genomic-fastq', nargs='+', metavar='G',
                    help='fastq file(s) containing genomic information')
