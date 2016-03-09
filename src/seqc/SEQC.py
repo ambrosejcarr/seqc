@@ -8,7 +8,7 @@ import multiprocessing
 import pickle
 
 
-def parse_args():
+def parse_args(args):
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop_patched', 'drop_seq', 'mars1_seq',
@@ -42,14 +42,14 @@ def parse_args():
                    'size that is considered a valid record', default=1000)
     f.add_argument('--min-poly-t', metavar='T', help='minimum size of poly-T tail that '
                    'is required for a barcode to be considered a valid record', default=3)
-    return p.parse_args()
+    return p.parse_args(args)
 
 
-def main():
+def main(args: list=None):
 
     seqc.log.setup_logger()
     try:
-        args = parse_args()
+        args = parse_args(args)
         seqc.log.args(args)
 
         # do a bit of argument checking
@@ -160,4 +160,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

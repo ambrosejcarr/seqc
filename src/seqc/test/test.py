@@ -4,13 +4,13 @@ import random
 from copy import deepcopy
 import os
 import seqc
-import numpy as np
 import re
 import pickle
 from more_itertools import first
 from itertools import islice, chain
 from operator import attrgetter
 import numpy as np
+import shutil
 # from nose2.tools import params
 
 
@@ -593,6 +593,23 @@ class TestResolveAlignments(unittest.TestCase):
         print('new features:', bins)
         print('no. observations:', counts)
 
+
+class TestSeqcNew(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.barcode = config.seqc_dir + 'data_test/in_drop/forward/test_seqc_r1.fastq'
+        cls.genomic = config.seqc_dir + 'data_test/in_drop/reverse/test_seqc_r2.fastq'
+        cls.index = config.seqc_dir + 'data_test/mm38_chr19/'
+        cls.output_stem = config.seqc_dir + 'test_seqc/run'
+
+    def test_seqc_new(self):
+        args = ['in_drop_patched', '-b', self.barcode, '-g', self.genomic, '-i',
+                self.index, '-o', self.output_stem]
+        seqc.SEQC.main(args)
+
+    def tearDownClass(cls):
+        shutil.rmtree(config.seqc_dir + 'test_seqc')
 
 if __name__ == "__main__":
     nose2.main()

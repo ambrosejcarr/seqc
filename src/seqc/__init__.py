@@ -11,9 +11,11 @@ from seqc import (
     qc,
     sam,
     sequence,
+    test,
     encodings,
     log,
-    util
+    util,
+    SEQC
 )
 
 __author__ = 'ambrose'
