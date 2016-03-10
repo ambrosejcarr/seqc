@@ -534,16 +534,14 @@ def correct_errors_AJC(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
                 p_dtr = prob_d_to_r_bin(d_rmt, r_seq, err_rate)
                 expected_errors += d_num_occurences * p_dtr
                 
-                p_val_not_err = gammainc(r_num_occurences, expected_errors)     #P(x>=r_num_occurences)
-                #TODO: move this outside of the loop!
-                
-                
                 #do Jaitin
                 if not jait:
                     d_pos_list = np.hstack(ra.positions[d[feature,cell][d_rmt]])
                     if set(r_pos_list).issubset(set(d_pos_list)):
                         err_correction_res[ra_grouped[gene, cell][r_seq],ERROR_CORRECTION_jaitin] = 1
                         jait=True
+                        
+            p_val_not_err = gammainc(r_num_occurences, expected_errors)     #P(x>=r_num_occurences)
             if p_val_not_err <= p_val1:
                 err_correction_res[ra_grouped[gene, cell][r_seq],NOT_ERROR_1] = 1
             if p_val_not_err <= p_val2:
