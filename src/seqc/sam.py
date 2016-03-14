@@ -1,11 +1,15 @@
 __author__ = 'ambrose'
 
+import gzip
+import io
 from threading import Thread
 from queue import Queue, Full, Empty
 from time import sleep
 import numpy as np
 import collections
 from itertools import islice, tee
+from collections import namedtuple
+import seqc
 
 
 def multi_delete(sorted_deque, *lists):
@@ -435,3 +439,186 @@ def iterate_chunk(samfile, n):
 
     else:
         raise ValueError('file extension not recognized')
+
+
+class SamRecord:
+    """simple record object to use when iterating over sam files"""
+
+    __slots__ = ['qname', 'flag', 'rname', 'pos', 'mapq', 'cigar', 'rnext', 'pnext',
+                 'tlen', 'seq', 'qual', '_optional_fields', '_parsed_name_field']
+
+    NameField = namedtuple('NameField', ['cell', 'rmt', 'n_poly_t', 'valid_cell',
+                                         'dust_score', 'fwd_quality', 'name'])
+
+    def __init__(self, qname, flag, rname, pos, mapq, cigar, rnext, pnext, tlen, seq,
+                 qual, *optional_fields):
+        self.qname = qname
+        self.flag = flag
+        self.rname = rname
+        self.pos = pos
+        self.mapq = mapq
+        self.cigar = cigar
+        self.rnext = rnext
+        self.pnext = pnext
+        self.tlen = tlen
+        self.seq = seq
+        self.qual = qual
+        self._optional_fields = optional_fields
+        self._parsed_name_field = None
+
+    def _parse_name_field(self):
+        fields, name = self.qname.split(';')
+        processed_fields = list(map(int, fields.split(':')))
+        processed_fields.append(name)
+        self._parsed_name_field = self.NameField(*processed_fields)
+
+    @property
+    def rmt(self):
+        try:
+            return self._parsed_name_field.rmt
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.rmt
+
+    @property
+    def cell(self):
+        try:
+            return self._parsed_name_field.cell
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.cell
+
+    @property
+    def n_poly_t(self):
+        try:
+            return self._parsed_name_field.n_poly_t
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.n_poly_t
+
+    @property
+    def valid_cell(self):
+        try:
+            return self._parsed_name_field.valid_cell
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.valid_cell
+
+    @property
+    def dust_score(self):
+        try:
+            return self._parsed_name_field.dust_score
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.dust_score
+
+    @property
+    def fwd_quality(self):
+        try:
+            return self._parsed_name_field.fwd_quality
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.fwd_quality
+
+    @property
+    def name(self):
+        try:
+            return self._parsed_name_field.name
+        except AttributeError:
+            self._parse_name_field()
+            return self._parsed_name_field.name
+
+    @property
+    def optional_fields(self):
+        flags_ = {}
+        for f in self._optional_fields:
+            k, _, v = f.split(':')
+            flags_[k] = int(v)
+        return flags_
+
+    @property
+    def is_mapped(self):
+        return False if (int(self.flag) & 4) else True
+
+    @property
+    def is_unmapped(self):
+        return not self.is_mapped
+
+    @property
+    def is_multimapped(self):
+        return True if self.optional_fields['NH'] == 1 else False
+
+    @property
+    def is_uniquely_mapped(self):
+        return not self.is_multimapped
+
+    def __repr__(self):
+        return ('<SamRecord:' + ' %s' * 12 + '>') % \
+               (self.qname, self.flag, self.rname, self.pos, self.mapq, self.cigar,
+                self.rnext, self.pnext, self.tlen, self.seq, self.qual,
+                ' '.join(self.optional_fields))
+
+    @property
+    def strand(self):
+        minus_strand = int(self.flag) & 16
+        return '-' if minus_strand else '+'
+
+
+class Reader:
+    """simple sam reader, optimized for utility rather than speed"""
+
+    def __init__(self, samfile):
+
+        seqc.util.check_type(samfile, str, 'samfile')
+        seqc.util.check_file(samfile, 'samfile')
+
+        self._samfile = samfile
+        try:
+            samfile_iterator = iter(self)
+            next(samfile_iterator)
+        except:
+            raise ValueError('%s is an invalid samfile. Please check file formatting.' %
+                             samfile)
+
+    @property
+    def samfile(self):
+        return self._samfile
+
+    def _open(self) -> io.TextIOBase:
+        """
+        seamlessly open self._samfile, whether gzipped or uncompressed
+        returns:
+        --------
+        fobj: open file object
+        """
+        if self._samfile.endswith('.gz'):
+            fobj = gzip.open(self._samfile, 'rt')
+        else:
+            fobj = open(self._samfile)
+        return fobj
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def __iter__(self):
+        """return an iterator over all non-header records in samfile"""
+        fobj = self._open()
+        try:
+            for line in fobj:
+                if line.startswith('@'):
+                    continue
+                yield SamRecord(*line.strip().split('\t'))
+        finally:
+            fobj.close()
+
+    def iter_multialignments(self):
+        """yields tuples of all alignments for each fastq record"""
+        sam_iter = iter(self)
+        fq = [next(sam_iter)]
+        for record in sam_iter:
+            if record.qname == fq[0].qname:
+                fq.append(record)
+            else:
+                yield tuple(fq)
+                fq = [record]
+        yield tuple(fq)

@@ -69,7 +69,7 @@ class FastaReader(seqc.reader.Reader):
         with fileinput.input(self._files, openhook=hook, mode='rb') as f:
 
             # get rid of file headers, get first record name
-            record_iterator = iter(self)
+            record_iterator = iter(f)
             line = next(record_iterator)
             while not line.startswith(b'>'):
                 line = next(record_iterator)
@@ -79,11 +79,11 @@ class FastaReader(seqc.reader.Reader):
                 try:
                     line = next(record_iterator)
                 except StopIteration:
-                    yield record
+                    yield FastaRecord(record)
                     return
 
                 if line.startswith(b'>'):
-                    yield record
+                    yield FastaRecord(record)
                     record = [line]
                 else:
                     record.append(line)

@@ -598,8 +598,10 @@ class TestSeqcNew(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.barcode = config.seqc_dir + 'data_test/in_drop/forward/test_seqc_r1.fastq'
-        cls.genomic = config.seqc_dir + 'data_test/in_drop/reverse/test_seqc_r2.fastq'
+        # cls.barcode = config.seqc_dir + 'data_test/in_drop/forward/test_seqc_r1.fastq'
+        # cls.genomic = config.seqc_dir + 'data_test/in_drop/reverse/test_seqc_r2.fastq'
+        cls.barcode = config.seqc_dir + 'r1.fastq'
+        cls.genomic = config.seqc_dir + 'r2.fastq'
         cls.index = config.seqc_dir + 'data_test/mm38_chr19/'
         cls.output_stem = config.seqc_dir + 'test_seqc/run'
 
@@ -608,8 +610,47 @@ class TestSeqcNew(unittest.TestCase):
                 self.index, '-o', self.output_stem]
         seqc.SEQC.main(args)
 
+        # test feature conversion
+        # -----------------------
+        # go over samfile, for each multialignment, ask if the feature converter
+        # generates the correct translation output. It should include, at the very least,
+        # the input gene that generated it.
+
+        fc = seqc.gtf.SCID_set(self.index + 'annotations.gtf')
+        output_dir, output_leaf = os.path.split(self.output_stem)
+        rd = seqc.sam.Reader(output_dir + '/alignments/Aligned.out.sam')
+        correct_results = 0
+        incorrect_results = 0
+        for ma in rd.iter_multialignments():
+            res = []
+            origin_id = {int(ma[0].qname.split(':')[-1])}
+            for r in ma:
+                assert isinstance(int(r.pos), int)
+                res.extend(fc.translate(r.strand.encode(), r.rname.encode(), int(r.pos)))
+            if set(res).intersection(origin_id):
+                correct_results += 1
+            else:
+                print('origin_id: {!r}'.format(set(res)))
+                print('observed_id(s): {!r}'.format(res))
+                print(ma[0])
+                incorrect_results += 1
+                # raise ValueError('')
+                # if incorrect_results > 10:
+                #     print('correct results: ', correct_results)
+                #     return
+        print('correct results: {:d}'.format(correct_results))
+        print('incorrect results: {:d}'.format(incorrect_results))
+
+    def test_generate_synthetic(self):
+        gs = seqc.sequence.fastq.GenerateSynthetic(self.index + 'annotations.gtf',
+                                                   self.index + 'mm38_chr19.fa')
+        gs.add_alignable(config.seqc_dir + 'test_seqc/barcode.fastq',
+                         config.seqc_dir + 'test_seqc/genomic.fastq', 100, 10000)
+
+    @classmethod
     def tearDownClass(cls):
-        shutil.rmtree(config.seqc_dir + 'test_seqc')
+        if os.path.isdir(config.seqc_dir + 'test_seqc'):
+            shutil.rmtree(config.seqc_dir + 'test_seqc')
 
 if __name__ == "__main__":
     nose2.main()
