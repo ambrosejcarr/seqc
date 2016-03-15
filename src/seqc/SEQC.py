@@ -117,21 +117,27 @@ def main(args: list=None):
             args.samfile = seqc.align.STAR.align(
                     args.merged_fastq, args.index, n_processes, alignment_directory)
 
+        # seqc.log.info('Filtering alignments and constructing record database.')
+        # # fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(
+        # #         args.index + 'annotations.gtf',
+        # #         args.max_insert_size)
+        # fc = seqc.gtf.SCID_set(args.index + 'annotations.gtf')
+        # fc.slice_SCIDs(start=-args.max_insert_size)  # limit to 3'
+        # fc.create_interval_tree_scid()
+        # h5db = seqc.arrays.SimpleReadArray.from_samfile(args.samfile, fc)
+        # h5db.save_h5(args.output_stem + '.h5')
+
         seqc.log.info('Filtering alignments and constructing record database.')
-        # fc = seqc.convert_features.ConvertFeatureCoordinates.from_gtf(
-        #         args.index + 'annotations.gtf',
-        #         args.max_insert_size)
-        fc = seqc.gtf.SCID_set(args.index + 'annotations.gtf')
-        fc.slice_SCIDs(start=-args.max_insert_size)  # limit to 3'
-        fc.create_interval_tree_scid()
-        h5db = seqc.arrays.SimpleReadArray.from_samfile(args.samfile, fc)
-        h5db.save_h5(args.output_stem + '.h5')
+        fc = seqc.gtf.Annotation(
+                args.index + 'annotations.gtf',
+                max_insert_size=args.max_insert_size)
+        h5db = seqc.arrays.ReadArray.from_samfile(args.samfile, fc)
 
-        seqc.log.info('Resolving ambiguous alignments.')
-        # h5db.resolve_alignments_old(expectations=args.index + 'p_coalignment_array.p',
-        #                             required_poly_t=args.min_poly_t)
-        h5db.resolve_alignments(index=args.index, required_poly_t=args.min_poly_t)
-
+        # seqc.log.info('Resolving ambiguous alignments.')
+        # # h5db.resolve_alignments_old(expectations=args.index + 'p_coalignment_array.p',
+        # #                             required_poly_t=args.min_poly_t)
+        # h5db.resolve_alignments(index=args.index, required_poly_t=args.min_poly_t)  # todo
+        #
         seqc.log.info('Storing corrected record database.')
         h5db.save_h5(args.output_stem + '.h5')
 
@@ -148,8 +154,11 @@ def main(args: list=None):
         #             'reads': {'matrix': reads, 'row_ids': rrow, 'col_ids': rcol}}
         # with open(args.output_stem + '_read_and_mol_matrices.p', 'wb') as f:
         #     pickle.dump(matrices, f)
-        matrices = h5db.to_sparse_counts_diff(
-                required_support=2, min_poly_t=args.min_poly_t)
+        # matrices = h5db.to_sparse_counts_diff(
+        #         required_support=2, min_poly_t=args.min_poly_t)
+
+        ua = seqc.arrays.FilteredArray.from_read_array(h5db, args.min_poly_t)
+        matrices = ua.to_expression_matrices(return_reads=True)
         with open(args.output_stem + '_read_and_mol_matrices_diff.p', 'wb') as f:
             pickle.dump(matrices, f)
 
