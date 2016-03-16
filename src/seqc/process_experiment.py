@@ -48,12 +48,14 @@ def parse_args(args):
     r.set_defaults(remote=True)
     r.add_argument('--local', dest="remote", action="store_false",
                    help='run SEQC locally instead of initiating on AWS EC2 servers')
-    r.add_argument('--email-status', metavar='E', help='email address to receive run '
-                                                       'summary when running remotely')
+    r.add_argument('--email-status', metavar='E', default=None,
+                   help='email address to receive run summary when running remotely')
     r.add_argument('--cluster-name', default=None, metavar='C',
                    help='optional name for EC2 instance')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='do not terminate the EC2 instance after program completes')
+    r.add_argument('--aws-upload-key', default=None, metavar='A',
+                   help='location to upload results')
 
     return p.parse_args(args)
 
@@ -97,6 +99,10 @@ def main(args: list=None):
     try:
         args = parse_args(args)
         seqc.log.args(args)
+
+        if args.remote:
+            run_remote()
+            sys.exit()
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
@@ -156,7 +162,7 @@ def main(args: list=None):
                     barcode=args.barcode_fastq)
 
         if align:
-            seqc.log.info('Aligning merged fastq records.')
+            info = seqc.log.info('Aligning merged fastq records.')
             *base_directory, stem = args.output_stem.split('/')
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
@@ -169,11 +175,33 @@ def main(args: list=None):
         ra.save(args.output_stem + '.h5')
 
         seqc.log.info('Correcting errors and generating expression matrices.')
+        # todo add these functions
 
         seqc.log.info('Run complete.')
+
+        if args.email_status:
+            seqc.remote.upload_results(
+                args.output_prefix, args.email_status, args.aws_upload_key)
+
     except:
         seqc.log.exception()
+        if args.email_status and args.remote:
+            email_body = 'Process interrupted -- see attached error message'
+            seqc.remote.email_user(attachment='seqc.log', email_body=email_body,
+                                   email_address=args.email_status)
         raise
+
+    finally:
+        if args.remote:
+            if args.no_terminate:
+                if os.path.isfile('/data/software/instance.txt'):
+                    with open('/data/software/instance.txt','r') as f:
+                        inst_id = f.readline().strip('\n')
+                    seqc.remote.terminate_cluster(inst_id)
+                else:
+                    seqc.log.info('file containing instance id is unavailable!')
+            else:
+                seqc.log.info('not terminating cluster -- user responsible for cleanup')
 
 
 if __name__ == '__main__':

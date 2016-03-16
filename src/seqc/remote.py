@@ -394,7 +394,7 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     seqc.io.S3.upload_file(archive_name, bucket, key)
 
-    # todo put this back in
+    # todo @AJC put this back in
     # generate a run summary and append to the email
     # exp = seqc.Experiment.from_npz(counts)
     # run_summary = exp.summary(alignment_summary)

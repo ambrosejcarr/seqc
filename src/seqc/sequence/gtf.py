@@ -166,8 +166,15 @@ class GeneIntervals:
         for gene in reader.iter_genes():
             if gene.exons:
                 for start, end in gene.genomic_intervals():
-                    interval_tree[(gene.chromosome, gene.strand)].addi(
-                            start, end, gene.integer_gene_id)
+                    try:
+                        interval_tree[(gene.chromosome, gene.strand)].addi(
+                                start, end, gene.integer_gene_id)
+                    except ValueError:
+                        if start == end: # ensure this is the reason the error was raised
+                            continue
+                        else:
+                            raise
+
         self._interval_tree = interval_tree
 
     def translate(self, chromosome: bytes, strand: bytes, position: int):
