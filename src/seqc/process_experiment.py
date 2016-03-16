@@ -58,9 +58,8 @@ def parse_args(args):
     return p.parse_args(args)
 
 
-def run_remote(kwargs: dict) -> None:
+def run_remote() -> None:
     """
-    :param kwargs:
     :return:
     """
     seqc.log.notify('Beginning remote SEQC run...')
@@ -82,14 +81,15 @@ def run_remote(kwargs: dict) -> None:
         f.write('%s\n' % str(cluster.inst_id.instance_id))
         f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
-    # todo why write to a different location?
+    # todo why write to a different location than above?
     seqc.log.notify('Beginning remote run.')
     # writing name of instance in /data/software/instance.txt for clean up
-    cluster.serv.exec_command('cd /data/software; echo %s > instance.txt'
-                              % str(cluster.inst_id.instance_id))
-    cluster.serv.exec_command('cd /data/software; nohup %s > /dev/null 2>&1 &' % cmd)
+    cluster.serv.exec_command('cd /data/software; echo {instance_id} > instance.txt'
+                              ''.format(instance_id=str(cluster.inst_id.instance_id)))
+    cluster.serv.exec_command('cd /data/software; nohup {cmd} > /dev/null 2>&1 &'
+                              ''.format(cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
-                        'completes.')
+                    'completes.')
 
 
 def main(args: list=None):
@@ -108,7 +108,7 @@ def main(args: list=None):
 
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
-                              'input data.')
+                          'input data.')
             if not args.basespace_token:
                 raise ValueError(
                     'If the --basespace argument is used, the --basespace-token argument '
