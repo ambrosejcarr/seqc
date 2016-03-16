@@ -1,12 +1,7 @@
-__author__ = 'Ambrose J. Carr'
-
 from setuptools import setup
 from warnings import warn
 import os
 import shutil
-
-# pip3 cannot install external dependencies for python; warn user if external dependencies
-# are missing; do this at the end so that the users are more likely to see it.
 
 # look in /usr/local/ and /usr/local/hdf5/ for hdf5 libraries;
 # if found in /usr/local/hdf5/, set an environment variable to help pip3 install it.
@@ -27,30 +22,30 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      # note: requires numpy > 1.10.0
-      packages=['seqc', 'seqc.sa_postprocess', 'seqc.sa_preprocess', 'seqc.sa_process'],
+      packages=['seqc', 'seqc.sequence', 'seqc.alignment'],
       install_requires=[
           'numpy>=1.10.0',
           'cython>0.14',  # tables requirement
           'numexpr>=2.4',  # tables requirement
           'pandas>=0.16.0',
-          'matplotlib>=1.4.3',
-          'seaborn',
+          'paramiko',
+          # 'matplotlib>=1.4.3',
+          # 'seaborn',
           'regex',
           'requests',
           'scipy>=0.14.0',
           'boto3',
-          'pyftpdlib',
+          # 'pyftpdlib',
           'intervaltree',
-          'memory_profiler',
-          'more_itertools',
+          # 'memory_profiler',
+          # 'more_itertools',
           'tables'],
-      scripts=['src/scripts/SEQC',
-               'src/scripts/PROCESS_BARCODES',
-               'src/scripts/TEST_BARCODES',
-               'src/scripts/process_multi_file_scseq_experiment.py',
-               'src/scripts/process_single_file_scseq_experiment.py',
-               'src/scripts/SEQC.py'],
+      # scripts=['src/scripts/SEQC',
+      #          'src/scripts/PROCESS_BARCODES',
+      #          'src/scripts/TEST_BARCODES',
+      #          'src/scripts/process_multi_file_scseq_experiment.py',
+      #          'src/scripts/process_single_file_scseq_experiment.py',
+      #          'src/scripts/SEQC.py'],
       )
 
 # print any warnings
