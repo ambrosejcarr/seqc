@@ -24,6 +24,8 @@ def parse_args(args):
                    help='sam file containing aligned, merged fastq records.')
     p.add_argument('--basespace', metavar='BS', help='BaseSpace sample ID. '
                    'Identifies a sequencing run to download and process.')
+
+    # todo this should be taken from configure/config
     p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
                    'token')
 
@@ -112,6 +114,7 @@ def main(args: list=None):
         # split output_stem into path and prefix
         output_dir, output_prefix = os.path.split(args.output_stem)
 
+        # download data if necessary
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
@@ -162,7 +165,7 @@ def main(args: list=None):
                     barcode=args.barcode_fastq)
 
         if align:
-            info = seqc.log.info('Aligning merged fastq records.')
+            seqc.log.info('Aligning merged fastq records.')
             *base_directory, stem = args.output_stem.split('/')
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
@@ -195,7 +198,7 @@ def main(args: list=None):
         if args.remote:
             if args.no_terminate:
                 if os.path.isfile('/data/software/instance.txt'):
-                    with open('/data/software/instance.txt','r') as f:
+                    with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
                 else:
