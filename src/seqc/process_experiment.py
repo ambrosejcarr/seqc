@@ -69,7 +69,9 @@ def run_remote() -> None:
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = 'SEQC ' + ' '.join(sys.argv[1:]) + ' --local'
+    # todo: changed SEQC to ./process_experiment.py and make this prettier
+    cmd = '/data/software/seqc/src/seqc/process_experiment.py ' + ' '.join(sys.argv[1:])\
+          + ' --local'
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -79,8 +81,10 @@ def run_remote() -> None:
     # todo write this somewhere that will never be write-protected!
     # installs into python package locations may not be writable in future.
     # writing instance id and security group id into file for cluster cleanup
+
+    # file is located in ~/seqc/src/seqc/instance.txt
     temp_path = seqc.__path__[0]
-    filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
+    filepath = temp_path + '/instance.txt'
     with open(filepath, 'w') as f:
         f.write('%s\n' % str(cluster.inst_id.instance_id))
         f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
@@ -90,6 +94,10 @@ def run_remote() -> None:
     # writing name of instance in /data/software/instance.txt for clean up
     cluster.serv.exec_command('cd /data/software; echo {instance_id} > instance.txt'
                               ''.format(instance_id=str(cluster.inst_id.instance_id)))
+    # todo added this in to test
+    seqc.log.notify('This is getting called: ')
+    seqc.log.notify(cmd)
+
     cluster.serv.exec_command('cd /data/software; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
@@ -104,7 +112,8 @@ def main(args: list=None):
 
         if args.remote:
             run_remote()
-            sys.exit()
+            # todo | taking this out in case this is triggering the error
+            # sys.exit()
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):

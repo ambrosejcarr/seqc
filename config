@@ -2,13 +2,13 @@
 default_template = c3
 
 [aws_info]
-aws_access_key_id = None
-aws_secret_access_key = None
+aws_access_key_id = AKIAIVMBCOSPGN2DLLVQ
+aws_secret_access_key = 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
 aws_region_name = us-east-1c
 
 [key]
-rsa_key_location = None
-rsa_key_name = None
+rsa_key_location = /Users/kristyc/.ssh/eyc2120.rsa
+rsa_key_name = eyc2120
 
 [c3]
 cluster_size = 1

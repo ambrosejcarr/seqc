@@ -155,7 +155,7 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 1024
+        vol_size = 50 # 1024 --> testing remote stuff
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -282,7 +282,6 @@ class ClusterServer(object):
         """installs the SEQC directory in /data/software"""
         # todo replace this with git clone once repo is public
         # works with normal public git repository
-        # install seqc on AMI to simplify
 
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
@@ -292,14 +291,15 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
-        location = folder + "seqc.tar.gz"
-        # todo | get rid of "nuke_sc" branch here, just for testing
+        location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/develop | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
             'sudo tee %s > /dev/null' % location)
+        self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
+                               '--strip-components 1' % folder)
         # todo implement some sort of ls grep check system here
-        self.serv.exec_command('sudo pip3 install %s' % location)
+        self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
@@ -309,8 +309,9 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name=None):
-        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
-        config_file = os.path.expanduser('~/.seqc/config')
+        # todo | change config_file back to how it was
+        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
+        # config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
