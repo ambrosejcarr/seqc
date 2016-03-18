@@ -205,7 +205,7 @@ def main(args: list=None):
 
     finally:
         if args.remote:
-            if args.no_terminate:
+            if not args.no_terminate:
                 if os.path.isfile('/data/software/instance.txt'):
                     with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
