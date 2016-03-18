@@ -79,7 +79,7 @@ class ClusterServer(object):
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
         # todo: check that config file is complete
-        # need to account for the fact that serv, sg, and inst_id are filled in later
+        # need to account for the fact that serv, sg, and inst_id are filled in later!
 
         # attrs = vars(self)
         # print(attrs)
@@ -241,7 +241,7 @@ class ClusterServer(object):
                 mdadm_failed = False
                 break
             else:
-                seqc.log.notify('Retrying mdadm.')
+                seqc.log.notify('Retrying sudo mdadm.')
                 time.sleep(1)
         if mdadm_failed:
             EC2RuntimeError('Error creating raid array md0 with mdadm function.')

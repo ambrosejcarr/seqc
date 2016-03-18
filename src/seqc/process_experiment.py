@@ -109,7 +109,7 @@ def main(args: list=None):
 
         if args.remote:
             run_remote(args.cluster_name)
-            sys.exit(2)
+            sys.exit()
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
@@ -197,7 +197,7 @@ def main(args: list=None):
 
     except:
         seqc.log.exception()
-        if args.email_status and args.remote:
+        if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
             seqc.remote.email_user(attachment='seqc.log', email_body=email_body,
                                    email_address=args.email_status)
@@ -210,6 +210,7 @@ def main(args: list=None):
                     with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
+                    # todo: clean up security group
                 else:
                     seqc.log.info('file containing instance id is unavailable!')
             else:
