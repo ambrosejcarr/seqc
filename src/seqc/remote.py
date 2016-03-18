@@ -78,11 +78,13 @@ class ClusterServer(object):
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
-        # check that config file is complete
-        attrs = vars(self)
-        print(attrs)
-        if None in attrs.values():
-            raise ValueError('Config file is incomplete! Exiting.')
+        # todo: check that config file is complete
+        # need to account for the fact that serv, sg, and inst_id are filled in later
+
+        # attrs = vars(self)
+        # print(attrs)
+        # if None in attrs.values():
+        #     raise ValueError('Config file is incomplete! Exiting.')
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
