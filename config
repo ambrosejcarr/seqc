@@ -31,4 +31,4 @@ availability_zone = us-east-1c
 dir_name = /data/software
 
 [BaseSpaceToken]
-base_space_token = None
+base_space_token = 281c3014957a451080f991fcac3cf406
