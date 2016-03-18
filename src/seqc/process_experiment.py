@@ -5,7 +5,7 @@ import multiprocessing
 import os
 import sys
 import seqc
-
+from subprocess import Popen
 
 def parse_args(args):
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
@@ -69,12 +69,10 @@ def run_remote() -> None:
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    # todo: changed SEQC to ./process_experiment.py and make this prettier
+    # todo: need to get actual location of process_experiment
+    # i think it'll be temp_path + /process_experiment.py
     cmd = '/data/software/seqc/src/seqc/process_experiment.py ' + ' '.join(sys.argv[1:])\
           + ' --local'
-    # todo: this is what we're testing
-    print('this is what youll be executing')
-    print(cmd)
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -106,10 +104,6 @@ def run_remote() -> None:
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
 
-    # todo | will most likely need to add code here to execute stuff remotely
-    # todo | will need to bring over from main()
-
-
 def main(args: list=None):
     seqc.log.setup_logger()
 
@@ -119,7 +113,6 @@ def main(args: list=None):
 
         if args.remote:
             run_remote()
-            # todo | taking this out in case this is triggering the error
             sys.exit()
 
         # do a bit of argument checking
@@ -139,6 +132,9 @@ def main(args: list=None):
                     'If the --basespace argument is used, the --basespace-token argument '
                     'must also be provided in order to gain access to the basespace '
                     'repository')
+            bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
+            bf = Popen('sudo mkdir %s' % bspace_dir)
+            bf.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, args.basespace_token)
 
