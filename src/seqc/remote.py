@@ -24,20 +24,8 @@ class ClusterServer(object):
     allows for the creation/manipulation of EC2 instances and executions
     of commands on the remote server"""
 
-    # todo many of these parameters aren't used. Either integrate or remove.
-    def __init__(self, private_key=None, security_group=None,
-                 image_id=None, zone=None, server=None,
-                 instance_type=None, subnet_id=None):
-        """
-        :param private_key:
-        :param security_group:
-        :param image_id:
-        :param zone:
-        :param server:
-        :param instance_type:
-        :param subnet_id:
-        :return:
-        """
+    def __init__(self):
+
         self.keyname = None
         self.keypath = None
         self.image_id = None
@@ -55,7 +43,7 @@ class ClusterServer(object):
 
     def create_security_group(self, name=None):
         """Creates a new security group for the cluster
-        :param name:
+        :param name: cluster name if provided by user
         """
         if name is None:
             name = 'SEQC-%07d' % random.randint(1, int(1e7))
@@ -72,10 +60,9 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
-    # todo catch errors in cluster configuration
     def configure_cluster(self, config_file):
         """configures the newly created cluster according to config
-        :param config_file:
+        :param config_file: /path/to/seqc/config
         """
         config = configparser.ConfigParser()
         config.read(config_file)
@@ -91,6 +78,11 @@ class ClusterServer(object):
         self.dir_name = config['gitpull']['dir_name']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
+
+        # check that config file is complete
+        attrs = vars(self)
+        if None in attrs.values():
+            raise ValueError('Config file is incomplete! Exiting.')
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
@@ -155,23 +147,28 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 50 # 1024 --> testing remote stuff
+        # todo | change this back to 1024
+        vol_size = 50
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
         vol_state = vol.state
+        max_tries = 40
+        i = 0
         while vol_state != 'available':
             time.sleep(3)
             vol.reload()
+            i += 1
+            if i >= max_tries:
+                raise VolumeCreationError('Volume could not be created.')
             vol_state = vol.state
         seqc.log.notify('Volume %s created successfully.' % vol_id)
         return vol_id
 
-    # todo deal with volume creation errors
     def attach_volume(self, vol_id, dev_id):
         """attaches a vol_id to inst_id at dev_id
-        :param dev_id:
-        :param vol_id:
+        :param dev_id: where volume will be mounted
+        :param vol_id: ID of volume to be attached
         """
         vol = self.ec2.Volume(vol_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
@@ -194,7 +191,6 @@ class ClusterServer(object):
         device_info = self.inst_id.block_device_mappings
         for i in range(1, len(device_info)):
             status = device_info[i]['Ebs']['Status']
-            max_tries = 40
             i = 0
             while status != 'attached':
                 time.sleep(.5)
@@ -233,19 +229,17 @@ class ClusterServer(object):
         seqc.log.notify("Creating logical RAID device...")
         all_dev = ' '.join(dev_names)
 
-        # check if this sleep is necessary for successful execution of mdadm function
         num_retries = 30
         mdadm_failed = True
         for i in range(num_retries):
             _, res = self.serv.exec_command(
                 "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
-                "--raid-devices=%s %s" % (
-                    self.n_tb, all_dev))
+                "--raid-devices=%s %s" % (self.n_tb, all_dev))
             if 'started' in ''.join(res):
                 mdadm_failed = False
                 break
             else:
-                seqc.log.notify('Retrying sudo mdadm.')
+                seqc.log.notify('Retrying mdadm.')
                 time.sleep(1)
         if mdadm_failed:
             EC2RuntimeError('Error creating raid array md0 with mdadm function.')
@@ -280,8 +274,7 @@ class ClusterServer(object):
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
-        # todo replace this with git clone once repo is public
-        # works with normal public git repository
+        # todo: replace this with git clone once seqc repo is public
 
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
@@ -292,14 +285,13 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
-        # todo: change the branch back to v0.1.6 after merging all changes
+        # todo: change the branch back to v0.1.6 after merging all changes in remote
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/remote | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
-        # todo implement some sort of ls grep check system here
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
@@ -475,10 +467,6 @@ class SSHServer(object):
     def disconnect(self):
         if self.is_connected():
             self.ssh.close()
-
-    # will be using iolib's S3 class to do file downloading/uploading
-    def download_files(self):
-        raise NotImplementedError
 
     def get_file(self, localfile, remotefile):
         if not self.is_connected():
