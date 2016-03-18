@@ -69,7 +69,7 @@ def run_remote() -> None:
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    # todo: need to get actual location of process_experiment
+    # todo: need to get actual location of process_experiment: don't hard-code!
     # i think it'll be temp_path + /process_experiment.py
     cmd = '/data/software/seqc/src/seqc/process_experiment.py ' + ' '.join(sys.argv[1:])\
           + ' --local'
@@ -113,6 +113,7 @@ def main(args: list=None):
 
         if args.remote:
             run_remote()
+            # todo: bool so python doesn't freak out with mutt not being a local file?
             sys.exit()
 
         # do a bit of argument checking
@@ -132,6 +133,7 @@ def main(args: list=None):
                     'If the --basespace argument is used, the --basespace-token argument '
                     'must also be provided in order to gain access to the basespace '
                     'repository')
+            # accounting for how BaseSpace downloads files
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
             bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
             bf.communicate()
