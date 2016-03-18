@@ -379,7 +379,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     """
     prefix, directory = os.path.split(output_stem)
 
-    samfile = directory + '/alignments/Aligned.out.sam'
+    samfile = prefix + '/alignments/Aligned.out.sam'
     h5_archive = output_stem + '.h5'
     merged_fastq = output_stem + '_merged.fastq'
     # counts = prefix + '_sp_counts.npz'
