@@ -120,7 +120,7 @@ def main(args: list=None):
         if args.remote:
             run_remote()
             # todo | taking this out in case this is triggering the error
-            # sys.exit()
+            sys.exit()
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
@@ -151,7 +151,6 @@ def main(args: list=None):
             try:
                 seqc.log.info('AWS s3 link provided for index. Downloading index.')
                 bucket, prefix = seqc.io.S3.split_link(args.index)
-                # todo : need to fix location of index
                 args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
