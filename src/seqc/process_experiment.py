@@ -72,6 +72,9 @@ def run_remote() -> None:
     # todo: changed SEQC to ./process_experiment.py and make this prettier
     cmd = '/data/software/seqc/src/seqc/process_experiment.py ' + ' '.join(sys.argv[1:])\
           + ' --local'
+    # todo: this is what we're testing
+    print('this is what youll be executing')
+    print(cmd)
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -98,14 +101,18 @@ def run_remote() -> None:
     seqc.log.notify('This is getting called: ')
     seqc.log.notify(cmd)
 
-    cluster.serv.exec_command('cd /data/software; nohup {cmd} > /dev/null 2>&1 &'
+    cluster.serv.exec_command('cd /data/software; sudo nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
 
+    # todo | will most likely need to add code here to execute stuff remotely
+    # todo | will need to bring over from main()
+
 
 def main(args: list=None):
     seqc.log.setup_logger()
+
     try:
         args = parse_args(args)
         seqc.log.args(args)
@@ -144,7 +151,8 @@ def main(args: list=None):
             try:
                 seqc.log.info('AWS s3 link provided for index. Downloading index.')
                 bucket, prefix = seqc.io.S3.split_link(args.index)
-                args.index = output_dir + 'index/'  # set index  based on s3 download
+                # todo : need to fix location of index
+                args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
             except FileNotFoundError:
@@ -193,7 +201,7 @@ def main(args: list=None):
 
         if args.email_status:
             seqc.remote.upload_results(
-                args.output_prefix, args.email_status, args.aws_upload_key)
+                args.output_stem, args.email_status, args.aws_upload_key)
 
     except:
         seqc.log.exception()
