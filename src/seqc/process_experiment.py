@@ -81,28 +81,26 @@ def run_remote(name: str, outdir: str) -> None:
     cluster.cluster_setup(name)
     cluster.serv.connect()
 
-    # writing instance id and security group id into file for cluster cleanup
-    # file is located in ~/seqc/src/seqc/instance.txt
     # temp_path = seqc.__path__[0]
     # filepath = temp_path + '/instance.txt'
-    # with open(filepath, 'w') as f:
-    # todo | writing the instance file into '/usr/local/seqc'
-    mkfile = Popen(['sudo', 'mkdir', '/usr/local/seqc'])
-    mkfile.communicate()
-    with open('/usr/local/seqc/instance.txt', 'w') as f:
-        f.write('%s\n' % str(cluster.inst_id.instance_id))
-        f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
+    # todo : not writing this into the local place yet --> just experimenting remote
+    # todo | writing the instance file into '~/seqc/instance.txt'
+    # todo | can check for dissociated security groups at the start of each SEQC run!
+    # inst_path = os.path.expanduser('~/') + 'seqc'
+    # mkfile = Popen(['mkdir', inst_path])
+    # mkfile.communicate()
+    # with open(inst_path + '/instance.txt', 'w') as f:
+    #     f.write('%s\n' % str(cluster.inst_id.instance_id))
+    #     f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
-    # todo why write to a different location than above?
     seqc.log.notify('Beginning remote run.')
-    # todo | get rid of '/data/software' hardcoding here too
-    # writing name of instance in /data/software/instance.txt for clean up
+    # writing name of instance in ~/seqc/instance.txt for clean up
     # todo | check if you need sudo here or not
-    cluster.serv.exec_command('mkdir /usr/local/seqc')
-    cluster.serv.exec_command('cd /usr/local/seqc; echo {instance_id} > instance.txt'
-                              ''.format(instance_id=str(cluster.inst_id.instance_id)))
-    # cluster.serv.exec_command('cd /data/software; echo {instance_id} > instance.txt'
-    #                           ''.format(instance_id=str(cluster.inst_id.instance_id)))
+    inst_path = os.path.expanduser('~/') + 'seqc'
+    cluster.serv.exec_command('mkdir %s' % inst_path)
+    cluster.serv.exec_command('cd {inst_path}; echo {instance_id} > instance.txt'
+                              ''.format(inst_path=inst_path,
+                                        instance_id=str(cluster.inst_id.instance_id)))
     cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(out=outdir, cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
@@ -213,15 +211,14 @@ def main(args: list = None):
         raise
 
     finally:
-        # todo cluster would have to clean itself up --> if not args.remote
-        print('i am being run locally and in the finally block')
-        if args.remote:
+        if not args.remote:
+            print('i am being run locally and i am in the terminating zone')
             if not args.no_terminate:
-                if os.path.isfile('/usr/local/instance.txt'):
-                    with open('/usr/local/instance.txt', 'r') as f:
+                fpath = os.path.expanduser('~/') + 'seqc/instance.txt'
+                if os.path.isfile(fpath):
+                    with open(fpath, 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
-                    # todo: clean up security group
                 else:
                     seqc.log.info('file containing instance id is unavailable!')
             else:

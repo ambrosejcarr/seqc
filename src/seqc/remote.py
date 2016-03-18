@@ -377,13 +377,12 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     samfile = prefix + '/alignments/Aligned.out.sam'
     h5_archive = output_stem + '.h5'
     merged_fastq = output_stem + '_merged.fastq'
-    # todo | need to put these methods back into process_experiment?
+    # todo | need to put these count matrix method back in here
     # counts = prefix + '_sp_counts.npz'
-    # id_map = prefix + '_gene_id_map.p'
-    # alignment_summary = prefix + '_alignment_summary.txt'
+    alignment_summary = prefix + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
-    # files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
-    files = [samfile, h5_archive, merged_fastq, log]
+    # now only need to put back counts into this array
+    files = [samfile, h5_archive, merged_fastq, alignment_summary, log]
 
     # gzip everything and upload to aws_upload_key
     archive_name = output_stem + '.tar.gz'
