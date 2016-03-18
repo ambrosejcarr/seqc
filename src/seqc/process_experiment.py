@@ -7,6 +7,7 @@ import sys
 import seqc
 from subprocess import Popen
 
+
 def parse_args(args):
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
@@ -23,28 +24,30 @@ def parse_args(args):
     p.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
                    help='sam file containing aligned, merged fastq records.')
     p.add_argument('--basespace', metavar='BS', help='BaseSpace sample ID. '
-                   'Identifies a sequencing run to download and process.')
+                                                     'Identifies a sequencing run to download and process.')
 
     # todo this should be taken from configure/config
     p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
-                   'token')
+                                                           'token')
 
     p.add_argument('-o', '--output-stem', metavar='O', help='file stem for output files '
-                   'e.g. ./seqc_output/tumor_run5')
+                                                            'e.g. ./seqc_output/tumor_run5')
     p.add_argument('-i', '--index', metavar='I', help='Folder or s3 link to folder '
-                   'containing index files for alignment and resolution of ambiguous '
-                   'reads.')
+                                                      'containing index files for alignment and resolution of ambiguous '
+                                                      'reads.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F', help='maximum paired-end insert '
-                   'size that is considered a valid record', default=1000)
+                                                          'size that is considered a valid record',
+                   default=1000)
     f.add_argument('--min-poly-t', metavar='T', help='minimum size of poly-T tail that '
-                   'is required for a barcode to be considered a valid record', default=3)
+                                                     'is required for a barcode to be considered a valid record',
+                   default=3)
     f.add_argument('--max-dust-score', metavar='D', help='maximum complexity score for a '
-                   'read to be considered valid')
+                                                         'read to be considered valid')
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
@@ -62,17 +65,16 @@ def parse_args(args):
     return p.parse_args(args)
 
 
-def run_remote(name: str) -> None:
+def run_remote(name: str, outdir: str) -> None:
     """
     :param name: cluster name if provided by user, otherwise None
+    :param outdir: where seqc will be installed on the cluster
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    # todo: need to get actual location of process_experiment: don't hard-code!
-    # i think it'll be temp_path + /process_experiment.py
-    cmd = '/data/software/seqc/src/seqc/process_experiment.py ' + ' '.join(sys.argv[1:])\
-          + ' --local'
+    cmd = outdir + '/seqc/src/seqc/process_experiment.py ' + ' '.join(
+        sys.argv[1:]) + ' --local'
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -80,6 +82,7 @@ def run_remote(name: str) -> None:
     cluster.serv.connect()
 
     # todo write this somewhere that will never be write-protected!
+    # todo | need to think of a smarter way for cleanup
     # installs into python package locations may not be writable in future.
     # writing instance id and security group id into file for cluster cleanup
 
@@ -100,24 +103,25 @@ def run_remote(name: str) -> None:
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
 
-def main(args: list=None):
+
+def main(args: list = None):
     seqc.log.setup_logger()
 
     try:
         args = parse_args(args)
         seqc.log.args(args)
 
+        # split output_stem into path and prefix
+        output_dir, output_prefix = os.path.split(args.output_stem)
+
         if args.remote:
-            run_remote(args.cluster_name)
+            run_remote(args.cluster_name, output_dir)
             sys.exit()
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
             print('-o/--output-stem should not be a directory')
             sys.exit(2)
-
-        # split output_stem into path and prefix
-        output_dir, output_prefix = os.path.split(args.output_stem)
 
         # download data if necessary
         if args.basespace:
@@ -168,10 +172,10 @@ def main(args: list=None):
             seqc.log.info('Merging genomic reads and barcode annotations.')
             merge_function = getattr(seqc.sequence.merge_functions, args.platform)
             args.merged_fastq = seqc.sequence.fastq.merge_paired(
-                    merge_function=merge_function,
-                    fout=args.output_stem + '_merged.fastq',
-                    genomic=args.genomic_fastq,
-                    barcode=args.barcode_fastq)
+                merge_function=merge_function,
+                fout=args.output_stem + '_merged.fastq',
+                genomic=args.genomic_fastq,
+                barcode=args.barcode_fastq)
 
         if align:
             seqc.log.info('Aligning merged fastq records.')
@@ -179,11 +183,11 @@ def main(args: list=None):
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
             args.samfile = seqc.alignment.star.align(
-                    args.merged_fastq, args.index, n_processes, alignment_directory)
+                args.merged_fastq, args.index, n_processes, alignment_directory)
 
         seqc.log.info('Filtering aligned records and constructing record database')
         ra = seqc.arrays.ReadArray.from_samfile(
-                args.samfile, args.index + 'annotations.gtf')
+            args.samfile, args.index + 'annotations.gtf')
         ra.save(args.output_stem + '.h5')
 
         seqc.log.info('Correcting errors and generating expression matrices.')
@@ -204,6 +208,8 @@ def main(args: list=None):
         raise
 
     finally:
+        # todo cluster would have to clean itself up --> if not args.remote
+        # need to differentiate actual local run vs cluster's "local" run
         if args.remote:
             if not args.no_terminate:
                 if os.path.isfile('/data/software/instance.txt'):
