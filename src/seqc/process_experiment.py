@@ -95,11 +95,7 @@ def run_remote(name: str, outdir: str) -> None:
 
     # writing name of instance in ~/seqc/instance.txt for clean up
     seqc.log.notify('Beginning remote run.')
-    inst_dir = os.path.expanduser('~/') + 'seqc'
-    inst_path = inst_dir + '/instance.txt'
-    seqc.log.notify(inst_dir)
-    seqc.log.notify(inst_path)
-    cluster.serv.exec_command('mkdir {inst_dir}'.format(inst_dir=inst_dir))
+    inst_path = outdir + '/instance.txt'
     cluster.serv.exec_command('echo {instance_id} > {inst_path}'
                               ''.format(inst_path=inst_path,
                                         instance_id=str(cluster.inst_id.instance_id)))
@@ -217,7 +213,7 @@ def main(args: list = None):
     finally:
         if not args.remote:
             if not args.no_terminate:
-                fpath = os.path.expanduser('~/') + 'seqc/instance.txt'
+                fpath = output_dir + '/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
                         inst_id = f.readline().strip('\n')
