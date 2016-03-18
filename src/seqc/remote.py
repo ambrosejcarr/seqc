@@ -71,7 +71,7 @@ class ClusterServer(object):
         self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
-        self.subnet = config[template]['subnet_id']
+        self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
