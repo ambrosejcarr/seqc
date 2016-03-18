@@ -97,6 +97,8 @@ def run_remote(name: str, outdir: str) -> None:
     seqc.log.notify('Beginning remote run.')
     inst_dir = os.path.expanduser('~/') + 'seqc'
     inst_path = inst_dir + '/instance.txt'
+    seqc.log.notify(inst_dir)
+    seqc.log.notify(inst_path)
     cluster.serv.exec_command('mkdir {inst_dir}'.format(inst_dir=inst_dir))
     cluster.serv.exec_command('echo {instance_id} > {inst_path}'
                               ''.format(inst_path=inst_path,
