@@ -93,12 +93,12 @@ def run_remote(name: str, outdir: str) -> None:
     #     f.write('%s\n' % str(cluster.inst_id.instance_id))
     #     f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
 
-    seqc.log.notify('Beginning remote run.')
     # writing name of instance in ~/seqc/instance.txt for clean up
-    # todo | check if you need sudo here or not
-    inst_path = os.path.expanduser('~/') + 'seqc'
-    cluster.serv.exec_command('mkdir %s' % inst_path)
-    cluster.serv.exec_command('cd {inst_path}; echo {instance_id} > instance.txt'
+    seqc.log.notify('Beginning remote run.')
+    inst_dir = os.path.expanduser('~/') + 'seqc'
+    inst_path = inst_dir + '/instance.txt'
+    cluster.serv.exec_command('mkdir {inst_dir}'.format(inst_dir=inst_dir))
+    cluster.serv.exec_command('echo {instance_id} > {inst_path}'
                               ''.format(inst_path=inst_path,
                                         instance_id=str(cluster.inst_id.instance_id)))
     cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
@@ -135,7 +135,7 @@ def main(args: list = None):
                     'If the --basespace argument is used, the --basespace-token argument '
                     'must also be provided in order to gain access to the basespace '
                     'repository')
-            # accounting for how BaseSpace downloads files
+            # making extra directories for BaseSpace download, changing permissions
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
             bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
             bf.communicate()
@@ -214,7 +214,6 @@ def main(args: list = None):
 
     finally:
         if not args.remote:
-            print('i am being run locally and i am in the terminating zone')
             if not args.no_terminate:
                 fpath = os.path.expanduser('~/') + 'seqc/instance.txt'
                 if os.path.isfile(fpath):
@@ -222,9 +221,9 @@ def main(args: list = None):
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
                 else:
-                    seqc.log.info('file containing instance id is unavailable!')
+                    seqc.log.info('File containing instance id is unavailable!')
             else:
-                seqc.log.info('not terminating cluster -- user responsible for cleanup')
+                seqc.log.info('Not terminating cluster -- user responsible for cleanup')
 
 
 if __name__ == '__main__':
