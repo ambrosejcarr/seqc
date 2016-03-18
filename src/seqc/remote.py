@@ -390,7 +390,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     files = [samfile, h5_archive, merged_fastq, log]
 
     # gzip everything and upload to aws_upload_key
-    archive_name = prefix + '.tar.gz'
+    archive_name = output_stem + '.tar.gz'
     gzip_args = ['tar', '-czf', archive_name] + files
     gzip = Popen(gzip_args)
     gzip.communicate()
