@@ -133,7 +133,7 @@ def main(args: list=None):
                     'must also be provided in order to gain access to the basespace '
                     'repository')
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
-            bf = Popen('sudo mkdir %s' % bspace_dir)
+            bf = Popen('sudo mkdir -p %s' % bspace_dir)
             bf.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, args.basespace_token)
