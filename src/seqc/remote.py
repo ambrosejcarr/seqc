@@ -5,6 +5,7 @@ import os
 import configparser
 import random
 from subprocess import Popen, PIPE
+import shutil
 import paramiko
 import boto3
 from botocore.exceptions import ClientError
@@ -151,7 +152,7 @@ class ClusterServer(object):
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
         # todo | change this back to 1024 after testing
-        vol_size = 50 #1024
+        vol_size = 50  # 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -379,7 +380,9 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     merged_fastq = output_stem + '_merged.fastq'
     # todo | need to put these count matrix method back in here
     # counts = prefix + '_sp_counts.npz'
-    alignment_summary = prefix + '_alignment_summary.txt'
+    shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
+                    '_alignment_summary.txt')
+    alignment_summary = output_stem + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
     # now only need to put back counts into this array
     files = [samfile, h5_archive, merged_fastq, alignment_summary, log]
@@ -411,7 +414,6 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
 
 
 class SSHServer(object):
-
     def __init__(self, inst_id, keypath):
         ec2 = boto3.resource('ec2')
         self.instance = ec2.Instance(inst_id)
@@ -454,12 +456,12 @@ class SSHServer(object):
                 if attempt > max_attempts:
                     raise
 
-        # gname = self.instance.security_groups[0]['GroupName']
-        # gid = self.instance.security_groups[0]['GroupId']
-        # self.instance.terminate()
-        # boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=gid)
-        # raise RuntimeError("connection failed: maximum number of unsuccessful attempts "
-        #                    "reached")
+                    # gname = self.instance.security_groups[0]['GroupName']
+                    # gid = self.instance.security_groups[0]['GroupId']
+                    # self.instance.terminate()
+                    # boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=gid)
+                    # raise RuntimeError("connection failed: maximum number of unsuccessful attempts "
+                    #                    "reached")
 
     def is_connected(self):
         if self.ssh.get_transport() is None:
