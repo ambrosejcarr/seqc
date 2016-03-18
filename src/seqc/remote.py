@@ -370,23 +370,24 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     email_process.communicate(email_body)
 
 
-def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) -> None:
+def upload_results(output_stem: str, email_address: str, aws_upload_key: str) -> None:
     """
     :param output_prefix:
     :param email_address:
     :param aws_upload_key:
     :return:
     """
-    prefix, directory = os.path.split(output_prefix)
+    prefix, directory = os.path.split(output_stem)
 
-    samfile = directory + 'Aligned.out.sam'
-    h5_archive = prefix + '.h5'
-    merged_fastq = directory + 'merged.fastq'
-    counts = prefix + '_sp_counts.npz'
-    id_map = prefix + '_gene_id_map.p'
-    alignment_summary = prefix + '_alignment_summary.txt'
-    log = 'seqc.log'
-    files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
+    samfile = directory + '/alignments/Aligned.out.sam'
+    h5_archive = output_stem + '.h5'
+    merged_fastq = output_stem + '_merged.fastq'
+    # counts = prefix + '_sp_counts.npz'
+    # id_map = prefix + '_gene_id_map.p'
+    # alignment_summary = prefix + '_alignment_summary.txt'
+    log = prefix + '/seqc.log'
+    # files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
+    files = [samfile, h5_archive, merged_fastq, log]
 
     # gzip everything and upload to aws_upload_key
     archive_name = prefix + '.tar.gz'
