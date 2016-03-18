@@ -139,6 +139,8 @@ def main(args: list = None):
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
             bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
             bf.communicate()
+            bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
+            bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, args.basespace_token)
 
