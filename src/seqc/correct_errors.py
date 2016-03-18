@@ -14,7 +14,7 @@ high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 NUM_OF_ERROR_CORRECTION_METHODS = 3
 ERROR_CORRECTION_AJC = 0
 #ERROR_CORRECTION_STEN = 1
-#ERROR_CORRECTION_BC_FILTERS = 1        # recycling the column in the matrix to save room
+ERROR_CORRECTION_BC_FILTERS = 3
 #ERROR_CORRECTION_ALLON = 3
 ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR = 0
 ERROR_CORRECTION_jaitin = 1
@@ -23,7 +23,7 @@ ERROR_CORRECTION_JAIT_LIKELIHOOD = 2
     
     
 
-def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, reverse_complement=True, max_ed=2, err_correction_mat=''):
+def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True, max_ed=2, err_correction_mat=''):
     ''' Prepare the RA for error correction. Apply filters, estimate error correction and correct the barcodes'''
     res = {}
     tot = 0
@@ -58,7 +58,7 @@ def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, rever
     for i, v in enumerate(ra.data):
         tot += 1
         #Apply various perliminary filters on the data
-        if ra.features[i][0] == 0:
+        if v['gene'] == 0:
             filtered += 1
             continue
         if v['cell']==0:
@@ -77,14 +77,7 @@ def prepare_for_ec(ra, scid_to_gene_map, barcode_files, required_poly_t=1, rever
             filtered += 1
             continue
             
-        
-        #map the feature to a gene
-        try:
-            gene = scid_to_gene_map[ra.features[i][0]]
-        except KeyError:
-            print ('No gene mapped to feature ', ra.features[i][0], ' ignoring.')
-            filtered += 1
-            continue
+        gene = v['gene']
         
         #correct and filter barcodes
         c1 = bin_rep.c1_from_codes(int(v['cell']))
@@ -260,11 +253,11 @@ def find_correct_barcode(code, barcodes_list):
 
 #TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
     
-def correct_errors(alignments_ra, scid_to_gene_map, barcode_files = [], apply_likelihood=True, reverse_complement=True, donor_cutoff=1, alpha=0.05, required_poly_t=1, max_ed=2):
+def correct_errors(alignments_ra, barcode_files = [], apply_likelihood=True, reverse_complement=True, donor_cutoff=1, alpha=0.05, required_poly_t=1, max_ed=2):
     '''Recieve an RA and return a bool matrix of identified errors according to each method'''
     res_time_cnt = {}
     err_correction_res = np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
-    ra_grouped, error_rate = prepare_for_ec(alignments_ra, scid_to_gene_map, barcode_files, required_poly_t, reverse_complement, max_ed, err_correction_res)
+    ra_grouped, error_rate = prepare_for_ec(alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed, err_correction_mat='')
     grouped_res_dic, error_count = correct_errors_AJC(alignments_ra, ra_grouped, error_rate, err_correction_res, p_value=alpha)
         
     return grouped_res_dic, err_correction_res
@@ -309,7 +302,7 @@ def correct_errors_AJC(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
             #r_c2 = bin_rep.c2_from_int(r_seq)
             #r_rmt = bin_rep.rmt_from_int(r_seq)
             r_num_occurences = len(d[gene,cell][r_seq])
-            r_pos_list = np.hstack(ra.positions[d[feature,cell][r_seq]])
+            r_pos_list = np.hstack(ra.data['position'][d[feature,cell][r_seq]])
 
             #threshold = gammaincinv(r_num_occurences, alpha)
             
@@ -333,7 +326,7 @@ def correct_errors_AJC(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
                 
                 #do Jaitin
                 if not jait:
-                    d_pos_list = np.hstack(ra.positions[d[feature,cell][d_rmt]])
+                    d_pos_list = np.hstack(ra.data['position'][d[feature,cell][d_rmt]])
                     if set(r_pos_list).issubset(set(d_pos_list)):
                         err_correction_res[ra_grouped[gene, cell][r_seq],ERROR_CORRECTION_jaitin] = 1
                         jait=True
@@ -367,3 +360,26 @@ def correct_errors_AJC(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
     print('total error_correction runtime: ',tot_time)
     #f.close()
     return grouped_res_dic, error_count
+    
+def convert_to_matrix(counts_dictionary):
+
+    # Set up entries for sparse matrix
+    cols = [k[0] for k in counts_dictionary.keys()]
+    rows = [k[1] for k in counts_dictionary.keys()]
+    values = np.array(list(counts_dictionary.values()))
+
+    # Map row and cell to integer values for indexing
+    unq_row = np.unique(rows)  # these are the ids for the new rows / cols of the array
+    unq_col = np.unique(cols)
+    row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
+    col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
+    row_ind = np.array([row_map[i] for i in rows])
+    col_ind = np.array([col_map[i] for i in cols])
+
+    # change dtype, set shape
+    values = values.astype(np.uint32)
+    shape = (unq_row.shape[0], unq_col.shape[0])
+
+    # return a sparse array
+    coo = coo_matrix((values, (row_ind, col_ind)), shape=shape, dtype=np.uint32)
+    return coo, unq_row, unq_col
