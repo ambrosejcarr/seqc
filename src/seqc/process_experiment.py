@@ -96,6 +96,7 @@ def run_remote(name: str, outdir: str) -> None:
     # todo why write to a different location than above?
     seqc.log.notify('Beginning remote run.')
     # writing name of instance in /data/software/instance.txt for clean up
+    # todo | get rid of '/data/software' hardcoding here too
     cluster.serv.exec_command('cd /data/software; echo {instance_id} > instance.txt'
                               ''.format(instance_id=str(cluster.inst_id.instance_id)))
     cluster.serv.exec_command('cd /data/software; sudo nohup {cmd} > /dev/null 2>&1 &'

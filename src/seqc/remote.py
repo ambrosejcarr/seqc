@@ -79,7 +79,8 @@ class ClusterServer(object):
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
         # todo: check that config file is complete
-        # need to account for the fact that serv, sg, and inst_id are filled in later!
+        # need to account for the fact that serv, sg, and inst_id are filled in later,
+        # so just checking "None" doesn't work
 
         # attrs = vars(self)
         # print(attrs)
@@ -149,8 +150,7 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        # todo | change this back to 1024
-        vol_size = 50
+        vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -304,7 +304,7 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name=None):
-        # todo | change config_file back to how it was
+        # todo | change config_file back to where it was
         config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
         # config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
@@ -376,6 +376,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     samfile = prefix + '/alignments/Aligned.out.sam'
     h5_archive = output_stem + '.h5'
     merged_fastq = output_stem + '_merged.fastq'
+    # todo | need to put these methods back into process_experiment?
     # counts = prefix + '_sp_counts.npz'
     # id_map = prefix + '_gene_id_map.p'
     # alignment_summary = prefix + '_alignment_summary.txt'
