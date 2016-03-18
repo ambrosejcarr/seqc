@@ -62,9 +62,9 @@ def parse_args(args):
     return p.parse_args(args)
 
 
-def run_remote() -> None:
+def run_remote(name: str) -> None:
     """
-    :return:
+    :param name: cluster name if provided by user, otherwise None
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
@@ -76,7 +76,7 @@ def run_remote() -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    cluster.cluster_setup()
+    cluster.cluster_setup(name)
     cluster.serv.connect()
 
     # todo write this somewhere that will never be write-protected!
@@ -95,10 +95,6 @@ def run_remote() -> None:
     # writing name of instance in /data/software/instance.txt for clean up
     cluster.serv.exec_command('cd /data/software; echo {instance_id} > instance.txt'
                               ''.format(instance_id=str(cluster.inst_id.instance_id)))
-    # todo added this in to test
-    seqc.log.notify('This is getting called: ')
-    seqc.log.notify(cmd)
-
     cluster.serv.exec_command('cd /data/software; sudo nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
@@ -112,9 +108,8 @@ def main(args: list=None):
         seqc.log.args(args)
 
         if args.remote:
-            run_remote()
-            # todo: bool so python doesn't freak out with mutt not being a local file?
-            sys.exit()
+            run_remote(args.cluster_name)
+            sys.exit(2)
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
