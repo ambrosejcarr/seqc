@@ -138,8 +138,10 @@ def main(args: list = None):
                           'input data.')
 
             # todo: make this prettier: obtaining basespace token from config
+            # todo | for remote, need to send config file up to cluster
             config = configparser.ConfigParser()
-            config_file = os.path.expanduser('~/.seqc/config')
+            # config_file = os.path.expanduser('~/.seqc/config')
+            config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
             config.read(config_file)
             args.basespace_token = config['BaseSpaceToken']['base_space_token']
 
