@@ -5,7 +5,7 @@ import multiprocessing
 import os
 import sys
 import seqc
-from subprocess import Popen
+from subprocess import Popen, check_output
 
 
 def parse_args(args):
@@ -81,18 +81,7 @@ def run_remote(name: str, outdir: str) -> None:
     cluster.cluster_setup(name)
     cluster.serv.connect()
 
-    # temp_path = seqc.__path__[0]
-    # filepath = temp_path + '/instance.txt'
-    # todo : not writing this into the local place yet --> just experimenting remote
-    # todo | writing the instance file into '~/seqc/instance.txt'
     # todo | can check for dissociated security groups at the start of each SEQC run!
-    # inst_path = os.path.expanduser('~/') + 'seqc'
-    # mkfile = Popen(['mkdir', inst_path])
-    # mkfile.communicate()
-    # with open(inst_path + '/instance.txt', 'w') as f:
-    #     f.write('%s\n' % str(cluster.inst_id.instance_id))
-    #     f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
-
     # writing name of instance in ~/seqc/instance.txt for clean up
     seqc.log.notify('Beginning remote run.')
     inst_path = outdir + '/instance.txt'
@@ -105,6 +94,17 @@ def run_remote(name: str, outdir: str) -> None:
                     'completes.')
 
 
+def cluster_cleanup():
+    """checks for all security groups that are unused and deletes them prior to
+    each SEQC run"""
+    cmd = 'aws ec2 describe-instances --output text'
+    cmd2 = 'aws ec2 describe-security-groups --output text'
+    in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
+    all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
+    to_delete = list(all_sgs - in_use)
+    for sg in to_delete:
+        seqc.remote.remove_sg(sg.decode())
+
 def main(args: list = None):
     seqc.log.setup_logger()
 
@@ -116,6 +116,7 @@ def main(args: list = None):
         output_dir, output_prefix = os.path.split(args.output_stem)
 
         if args.remote:
+            cluster_cleanup()
             run_remote(args.cluster_name, output_dir)
             sys.exit()
 
@@ -226,3 +227,4 @@ def main(args: list = None):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
