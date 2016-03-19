@@ -137,11 +137,11 @@ def main(args: list = None):
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
 
-            # todo: make this prettier
+            # todo: make this prettier: obtaining basespace token from config
             config = configparser.ConfigParser()
             config_file = os.path.expanduser('~/.seqc/config')
             config.read(config_file)
-            args.basespace_token = config['BaseSpaceToken']
+            args.basespace_token = config['BaseSpaceToken']['base_space_token']
 
             if not args.basespace_token:
                 raise ValueError(
@@ -232,6 +232,9 @@ def main(args: list = None):
         raise
 
     finally:
+        print('i am the local computer')
+        print(args.remote)
+        print(args.no_terminate)
         if not args.remote:  # Is local
             if not args.no_terminate:  # terminate = True
                 # todo | see if this should still be hard-coded
