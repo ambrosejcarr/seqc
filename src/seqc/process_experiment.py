@@ -4,6 +4,7 @@ import argparse
 import multiprocessing
 import os
 import sys
+import pickle
 import seqc
 from subprocess import Popen, check_output
 
@@ -23,6 +24,9 @@ def parse_args(args):
                         'barcode data')
     p.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
                    help='sam file containing aligned, merged fastq records.')
+    p.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
+                   help='text file(s) containing valid cell barcodes (one barcode per '
+                        'line)')
     p.add_argument('--basespace', metavar='BS', help='BaseSpace sample ID. '
                                                      'Identifies a sequencing run to download and process.')
 
@@ -107,9 +111,8 @@ def cluster_cleanup():
 
 def main(args: list = None):
     seqc.log.setup_logger()
-
+    args = parse_args(args)
     try:
-        args = parse_args(args)
         seqc.log.args(args)
 
         # split output_stem into path and prefix
@@ -194,8 +197,13 @@ def main(args: list = None):
             args.samfile, args.index + 'annotations.gtf')
         ra.save(args.output_stem + '.h5')
 
-        seqc.log.info('Correcting errors and generating expression matrices.')
-        # todo add these functions
+        seqc.log.info('Correcting cell barcode and RMT errors')
+        cell_counts, _ = seqc.correct_errors.correct_errors(ra, args.barcode_files)
+
+        seqc.log.info('Creating count matrices')
+        matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
+        with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
+            pickle.dump(matrices, f)
 
         seqc.log.info('Run complete.')
 
@@ -204,6 +212,7 @@ def main(args: list = None):
                 args.output_stem, args.email_status, args.aws_upload_key)
 
     except:
+        pass
         seqc.log.exception()
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
@@ -212,11 +221,10 @@ def main(args: list = None):
         raise
 
     finally:
-        if not args.remote:
-            if not args.no_terminate:
-                fpath = output_dir + '/instance.txt'
-                if os.path.isfile(fpath):
-                    with open(fpath, 'r') as f:
+        if not args.remote:  # Is local
+            if not args.no_terminate:  # terminate = True
+                if os.path.isfile('/data/software/instance.txt'):
+                    with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
                 else:

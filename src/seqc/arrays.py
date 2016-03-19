@@ -83,3 +83,6 @@ class ReadArray:
         data = f.root.data.read()
         f.close()
         return cls(data)
+
+    def __len__(self):
+        return len(self.data)

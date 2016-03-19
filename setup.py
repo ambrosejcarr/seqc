@@ -17,7 +17,7 @@ elif os.path.isfile('/usr/local/hdf5/lib/libhdf5.so'):
     h5fail = False
 
 setup(name='seqc',
-      version='0.1',
+      version='0.1.6',
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
@@ -50,14 +50,12 @@ setup(name='seqc',
 
 # print any warnings
 if h5fail:
-    warn("""
-SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/,
-/usr/lib/, /usr/hdf5/lib/, or /usr/local/lib/hdf5/.
-tables will not find h5lib and installation will likely fail unless the
-HDF5_DIR environment variable has been set to the location that HDF5 was
-installed into. If HDF5 is not installed, please install it prior to
-installing SEQC.
-""")
+    warn('SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/, '
+         '/usr/lib/, /usr/hdf5/lib/, or /usr/local/lib/hdf5/. '
+         'tables will not find h5lib and installation will likely fail unless the '
+         'HDF5_DIR environment variable has been set to the location that HDF5 was '
+         'installed into. If HDF5 is not installed, please install it prior to '
+         'installing SEQC. ')
 
 # look for star
 if not shutil.which('STAR'):

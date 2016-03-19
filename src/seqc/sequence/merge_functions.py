@@ -5,13 +5,13 @@ _pattern = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCTT){s<=2}(.{8})(.{6})(.*?
 _pattern_v2 = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCAA){s<=2}(.{8})(.{8})(.*?)')
 
 
-def _check_spacer_v2(b):
+def _check_spacer_v2(sequence):
     """a fast, in-drop-v1 specific command to find a spacer sequence and cb length
 
     :b: barcode fastq
     :returns: (cell_barcode, rmt, poly_t)
     """
-    sequence = b.sequence[:-1]
+    assert ~sequence.endswith(b'\n')
     identifier = sequence[24:28]
     if identifier == b'CGCC':
         cb1 = sequence[:8]
@@ -39,13 +39,13 @@ def _check_spacer_v2(b):
     return cell, rmt, poly_t
 
 
-def _check_spacer_v1(b):
+def _check_spacer_v1(sequence):
     """a fast, in-drop-v1 specific command to find a spacer sequence and cb length
 
     :arg b: barcode fastq
     :returns: (cell_barcode, rmt, poly_t)
     """
-    sequence = b.sequence[:-1]
+    assert ~sequence.endswith(b'\n')
     identifier = sequence[24:28]
     if identifier == b'CGCC':
         cb1 = sequence[:8]
@@ -74,7 +74,7 @@ def _check_spacer_v1(b):
 
 
 def in_drop(g, b):
-    cell, rmt, poly_t = _check_spacer_v1(b)
+    cell, rmt, poly_t = _check_spacer_v1(b.sequence[:-1])
     if not cell:
         try:
             cell1, spacer, cell2, rmt, poly_t = re.match(
@@ -92,7 +92,7 @@ def in_drop_v2(g, b):
     :param b:
     :return:
     """
-    cell, rmt, poly_t = _check_spacer_v2(b)
+    cell, rmt, poly_t = _check_spacer_v2(b.sequence[:-1])
     if not cell:
         try:
             cell1, spacer, cell2, rmt, poly_t = re.match(
