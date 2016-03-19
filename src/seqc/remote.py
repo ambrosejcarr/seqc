@@ -151,8 +151,7 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        # todo | change this back to 1024 after testing
-        vol_size = 50  # 1024
+        vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -306,7 +305,7 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name=None):
-        # todo | change config_file back to where it was
+        # todo | change this back to how it was after testing
         config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
         # config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
@@ -368,10 +367,9 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str) -> None:
     """
-    :param output_prefix:
-    :param email_address:
-    :param aws_upload_key:
-    :return:
+    :param output_stem: specified output directory in cluster
+    :param email_address: e-mail where run summary will be sent
+    :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     """
     prefix, directory = os.path.split(output_stem)
 
@@ -455,13 +453,6 @@ class SSHServer(object):
                 attempt += 1
                 if attempt > max_attempts:
                     raise
-
-                    # gname = self.instance.security_groups[0]['GroupName']
-                    # gid = self.instance.security_groups[0]['GroupId']
-                    # self.instance.terminate()
-                    # boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=gid)
-                    # raise RuntimeError("connection failed: maximum number of unsuccessful attempts "
-                    #                    "reached")
 
     def is_connected(self):
         if self.ssh.get_transport() is None:
