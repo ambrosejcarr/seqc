@@ -8,10 +8,6 @@ import pickle
 import seqc
 from subprocess import Popen, check_output
 
-# testing
-import configparser
-
-
 
 def parse_args(args):
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
@@ -35,9 +31,8 @@ def parse_args(args):
                                                      'Identifies a sequencing run to download and process.')
 
     # todo this should be taken from configure/config
-    # p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
-    #                                                        'token')
-
+    p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
+                                                           'token')
     p.add_argument('-o', '--output-stem', metavar='O', help='file stem for output files '
                                                             'e.g. ./seqc_output/tumor_run5')
     p.add_argument('-i', '--index', metavar='I', help='Folder or s3 link to folder '
@@ -136,15 +131,6 @@ def main(args: list = None):
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
-
-            # todo: make this prettier: obtaining basespace token from config
-            # todo | for remote, need to send config file up to cluster
-            config = configparser.ConfigParser()
-            # config_file = os.path.expanduser('~/.seqc/config')
-            config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
-            config.read(config_file)
-            args.basespace_token = config['BaseSpaceToken']['base_space_token']
-
             if not args.basespace_token:
                 raise ValueError(
                     'If the --basespace argument is used, the --basespace-token argument '
@@ -234,17 +220,14 @@ def main(args: list = None):
         raise
 
     finally:
-        print('i am the local computer')
-        print(args.remote)
-        print(args.no_terminate)
         if not args.remote:  # Is local
             if not args.no_terminate:  # terminate = True
-                # todo | see if this should still be hard-coded
+                # todo: see if this should still be hard-coded to /data/software
+                # if os.path.isfile('/data/software/instance.txt'):
+                #     with open('/data/software/instance.txt', 'r') as f:
                 fpath = output_dir + '/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
-                # if os.path.isfile('/data/software/instance.txt'):
-                #     with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
                 else:
