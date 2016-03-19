@@ -79,15 +79,6 @@ class ClusterServer(object):
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
-        # todo: check that config file is complete
-        # need to account for the fact that serv, sg, and inst_id are filled in later,
-        # so just checking "None" doesn't work
-
-        # attrs = vars(self)
-        # print(attrs)
-        # if None in attrs.values():
-        #     raise ValueError('Config file is incomplete! Exiting.')
-
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
         if 'c4' in self.inst_type:
@@ -288,10 +279,9 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
-        # todo: change the branch back to v0.1.6 after merging all changes in remote
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/remote | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
@@ -305,9 +295,8 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name=None):
-        # todo | change this back to how it was after testing
-        config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
-        # config_file = os.path.expanduser('~/.seqc/config')
+        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
+        config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
         self.create_cluster()
