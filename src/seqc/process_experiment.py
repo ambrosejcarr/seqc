@@ -8,6 +8,10 @@ import pickle
 import seqc
 from subprocess import Popen, check_output
 
+# testing
+import configparser
+
+
 
 def parse_args(args):
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
@@ -31,8 +35,8 @@ def parse_args(args):
                                                      'Identifies a sequencing run to download and process.')
 
     # todo this should be taken from configure/config
-    p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
-                                                           'token')
+    # p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
+    #                                                        'token')
 
     p.add_argument('-o', '--output-stem', metavar='O', help='file stem for output files '
                                                             'e.g. ./seqc_output/tumor_run5')
@@ -132,6 +136,13 @@ def main(args: list = None):
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
+
+            # todo: make this prettier
+            config = configparser.ConfigParser()
+            config_file = os.path.expanduser('~/.seqc/config')
+            config.read(config_file)
+            args.basespace_token = config['BaseSpaceToken']
+
             if not args.basespace_token:
                 raise ValueError(
                     'If the --basespace argument is used, the --basespace-token argument '
@@ -223,8 +234,12 @@ def main(args: list = None):
     finally:
         if not args.remote:  # Is local
             if not args.no_terminate:  # terminate = True
-                if os.path.isfile('/data/software/instance.txt'):
-                    with open('/data/software/instance.txt', 'r') as f:
+                # todo | see if this should still be hard-coded
+                fpath = output_dir + '/instance.txt'
+                if os.path.isfile(fpath):
+                    with open(fpath, 'r') as f:
+                # if os.path.isfile('/data/software/instance.txt'):
+                #     with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
                 else:
