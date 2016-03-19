@@ -81,9 +81,8 @@ def run_remote(name: str, outdir: str) -> None:
     cluster.cluster_setup(name)
     cluster.serv.connect()
 
-    # todo | can check for dissociated security groups at the start of each SEQC run!
-    # writing name of instance in ~/seqc/instance.txt for clean up
     seqc.log.notify('Beginning remote run.')
+    # writing name of instance in /path/to/output_dir/instance.txt for clean up
     inst_path = outdir + '/instance.txt'
     cluster.serv.exec_command('echo {instance_id} > {inst_path}'
                               ''.format(inst_path=inst_path,
@@ -95,8 +94,8 @@ def run_remote(name: str, outdir: str) -> None:
 
 
 def cluster_cleanup():
-    """checks for all security groups that are unused and deletes them prior to
-    each SEQC run"""
+    """checks for all security groups that are unused and deletes
+    them prior to each SEQC run"""
     cmd = 'aws ec2 describe-instances --output text'
     cmd2 = 'aws ec2 describe-security-groups --output text'
     in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
@@ -104,6 +103,7 @@ def cluster_cleanup():
     to_delete = list(all_sgs - in_use)
     for sg in to_delete:
         seqc.remote.remove_sg(sg.decode())
+
 
 def main(args: list = None):
     seqc.log.setup_logger()
@@ -227,4 +227,3 @@ def main(args: list = None):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-
