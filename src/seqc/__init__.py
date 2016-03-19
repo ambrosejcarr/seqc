@@ -8,4 +8,4 @@ from . import arrays
 from . import remote
 from . import correct_errors
 
-__version__ = "v0.1.6"
+__version__ = "0.1.6"

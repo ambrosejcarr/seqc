@@ -5,6 +5,7 @@ import os
 import configparser
 import random
 from subprocess import Popen, PIPE
+import shutil
 import paramiko
 import boto3
 from botocore.exceptions import ClientError
@@ -24,20 +25,8 @@ class ClusterServer(object):
     allows for the creation/manipulation of EC2 instances and executions
     of commands on the remote server"""
 
-    # todo many of these parameters aren't used. Either integrate or remove.
-    def __init__(self, private_key=None, security_group=None,
-                 image_id=None, zone=None, server=None,
-                 instance_type=None, subnet_id=None):
-        """
-        :param private_key:
-        :param security_group:
-        :param image_id:
-        :param zone:
-        :param server:
-        :param instance_type:
-        :param subnet_id:
-        :return:
-        """
+    def __init__(self):
+
         self.keyname = None
         self.keypath = None
         self.image_id = None
@@ -55,7 +44,7 @@ class ClusterServer(object):
 
     def create_security_group(self, name=None):
         """Creates a new security group for the cluster
-        :param name:
+        :param name: cluster name if provided by user
         """
         if name is None:
             name = 'SEQC-%07d' % random.randint(1, int(1e7))
@@ -72,10 +61,9 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
-    # todo catch errors in cluster configuration
     def configure_cluster(self, config_file):
         """configures the newly created cluster according to config
-        :param config_file:
+        :param config_file: /path/to/seqc/config
         """
         config = configparser.ConfigParser()
         config.read(config_file)
@@ -84,8 +72,7 @@ class ClusterServer(object):
         self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
-        if template == 'c4':
-            self.subnet = config[template]['subnet_id']
+        self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
         self.n_tb = config['raid']['n_tb']
         self.dir_name = config['gitpull']['dir_name']
@@ -160,18 +147,22 @@ class ClusterServer(object):
                                      VolumeType='standard')
         vol_id = vol.id
         vol_state = vol.state
+        max_tries = 40
+        i = 0
         while vol_state != 'available':
             time.sleep(3)
             vol.reload()
+            i += 1
+            if i >= max_tries:
+                raise VolumeCreationError('Volume could not be created.')
             vol_state = vol.state
         seqc.log.notify('Volume %s created successfully.' % vol_id)
         return vol_id
 
-    # todo deal with volume creation errors
     def attach_volume(self, vol_id, dev_id):
         """attaches a vol_id to inst_id at dev_id
-        :param dev_id:
-        :param vol_id:
+        :param dev_id: where volume will be mounted
+        :param vol_id: ID of volume to be attached
         """
         vol = self.ec2.Volume(vol_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
@@ -194,7 +185,6 @@ class ClusterServer(object):
         device_info = self.inst_id.block_device_mappings
         for i in range(1, len(device_info)):
             status = device_info[i]['Ebs']['Status']
-            max_tries = 40
             i = 0
             while status != 'attached':
                 time.sleep(.5)
@@ -233,14 +223,12 @@ class ClusterServer(object):
         seqc.log.notify("Creating logical RAID device...")
         all_dev = ' '.join(dev_names)
 
-        # check if this sleep is necessary for successful execution of mdadm function
         num_retries = 30
         mdadm_failed = True
         for i in range(num_retries):
             _, res = self.serv.exec_command(
                 "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
-                "--raid-devices=%s %s" % (
-                    self.n_tb, all_dev))
+                "--raid-devices=%s %s" % (self.n_tb, all_dev))
             if 'started' in ''.join(res):
                 mdadm_failed = False
                 break
@@ -280,9 +268,7 @@ class ClusterServer(object):
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
-        # todo replace this with git clone once repo is public
-        # works with normal public git repository
-        # install seqc on AMI to simplify
+        # todo: replace this with git clone once seqc repo is public
 
         if not self.dir_name.endswith('/'):
             self.dir_name += '/'
@@ -292,14 +278,14 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
-        location = folder + "seqc.tar.gz"
-        # todo | get rid of "nuke_sc" branch here, just for testing
+        location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/develop | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
             'sudo tee %s > /dev/null' % location)
-        # todo implement some sort of ls grep check system here
-        self.serv.exec_command('sudo pip3 install %s' % location)
+        self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
+                               '--strip-components 1' % folder)
+        self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
@@ -368,26 +354,28 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     email_process.communicate(email_body)
 
 
-def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) -> None:
+def upload_results(output_stem: str, email_address: str, aws_upload_key: str) -> None:
     """
-    :param output_prefix:
-    :param email_address:
-    :param aws_upload_key:
-    :return:
+    :param output_stem: specified output directory in cluster
+    :param email_address: e-mail where run summary will be sent
+    :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     """
-    prefix, directory = os.path.split(output_prefix)
+    prefix, directory = os.path.split(output_stem)
 
-    samfile = directory + 'Aligned.out.sam'
-    h5_archive = prefix + '.h5'
-    merged_fastq = directory + 'merged.fastq'
-    counts = prefix + '_sp_counts.npz'
-    id_map = prefix + '_gene_id_map.p'
-    alignment_summary = prefix + '_alignment_summary.txt'
-    log = 'seqc.log'
-    files = [samfile, h5_archive, merged_fastq, counts, id_map, alignment_summary, log]
+    samfile = prefix + '/alignments/Aligned.out.sam'
+    h5_archive = output_stem + '.h5'
+    merged_fastq = output_stem + '_merged.fastq'
+    # todo | need to put these count matrix method back in here
+    # counts = prefix + '_sp_counts.npz'
+    shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
+                    '_alignment_summary.txt')
+    alignment_summary = output_stem + '_alignment_summary.txt'
+    log = prefix + '/seqc.log'
+    # now only need to put back counts into this array
+    files = [samfile, h5_archive, merged_fastq, alignment_summary, log]
 
     # gzip everything and upload to aws_upload_key
-    archive_name = prefix + '.tar.gz'
+    archive_name = output_stem + '.tar.gz'
     gzip_args = ['tar', '-czf', archive_name] + files
     gzip = Popen(gzip_args)
     gzip.communicate()
@@ -413,7 +401,6 @@ def upload_results(output_prefix: str, email_address: str, aws_upload_key: str) 
 
 
 class SSHServer(object):
-
     def __init__(self, inst_id, keypath):
         ec2 = boto3.resource('ec2')
         self.instance = ec2.Instance(inst_id)
@@ -456,13 +443,6 @@ class SSHServer(object):
                 if attempt > max_attempts:
                     raise
 
-        # gname = self.instance.security_groups[0]['GroupName']
-        # gid = self.instance.security_groups[0]['GroupId']
-        # self.instance.terminate()
-        # boto3.client('ec2').delete_security_group(GroupName=gname,GroupId=gid)
-        # raise RuntimeError("connection failed: maximum number of unsuccessful attempts "
-        #                    "reached")
-
     def is_connected(self):
         if self.ssh.get_transport() is None:
             return False
@@ -472,10 +452,6 @@ class SSHServer(object):
     def disconnect(self):
         if self.is_connected():
             self.ssh.close()
-
-    # will be using iolib's S3 class to do file downloading/uploading
-    def download_files(self):
-        raise NotImplementedError
 
     def get_file(self, localfile, remotefile):
         if not self.is_connected():

@@ -6,6 +6,7 @@ import os
 import sys
 import pickle
 import seqc
+from subprocess import Popen, check_output
 
 
 def parse_args(args):
@@ -27,28 +28,30 @@ def parse_args(args):
                    help='text file(s) containing valid cell barcodes (one barcode per '
                         'line)')
     p.add_argument('--basespace', metavar='BS', help='BaseSpace sample ID. '
-                   'Identifies a sequencing run to download and process.')
+                                                     'Identifies a sequencing run to download and process.')
 
     # todo this should be taken from configure/config
     p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
-                   'token')
+                                                           'token')
 
     p.add_argument('-o', '--output-stem', metavar='O', help='file stem for output files '
-                   'e.g. ./seqc_output/tumor_run5')
+                                                            'e.g. ./seqc_output/tumor_run5')
     p.add_argument('-i', '--index', metavar='I', help='Folder or s3 link to folder '
-                   'containing index files for alignment and resolution of ambiguous '
-                   'reads.')
+                                                      'containing index files for alignment and resolution of ambiguous '
+                                                      'reads.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F', help='maximum paired-end insert '
-                   'size that is considered a valid record', default=1000)
+                                                          'size that is considered a valid record',
+                   default=1000)
     f.add_argument('--min-poly-t', metavar='T', help='minimum size of poly-T tail that '
-                   'is required for a barcode to be considered a valid record', default=3)
+                                                     'is required for a barcode to be considered a valid record',
+                   default=3)
     f.add_argument('--max-dust-score', metavar='D', help='maximum complexity score for a '
-                   'read to be considered valid')
+                                                         'read to be considered valid')
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
@@ -66,57 +69,64 @@ def parse_args(args):
     return p.parse_args(args)
 
 
-def run_remote() -> None:
+def run_remote(name: str, outdir: str) -> None:
     """
-    :return:
+    :param name: cluster name if provided by user, otherwise None
+    :param outdir: where seqc will be installed on the cluster
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = 'SEQC ' + ' '.join(sys.argv[1:]) + ' --local'
+    cmd = outdir + '/seqc/src/seqc/process_experiment.py ' + ' '.join(
+        sys.argv[1:]) + ' --local'
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    cluster.cluster_setup()
+    cluster.cluster_setup(name)
     cluster.serv.connect()
 
-    # todo write this somewhere that will never be write-protected!
-    # installs into python package locations may not be writable in future.
-    # writing instance id and security group id into file for cluster cleanup
-    temp_path = seqc.__path__[0]
-    filepath = os.path.split(temp_path)[0] + '/scripts/instance.txt'
-    with open(filepath, 'w') as f:
-        f.write('%s\n' % str(cluster.inst_id.instance_id))
-        f.write('%s\n' % str(cluster.inst_id.security_groups[0]['GroupId']))
-
-    # todo why write to a different location than above?
     seqc.log.notify('Beginning remote run.')
-    # writing name of instance in /data/software/instance.txt for clean up
-    cluster.serv.exec_command('cd /data/software; echo {instance_id} > instance.txt'
-                              ''.format(instance_id=str(cluster.inst_id.instance_id)))
-    cluster.serv.exec_command('cd /data/software; nohup {cmd} > /dev/null 2>&1 &'
-                              ''.format(cmd=cmd))
+    # writing name of instance in /path/to/output_dir/instance.txt for clean up
+    inst_path = outdir + '/instance.txt'
+    cluster.serv.exec_command('echo {instance_id} > {inst_path}'
+                              ''.format(inst_path=inst_path,
+                                        instance_id=str(cluster.inst_id.instance_id)))
+    cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
+                              ''.format(out=outdir, cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
 
 
-def main(args: list=None):
+def cluster_cleanup():
+    """checks for all security groups that are unused and deletes
+    them prior to each SEQC run"""
+    cmd = 'aws ec2 describe-instances --output text'
+    cmd2 = 'aws ec2 describe-security-groups --output text'
+    in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
+    all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
+    to_delete = list(all_sgs - in_use)
+    for sg in to_delete:
+        seqc.remote.remove_sg(sg.decode())
+
+
+def main(args: list = None):
     seqc.log.setup_logger()
     args = parse_args(args)
     try:
         seqc.log.args(args)
 
+        # split output_stem into path and prefix
+        output_dir, output_prefix = os.path.split(args.output_stem)
+
         if args.remote:
-            run_remote()
+            cluster_cleanup()
+            run_remote(args.cluster_name, output_dir)
             sys.exit()
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
             print('-o/--output-stem should not be a directory')
             sys.exit(2)
-
-        # split output_stem into path and prefix
-        output_dir, output_prefix = os.path.split(args.output_stem)
 
         # download data if necessary
         if args.basespace:
@@ -127,6 +137,12 @@ def main(args: list=None):
                     'If the --basespace argument is used, the --basespace-token argument '
                     'must also be provided in order to gain access to the basespace '
                     'repository')
+            # making extra directories for BaseSpace download, changing permissions
+            bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
+            bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
+            bf.communicate()
+            bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
+            bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, args.basespace_token)
 
@@ -139,7 +155,7 @@ def main(args: list=None):
             try:
                 seqc.log.info('AWS s3 link provided for index. Downloading index.')
                 bucket, prefix = seqc.io.S3.split_link(args.index)
-                args.index = output_dir + 'index/'  # set index  based on s3 download
+                args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
             except FileNotFoundError:
@@ -163,10 +179,10 @@ def main(args: list=None):
             seqc.log.info('Merging genomic reads and barcode annotations.')
             merge_function = getattr(seqc.sequence.merge_functions, args.platform)
             args.merged_fastq = seqc.sequence.fastq.merge_paired(
-                    merge_function=merge_function,
-                    fout=args.output_stem + '_merged.fastq',
-                    genomic=args.genomic_fastq,
-                    barcode=args.barcode_fastq)
+                merge_function=merge_function,
+                fout=args.output_stem + '_merged.fastq',
+                genomic=args.genomic_fastq,
+                barcode=args.barcode_fastq)
 
         if align:
             seqc.log.info('Aligning merged fastq records.')
@@ -174,11 +190,11 @@ def main(args: list=None):
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
             args.samfile = seqc.alignment.star.align(
-                    args.merged_fastq, args.index, n_processes, alignment_directory)
+                args.merged_fastq, args.index, n_processes, alignment_directory)
 
         seqc.log.info('Filtering aligned records and constructing record database')
         ra = seqc.arrays.ReadArray.from_samfile(
-                args.samfile, args.index + 'annotations.gtf')
+            args.samfile, args.index + 'annotations.gtf')
         ra.save(args.output_stem + '.h5')
 
         seqc.log.info('Correcting cell barcode and RMT errors')
@@ -193,28 +209,28 @@ def main(args: list=None):
 
         if args.email_status:
             seqc.remote.upload_results(
-                args.output_prefix, args.email_status, args.aws_upload_key)
+                args.output_stem, args.email_status, args.aws_upload_key)
 
     except:
         pass
         seqc.log.exception()
-        if args.email_status and args.remote:
+        if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
             seqc.remote.email_user(attachment='seqc.log', email_body=email_body,
                                    email_address=args.email_status)
         raise
 
     finally:
-        if args.remote:
-            if not args.no_terminate:
+        if not args.remote:  # Is local
+            if not args.no_terminate:  # terminate = True
                 if os.path.isfile('/data/software/instance.txt'):
                     with open('/data/software/instance.txt', 'r') as f:
                         inst_id = f.readline().strip('\n')
                     seqc.remote.terminate_cluster(inst_id)
                 else:
-                    seqc.log.info('file containing instance id is unavailable!')
+                    seqc.log.info('File containing instance id is unavailable!')
             else:
-                seqc.log.info('not terminating cluster -- user responsible for cleanup')
+                seqc.log.info('Not terminating cluster -- user responsible for cleanup')
 
 
 if __name__ == '__main__':
