@@ -214,14 +214,16 @@ def main(args: list = None):
         seqc.log.info('Correcting cell barcode and RMT errors')
         # todo: need to download barcode files from S3 or send them to cluster
         # copied from index code
-        if not args.barcode_files.startswith('s3://'):
+        if not args.barcode_files[0].startswith('s3://'):
+            # todo: clean up indexing scheme
             if not os.path.isdir(args.barcode_files):
                 raise ValueError('provided barcode files: "%s" is neither an s3 link '
                                  'or a valid filepath' % args.barcode_files)
         else:
             try:
                 seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
-                bucket, prefix = seqc.io.S3.split_link(args.barcode_files)
+                # todo: clean up the indexing scheme
+                bucket, prefix = seqc.io.S3.split_link(args.barcode_files[0])
                 cut_dirs = prefix.count('/')
                 args.barcode_files = seqc.io.S3.download_files(bucket, prefix,
                                                                output_dir, cut_dirs)
