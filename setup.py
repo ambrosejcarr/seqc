@@ -29,23 +29,13 @@ setup(name='seqc',
           'numexpr>=2.4',  # tables requirement
           'pandas>=0.16.0',
           'paramiko',
-          # 'matplotlib>=1.4.3',
-          # 'seaborn',
           'regex',
           'requests',
           'scipy>=0.14.0',
           'boto3',
-          # 'pyftpdlib',
           'intervaltree',
-          # 'memory_profiler',
-          # 'more_itertools',
           'tables'],
-      # scripts=['src/scripts/SEQC',
-      #          'src/scripts/PROCESS_BARCODES',
-      #          'src/scripts/TEST_BARCODES',
-      #          'src/scripts/process_multi_file_scseq_experiment.py',
-      #          'src/scripts/process_single_file_scseq_experiment.py',
-      #          'src/scripts/SEQC.py'],
+      scripts=['src/seqc/process_experiment.py']
       )
 
 # print any warnings
