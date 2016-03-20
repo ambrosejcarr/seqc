@@ -35,13 +35,11 @@ def parse_args(args):
     p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
                                                            'token')
 
-
     p.add_argument('-o', '--output-stem', metavar='O', required=True,
                    help='file stem for output files e.g. ./seqc_output/tumor_run5')
     p.add_argument('-i', '--index', metavar='I', required=True,
                    help='Folder or s3 link to folder containing index files for '
                         'alignment and resolution of ambiguous reads.')
-
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -214,6 +212,25 @@ def main(args: list = None):
         ra.save(args.output_stem + '.h5')
 
         seqc.log.info('Correcting cell barcode and RMT errors')
+        # todo: need to download barcode files from S3 or send them to cluster
+        # copied from index code
+        if not args.barcode_files.startswith('s3://'):
+            if not os.path.isdir(args.barcode_files):
+                raise ValueError('provided barcode files: "%s" is neither an s3 link '
+                                 'or a valid filepath' % args.barcode_files)
+        else:
+            try:
+                seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+                bucket, prefix = seqc.io.S3.split_link(args.barcode_files)
+                args.barcode_files = output_dir + '/barcodes/'
+                # todo: args.barcode_files needs to be a list of files!!!
+                cut_dirs = prefix.count('/')
+                seqc.io.S3.download_files(bucket, prefix, args.barcode_files, cut_dirs)
+            except FileNotFoundError:
+                raise FileNotFoundError('No index file or folder was identified at the '
+                                        'specified s3 location: %s' % args.barcode_files)
+            except FileExistsError:
+                pass  # file is already present.
         cell_counts, _ = seqc.correct_errors.correct_errors(ra, args.barcode_files)
 
         seqc.log.info('Creating count matrices')
