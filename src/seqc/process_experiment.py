@@ -222,10 +222,9 @@ def main(args: list = None):
             try:
                 seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
                 bucket, prefix = seqc.io.S3.split_link(args.barcode_files)
-                args.barcode_files = output_dir + '/barcodes/'
-                # todo: args.barcode_files needs to be a list of files!!!
                 cut_dirs = prefix.count('/')
-                seqc.io.S3.download_files(bucket, prefix, args.barcode_files, cut_dirs)
+                args.barcode_files = seqc.io.S3.download_files(bucket, prefix,
+                                                               output_dir, cut_dirs)
             except FileNotFoundError:
                 raise FileNotFoundError('No index file or folder was identified at the '
                                         'specified s3 location: %s' % args.barcode_files)
