@@ -102,6 +102,8 @@ class S3:
                     continue
 
             client.download_file(bucket, k, fout)
+            print(fout)
+        # todo: need to return downloaded filenames
 
     @staticmethod
     def upload_file(filename, bucket, key):
