@@ -72,6 +72,17 @@ def parse_args(args):
     return p.parse_args(args)
 
 
+def check_arguments():
+    """determine if valid arguments were passed before initiating run
+
+    :return:
+    """
+    # check: at least one input was provided
+    # check: if s3 link, key exist
+    # check: if basespace id, id exists
+    raise NotImplementedError
+
+
 def run_remote(name: str, outdir: str) -> None:
     """
     :param name: cluster name if provided by user, otherwise None
