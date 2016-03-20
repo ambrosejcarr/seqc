@@ -216,7 +216,7 @@ def main(args: list = None):
         # copied from index code
         if not args.barcode_files[0].startswith('s3://'):
             # todo: clean up indexing scheme
-            if not os.path.isdir(args.barcode_files):
+            if not os.path.isdir(args.barcode_files[0]):
                 raise ValueError('provided barcode files: "%s" is neither an s3 link '
                                  'or a valid filepath' % args.barcode_files)
         else:
