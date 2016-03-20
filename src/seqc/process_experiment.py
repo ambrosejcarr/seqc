@@ -27,28 +27,31 @@ def parse_args(args):
     p.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
                    help='text file(s) containing valid cell barcodes (one barcode per '
                         'line)')
-    p.add_argument('--basespace', metavar='BS', help='BaseSpace sample ID. '
-                                                     'Identifies a sequencing run to download and process.')
+    p.add_argument('--basespace', metavar='BS',
+                   help='BaseSpace sample ID. Identifies a sequencing run to download '
+                        'and process.')
 
     # todo this should be taken from configure/config
     p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
                                                            'token')
 
-    p.add_argument('-o', '--output-stem', metavar='O', help='file stem for output files '
-                                                            'e.g. ./seqc_output/tumor_run5')
-    p.add_argument('-i', '--index', metavar='I', help='Folder or s3 link to folder '
-                                                      'containing index files for alignment and resolution of ambiguous '
-                                                      'reads.')
+    p.add_argument('-o', '--output-stem', metavar='O', required=True,
+                   help='file stem for output files e.g. ./seqc_output/tumor_run5')
+    p.add_argument('-i', '--index', metavar='I', required=True,
+                   help='Folder or s3 link to folder containing index files for '
+                        'alignment and resolution of ambiguous reads.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
 
     f = p.add_argument_group('filter arguments')
-    f.add_argument('--max-insert-size', metavar='F', help='maximum paired-end insert '
-                                                          'size that is considered a valid record',
+    f.add_argument('--max-insert-size', metavar='F',
+                   help='maximum paired-end insert size that is considered a valid '
+                        'record',
                    default=1000)
-    f.add_argument('--min-poly-t', metavar='T', help='minimum size of poly-T tail that '
-                                                     'is required for a barcode to be considered a valid record',
+    f.add_argument('--min-poly-t', metavar='T',
+                   help='minimum size of poly-T tail that is required for a barcode to '
+                        'be considered a valid record',
                    default=3)
     f.add_argument('--max-dust-score', metavar='D', help='maximum complexity score for a '
                                                          'read to be considered valid')
