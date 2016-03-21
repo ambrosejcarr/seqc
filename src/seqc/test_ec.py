@@ -704,3 +704,344 @@ def correct_errors_jaitin(alignment_ra, ra_grouped, err_correction_res):
     tot_time=time.process_time()-start
     print('total jaitin error_correction runtime: ',tot_time)
     return error_count, tot_time
+	
+#This is used just for running the Jaitin method for comparison.
+def group_for_ec_pos(ra, scid_to_gene_map, required_poly_t=1):
+    res = {}
+    no_single_gene = 0
+    cell_0 = 0
+    rmt_0 = 0
+    small_poly_t = 0
+    tot = 0
+    
+    for i, v in enumerate(ra.data):
+        tot += 1
+        #Apply various perliminary filters on the data
+        if ra.features[i][0] == 0:
+            no_single_gene += 1
+            continue
+        if v['cell']==0:
+            cell_0 += 1
+            continue
+        if v['rmt']==0:
+            rmt_0 += 1
+            continue
+        if v['n_poly_t']<=required_poly_t:
+            small_poly_t += 1
+            continue
+            
+        
+        #map the feature to a gene
+        try:
+            gene = scid_to_gene_map[ra.features[i][0]]
+        except KeyError:
+            print ('No gene mapped to feature ', ra.features[i][0], ' ignoring.')
+            continue
+        
+        seq = bin_rep.ints2int([int(v['cell']),int(v['rmt'])])
+        
+        try:
+            res[gene][int(v['cell'])][int(v['rmt'])].append(i)
+        except KeyError:
+            try:
+                res[gene][int(v['cell'])][int(v['rmt'])] = [i]
+            except KeyError:
+                try:
+                    res[gene][int(v['cell'])] = {}
+                    res[gene][int(v['cell'])][int(v['rmt'])] = [i]
+                except KeyError:
+                    res[gene]={}
+                    res[gene][int(v['cell'])] = {}
+                    res[gene][int(v['cell'])][int(v['rmt'])] = [i]
+    print('total reads: ',tot,' no single gene: ',no_single_gene,' cell is zero: ',cell_0, ' rmt is zero: ',rmt_0,' small poly_t: ',small_poly_t)
+    return res
+
+	        
+def correct_errors_jaitin(alignment_ra, ra_grouped, err_correction_res):
+    """Correct errors according to jaitin method """
+    
+    #sort reads by number of positions
+    #go from least to most:
+    #   go over all d_seq:
+    #       if d_seq is 1 dist from r_seq and covers the same positions:
+    #           remove r_seq.
+    #
+    # Note: the sorting isn't really important, it just saves time.
+    
+    """calculate and correct errors in barcode sets"""
+    start = time.process_time()
+    d = ra_grouped
+
+    error_count = 0
+    
+    tot_feats = len(ra_grouped)
+    cur_f = 0
+    
+    N = bin_rep._str2bindict['N']
+    for_removal = []
+    tot=0
+    for feature in d.keys():
+        #sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) + ' features processed. ('+str((100*cur_f)/tot_feats)+'%)')
+        #cur_f += 1
+        if feature==0:
+            continue
+        #cur_seq=0
+        #tot_seq=len(d[feature].keys())
+        sorted_seq_l = sorted([(seq, len(set(np.hstack(alignment_ra.positions[d[feature][seq]])))) for seq in d[feature].keys()], key=lambda x:x[1])
+        for idx, r_seqs in enumerate(sorted_seq_l):
+            r_seq = r_seqs[0]
+            #cur_seq+=1
+            #sys.stdout.write('\rfeature: '+str(cur_f) + '/' + str(tot_feats) + ', seq: ' + str(cur_seq) + '/' + str(tot_seq))
+            if bin_rep.contains(r_seq, N):
+                continue
+            
+            gene = feature
+            r_rmt = bin_rep.rmt_from_int(r_seq)
+            r_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]])
+
+            for d_idx in range(idx-1, -1, -1):
+                d_seq = sorted_seq_l[d_idx][0]
+                d_rmt = bin_rep.rmt_from_int(d_seq)
+                d_pos_list = np.hstack(alignment_ra.positions[d[feature][r_seq]])
+
+                if hamming_dist_bin(r_rmt, d_rmt) == 1 and set(r_pos_list).issubset(set(d_pos_list)):
+                    for_removal.append((gene, r_seq))
+                    error_count+=len(d[feature][r_seq])
+                    break
+    for (gene, r_seq) in for_removal:
+        err_correction_res[ra_grouped[gene][r_seq],[err.ERROR_CORRECTION_jaitin]] = 1
+    
+    print ('\nJaitin error_count: ', error_count)
+    tot_time=time.process_time()-start
+    print('total Jaitin error_correction runtime: ',tot_time)
+    return error_count, tot_time
+
+# This is old and probably needs to be updated before use
+def correct_errors_allon(ra_grouped, err_correction_res, barcode_files, reverse_complement=True):
+    """Correct errors using the method in Allon paper.
+       Compare barcodes to list and discard any reads that have more
+       than two mismatches from all barcodes on the list"""
+
+    start = time.process_time()
+    d = ra_grouped
+    
+    error_count = 0
+    N = bin_rep._str2bindict['N']
+    for_removal = []
+    
+    tot_feats = len(ra_grouped)
+    cur_f = 0
+
+    #create barcode list from barcode_files
+    correct_barcodes = []
+    if reverse_complement:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(bin_rep.str2bin(rev_comp(line.strip()))
+                                            for line in f.readlines()))
+    else:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(bin_rep.str2bin(line.strip())
+                                            for line in f.readlines()))
+    for feature in d.keys():
+        sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) + ' features processed. ('+str((100*cur_f)/tot_feats)+'%)')
+        cur_f += 1
+        for r_seq in d[feature].keys():
+            if bin_rep.contains(r_seq, N):
+                continue
+
+            gene = feature
+            r_c1 = bin_rep.c1_from_int(r_seq)
+            r_c2 = bin_rep.c2_from_int(r_seq)
+            r_err_cnt = 0
+            if r_c1 not in correct_barcodes[0]:
+                r_err_cnt += len(list_errors(r_c1, correct_barcodes[0]))
+            if r_c2 not in correct_barcodes[1]:
+                r_err_cnt += len(list_errors(r_c2, correct_barcodes[1]))
+            if(r_err_cnt > 2):
+                for_removal.append((gene, r_seq))
+                error_count+=1
+
+    for (gene, r_seq) in for_removal:
+        err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_ALLON]] = 1
+
+    print ('\nAllon error count: ', error_count)
+    tot_time=time.process_time()-start
+    print('total Allon error_correction runtime: ',tot_time)
+    return error_count, tot_time
+
+# This is old and probably needs to be updated before use
+def correct_errors_sten(ra_grouped, err_correction_res):
+    """Correct errors using the method in Sten's paper.
+       Remove any molecule supported by only a single read"""
+    
+    # for python 3
+    start = time.process_time() 
+
+    d = ra_grouped
+    
+
+    error_count = 0
+    N = bin_rep._str2bindict['N']
+    for_removal = []
+
+    for feature in d.keys():
+        for r_seq in d[feature].keys():
+            if bin_rep.contains(r_seq, N):
+                continue
+
+            gene = feature
+            r_num_occurences = d[gene][r_seq].shape[0]
+
+            if(r_num_occurences <= 1):
+                for_removal.append((gene, r_seq))
+                error_count+=1
+
+    for (gene, r_seq) in for_removal:
+        err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_STEN]] = 1        #TODO: check that this is the correct way to address the array
+    print ('Sten error_count: ', error_count)
+    tot_time=time.process_time()-start
+    print('total Sten error_correction runtime: ',tot_time)
+    return error_count, tot_time
+
+   def estimate_error_rate(barcode_files, grouped_ra, reverse_complement=True):
+    '''
+    Estimate the error rate based on the barcodes in the data and the correct barcodes in the barcode file.
+    Return an error_rate table.
+    ''' 
+    correct_barcodes = []
+    if reverse_complement:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(bin_rep.str2bin(rev_comp(line.strip()))
+                                            for line in f.readlines()))
+    else:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(bin_rep.str2bin(line.strip())
+                                            for line in f.readlines()))
+
+    # go over the sequences in the file to calculate the error rate
+    correct_instances = 0
+    errors = list(bin_rep.ints2int([p[0],p[1]]) for p in permutations(bin_rep.bin_nums, r=2))
+    error_table = dict(zip(errors, [0] * len(errors)))
+    
+    N = bin_rep._str2bindict['N']     
+    
+    
+    dynamic_codes_table_c1 = {}
+    dynamic_codes_table_c2 = {}
+    #tot = len(ra.data)
+    tot = 0
+    print('\n')
+    ignored=0
+    repeated = 0
+    new = 0
+    #for i, read in enumerate(ra.data):
+    #for read in ra.data:
+    for gene in grouped_ra.keys():
+        tot+=len(grouped_ra[gene])
+    #    if i%100000==0:
+    #        sys.stdout.write('\rDoing read: '+str(i)+'/'+str(tot)+' ('+str(i/tot)+'%)')
+        for seq in grouped_ra[gene].keys():
+                    
+            #if bin_rep.contains(int(read['cell']), N):
+            if bin_rep.contains(seq, N):
+                    ignored+=1
+                    continue
+                    
+            #c1 = bin_rep.c1_from_codes(int(read['cell']))
+            #c2 = bin_rep.c2_from_codes(int(read['cell']))
+            c1 = bin_rep.c1_from_int(seq)
+            c2 = bin_rep.c2_from_int(seq)
+            #print(str(c1), str(c2))
+            
+            try:
+                #print('a.')
+                cor_c1, err_c1, ed_1 = dynamic_codes_table_c1[c1]
+                repeated+=1
+            except KeyError:
+                #print('b')
+                new+=1
+                cor_c1, err_c1, ed_1 = find_correct_barcode(c1, correct_barcodes[0])
+                dynamic_codes_table_c1[c1] = cor_c1, err_c1, ed_1
+            try:
+                #print('c')
+                cor_c2, err_c2, ed_2 = dynamic_codes_table_c2[c2]
+                repeated+=1
+            except KeyError:
+                #print ('d')
+                #return correct_barcodes
+                cor_c2, err_c2, ed_2 = find_correct_barcode(c2, correct_barcodes[1])
+                #print('d1')
+                dynamic_codes_table_c2[c2] = cor_c2, err_c2, ed_2
+                new+=1
+            
+            if ed_1+ed_2 == 0:
+                #print('e')
+                correct_instances += ((bin_rep.seq_len(c1) + bin_rep.seq_len(c2)) / 4)*len(grouped_ra[gene][seq])
+            elif ed_1+ed_2 > 1:
+                #print('f')
+                continue    # Ignore codes that are too noisy in the error correction calculation
+            else:
+                try:
+                    if ed_1 == 1:
+                        #print('g')
+                        error_table[err_c1] += len(grouped_ra[gene][seq])
+                    elif ed_2 == 1:
+                        #print('h')
+                        error_table[err_c2] += len(grouped_ra[gene][seq])
+                except TypeError:   # TODO: The 'N' in the codes create a key error. A good idea might be to just ignore them or even filter them completely.
+                    #print('i')
+                    pass
+                except KeyError:
+                    pass
+        
+
+    
+    # convert to error rates    
+    default_error_rate = 0.02
+    err_rate = dict(zip(errors, [0.0] * len(errors)))
+    if sum(error_table.values()) == 0:
+        print('No errors were detected, using %f uniform error chance.' % (
+            default_error_rate))
+        err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
+    for k, v in error_table.items():
+        try:
+            err_rate[k] = v / (sum(n for err_type, n in error_table.items()
+                               if err_type&0b111000 == k&0b111000) + correct_instances)
+        except ZeroDivisionError:
+            print('Warning: too few reads to estimate error rate for %r '
+                  'setting default rate of %f' % (k, default_error_rate))
+            err_rate[k] = default_error_rate
+    print('total reads: ',str(tot),', ignored: ',str(ignored), ', new entries: ',str(new),', repeated entries: ',str(repeated))
+    return err_rate
+
+#deprecated
+#def list_errors(code, correct_barcodes):
+    """
+    For a given code and a list of correct barcodes - find the correct barcode
+    that is closest to code and return the list of errors that turned it into
+    code. An error is a six bit int representing a two chr string of type "AG","CT", etc.
+    """
+    # find the closest correct barcode
+#    min_dist = high_value
+#    donor = 0
+#    for cor_code in correct_barcodes:
+#        hamm_d = hamming_dist_bin(code, cor_code)
+#        if hamm_d < min_dist:
+#            min_dist = hamm_d
+#            donor = cor_code
+#            if hamm_d <= max_ed:
+#                break
+    
+#    if donor==0:
+#        print('Error: no donor code was found to be closest. code = ', bin_rep.bin2str(code))
+    # return the actual error
+#    err_list = []
+#    while code > 0:
+#        if code&0b111 != donor&0b111:
+#            err_list.append(bin_rep.ints2int([donor&0b111, code&0b111]))
+#        code>>=3
+#    return err_list
