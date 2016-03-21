@@ -86,6 +86,7 @@ class S3:
             output_prefix += '/'
 
         # download data
+        output_files = []
         for k in keys:
 
             # drop first directory from output name, place in data folder
@@ -102,6 +103,8 @@ class S3:
                     continue
 
             client.download_file(bucket, k, fout)
+            output_files.append(fout)
+        return output_files
 
     @staticmethod
     def upload_file(filename, bucket, key):

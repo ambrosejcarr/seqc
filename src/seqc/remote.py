@@ -234,7 +234,7 @@ class ClusterServer(object):
                 break
             else:
                 seqc.log.notify('Retrying sudo mdadm.')
-                time.sleep(1)
+                time.sleep(2)
         if mdadm_failed:
             EC2RuntimeError('Error creating raid array md0 with mdadm function.')
 
@@ -295,7 +295,6 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, name=None):
-        # config_file = '/'.join(seqc.__file__.split('/')[:-3]) + '/config'
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group(name)
@@ -365,14 +364,12 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     samfile = prefix + '/alignments/Aligned.out.sam'
     h5_archive = output_stem + '.h5'
     merged_fastq = output_stem + '_merged.fastq'
-    # todo | need to put these count matrix method back in here
-    # counts = prefix + '_sp_counts.npz'
+    counts = output_stem + '_read_and_count_matrices.p'
     shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
                     '_alignment_summary.txt')
     alignment_summary = output_stem + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
-    # now only need to put back counts into this array
-    files = [samfile, h5_archive, merged_fastq, alignment_summary, log]
+    files = [samfile, h5_archive, merged_fastq, counts, alignment_summary, log]
 
     # gzip everything and upload to aws_upload_key
     archive_name = output_stem + '.tar.gz'
