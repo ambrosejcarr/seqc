@@ -107,7 +107,7 @@ def run_remote(name: str, outdir: str) -> None:
             cluster.inst_id.instance_id)))
     # todo | need to move this file to the cluster
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
-                          'home/ubuntu/.seqc/config')
+                          '/home/ubuntu/.seqc/config')
     cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(out=outdir, cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
