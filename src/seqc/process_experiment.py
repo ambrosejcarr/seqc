@@ -219,8 +219,9 @@ def main(args: list = None):
         if not args.barcode_files[0].startswith('s3://'):
             for cb in args.barcode_files:
                 if not os.path.isdir(cb):
-                    raise ValueError('provided barcode files: "%s" is neither an s3 link '
-                                     'or a valid filepath' % args.barcode_files)
+                    raise ValueError('provided barcode files: "[%s]" is neither '
+                                     'an s3 link or a valid filepath' %
+                                     ', '.join(map(str, args.barcode_files)))
         else:
             try:
                 seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
@@ -229,8 +230,8 @@ def main(args: list = None):
                 args.barcode_files = seqc.io.S3.download_files(bucket, prefix,
                                                                output_dir, cut_dirs)
             except FileNotFoundError:
-                raise FileNotFoundError('No index file or folder was identified at the '
-                                        'specified s3 location: %s' % args.barcode_files)
+                raise FileNotFoundError('No barcode files were found at the specified '
+                                        's3 location: %s' % args.barcode_files[0])
             except FileExistsError:
                 pass  # file is already present.
         cell_counts, _ = seqc.correct_errors.correct_errors(ra, args.barcode_files)
