@@ -31,25 +31,25 @@ def default_alignment_args(fastq_records, n_threads, index, output_dir):
     return default_align_args
 
 
-def align(fastq_file, index, n_threads, temp_dir, reverse_fastq_file=None,
+def align(fastq_file, index, n_threads, alignment_dir, reverse_fastq_file=None,
           **kwargs):
     """
     :param fastq_file:
     :param index:
     :param n_threads:
-    :param temp_dir:
+    :param alignment_dir:
     :param reverse_fastq_file:
     :param kwargs:
     :return:
     """
 
     # check if file exists; if it does, return the filename
-    if os.path.isfile(temp_dir + 'Aligned.out.sam'):
-        if os.path.getsize(temp_dir + 'Aligned.out.sam') > 0:
-            return temp_dir + 'Aligned.out.sam'
+    # if os.path.isfile(alignment_dir + 'Aligned.out.sam'):
+    #     if os.path.getsize(alignment_dir + 'Aligned.out.sam') > 0:
+    #         return alignment_dir + 'Aligned.out.sam'
 
     runtime_args = default_alignment_args(
-        fastq_file, n_threads, index, temp_dir)
+        fastq_file, n_threads, index, alignment_dir)
 
     for k, v in kwargs.items():  # overwrite or add any arguments passed from cmdline
         if not isinstance(k, str):
@@ -82,4 +82,4 @@ def align(fastq_file, index, n_threads, temp_dir, reverse_fastq_file=None,
     if err:
         raise ChildProcessError(err)
 
-    return temp_dir + 'Aligned.out.sam'
+    return alignment_dir + 'Aligned.out.sam'
