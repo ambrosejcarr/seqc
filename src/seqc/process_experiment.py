@@ -147,7 +147,7 @@ def main(args: list = None):
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
-            print('-o/--output-stem should not be a directory')
+            seqc.log.notify('-o/--output-stem should not be a directory.')
             sys.exit(2)
 
         # download data if necessary
