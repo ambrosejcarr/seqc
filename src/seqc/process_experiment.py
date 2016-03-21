@@ -212,17 +212,14 @@ def main(args: list = None):
         ra.save(args.output_stem + '.h5')
 
         seqc.log.info('Correcting cell barcode and RMT errors')
-        # todo: need to download barcode files from S3 or send them to cluster
-        # copied from index code
         if not args.barcode_files[0].startswith('s3://'):
-            # todo: clean up indexing scheme
-            if not os.path.isdir(args.barcode_files[0]):
-                raise ValueError('provided barcode files: "%s" is neither an s3 link '
-                                 'or a valid filepath' % args.barcode_files)
+            for cb in args.barcode_files:
+                if not os.path.isdir(cb):
+                    raise ValueError('provided barcode files: "%s" is neither an s3 link '
+                                     'or a valid filepath' % args.barcode_files)
         else:
             try:
                 seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
-                # todo: clean up the indexing scheme
                 bucket, prefix = seqc.io.S3.split_link(args.barcode_files[0])
                 cut_dirs = prefix.count('/')
                 args.barcode_files = seqc.io.S3.download_files(bucket, prefix,
@@ -257,9 +254,6 @@ def main(args: list = None):
     finally:
         if not args.remote:  # Is local
             if not args.no_terminate:  # terminate = True
-                # todo: see if this should still be hard-coded to /data/software
-                # if os.path.isfile('/data/software/instance.txt'):
-                #     with open('/data/software/instance.txt', 'r') as f:
                 fpath = output_dir + '/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
