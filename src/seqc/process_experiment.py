@@ -24,9 +24,14 @@ def parse_args(args):
                         'barcode data')
     p.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
                    help='sam file containing aligned, merged fastq records.')
+    p.add_argument('-r', '--read-array', nargs='?', metavar='RA', default='',
+                   help='ReadArray archive containing processed sam records')
     p.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
                    help='text file(s) containing valid cell barcodes (one barcode per '
                         'line)')
+    p.add_argument('--reverse-complement', default=False, action='store_true',
+                   help='indicates that provided barcode files contain reverse '
+                        'complements of what will be found in the sequencing data')
     p.add_argument('--basespace', metavar='BS',
                    help='BaseSpace sample ID. Identifies a sequencing run to download '
                         'and process.')
@@ -186,6 +191,11 @@ def main(args: list = None):
         # determine where the script should start:
         merge = True
         align = True
+        process_samfile = True
+        if args.read_array:
+            merge = False
+            align = False
+            process_samfile = False
         if args.samfile:
             merge = False
             align = False
@@ -209,10 +219,13 @@ def main(args: list = None):
             args.samfile = seqc.alignment.star.align(
                 args.merged_fastq, args.index, n_processes, alignment_directory)
 
-        seqc.log.info('Filtering aligned records and constructing record database')
-        ra = seqc.arrays.ReadArray.from_samfile(
-            args.samfile, args.index + 'annotations.gtf')
-        ra.save(args.output_stem + '.h5')
+        if process_samfile:
+            seqc.log.info('Filtering aligned records and constructing record database')
+            ra = seqc.arrays.ReadArray.from_samfile(
+                args.samfile, args.index + 'annotations.gtf')
+            ra.save(args.output_stem + '.h5')
+        else:
+            ra = seqc.arrays.ReadArray.load(args.read_array)
 
         seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
@@ -234,7 +247,8 @@ def main(args: list = None):
                                         's3 location: %s' % args.barcode_files[0])
             except FileExistsError:
                 pass  # file is already present.
-        cell_counts, _ = seqc.correct_errors.correct_errors(ra, args.barcode_files)
+        cell_counts, _ = seqc.correct_errors.correct_errors(
+                ra, args.barcode_files, reverse_complement=args.reverse_complement)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
