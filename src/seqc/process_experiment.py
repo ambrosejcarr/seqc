@@ -102,9 +102,12 @@ def run_remote(name: str, outdir: str) -> None:
     seqc.log.notify('Beginning remote run.')
     # writing name of instance in /path/to/output_dir/instance.txt for clean up
     inst_path = outdir + '/instance.txt'
-    cluster.serv.exec_command('echo {instance_id} > {inst_path}'
-                              ''.format(inst_path=inst_path,
-                                        instance_id=str(cluster.inst_id.instance_id)))
+    cluster.serv.exec_command(
+        'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
+            cluster.inst_id.instance_id)))
+    # todo | need to move this file to the cluster
+    cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
+                          'home/ubuntu/.seqc/config')
     cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(out=outdir, cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
@@ -212,6 +215,7 @@ def main(args: list = None):
         ra.save(args.output_stem + '.h5')
 
         seqc.log.info('Correcting cell barcode and RMT errors')
+        # check if barcode files need to be downloaded
         if not args.barcode_files[0].startswith('s3://'):
             for cb in args.barcode_files:
                 if not os.path.isdir(cb):
