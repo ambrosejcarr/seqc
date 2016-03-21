@@ -231,7 +231,7 @@ def main(args: list = None):
         # check if barcode files need to be downloaded
         if not args.barcode_files[0].startswith('s3://'):
             for cb in args.barcode_files:
-                if not os.path.isdir(cb):
+                if not os.path.isfile(cb):
                     raise ValueError('provided barcode files: "[%s]" is neither '
                                      'an s3 link or a valid filepath' %
                                      ', '.join(map(str, args.barcode_files)))
