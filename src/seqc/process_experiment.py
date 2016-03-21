@@ -106,6 +106,7 @@ def run_remote(name: str, outdir: str) -> None:
         'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
             cluster.inst_id.instance_id)))
     # todo | need to move this file to the cluster
+    cluster.serv.exec_command('mkdir /home/ubuntu/.seqc')
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                           '/home/ubuntu/.seqc/config')
     cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
