@@ -168,10 +168,6 @@ def main(args: list = None):
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
-            # obtaining BaseSpace token from config file
-            config_file = os.path.expanduser('~/.seqc/config')
-            config = configparser.ConfigParser()
-            config.read(config_file)
             basespace_token = config['BaseSpaceToken']['base_space_token']
             if basespace_token == 'None':
                 raise ValueError(
