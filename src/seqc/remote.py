@@ -77,7 +77,6 @@ class ClusterServer(object):
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
-
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
         if 'c4' in self.inst_type:
@@ -85,42 +84,40 @@ class ClusterServer(object):
                 raise ValueError('A subnet-id must be specified for C4 instances!')
             else:
                 clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
+                                                  MaxCount=1,
+                                                  KeyName=self.keyname,
+                                                  InstanceType=self.inst_type,
+                                                  Placement={
+                                                      'AvailabilityZone': self.zone},
+                                                  SecurityGroupIds=[self.sg],
+                                                  SubnetId=self.subnet)
+        elif 'c3' in self.inst_type:
+            clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
                                               MaxCount=1,
                                               KeyName=self.keyname,
                                               InstanceType=self.inst_type,
-                                              Placement={
-                                                  'AvailabilityZone': self.zone},
-                                              SecurityGroupIds=[self.sg],
-                                              SubnetId=self.subnet)
-        elif 'c3' in self.inst_type:
-            clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
-                                          MaxCount=1,
-                                          KeyName=self.keyname,
-                                          InstanceType=self.inst_type,
-                                          Placement={'AvailabilityZone': self.zone},
-                                          SecurityGroupIds=[self.sg])
+                                              Placement={'AvailabilityZone': self.zone},
+                                              SecurityGroupIds=[self.sg])
         else:
             raise ValueError('self.inst_type must be a c3 or c4 instance')
         instance = clust[0]
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
-                    instance)
+                        instance)
         instance.wait_until_exists()
         instance.wait_until_running()
         seqc.log.notify('Instance %s now running.' % instance)
         self.inst_id = instance
 
-
     def cluster_is_running(self):
         """checks whether a cluster is running"""
         if self.inst_id is None:
             raise EC2RuntimeError('No inst_id assigned. Instance was not successfully '
-                              'created!')
+                                  'created!')
         self.inst_id.reload()
         if self.inst_id.state['Name'] == 'running':
             return True
         else:
             return False
-
 
     def restart_cluster(self):
         """restarts a stopped cluster"""
@@ -130,8 +127,7 @@ class ClusterServer(object):
             seqc.log.notify('Stopped instance %s has restarted.' % self.inst_id.id)
         else:
             seqc.log.notify('Instance %s is not in a stopped state!' %
-                        self.inst_id.id)
-
+                            self.inst_id.id)
 
     def stop_cluster(self):
         """stops a running cluster"""
@@ -142,13 +138,12 @@ class ClusterServer(object):
         else:
             seqc.log.notify('Instance %s is not running!' % self.inst_id)
 
-
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
         # todo | change this back to 1024 after testing
         vol_size = 50  # 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
-                                 VolumeType='standard')
+                                     VolumeType='standard')
         vol_id = vol.id
         vol_state = vol.state
         max_tries = 40
@@ -162,7 +157,6 @@ class ClusterServer(object):
             vol_state = vol.state
         seqc.log.notify('Volume %s created successfully.' % vol_id)
         return vol_id
-
 
     def attach_volume(self, vol_id, dev_id):
         """attaches a vol_id to inst_id at dev_id
@@ -202,7 +196,6 @@ class ClusterServer(object):
         seqc.log.notify('Volume %s attached to %s at %s.' %
                         (vol_id, self.inst_id.id, dev_id))
 
-
     def connect_server(self):
         """connects to the aws instance"""
         ssh_server = SSHServer(self.inst_id.id, self.keypath)
@@ -211,7 +204,6 @@ class ClusterServer(object):
         if ssh_server.is_connected():
             seqc.log.notify('Connection successful!')
         self.serv = ssh_server
-
 
     def create_raid(self):
         """creates a raid array of a specified number of volumes on /data"""
@@ -272,7 +264,6 @@ class ClusterServer(object):
         if md0_failed:
             EC2RuntimeError("Error occurred in mounting RAID array to /data! Exiting.")
 
-
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
         # todo: replace this with git clone once seqc repo is public
@@ -294,13 +285,11 @@ class ClusterServer(object):
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
-
     def set_credentials(self):
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
         self.serv.exec_command(
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
-
 
     def cluster_setup(self, name=None):
         config_file = os.path.expanduser('~/.seqc/config')
