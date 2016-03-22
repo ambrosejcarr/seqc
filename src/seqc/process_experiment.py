@@ -6,7 +6,12 @@ import os
 import sys
 import pickle
 import seqc
+import configparser
 from subprocess import Popen, check_output
+
+
+class ConfigurationError(Exception):
+    pass
 
 
 def parse_args(args):
@@ -15,10 +20,6 @@ def parse_args(args):
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2'],
                    help='which platform are you merging annotations from?')
-
-    # todo this should be taken from configure/config
-    p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
-                                                           'token')
 
     a = p.add_argument_group('required arguments')
     a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
@@ -62,6 +63,8 @@ def parse_args(args):
     r.set_defaults(remote=True)
     r.add_argument('--local', dest="remote", action="store_false",
                    help='run SEQC locally instead of initiating on AWS EC2 servers')
+    r.add_argument('--aws', default=False, action='store_true',
+                   help='automatic flag; no need for user specification')
     r.add_argument('--email-status', metavar='E', default=None,
                    help='email address to receive run summary when running remotely')
     r.add_argument('--cluster-name', default=None, metavar='C',
@@ -74,10 +77,8 @@ def parse_args(args):
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
 
-
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
-
 
     return p.parse_args(args)
 
@@ -93,16 +94,14 @@ def check_arguments():
     raise NotImplementedError
 
 
-def run_remote(name: str, outdir: str) -> None:
+def run_remote(name: str) -> None:
     """
     :param name: cluster name if provided by user, otherwise None
-    :param outdir: where seqc will be installed on the cluster
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = outdir + '/seqc/src/seqc/process_experiment.py ' + ' '.join(
-        sys.argv[1:]) + ' --local'
+    cmd = 'process_experiment.py ' + ' '.join(sys.argv[1:]) + ' --local --aws'
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -111,15 +110,15 @@ def run_remote(name: str, outdir: str) -> None:
 
     seqc.log.notify('Beginning remote run.')
     # writing name of instance in /path/to/output_dir/instance.txt for clean up
-    inst_path = outdir + '/instance.txt'
+    inst_path = '/data/instance.txt'
     cluster.serv.exec_command(
         'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
             cluster.inst_id.instance_id)))
     cluster.serv.exec_command('mkdir /home/ubuntu/.seqc')
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                           '/home/ubuntu/.seqc/config')
-    cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
-                              ''.format(out=outdir, cmd=cmd))
+    cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
+                              ''.format(cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
 
@@ -142,13 +141,23 @@ def main(args: list = None):
     try:
         seqc.log.args(args)
 
-        # split output_stem into path and prefix
+        # split output_stem into path and prefix, read in config file
         output_dir, output_prefix = os.path.split(args.output_stem)
+        config_file = os.path.expanduser('~/.seqc/config')
+        config = configparser.ConfigParser()
+        if not config.read(config_file):
+            raise ConfigurationError('Please run ./configure (found in the seqc '
+                                     'directory) before attempting to run '
+                                     'process_experiment.py.')
 
         if args.remote:
             cluster_cleanup()
-            run_remote(args.cluster_name, output_dir)
+            run_remote(args.cluster_name)
             sys.exit()
+
+        if args.aws:
+            args.output_stem = '/data/' + output_prefix
+            output_dir, output_prefix = os.path.split(args.output_stem)
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
@@ -159,11 +168,16 @@ def main(args: list = None):
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
-            if not args.basespace_token:
+            # obtaining BaseSpace token from config file
+            config_file = os.path.expanduser('~/.seqc/config')
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            basespace_token = config['BaseSpaceToken']['base_space_token']
+            if basespace_token == 'None':
                 raise ValueError(
-                    'If the --basespace argument is used, the --basespace-token argument '
-                    'must also be provided in order to gain access to the basespace '
-                    'repository')
+                    'If the --basespace argument is used, the BaseSpace token must be '
+                    'specified in the seqc config file.')
+
             # making extra directories for BaseSpace download, changing permissions
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
             bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
@@ -171,7 +185,7 @@ def main(args: list = None):
             bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
             bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
-                args.platform, args.basespace, output_dir, args.basespace_token)
+                args.platform, args.basespace, output_dir, basespace_token)
 
         # check if the index must be downloaded
         if not args.index.startswith('s3://'):

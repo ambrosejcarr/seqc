@@ -19,9 +19,6 @@ class EC2RuntimeError(Exception):
 class VolumeCreationError(Exception):
     pass
 
-class ConfigurationError(Exception):
-    pass
-
 
 class ClusterServer(object):
     """Connects to AWS instance using paramiko and a private RSA key,
@@ -38,7 +35,6 @@ class ClusterServer(object):
         self.zone = None
         self.ec2 = boto3.resource('ec2')
         self.inst_id = None
-        self.dir_name = None
         self.n_tb = None
         self.sg = None
         self.serv = None
@@ -70,22 +66,16 @@ class ClusterServer(object):
         """
         config = configparser.ConfigParser()
         config.read(config_file)
-        try:
-            template = config['global']['default_template']
-            self.keyname = config['key']['rsa_key_name']
-            self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
-            self.image_id = config[template]['node_image_id']
-            self.inst_type = config[template]['node_instance_type']
-            self.subnet = config['c4']['subnet_id']
-            self.zone = config[template]['availability_zone']
-            self.n_tb = config['raid']['n_tb']
-            self.dir_name = config['gitpull']['dir_name']
-            self.aws_id = config['aws_info']['aws_access_key_id']
-            self.aws_key = config['aws_info']['aws_secret_access_key']
-        except KeyError:
-            raise ConfigurationError('please run ./configure (found in the seqc '
-                                     'directory) before attempting to configure a'
-                                     'cluster or run process_experiment.py.')
+        template = config['global']['default_template']
+        self.keyname = config['key']['rsa_key_name']
+        self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
+        self.image_id = config[template]['node_image_id']
+        self.inst_type = config[template]['node_instance_type']
+        self.subnet = config['c4']['subnet_id']
+        self.zone = config[template]['availability_zone']
+        self.n_tb = config['raid']['n_tb']
+        self.aws_id = config['aws_info']['aws_access_key_id']
+        self.aws_key = config['aws_info']['aws_secret_access_key']
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
@@ -277,9 +267,7 @@ class ClusterServer(object):
         """installs the SEQC directory in /data/software"""
         # todo: replace this with git clone once seqc repo is public
 
-        if not self.dir_name.endswith('/'):
-            self.dir_name += '/'
-        folder = self.dir_name
+        folder = '/data/software/'
         seqc.log.notify('Installing SEQC on remote instance.')
         self.serv.exec_command("sudo mkdir %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
