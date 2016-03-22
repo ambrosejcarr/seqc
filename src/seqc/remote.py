@@ -427,7 +427,7 @@ class SSHServer(object):
             #     self.instance.reload()
             #     time.sleep(30)
             except FileNotFoundError:
-                print('the key %s was not found!' % self.key)
+                seqc.log.notify('The key %s was not found!' % self.key)
                 sys.exit(2)
             # except paramiko.BadHostKeyException:
             #     print('the host key %s could not be verified!' %self.key)
@@ -464,7 +464,8 @@ class SSHServer(object):
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.put(localfile, remotefile)
-        print('successfully placed %s in %s!' % (localfile, remotefile))
+        seqc.log.info('Successfully placed {local_file} in {remote_file}.'.format(
+            local_file=localfile, remote_file=remotefile))
         ftp.close()
 
     def exec_command(self, args):

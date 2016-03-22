@@ -147,7 +147,7 @@ def main(args: list = None):
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
-            print('-o/--output-stem should not be a directory')
+            seqc.log.notify('-o/--output-stem should not be a directory.')
             sys.exit(2)
 
         # download data if necessary
@@ -240,15 +240,15 @@ def main(args: list = None):
                 seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
                 bucket, prefix = seqc.io.S3.split_link(args.barcode_files[0])
                 cut_dirs = prefix.count('/')
-                args.barcode_files = seqc.io.S3.download_files(bucket, prefix,
-                                                               output_dir, cut_dirs)
+                s3_cb = seqc.io.S3.download_files(bucket, prefix, output_dir, cut_dirs)
+                args.barcode_files = sorted(s3_cb)  # cb1 before cb2
             except FileNotFoundError:
                 raise FileNotFoundError('No barcode files were found at the specified '
                                         's3 location: %s' % args.barcode_files[0])
             except FileExistsError:
                 pass  # file is already present.
         cell_counts, _ = seqc.correct_errors.correct_errors(
-                ra, args.barcode_files, reverse_complement=args.reverse_complement)
+            ra, args.barcode_files, reverse_complement=args.reverse_complement)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
