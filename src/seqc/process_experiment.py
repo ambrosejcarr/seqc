@@ -96,8 +96,7 @@ def run_remote(name: str, outdir: str) -> None:
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = outdir + '/seqc/src/seqc/process_experiment.py ' + ' '.join(
-        sys.argv[1:]) + ' --local'
+    cmd = 'process_experiment.py ' + ' '.join(sys.argv[1:]) + ' --local'
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -113,7 +112,7 @@ def run_remote(name: str, outdir: str) -> None:
     cluster.serv.exec_command('mkdir /home/ubuntu/.seqc')
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                           '/home/ubuntu/.seqc/config')
-    cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
+    cluster.serv.exec_command('nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(out=outdir, cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')

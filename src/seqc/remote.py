@@ -150,7 +150,8 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 1024
+        # todo | change this back to 1024 after testing
+        vol_size = 50 #1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
