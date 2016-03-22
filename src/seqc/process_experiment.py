@@ -156,6 +156,7 @@ def main(args: list = None):
 
         if args.aws:
             args.output_stem = '/data/' + output_prefix
+            output_dir, output_prefix = os.path.split(args.output_stem)
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
