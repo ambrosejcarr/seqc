@@ -10,6 +10,10 @@ import configparser
 from subprocess import Popen, check_output
 
 
+class ConfigurationError(Exception):
+    pass
+
+
 def parse_args(args):
     p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
@@ -138,10 +142,17 @@ def main(args: list = None):
 
         # split output_stem into path and prefix
         output_dir, output_prefix = os.path.split(args.output_stem)
+        config_file = os.path.expanduser('~/.seqc/config')
+        config = configparser.ConfigParser()
+        if not config.read(config_file):
+            raise ConfigurationError('Please run ./configure (found in the seqc '
+                                     'directory) before attempting to run '
+                                     'process_experiment.py.')
 
         if args.remote:
             cluster_cleanup()
-            run_remote(args.cluster_name, output_dir)
+            args.output_stem = '/data/' + output_prefix
+            run_remote(args.cluster_name, '/data')
             sys.exit()
 
         # do a bit of argument checking
@@ -157,13 +168,7 @@ def main(args: list = None):
             config_file = os.path.expanduser('~/.seqc/config')
             config = configparser.ConfigParser()
             config.read(config_file)
-            try:
-                basespace_token = config['BaseSpaceToken']['base_space_token']
-            except KeyError:
-                raise ValueError(
-                    'If the --basespace argument is used, the BaseSpace token must be '
-                    'specified in the seqc config file. Please run ./configure (found '
-                    'in the seqc directory).')
+            basespace_token = config['BaseSpaceToken']['base_space_token']
             if basespace_token == 'None':
                 raise ValueError(
                     'If the --basespace argument is used, the BaseSpace token must be '
