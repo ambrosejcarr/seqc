@@ -11,13 +11,14 @@ import seqc
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 
 NUM_OF_ERROR_CORRECTION_METHODS = 3
-ERROR_CORRECTION_AJC = 0
-# ERROR_CORRECTION_STEN = 1
+#ERROR_CORRECTION_AJC = 0
+
 ERROR_CORRECTION_BC_FILTERS = 3
-# ERROR_CORRECTION_ALLON = 3
 ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR = 0
-ERROR_CORRECTION_jaitin = 1
+#ERROR_CORRECTION_jaitin = 1
 ERROR_CORRECTION_JAIT_LIKELIHOOD = 2
+
+DEFAULT_BASE_CONVERTION_RATE = 0.02
 
 
 def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True,
@@ -65,7 +66,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
 
     for i, v in enumerate(ra.data):
         tot += 1
-        # Apply various preliminary filters on the data
+        # Apply various pereliminary filters on the data
         if v['gene'] == 0:
             filtered += 1
             continue
@@ -113,23 +114,26 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             dynamic_codes_table_c2[c2] = (cor_c2, ed_2, err_l_2)
 
         # Filter reads with too many errors in their barcodes
-        if ed_1+ed_2 > max_ed:
+        if ed_1 > max_ed or ed_2 > max_ed:
             bc_filter += 1
-            if err_correction_mat != '':
-                err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
+            # Uncomment for debugging
+#            if err_correction_mat != '':
+#                err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
             continue
+        
+        # For error rate estimation, only reads with at most a single error in both barcodes are counted
+        if ed_1 + ed_2 <= 1:
+            for er in err_l_1 + err_l_2:
+                error_table[er] += 1
 
-        for er in err_l_1 + err_l_2:
-            error_table[er] += 1
-
-        # count non error bases
-        tmp_c = BinRep.ints2int([c1, c2])
-        tmp_cor = BinRep.ints2int([cor_c1, cor_c2])
-        while tmp_c > 0:
-            if tmp_c & 0b111 == tmp_cor & 0b111:
-                cor_instance_table[tmp_c & 0b111] += 1
-            tmp_c >>= 3
-            tmp_cor >>= 3
+            # count non error bases
+            tmp_c = BinRep.ints2int([c1, c2])
+            tmp_cor = BinRep.ints2int([cor_c1, cor_c2])
+            while tmp_c > 0:
+                if tmp_c & 0b111 == tmp_cor & 0b111:
+                    cor_instance_table[tmp_c & 0b111] += 1
+                tmp_c >>= 3
+                tmp_cor >>= 3
 
         # group according to the correct barcodes and gene
         cell = BinRep.ints2int([cor_c1, cor_c2])
@@ -143,9 +147,8 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                 res[gene, cell] = {}
                 res[gene, cell][rmt] = [i]
 
-    # TODO: This is ambrose code, low priority to test and/or replace with Rami code.
     # convert to error rates
-    default_error_rate = 0.02
+    default_error_rate = DEFAULT_BASE_CONVERTION_RATE
     err_rate = dict(zip(errors, [0.0] * len(errors)))
     if sum(error_table.values()) == 0:
         seqc.log.info('No errors were detected, using %f uniform error chance.' % (
@@ -160,9 +163,8 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             seqc.log.info('Warning: too few reads to estimate error rate for %r '
                           'setting default rate of %f' % (k, default_error_rate))
             err_rate[k] = default_error_rate
-    # print('total reads: ', tot, ' no single gene: ', no_single_gene, ' cell is zero: ',
-    #       cell_0, ' rmt is zero: ', rmt_0, ' small poly_t: ', small_poly_t)
-    seqc.log.info('Error correction results: total reads: {} filtered: {} corrected: '
+
+    seqc.log.info('Error correction filtering results: total reads: {}; did not pass perliminary filters: {}; cell barcodes are wrong: '
                   '{}'.format(tot, filtered, bc_filter))
     # print('error_table: ', error_table, ' cor_instance_table: ', cor_instance_table)
     return res, err_rate
@@ -321,17 +323,17 @@ def correct_errors(alignments_ra, barcode_files = list(), apply_likelihood=True,
     """
 
     res_time_cnt = {}
-    err_correction_res = np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
+    err_correction_res = ''#np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
     ra_grouped, error_rate = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
             err_correction_mat='')
     grouped_res_dic, error_count = correct_errors_ajc(
-            alignments_ra, ra_grouped, error_rate, err_correction_res, p_value=alpha)
+            alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha)
 
     return grouped_res_dic, err_correction_res
 
 
-def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res, donor_cutoff=1,
+def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,
                        p_value=0.05, apply_likelihood=True, fname=''):
     """
     Calculate and correct errors in barcode sets
@@ -353,9 +355,6 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
 
     tot_feats = len(ra_grouped)
     cur_f = 0
-    # f=open(fname,'w+')
-    # f.write('gene\tcell\trmt\tgroup size\tnum of observations\tactual donors\texpected '
-    #         'errors\texpected correct\tp_val not err\tp_val not correct\tjaitin\n')
     N = BinRep._str2bindict['N']
     for_removal = []
     for feature, cell in d.keys():
@@ -367,27 +366,14 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
 
         retained_rmts = []
         retained_reads = 0
-        # Used for testing - calculate how many RMT's in the gene/cell group
-        # potential_donors = 0
-        # num_rmts = len(d[feature, cell].keys())
-        # for r_seq in d[feature, cell].keys():
-        #     if bin_rep.contains(r_seq, N):
-        #         continue
-        #     potential_donors += len(d[feature, cell][r_seq])
-        # avg_rmt_size = float(potential_donors) / num_rmts
 
         for r_seq in d[feature, cell].keys():
             if BinRep.contains(r_seq, N):
                 continue
 
             gene = feature
-            # r_c1 = bin_rep.c1_from_int(r_seq)
-            # r_c2 = bin_rep.c2_from_int(r_seq)
-            # r_rmt = bin_rep.rmt_from_int(r_seq)
             r_num_occurences = len(d[gene , cell][r_seq])
             r_pos_list = np.hstack(ra.data['position'][d[feature, cell][r_seq]])
-
-            # threshold = gammaincinv(r_num_occurences, alpha)
 
             expected_errors = 0
             # actual_donors = 0
@@ -396,12 +382,12 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
             # p_val_not_correct = poisson.cdf(r_num_occurences, avg_rmt_size)
             jait = False
             for d_rmt in generate_close_seq(r_seq):
-                # d_seq = bin_rep.ints2int([r_c1,r_c2,d_rmt])
                 try:
                     d_num_occurences = len(d[gene, cell][d_rmt])
                     # actual_donors += d_num_occurences
                 except KeyError:
                     continue
+                # This can cut running time but will have a less accurate likelihood model. It is currently not used.
                 # if d_num_occurences<=donor_cutoff:
                 #    continue
 
@@ -412,18 +398,19 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
                 if not jait:
                     d_pos_list = np.hstack(ra.data['position'][d[feature, cell][d_rmt]])
                     if set(r_pos_list).issubset(set(d_pos_list)):
-                        err_correction_res[ra_grouped[gene, cell][r_seq],
-                                           ERROR_CORRECTION_jaitin] = 1
+                        #err_correction_res[ra_grouped[gene, cell][r_seq],
+                        #                   ERROR_CORRECTION_jaitin] = 1
                         jait = True
 
             # P(x>=r_num_occurences)
             p_val_not_err = gammainc(r_num_occurences, expected_errors)
-            if p_val_not_err <= p_value:
-                err_correction_res[ra_grouped[gene, cell][r_seq],
-                                   ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR] = 1
-            elif jait:
-                err_correction_res[ra_grouped[gene, cell][r_seq],
-                                   ERROR_CORRECTION_JAIT_LIKELIHOOD] = 1
+            # Used for error correction methods comparison
+            #if p_val_not_err <= p_value:
+            #    err_correction_res[ra_grouped[gene, cell][r_seq],
+            #                       ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR] = 1
+            #elif jait:
+            #    err_correction_res[ra_grouped[gene, cell][r_seq],
+            #                       ERROR_CORRECTION_JAIT_LIKELIHOOD] = 1
 
             if apply_likelihood:
                 if (not jait) or p_val_not_err <= p_value:
@@ -434,19 +421,10 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res, donor_cutof
                 retained_reads += r_num_occurences
 
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
-        # f.write(gene+'\t'+bin_rep.bin2str(cell)+'\t'+bin_rep.bin2str(r_seq)+'\t'+str(potential_donors)+'\t'+str(r_num_occurences)+'\t'+str(actual_donors)+'\t'+str(expected_errors)+'\t'+str(avg_rmt_size)+'\t'+str(p_val_not_err)+'\t'+str(p_val_not_correct)+'\t'+str(jait)+'\n')
-        # If the number of observations exceeds that expected by error sufficiently, this
-        # is not an error. we mark an error if it doesn't happen
-        # if not (1-poisson.cdf(r_num_occurences, expected_errors) < p_value):
-        #    for_removal.append((gene, r_seq))
-        #    error_count+=r_num_occurences
-
-    # for (gene, r_seq) in for_removal:
-    #     err_correction_res[ra_grouped[gene][r_seq],[ERROR_CORRECTION_AJC]] = 1
 
     # print('\nLikelihood model error_count: ', error_count)
     tot_time=time.process_time()-start
-    # seqc.log.info('total error_correction runtime: {}'.format(tot_time))
+    # seqc.log.info('total error correction runtime: {}'.format(tot_time))
     # f.close()
     return grouped_res_dic, error_count
 
