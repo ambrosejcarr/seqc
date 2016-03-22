@@ -112,7 +112,7 @@ def run_remote(name: str, outdir: str) -> None:
     cluster.serv.exec_command('mkdir /home/ubuntu/.seqc')
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                           '/home/ubuntu/.seqc/config')
-    cluster.serv.exec_command('nohup {cmd} > /dev/null 2>&1 &'
+    cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(out=outdir, cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
