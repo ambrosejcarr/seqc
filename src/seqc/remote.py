@@ -35,7 +35,6 @@ class ClusterServer(object):
         self.zone = None
         self.ec2 = boto3.resource('ec2')
         self.inst_id = None
-        self.dir_name = None
         self.n_tb = None
         self.sg = None
         self.serv = None
@@ -75,7 +74,6 @@ class ClusterServer(object):
         self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
         self.n_tb = config['raid']['n_tb']
-        self.dir_name = config['gitpull']['dir_name']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
@@ -279,9 +277,7 @@ def git_pull(self):
     """installs the SEQC directory in /data/software"""
     # todo: replace this with git clone once seqc repo is public
 
-    if not self.dir_name.endswith('/'):
-        self.dir_name += '/'
-    folder = self.dir_name
+    folder = '/data/software/'
     seqc.log.notify('Installing SEQC on remote instance.')
     self.serv.exec_command("sudo mkdir %s" % folder)
     self.serv.exec_command("sudo chown -c ubuntu /data")

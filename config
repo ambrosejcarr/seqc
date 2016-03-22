@@ -27,8 +27,5 @@ availability_zone = us-east-1c
 n_tb = 2
 availability_zone = us-east-1c
 
-[gitpull]
-dir_name = /data/software
-
 [BaseSpaceToken]
 base_space_token = None
