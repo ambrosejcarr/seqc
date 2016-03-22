@@ -163,7 +163,8 @@ def main(args: list = None):
             except KeyError:
                 raise ValueError(
                     'If the --basespace argument is used, the BaseSpace token must be '
-                    'specified in the seqc config file. Please run ./configure')
+                    'specified in the seqc config file. Please run ./configure (found '
+                    'in the seqc directory).')
             if basespace_token == 'None':
                 raise ValueError(
                     'If the --basespace argument is used, the BaseSpace token must be '
