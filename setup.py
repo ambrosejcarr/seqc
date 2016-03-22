@@ -1,7 +1,8 @@
-from setuptools import setup
-from warnings import warn
 import os
 import shutil
+from subprocess import call
+from setuptools import setup
+from warnings import warn
 
 # look in /usr/local/ and /usr/local/hdf5/ for hdf5 libraries;
 # if found in /usr/local/hdf5/, set an environment variable to help pip3 install it.
@@ -34,9 +35,16 @@ setup(name='seqc',
           'scipy>=0.14.0',
           'boto3',
           'intervaltree',
-          'tables'],
+          'tables',
+          'nose2',
+          'tsne==0.1.3',
+          'matplotlib',
+          'seaborn'],
       scripts=['src/seqc/process_experiment.py']
       )
+
+# get location of setup.py
+setup_dir = os.path.dirname(os.path.realpath(__file__))
 
 # print any warnings
 if h5fail:
@@ -45,8 +53,24 @@ if h5fail:
          'tables will not find h5lib and installation will likely fail unless the '
          'HDF5_DIR environment variable has been set to the location that HDF5 was '
          'installed into. If HDF5 is not installed, please install it prior to '
-         'installing SEQC. ')
+         'installing SEQC if you wish to parse the .h5 archive.')
 
 # look for star
 if not shutil.which('STAR'):
     warn('SEQC: STAR is not installed. SEQC will not be able to align files.')
+
+# look for matlab
+if not shutil.which('Matlab'):
+    warn('SEQC: Matlab is not installed. SEQC\'s analysis suite will not be able to run '
+         'diffusion maps or PCA.')
+
+# install GSEA, diffusion components, Matlab PCA (pca2.m)
+shutil.copy(setup_dir + '/tools/', os.path.expanduser('~/.seqc/tools/'))
+call(['unzip', '~/.seqc/tools/DiffusionGeometry.zip'])
+call(['tar', '-zxf', '~/.seqc/tools/mouse_gene_sets.tar.gz'])
+call(['tar', '-zxf', '~/.seqc/tools/human_gene_sets.tar.gz'])
+
+# install phenograph
+call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
+
+

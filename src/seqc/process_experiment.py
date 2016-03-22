@@ -221,11 +221,11 @@ def main(args: list = None):
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
-            ra = seqc.arrays.ReadArray.from_samfile(
+            ra = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
         else:
-            ra = seqc.arrays.ReadArray.load(args.read_array)
+            ra = seqc.core.ReadArray.load(args.read_array)
 
         seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
