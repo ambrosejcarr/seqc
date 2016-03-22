@@ -63,6 +63,7 @@ def parse_args(args):
     r.set_defaults(remote=True)
     r.add_argument('--local', dest="remote", action="store_false",
                    help='run SEQC locally instead of initiating on AWS EC2 servers')
+    r.add_argument('--aws', default=False, action='store_true')
     r.add_argument('--email-status', metavar='E', default=None,
                    help='email address to receive run summary when running remotely')
     r.add_argument('--cluster-name', default=None, metavar='C',
@@ -92,15 +93,14 @@ def check_arguments():
     raise NotImplementedError
 
 
-def run_remote(name: str, outdir: str) -> None:
+def run_remote(name: str) -> None:
     """
     :param name: cluster name if provided by user, otherwise None
-    :param outdir: where seqc will be installed on the cluster
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = 'process_experiment.py ' + ' '.join(sys.argv[1:]) + ' --local'
+    cmd = 'process_experiment.py ' + ' '.join(sys.argv[1:]) + ' --local --aws'
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
@@ -109,15 +109,15 @@ def run_remote(name: str, outdir: str) -> None:
 
     seqc.log.notify('Beginning remote run.')
     # writing name of instance in /path/to/output_dir/instance.txt for clean up
-    inst_path = outdir + '/instance.txt'
+    inst_path = '/data/instance.txt'
     cluster.serv.exec_command(
         'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
             cluster.inst_id.instance_id)))
     cluster.serv.exec_command('mkdir /home/ubuntu/.seqc')
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                           '/home/ubuntu/.seqc/config')
-    cluster.serv.exec_command('cd {out}; nohup {cmd} > /dev/null 2>&1 &'
-                              ''.format(out=outdir, cmd=cmd))
+    cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
+                              ''.format(cmd=cmd))
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
                     'completes.')
 
@@ -140,7 +140,7 @@ def main(args: list = None):
     try:
         seqc.log.args(args)
 
-        # split output_stem into path and prefix
+        # split output_stem into path and prefix, read in config file
         output_dir, output_prefix = os.path.split(args.output_stem)
         config_file = os.path.expanduser('~/.seqc/config')
         config = configparser.ConfigParser()
@@ -151,9 +151,11 @@ def main(args: list = None):
 
         if args.remote:
             cluster_cleanup()
-            args.output_stem = '/data/' + output_prefix
-            run_remote(args.cluster_name, '/data')
+            run_remote(args.cluster_name)
             sys.exit()
+
+        if args.aws:
+            args.output_stem = '/data/' + output_prefix
 
         # do a bit of argument checking
         if args.output_stem.endswith('/'):
