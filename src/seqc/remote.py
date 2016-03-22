@@ -140,8 +140,7 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        # todo | change this back to 1024 after testing
-        vol_size = 50  # 1024
+        vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -275,10 +274,9 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
-        # todo | change branch back to v0.1.6
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/remote | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
