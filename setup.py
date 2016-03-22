@@ -65,10 +65,13 @@ if not shutil.which('Matlab'):
          'diffusion maps or PCA.')
 
 # install GSEA, diffusion components, Matlab PCA (pca2.m)
-shutil.copy(setup_dir + '/tools/', os.path.expanduser('~/.seqc/tools/'))
+tools_dir = os.path.expanduser('~/.seqc/tools')
+if os.path.isdir(tools_dir):
+    shutil.rmtree(tools_dir)
+shutil.copytree(setup_dir + '/tools/', tools_dir)
 call(['unzip', '~/.seqc/tools/DiffusionGeometry.zip'])
-call(['tar', '-zxf', '~/.seqc/tools/mouse_gene_sets.tar.gz'])
-call(['tar', '-zxf', '~/.seqc/tools/human_gene_sets.tar.gz'])
+call(['tar', '-zxf', '~/.seqc/tools/mouse_gene_sets.tar.gz'])  # todo fix tar to unzip into mouse_gene_sets/ & change code
+call(['tar', '-zxf', '~/.seqc/tools/human_gene_sets.tar.gz'])  # todo fix tar to unzip into human_gene_sets/ & change code
 
 # install phenograph
 call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])

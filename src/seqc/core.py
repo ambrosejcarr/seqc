@@ -2,6 +2,7 @@ import re
 import os
 import random
 import pickle
+import warnings
 from copy import deepcopy
 from collections import defaultdict
 from subprocess import call
@@ -16,10 +17,17 @@ try:
 except KeyError:
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')  # catch experimental ipython widget warning
+    import seaborn as sns
 import phenograph
 from tsne import bh_sne
 import seqc
+
+
+class SparseMatrixError(Exception):
+    pass
+
 
 # set plotting defaults
 sns.set_style('ticks')
@@ -37,10 +45,6 @@ matplotlib.rc('patch', **{'facecolor': 'royalblue',
 matplotlib.rc('lines', **{'color': 'royalblue'})
 
 cmap = matplotlib.cm.viridis
-
-
-class SparseMatrixError(Exception):
-    pass
 
 
 def qualitative_colors(n):
@@ -66,10 +70,10 @@ def density_2d(x, y):
     :param y:
     :return:
     """
-    xy = np.vstack([x, y])
+    xy = np.vstack([np.ravel(x), np.ravel(y)])
     z = gaussian_kde(xy)(xy)
     i = np.argsort(z)
-    return x[i], y[i], np.arcsinh(z[i])
+    return np.ravel(x)[i], np.ravel(y)[i], np.arcsinh(z[i])
 
 
 class ReadArray:
@@ -163,12 +167,12 @@ class SparseFrame:
 
         if not isinstance(data, coo_matrix):
             raise TypeError('data must be type coo_matrix')
-        if not isinstance(index, np.array):
-            raise TypeError('index must be type np.array')
-        if not isinstance(columns, np.array):
-            raise TypeError('columns must be type np.array')
+        if not isinstance(index, np.ndarray):
+            raise TypeError('index must be type np.ndarray')
+        if not isinstance(columns, np.ndarray):
+            raise TypeError('columns must be type np.ndarray')
 
-        self._data = data
+        self._data = data.astype(np.uint32)
         self._index = index
         self._columns = columns
 
@@ -207,22 +211,28 @@ class SparseFrame:
     def sum(self, axis=0):
         return self.data.sum(axis=axis)
 
-
+# todo make a runtime error when running functions on normalized data that require unnormalized data
 class Experiment:
 
     def __init__(self, reads, molecules):
-        if not isinstance(reads, SparseFrame) or isinstance(reads, pd.DataFrame):
+        if not (isinstance(reads, SparseFrame) or isinstance(reads, pd.DataFrame)):
             raise TypeError('reads must be of type SparseFrame or DataFrame')
-        if not isinstance(molecules, SparseFrame) or isinstance(molecules, pd.DataFrame):
+        if not (isinstance(molecules, SparseFrame) or
+                isinstance(molecules, pd.DataFrame)):
             raise TypeError('molecules must be of type SparseFrame or DataFrame')
         self._reads = reads
         self._molecules = molecules
-        self._normalized_data = None  # filled by normalize_data; will be DataFrame
+        self._normalized_data = None  # todo not used
         self._pca = None
         self._tsne = None
         self._diffusion_eigenvectors = None
         self._diffusion_eigenvalues = None
         self._diffusion_map_correlations = None
+        self._cluster_assignments = None
+
+    # todo implement
+    # def __repr__(self):
+    #    should represent whether each object is present/analyzed yet.
 
     @property
     def reads(self):
@@ -230,7 +240,7 @@ class Experiment:
 
     @reads.setter
     def reads(self, item):
-        if not isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame):
+        if not (isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame)):
             raise TypeError('Experiment.reads must be of type SparseFrame or DataFrame')
         self._reads = item
 
@@ -240,7 +250,7 @@ class Experiment:
 
     @molecules.setter
     def molecules(self, item):
-        if not isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame):
+        if not (isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame)):
             raise TypeError('Experiment.molecules must be of type SparseFrame or'
                             'DataFrame')
         self._molecules = item
@@ -296,9 +306,21 @@ class Experiment:
                             'object')
         self._diffusion_map_correlations = item
 
+    @property
+    def cluster_assignments(self):
+        return self._cluster_assignments
+
+    @cluster_assignments.setter
+    def cluster_assignments(self, item):
+        if not isinstance(item, pd.Series):
+            raise TypeError('self.cluster_assignments must be a pd.Series '
+                            'object')
+        self._cluster_assignments = item
+
     @classmethod
-    def from_v012(cls, read_and_count_matrix: dict):
-        d = read_and_count_matrix
+    def from_v012(cls, read_and_count_matrix: str):
+        with open(read_and_count_matrix, 'rb') as f:
+            d = pickle.load(f)
         reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
                             columns=d['reads']['col_ids'])
         molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
@@ -324,12 +346,14 @@ class Experiment:
         with open(fin, 'rb') as f:
             data = pickle.load(f)
         experiment = cls(data['_reads'], data['_molecules'])
-        experiment.normalized_data = data['_normalized_data']
-        experiment.pca = data['_pca']
-        experiment.tsne = data['_tsne']
-        experiment.diffusion_eigenvectors = data['_diffusion_eigenvectors']
-        experiment.diffusion_eigenvalues = data['_diffusion_eigenvalues']
-        experiment.diffusion_map_correlations = ['_diffusion_map_correlations']
+        experiment._normalized_data = data['_normalized_data']
+        experiment._pca = data['_pca']
+        experiment._tsne = data['_tsne']
+        experiment._diffusion_eigenvectors = data['_diffusion_eigenvectors']
+        experiment._diffusion_eigenvalues = data['_diffusion_eigenvalues']
+        experiment._diffusion_map_correlations = data['_diffusion_map_correlations']
+        experiment._cluster_assignments = data['_cluster_assignments']
+        # todo make sure this reflects addition of experiment.cluster_assignments
         return experiment
 
     def is_sparse(self):
@@ -341,12 +365,13 @@ class Experiment:
     def is_dense(self):
         return not self.is_sparse()
 
-    def ensembl_gene_id_to_official_gene_symbol(self, gtf) -> None:
+    def ensembl_gene_id_to_official_gene_symbol(self, gtf):
         """convert self.index containing scids into an index of gene names
         :param gtf:
+        :return: Experiment
         """
         pattern = re.compile(
-                r'(^.*?gene_id "[^0-9]*)([0-9]*)(\..*?gene_name ")(.*?)(".*?$)')
+                r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
 
         gene_id_map = defaultdict(set)
         with open(gtf, 'r') as f:
@@ -355,10 +380,15 @@ class Experiment:
                 if match:
                     gene_id_map[int(match.group(2))].add(match.group(4))
 
-        self.reads.index = ['-'.join(gene_id_map[i]) for i in self.reads.index]
-        self.molecules.index = ['-'.join(gene_id_map[i]) for i in self.molecules.index]
+        reads = deepcopy(self.reads)
+        reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        molecules = deepcopy(self.molecules)
+        molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
 
-    def plot_molecules_vs_reads_per_molecule(self, fig=None, ax=None, min_molecules=10):
+        return Experiment(reads=reads, molecules=molecules)
+
+    def plot_molecules_vs_reads_per_molecule(self, fig=None, ax=None, min_molecules=10,
+                                             ylim=(0, 150)):
 
         """
         plots log10 molecules counts per barcode vs reads per molecule / molecules per
@@ -371,22 +401,25 @@ class Experiment:
         fig, ax = get_fig(fig, ax)
 
         # get molecule and read counts per cell
-        molecule_cell_sums = self.molecules.sum(axis=1)
-        read_cell_sums = self.reads.sum(axis=1)
+        molecule_cell_sums = np.ravel(self.molecules.sum(axis=1))
+        read_cell_sums = np.ravel(self.reads.sum(axis=1))
 
         # remove low expression reads
-        molecule_cell_sums = molecule_cell_sums[molecule_cell_sums >= min_molecules]
-        read_cell_sums = read_cell_sums[molecule_cell_sums >= min_molecules]
+        mask = molecule_cell_sums >= min_molecules
+        molecule_cell_sums = molecule_cell_sums[mask]
+        read_cell_sums = read_cell_sums[mask]
 
         ratios = read_cell_sums / molecule_cell_sums
         x, y, z = density_2d(np.log10(molecule_cell_sums), ratios)
         ax.scatter(x, y, edgecolor='none', s=10, c=z, cmap=cmap)
         ax.set_xlabel('log10(Molecules per barcode)')
         ax.set_ylabel('Reads per barcode / Molecules per barcode')
+        ax.set_ylim(ylim)
+        xlim = ax.get_xlim()
+        ax.set_xlim((np.log10(min_molecules), xlim[1]))  # todo if this fails later, this is the problem
 
         return fig, ax
 
-    # todo does this raise errors if carried out on a DataFrame?
     def remove_non_cell_barcodes(self, min_rpm=10, min_mpc=250):
         """removes low abundance cell barcodes
 
@@ -415,22 +448,12 @@ class Experiment:
 
         row_inds = np.where(pd.Series(self.molecules.index).isin(codes_passing_filter))[0]
         read_data = self.reads.data.tocsr()[row_inds, :].todense()
-        self.reads = pd.DataFrame(read_data, index=self.reads.index[row_inds],
-                                  columns=self.reads.columns)
+        reads = pd.DataFrame(read_data, index=self.reads.index[row_inds],
+                             columns=self.reads.columns)
         molecule_data = self.molecules.data.tocsr()[row_inds, :].todense()
-        self.molecules = pd.DataFrame(molecule_data, index=self.molecules.index[row_inds],
-                                      columns=self.molecules.columns)
-
-    # todo check if works on both sparse and dense matrices
-    def normalize_data(self):
-        """
-        use AVO method
-        :return:
-        """
-        self.molecules = (self.molecules / self.molecules.sum(axis=1) /
-                          np.median(self.molecules.sum(axis=1)))
-        self.reads = (self.reads / self.reads.sum(axis=1) /
-                      np.median(self.reads.sum(axis=1)))
+        molecules = pd.DataFrame(molecule_data, index=self.molecules.index[row_inds],
+                                 columns=self.molecules.columns)
+        return Experiment(reads=reads, molecules=molecules)
 
     def plot_mitochondrial_molecule_fraction(self, fig=None, ax=None):
         """
@@ -439,21 +462,25 @@ class Experiment:
         :param ax:
         :return: fig, ax
         """
+        # todo must be run pre-normalization; if self.normalized = True; raise error.
 
         if self.is_sparse():
             raise SparseMatrixError('Must convert to dense matrix before calling this '
                                     'function. Use self.remove_non_cell_barcodes()')
 
-        mt_genes = self.molecules.index[self.molecules.columns.str.contains('MT-')]
+        mt_genes = self.molecules.columns[self.molecules.columns.str.contains('MT-')]
         mt_counts = self.molecules[mt_genes].sum(axis=1)
         library_size = self.molecules.sum(axis=1)
 
         fig, ax = get_fig(fig=fig, ax=ax)
         x, y, z = density_2d(library_size, mt_counts / library_size)
-        ax.scatter(x, y, s=5, edgecolors='none', c=z)
+        ax.scatter(x, y, s=5, edgecolors='none', c=z, cmap=cmap)
         ax.set_title('Mitochondrial Fraction')
         ax.set_xlabel('Molecules per cell')
         ax.set_ylabel('Mitochondrial molecules / Total molecules')
+
+        # todo set xmin = min_mpc
+        # todo set ymin = min_rpm (probably 0)
 
         return fig, ax
 
@@ -463,7 +490,9 @@ class Experiment:
         :param max_mt_fraction:
         :return: Experiment
         """
-        mt_genes = self.molecules.index[self.molecules.columns.str.contains('MT-')]
+        # todo must be run pre-normalization; if self.normalized = True; raise error.
+
+        mt_genes = self.molecules.columns[self.molecules.columns.str.contains('MT-')]
         mt_counts = self.molecules[mt_genes].sum(axis=1)
         library_size = self.molecules.sum(axis=1)
         ratios = mt_counts / library_size
@@ -485,11 +514,29 @@ class Experiment:
         molecule_counts = self.molecules.sum(axis=1)
         gene_counts = np.sum(self.molecules > 0, axis=1)
         x, y, z = density_2d(np.log10(molecule_counts), np.log10(gene_counts))
-        ax.scatter(x, y, c=z, edgecolor='none', s=5)
+        ax.scatter(x, y, c=z, edgecolor='none', s=5, cmap=cmap)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
 
         return fig, ax
+
+    def normalize_data(self):
+        """
+        uses AVO method of normalization
+        :return: Experiment
+        """
+
+        if self.is_sparse():
+            raise RuntimeError('Please convert to dense data before attempting to '
+                               'normalize using Experiment.remove_non_cell_barcodes().')
+
+        molecule_sums = self.molecules.sum(axis=1)
+        molecules = self.molecules.div(molecule_sums, axis=0)\
+            .mul(np.median(molecule_sums), axis=0)
+        read_sums = self.reads.sum(axis=1)
+        reads = self.reads.div(read_sums, axis=0)\
+            .mul(np.median(read_sums), axis=0)
+        return Experiment(reads=reads, molecules=molecules)
 
     def remove_low_complexity_cells(self):
         # todo implement, based on below-fit cells in the above plot
@@ -511,7 +558,7 @@ class Experiment:
         # Construct matlab script; Change directory to diffusion geometry
         matlab_cmd = "\" cd {};".format(os.path.expanduser('~/.seqc/tools'))
         # Set-up diffusion geometry
-        matlab_cmd += "data = csvread('/tmp/pc_data_%d.csv', 1, 1);" % rand_tag
+        matlab_cmd += "data = csvread('/tmp/pc_data_%f.csv', 1, 1);" % rand_tag
         # PCA
         matlab_cmd += "[mappedX, mapping]  = pca2(data, %d);" % no_components
 
@@ -524,17 +571,12 @@ class Experiment:
         # Run matlab command
         call(['matlab', '-nodesktop', '-nosplash', '-r %s' % matlab_cmd])
 
-        # todo | ask manu about these files & their meanings; if possible, make similar to
-        # todo | sklearn's implementation
         # Read in results
-        self.pca = pd.Series()
-        self.pca['mappedX'] = pd.DataFrame.from_csv(
-                '/tmp/pc_mapped_x_%f.csv' % rand_tag, header=None, index_col=None)
-        self.pca['mappedX'].index = self.molecules.index
-        self.pca['mappingM'] = pd.DataFrame.from_csv(
+        self.pca = {}
+        self.pca['loadings'] = pd.DataFrame.from_csv(
                 '/tmp/pc_mapping_M_%f.csv' % rand_tag, header=None, index_col=None)
-        self.pca['mappingM'].index = self.molecules.columns
-        self.pca['mappinglambda'] = pd.DataFrame.from_csv(
+        self.pca['loadings'].index = self.molecules.columns
+        self.pca['eigenvalues'] = pd.DataFrame.from_csv(
                 '/tmp/pc_mapping_lambda_%f.csv' % rand_tag, header=None, index_col=None)
 
         # Clean up
@@ -543,7 +585,7 @@ class Experiment:
         os.remove('/tmp/pc_mapping_M_%f.csv' % rand_tag)
         os.remove('/tmp/pc_mapping_lambda_%f.csv' % rand_tag)
 
-    def run_tsne(self, n_components):
+    def run_tsne(self, n_components=15):
         """
         normally run on PCA components; 1st component is normally excluded
 
@@ -552,43 +594,82 @@ class Experiment:
         """
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
-        data /= np.max(np.ravel(data))  # todo I changed the below 0 -> 1 (exclude c#1)
-        data = pd.DataFrame(np.inner(data, self.pca['mappingM'].iloc[:, 1:n_components]),
-                            index=self.molecules.columns)
+        data /= np.max(np.ravel(data))
+        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_components].T),
+                            index=self.molecules.index)
 
         self.tsne = pd.DataFrame(bh_sne(data),
                                  index=self.molecules.index, columns=['x', 'y'])
 
-    # todo stopped here
-    def phenograph(self):
+    def plot_tsne(self, fig=None, ax=None):
+        fig, ax = get_fig(fig=fig, ax=ax)
+        x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
+        plt.scatter(x, y, c=z, s=7, cmap=cmap)
+        return fig, ax
+
+    def run_phenograph(self, n_pca_components=15):
         """
         normally run on PCA components; 1st component is normally excluded
+        :param n_pca_components:
         :return:
         """
-        raise NotImplementedError
+        data = deepcopy(self.molecules)
+        data -= np.min(np.ravel(data))
+        data /= np.max(np.ravel(data))
+        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
+                            index=self.molecules.index)
 
-    def select_retained_clusters_based_on_library_size_distribution(self):
+        communities, graph, Q = phenograph.cluster(data)
+        self.cluster_assignments = pd.Series(communities, index=data.index)
+
+    def plot_phenograph(self):
+        clusters = sorted(set(self.cluster_assignments))
+        colors = qualitative_colors(len(clusters))
+        raise NotImplementedError # todo implement
+
+    def remove_clusters_based_on_library_size_distribution(self, clusters: list):
         """
         throws out low library size clusters; normally there is only one, but worth
         visual inspection.
 
-        :return:
-        """
-        raise NotImplementedError
+        note: retains cluster_assignments for clusters that are retained. Other analytical
+        results are discarded, since they must be re-run on the reduced data.
 
-    def calculate_diffusion_map_components(self, knn=10, no_eigs=20, params=pd.Series()):
+        :param clusters: clusters to DISCARD
+        :return: Experiment
+        """
+        retain = self.cluster_assignments.index[~self.cluster_assignments.isin(clusters)]
+        molecules = self.molecules.ix[retain, :]
+        reads = self.reads.ix[retain, :]
+        experiment = Experiment(reads=reads, molecules=molecules)
+        experiment._cluster_assignments = self.cluster_assignments[retain]
+        return experiment
+
+    def calculate_diffusion_map_components(self, knn=10, n_diffusion_components=20,
+                                           n_pca_components=15, params=pd.Series()):
         """
         :param knn:
-        :param no_eigs:
+        :param n_diffusion_components:
         :param params:
         :return:
         """
 
+        if not self.pca:
+            raise RuntimeError('Please run PCA before calculating diffusion components. '
+                               'DiffusionGeometry is run on the PCA decomposition of '
+                               'self.molecules.')
+
         # Random tag to allow for multiple diffusion map runs
         rand_tag = random.random()
 
+        data = deepcopy(self.molecules)
+        data -= np.min(np.ravel(data))
+        data /= np.max(np.ravel(data))
+        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
+                            index=self.molecules.index)
+
         # Write to csv file
-        self.molecules.to_csv('/tmp/dm_data_%f.csv' % rand_tag)
+        data.to_csv('/tmp/dm_data_%f.csv' % rand_tag)
 
         # Construct matlab script
         # Change directory to diffusion geometry
@@ -603,7 +684,7 @@ class Experiment:
         dm_params['Normalization'] = "'smarkov'"
         dm_params['Epsilon'] = str(1)
         dm_params['kNN'] = str(knn)
-        dm_params['kEigenVecs'] = str(no_eigs)
+        dm_params['kEigenVecs'] = str(n_diffusion_components)
         dm_params['Symmetrization'] = "'W+Wt'"
 
         # Update additional parameters
@@ -675,7 +756,7 @@ class Experiment:
             # Cell order
             order = self.diffusion_eigenvectors.iloc[:, component]\
                 .sort(inplace=False).index
-            x = range(no_cells, len(order))
+            x = range(no_cells, len(order))  # todo manu will send rolling mean modification
 
             # For each gene
             for gene in self.molecules.columns:
@@ -689,11 +770,21 @@ class Experiment:
         # Reset NaNs
         self.diffusion_map_correlations.fillna(0)
 
-    def run_gsea(self, out_dir, out_prefix, gmt_file, components=None,
-                 gsea_jar='~/tools/gsea2-2.2.1.jar'):
+    def _gmt_options(self):
+        print()  # print stuff, indicate that they should re-call run_gsea()
+        raise NotImplementedError # todo list gmt directory and print out valid options for human and mouse
+
+    def run_gsea(self, out_dir, out_prefix, gmt_file=None, components=None):
+
         if not self.diffusion_eigenvectors:
             raise RuntimeError('Please run self.calculate_diffusion_map_components() '
                                'before running GSEA to annotate those components.')
+
+        if not gmt_file:
+            self._gmt_options()
+            return
+        else:
+            raise NotImplementedError # todo set gmt file
 
         if components is None:
             components = range(1, self.diffusion_eigenvectors.shape[1])
@@ -711,7 +802,8 @@ class Experiment:
 
             # Construct the GSEA call
             cmd = list()
-            cmd += ['java', '-cp', gsea_jar,  '-Xmx1G', 'xtools.gsea.GseaPreranked']
+            cmd += ['java', '-cp', os.path.expanduser('~/.seqc/tools/gsea2-2.2.1.jar'),
+                    '-Xmx1G', 'xtools.gsea.GseaPreranked']
             cmd += ['-collapse false', '-mode Max_probe', '-norm meandiv', '-nperm 1000']
             cmd += ['-include_only_symbols true', '-make_sets true', '-plot_top_x 20']
             cmd += ['-set_max 500', '-set_min 15', '-zip_report false -gui false']
@@ -756,6 +848,8 @@ class Experiment:
         # Create new scdata object
         subset_molecules = self.molecules.ix[use_genes]
         subset_reads = self.reads.ix[use_genes]
+
+        # throws out analysis results; this makes sense
         return Experiment(subset_reads, subset_molecules)
 
     # todo add these later
