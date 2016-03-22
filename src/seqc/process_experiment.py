@@ -15,39 +15,36 @@ def parse_args(args):
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2'],
                    help='which platform are you merging annotations from?')
-    p.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
-                   help='fastq file(s) containing genomic information')
-    p.add_argument('-b', '--barcode-fastq', nargs='*', metavar='B', default=[],
-                   help='fastq file(s) containing barcode information')
-    p.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
-                   help='fastq file containing genomic information annotated with '
-                        'barcode data')
-    p.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
-                   help='sam file containing aligned, merged fastq records.')
-    p.add_argument('-r', '--read-array', nargs='?', metavar='RA', default='',
-                   help='ReadArray archive containing processed sam records')
-    p.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
-                   help='text file(s) containing valid cell barcodes (one barcode per '
-                        'line)')
-    p.add_argument('--reverse-complement', default=False, action='store_true',
-                   help='indicates that provided barcode files contain reverse '
-                        'complements of what will be found in the sequencing data')
-    p.add_argument('--basespace', metavar='BS',
-                   help='BaseSpace sample ID. Identifies a sequencing run to download '
-                        'and process.')
 
     # todo this should be taken from configure/config
     p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
                                                            'token')
 
-    p.add_argument('-o', '--output-stem', metavar='O', required=True,
+    a = p.add_argument_group('required arguments')
+    a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
+                   help='text file(s) containing valid cell barcodes (one barcode per '
+                        'line)')
+    a.add_argument('-o', '--output-stem', metavar='O', required=True,
                    help='file stem for output files e.g. ./seqc_output/tumor_run5')
-    p.add_argument('-i', '--index', metavar='I', required=True,
+    a.add_argument('-i', '--index', metavar='I', required=True,
                    help='Folder or s3 link to folder containing index files for '
                         'alignment and resolution of ambiguous reads.')
 
-    p.add_argument('-v', '--version', action='version',
-                   version='{} {}'.format(p.prog, seqc.__version__))
+    i = p.add_argument_group('input arguments')
+    i.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
+                   help='fastq file(s) containing genomic information')
+    i.add_argument('-b', '--barcode-fastq', nargs='*', metavar='B', default=[],
+                   help='fastq file(s) containing barcode information')
+    i.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
+                   help='fastq file containing genomic information annotated with '
+                        'barcode data')
+    i.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
+                   help='sam file containing aligned, merged fastq records.')
+    i.add_argument('-r', '--read-array', nargs='?', metavar='RA', default='',
+                   help='ReadArray archive containing processed sam records')
+    i.add_argument('--basespace', metavar='BS',
+                   help='BaseSpace sample ID. Identifies a sequencing run to download '
+                        'and process.')
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F',
@@ -73,6 +70,14 @@ def parse_args(args):
                    help='do not terminate the EC2 instance after program completes')
     r.add_argument('--aws-upload-key', default=None, metavar='A',
                    help='location to upload results')
+    r.add_argument('--reverse-complement', default=False, action='store_true',
+                   help='indicates that provided barcode files contain reverse '
+                        'complements of what will be found in the sequencing data')
+
+
+    p.add_argument('-v', '--version', action='version',
+                   version='{} {}'.format(p.prog, seqc.__version__))
+
 
     return p.parse_args(args)
 
