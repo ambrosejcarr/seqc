@@ -64,7 +64,7 @@ def parse_args(args):
     r.add_argument('--local', dest="remote", action="store_false",
                    help='run SEQC locally instead of initiating on AWS EC2 servers')
     r.add_argument('--aws', default=False, action='store_true',
-                   help='automatic flag denoting process origin; no need to specify')
+                   help='automatic flag; no need for user specification')
     r.add_argument('--email-status', metavar='E', default=None,
                    help='email address to receive run summary when running remotely')
     r.add_argument('--cluster-name', default=None, metavar='C',
