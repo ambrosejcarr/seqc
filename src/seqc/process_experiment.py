@@ -6,6 +6,7 @@ import os
 import sys
 import pickle
 import seqc
+import configparser
 from subprocess import Popen, check_output
 
 
@@ -15,10 +16,6 @@ def parse_args(args):
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2'],
                    help='which platform are you merging annotations from?')
-
-    # todo this should be taken from configure/config
-    p.add_argument('--basespace-token', metavar='BT', help='BaseSpace access '
-                                                           'token')
 
     a = p.add_argument_group('required arguments')
     a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
@@ -74,10 +71,8 @@ def parse_args(args):
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
 
-
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
-
 
     return p.parse_args(args)
 
@@ -159,11 +154,21 @@ def main(args: list = None):
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
-            if not args.basespace_token:
+            # obtaining BaseSpace token from config file
+            config_file = os.path.expanduser('~/.seqc/config')
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            try:
+                basespace_token = config['BaseSpaceToken']['base_space_token']
+            except KeyError:
                 raise ValueError(
-                    'If the --basespace argument is used, the --basespace-token argument '
-                    'must also be provided in order to gain access to the basespace '
-                    'repository')
+                    'If the --basespace argument is used, the BaseSpace token must be '
+                    'specified in the seqc config file. Please run ./configure')
+            if basespace_token == 'None':
+                raise ValueError(
+                    'If the --basespace argument is used, the BaseSpace token must be '
+                    'specified in the seqc config file.')
+
             # making extra directories for BaseSpace download, changing permissions
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
             bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
@@ -171,7 +176,7 @@ def main(args: list = None):
             bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
             bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
-                args.platform, args.basespace, output_dir, args.basespace_token)
+                args.platform, args.basespace, output_dir, basespace_token)
 
         # check if the index must be downloaded
         if not args.index.startswith('s3://'):
