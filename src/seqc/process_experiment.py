@@ -94,7 +94,7 @@ def check_arguments():
     raise NotImplementedError
 
 
-def run_remote(name: str) -> None:
+def run_remote(name: str, stem: str) -> None:
     """
     :param name: cluster name if provided by user, otherwise None
     """
@@ -109,6 +109,11 @@ def run_remote(name: str) -> None:
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
+    # writing name of instance in local machine to keep track of instance
+    with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
+        _, run_name = os.path.split(stem)
+        f.write('%s:%s' % (cluster.inst_id.instance_id, run_name))
+
     # writing name of instance in /path/to/output_dir/instance.txt for clean up
     inst_path = '/data/instance.txt'
     cluster.serv.exec_command(
@@ -119,7 +124,7 @@ def run_remote(name: str) -> None:
                           '/home/ubuntu/.seqc/config')
     cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(cmd=cmd))
-    # todo: check if you need to keep doing this in a loop
+    # todo: check if you need to keep doing this in a loop or if this is too soon
     out, err = cluster.serv.exec_command('ps aux | grep process_experiment.py')
     res = ' '.join(out)
     if '/usr/local/bin/process_experiment.py' not in res:
@@ -130,7 +135,7 @@ def run_remote(name: str) -> None:
 
 def cluster_cleanup():
     """checks for all security groups that are unused and deletes
-    them prior to each SEQC run"""
+    them prior to each SEQC run. Updates ~/.seqc/instance.txt as well"""
     cmd = 'aws ec2 describe-instances --output text'
     cmd2 = 'aws ec2 describe-security-groups --output text'
     in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
@@ -138,6 +143,27 @@ def cluster_cleanup():
     to_delete = list(all_sgs - in_use)
     for sg in to_delete:
         seqc.remote.remove_sg(sg.decode())
+
+    # check which instances in instances.txt are still running
+    inst_file = os.path.expanduser('~/.seqc/instance.txt')
+    if os.path.isfile(inst_file):
+        with open(inst_file, 'r') as f:
+            seqc_list = [line.strip('\n') for line in f]
+        d = dict(item.split(':') for item in seqc_list)
+        seqc_inst = set([x.split(':')[0] for x in seqc_list])
+        all_instances = set([x for x in check_output(cmd.split()).decode().split()
+                       if x.startswith('i-')])
+
+        # update instances.txt if necessary
+        running = all_instances.intersection(seqc_inst)
+        if not running == seqc_inst:
+            running = list(running)
+            with open(inst_file, 'w') as f:
+                for x in running:
+                    f.write('%s:%s\n' % (x, d[x]))
+    else:
+        # instances.txt file has not yet been created
+        pass
 
 
 def main(args: list = None):
@@ -157,7 +183,7 @@ def main(args: list = None):
 
         if args.remote:
             cluster_cleanup()
-            run_remote(args.cluster_name)
+            run_remote(args.cluster_name, args.output_stem)
             sys.exit()
 
         if args.aws:
