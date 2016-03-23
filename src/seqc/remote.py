@@ -281,6 +281,7 @@ class ClusterServer(object):
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
+        # todo: test to make sure that seqc was installed successfully
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
