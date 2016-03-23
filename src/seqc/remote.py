@@ -140,7 +140,8 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 1024
+        # todo: change this back to 1024 after testing
+        vol_size = 50 #1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='standard')
         vol_id = vol.id
@@ -274,14 +275,21 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
+        # todo: change this back to v0.1.6 after committing
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/remote | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
-        # todo: test to make sure that seqc was installed successfully
+        num_retries = 30
+        for i in range(num_retries):
+            out, err = self.serv.exec_command('process_experiment.py -h | grep RNA')
+            if not out:
+                time.sleep(2)
+            else:
+                break
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
