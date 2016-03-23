@@ -4,6 +4,9 @@ from subprocess import call
 from setuptools import setup
 from warnings import warn
 
+# install phenograph
+call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
+
 # look in /usr/local/ and /usr/local/hdf5/ for hdf5 libraries;
 # if found in /usr/local/hdf5/, set an environment variable to help pip3 install it.
 h5fail = True
@@ -43,9 +46,6 @@ setup(name='seqc',
       scripts=['src/seqc/process_experiment.py']
       )
 
-# get location of setup.py
-setup_dir = os.path.dirname(os.path.realpath(__file__))
-
 # print any warnings
 if h5fail:
     warn('SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/, '
@@ -54,6 +54,9 @@ if h5fail:
          'HDF5_DIR environment variable has been set to the location that HDF5 was '
          'installed into. If HDF5 is not installed, please install it prior to '
          'installing SEQC if you wish to parse the .h5 archive.')
+
+# get location of setup.py
+setup_dir = os.path.dirname(os.path.realpath(__file__))
 
 # look for star
 if not shutil.which('STAR'):
@@ -69,11 +72,7 @@ tools_dir = os.path.expanduser('~/.seqc/tools')
 if os.path.isdir(tools_dir):
     shutil.rmtree(tools_dir)
 shutil.copytree(setup_dir + '/tools/', tools_dir)
-call(['unzip', '~/.seqc/tools/DiffusionGeometry.zip'])
-call(['tar', '-zxf', '~/.seqc/tools/mouse_gene_sets.tar.gz'])  # todo fix tar to unzip into mouse_gene_sets/ & change code
-call(['tar', '-zxf', '~/.seqc/tools/human_gene_sets.tar.gz'])  # todo fix tar to unzip into human_gene_sets/ & change code
-
-# install phenograph
-call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
-
-
+shutil.unpack_archive(tools_dir + '/DiffusionGeometry.zip', tools_dir +
+                      '/DiffusionGeometry/')
+shutil.unpack_archive(tools_dir + '/mouse_gene_sets.tar.gz', tools_dir)
+shutil.unpack_archive(tools_dir + '/human_gene_sets.tar.gz', tools_dir)

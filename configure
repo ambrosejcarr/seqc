@@ -26,4 +26,4 @@ for s in config.sections():
 with open(install_dir + 'config', 'w') as f:
     config.write(f)
 
-print('SEQC configuration complete. Thank you.')
+print('SEQC configuration complete. Thank you')
