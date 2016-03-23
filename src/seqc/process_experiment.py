@@ -164,8 +164,7 @@ def cluster_cleanup():
                     for x in running:
                         f.write('%s:%s\n' % (x, d[x]))
     else:
-        # instances.txt file has not yet been created
-        pass
+        pass  # instances.txt file has not yet been created
 
 
 def main(args: list = None):
