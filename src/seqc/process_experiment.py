@@ -149,18 +149,20 @@ def cluster_cleanup():
     if os.path.isfile(inst_file):
         with open(inst_file, 'r') as f:
             seqc_list = [line.strip('\n') for line in f]
-        d = dict(item.split(':') for item in seqc_list)
-        seqc_inst = set([x.split(':')[0] for x in seqc_list])
-        all_instances = set([x for x in check_output(cmd.split()).decode().split()
-                       if x.startswith('i-')])
+        # check that there are instances still running
+        if seqc_list:
+            d = dict(item.split(':') for item in seqc_list)
+            seqc_inst = set([x.split(':')[0] for x in seqc_list])
+            all_instances = set([x for x in check_output(cmd.split()).decode().split()
+                            if x.startswith('i-')])
 
-        # update instances.txt if necessary
-        running = all_instances.intersection(seqc_inst)
-        if not running == seqc_inst:
-            running = list(running)
-            with open(inst_file, 'w') as f:
-                for x in running:
-                    f.write('%s:%s\n' % (x, d[x]))
+            # update instances.txt if necessary
+            running = all_instances.intersection(seqc_inst)
+            if not running == seqc_inst:
+                running = list(running)
+                with open(inst_file, 'w') as f:
+                    for x in running:
+                        f.write('%s:%s\n' % (x, d[x]))
     else:
         # instances.txt file has not yet been created
         pass
