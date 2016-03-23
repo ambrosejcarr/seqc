@@ -124,7 +124,8 @@ def run_remote(name: str, stem: str) -> None:
                           '/home/ubuntu/.seqc/config')
     cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
                               ''.format(cmd=cmd))
-    # todo: check if you need to keep doing this in a loop or if this is too soon
+
+    # check that process_experiment.py is actually running on the cluster
     out, err = cluster.serv.exec_command('ps aux | grep process_experiment.py')
     res = ' '.join(out)
     if '/usr/local/bin/process_experiment.py' not in res:

@@ -25,6 +25,8 @@ try:
 
             # connecting to the remote instance
             s = seqc.remote.SSHServer(inst_id, rsa_key)
+            if s.instance.state['Name'] != 'running':
+                continue
             s.connect()
             out, err = s.exec_command('less /data/seqc.log')
             if not out:
