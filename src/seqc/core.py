@@ -724,19 +724,21 @@ class Experiment:
         os.remove('/tmp/dm_eig_vals_%f.csv' % rand_tag)
 
     def plot_diffusion_components(self, fig=None, ax=None):
-        if not self.tsne:
+        if self.tsne is None:
             raise RuntimeError('Please run tSNE before plotting diffusion components.')
 
-        fig, ax = get_fig(fig=fig, ax=ax)
-
-        plt.figure(figsize=[12, 6])  # todo set adaptively
-        no_cols = int(self.diffusion_eigenvectors.shape[1]/2)
-        gs = plt.GridSpec(2, no_cols)
+        height = int(2 * np.ceil(self.diffusion_eigenvalues.shape[0] / 5))
+        width = 10
+        fig = plt.figure(figsize=[width, height])
+        n_rows = int(height / 2)
+        n_cols = int(width / 2)
+        gs = plt.GridSpec(n_rows, n_cols)
 
         for i in range(self.diffusion_eigenvectors.shape[1]):
-            plt.subplot(gs[int(np.floor(i/no_cols)), i % no_cols])
+            ax = plt.subplot(gs[i // n_cols, i % n_cols])
             plt.scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
                         cmap=cmap, edgecolors='none', s=10)
+            ax.set_axis_off()
 
     def determine_gene_diffusion_correlations(self, no_cells=10):
         """
@@ -756,7 +758,9 @@ class Experiment:
             # Cell order
             order = self.diffusion_eigenvectors.iloc[:, component]\
                 .sort(inplace=False).index
-            x = range(no_cells, len(order))  # todo manu will send rolling mean modification
+            x = np.ravel(pd.rolling_mean(self.diffusion_eigenvectors.ix[order, component],
+                                         no_cells))
+            x = x[no_cells:]
 
             # For each gene
             for gene in self.molecules.columns:
