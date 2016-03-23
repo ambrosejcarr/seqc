@@ -7,6 +7,7 @@ import sys
 import pickle
 import seqc
 import configparser
+import boto3
 from subprocess import Popen, check_output
 
 
@@ -146,24 +147,20 @@ def cluster_cleanup():
         seqc.remote.remove_sg(sg.decode())
 
     # check which instances in instances.txt are still running
+    ec2 = boto3.resource('ec2')
     inst_file = os.path.expanduser('~/.seqc/instance.txt')
+
     if os.path.isfile(inst_file):
         with open(inst_file, 'r') as f:
             seqc_list = [line.strip('\n') for line in f]
-        # check that there are instances still running
         if seqc_list:
-            d = dict(item.split(':') for item in seqc_list)
-            seqc_inst = set([x.split(':')[0] for x in seqc_list])
-            all_instances = set([x for x in check_output(cmd.split()).decode().split()
-                            if x.startswith('i-')])
-
-            # update instances.txt if necessary
-            running = all_instances.intersection(seqc_inst)
-            if not running == seqc_inst:
-                running = list(running)
-                with open(inst_file, 'w') as f:
-                    for x in running:
-                        f.write('%s:%s\n' % (x, d[x]))
+            with open(inst_file, 'w') as f:
+                for i in range(len(seqc_list)):
+                    entry = seqc_list[i]
+                    inst_id = entry.split(':')[0]
+                    instance = ec2.Instance(inst_id)
+                    if instance.state['Name'] == 'running':
+                        f.write('%s\n' % entry)
     else:
         pass  # instances.txt file has not yet been created
 
