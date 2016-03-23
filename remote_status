@@ -18,21 +18,25 @@ rsa_key = config['key']['rsa_key_location']
 # checking for instance status
 inst_file = os.path.expanduser('~/.seqc/instance.txt')
 try:
-    # todo: deal with multiple instances launched simultaneously
     with open(inst_file, 'r') as f:
-        inst_id = f.readline().strip('\n')
-    s = seqc.remote.SSHServer(inst_id, rsa_key)
-    s.connect()
-    out, err = s.exec_command('less /data/seqc.log')
-    if not out:
-        raise FileNotFoundError('Error: SEQC log file not found in cluster. Something '
-                                'went wrong with remote SEQC execution.')
-    print('-'*50)
-    print('Printing the contents of the remote SEQC log file:')
-    print('-'*50)
-    for line in out:
-        print(line)
-    print('-'*50)
+        for line in f:
+            entry = line.strip('\n')
+            inst_id, run_name = entry.split(':')
+
+            # connecting to the remote instance
+            s = seqc.remote.SSHServer(inst_id, rsa_key)
+            s.connect()
+            out, err = s.exec_command('less /data/seqc.log')
+            if not out:
+                print('ERROR: SEQC log file not found in cluster (%s) for sample %s. '
+                      'Something went wrong during remote run.' % (inst_id, run_name))
+                continue
+            print('-'*80)
+            print('Printing contents of the remote SEQC log file for run %s:' % run_name)
+            print('-'*80)
+            for x in out:
+                print(x)
+            print('-'*80 + '\n')
 except FileNotFoundError:
     print('You have not started a remote instance -- exiting.')
     sys.exit(0)
