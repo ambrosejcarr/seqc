@@ -284,13 +284,18 @@ class ClusterServer(object):
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
         num_retries = 30
+        install_fail = True
         for i in range(num_retries):
             out, err = self.serv.exec_command('process_experiment.py -h | grep RNA')
             if not out:
                 time.sleep(2)
             else:
+                install_fail = False
                 break
-        seqc.log.notify('SEQC successfully installed in %s.' % folder)
+        if not install_fail:
+            seqc.log.notify('SEQC successfully installed in %s.' % folder)
+        else:
+            raise EC2RuntimeError('Error installing SEQC on the cluster.')
 
     def set_credentials(self):
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
