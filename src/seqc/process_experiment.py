@@ -445,6 +445,7 @@ def main(args: list = None):
 
         # todo: check if local-only runs will ever upload onto S3
         if args.aws:
+            # todo: debugging --> get rid of this
             seqc.log.info('The output stem is %s' % args.output_stem)
             seqc.log.info('The output_dir is %s ' % output_dir)
             seqc.log.info('The output_prefix is %s ' % output_prefix)
