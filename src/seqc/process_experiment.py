@@ -436,6 +436,8 @@ def main(args: list = None):
         seqc.log.info('Run complete.')
 
         if args.email_status:
+            if not args.aws_upload_key.endswith('/'):
+                args.aws_upload_key += '/'
             seqc.remote.upload_results(
                 args.output_stem, args.email_status, args.aws_upload_key)
 
