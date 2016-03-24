@@ -183,6 +183,7 @@ def check_input_data(barcode_fastq: list, genomic_fastq: list, merged: str,
     basespace: the sample id necessary to download files from BaseSpace
     """
 
+    # todo: would be good to implement all checks here as on develop branch
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace]):
         raise ValueError('At least one input argument must be passed to SEQC.')
@@ -278,54 +279,56 @@ def main(args: list = None):
                 args.platform, args.basespace, output_dir, basespace_token)
 
         # check for genomic fastq files
-        if not args.genomic_fastq[0].startswith('s3://'):
-            for gf in args.genomic_fastq:
-                if not os.path.isfile(gf):
-                    raise ValueError('provided genomic fastq files: "[%s]" is neither '
-                                     'an s3 link or a valid filepath' %
-                                     ', '.join(map(str, args.genomic_fastq)))
-        else:
-            try:
-                seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
-                if args.genomic_fastq[0].endswith('/'):
-                    # s3 directory specified, download all files recursively
-                    args.genomic_fastq = s3bucket_download(args.genomic_fastq[0],
+        if args.genomic_fastq:
+            if not args.genomic_fastq[0].startswith('s3://'):
+                for gf in args.genomic_fastq:
+                    if not os.path.isfile(gf):
+                        raise ValueError('provided genomic fastq files: "[%s]" is neither '
+                                         'an s3 link or a valid filepath' %
+                                         ', '.join(map(str, args.genomic_fastq)))
+            else:
+                try:
+                    seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
+                    if args.genomic_fastq[0].endswith('/'):
+                        # s3 directory specified, download all files recursively
+                        args.genomic_fastq = s3bucket_download(args.genomic_fastq[0],
                                                            output_dir)
-                else:
-                    # individual s3 links provided, download each fastq file
-                    args.genomic_fastq = s3files_download(args.genomic_fastq, output_dir)
-                seqc.log.info('Genomic fastq files [%s] successfully installed.' %
-                              ', '.join(map(str, args.genomic_fastq)))
-            except FileNotFoundError:
-                raise FileNotFoundError('No fastq files were found at the specified '
-                                        's3 location: [%s]' %
-                                        ', '.join(map(str, args.genomic_fastq)))
-            except FileExistsError:
-                pass  # file is already present.
+                    else:
+                        # individual s3 links provided, download each fastq file
+                        args.genomic_fastq = s3files_download(args.genomic_fastq, output_dir)
+                    seqc.log.info('Genomic fastq files [%s] successfully installed.' %
+                                  ', '.join(map(str, args.genomic_fastq)))
+                except FileNotFoundError:
+                    raise FileNotFoundError('No fastq files were found at the specified '
+                                            's3 location: [%s]' %
+                                            ', '.join(map(str, args.genomic_fastq)))
+                except FileExistsError:
+                    pass  # file is already present.
 
         # todo: could make this less redundant. same code block but for barcode fastq
-        if not args.barcode_fastq[0].startswith('s3://'):
-            for bf in args.barcode_fastq:
-                if not os.path.isfile(bf):
-                    raise ValueError('provided genomic fastq files: "[%s]" is neither '
-                                     'an s3 link or a valid filepath' %
-                                     ', '.join(map(str, args.barcode_fastq)))
-        else:
-            try:
-                seqc.log.info('Downloading barcode fastq files from Amazon s3 link.')
-                if args.barcode_fastq[0].endswith('/'):
-                    args.barcode_fastq = s3bucket_download(args.barcode_fastq[0],
-                                                           output_dir)
-                else:
-                    args.barcode_fastq = s3files_download(args.barcode_fastq, output_dir)
-                seqc.log.info('Barcode fastq files [%s] successfully installed.' %
-                              ', '.join(map(str, args.barcode_fastq)))
-            except FileNotFoundError:
-                raise FileNotFoundError('No fastq files were found at the specified '
-                                        's3 location: [%s]' %
-                                        ', '.join(map(str, args.barcode_fastq)))
-            except FileExistsError:
-                pass  # file is already present.
+        if args.barcode_fastq:
+            if not args.barcode_fastq[0].startswith('s3://'):
+                for bf in args.barcode_fastq:
+                    if not os.path.isfile(bf):
+                        raise ValueError('provided genomic fastq files: "[%s]" is neither '
+                                         'an s3 link or a valid filepath' %
+                                         ', '.join(map(str, args.barcode_fastq)))
+            else:
+                try:
+                    seqc.log.info('Downloading barcode fastq files from Amazon s3 link.')
+                    if args.barcode_fastq[0].endswith('/'):
+                        args.barcode_fastq = s3bucket_download(args.barcode_fastq[0],
+                                                               output_dir)
+                    else:
+                        args.barcode_fastq = s3files_download(args.barcode_fastq, output_dir)
+                    seqc.log.info('Barcode fastq files [%s] successfully installed.' %
+                                  ', '.join(map(str, args.barcode_fastq)))
+                except FileNotFoundError:
+                    raise FileNotFoundError('No fastq files were found at the specified '
+                                            's3 location: [%s]' %
+                                            ', '.join(map(str, args.barcode_fastq)))
+                except FileExistsError:
+                    pass  # file is already present.
 
         # check if the index must be downloaded
         if not args.index.startswith('s3://'):
