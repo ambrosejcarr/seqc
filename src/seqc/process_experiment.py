@@ -163,7 +163,7 @@ def cluster_cleanup():
                     try:
                         if instance.state['Name'] == 'running':
                             f.write('%s\n' % entry)
-                    except ClientError:
+                    except:
                         continue
     else:
         pass  # instances.txt file has not yet been created
