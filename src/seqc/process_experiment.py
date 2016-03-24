@@ -8,7 +8,6 @@ import pickle
 import seqc
 import configparser
 import boto3
-from botocore.exceptions import ClientError
 from subprocess import Popen, check_output
 
 
@@ -69,12 +68,8 @@ def parse_args(args):
                    help='automatic flag; no need for user specification')
     r.add_argument('--email-status', metavar='E', default=None,
                    help='email address to receive run summary when running remotely')
-    r.add_argument('--cluster-name', default=None, metavar='C',
-                   help='optional name for EC2 instance')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='do not terminate the EC2 instance after program completes')
-    r.add_argument('--aws-upload-key', default=None, metavar='A',
-                   help='location to upload results')
     r.add_argument('--reverse-complement', default=False, action='store_true',
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
@@ -96,9 +91,9 @@ def check_arguments():
     raise NotImplementedError
 
 
-def run_remote(name: str, stem: str) -> None:
+def run_remote(stem: str) -> None:
     """
-    :param name: cluster name if provided by user, otherwise None
+    :param stem: output_prefix from main()
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
@@ -107,16 +102,18 @@ def run_remote(name: str, stem: str) -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    cluster.cluster_setup(name)
+    cluster.cluster_setup()
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
+    if stem.endswith('/'):
+        stem = stem[:-1]
     # writing name of instance in local machine to keep track of instance
     with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
         _, run_name = os.path.split(stem)
         f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
 
-    # writing name of instance in /path/to/output_dir/instance.txt for clean up
+    # writing name of instance in /data/instance.txt for clean up
     inst_path = '/data/instance.txt'
     cluster.serv.exec_command(
         'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
@@ -139,16 +136,24 @@ def run_remote(name: str, stem: str) -> None:
 def cluster_cleanup():
     """checks for all security groups that are unused and deletes
     them prior to each SEQC run. Updates ~/.seqc/instance.txt as well"""
+
     cmd = 'aws ec2 describe-instances --output text'
     cmd2 = 'aws ec2 describe-security-groups --output text'
     in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
     all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
     to_delete = list(all_sgs - in_use)
+
+    # set up ec2 resource from boto3
+    ec2 = boto3.resource('ec2')
+
+    # iteratively remove unused SEQC security groups
     for sg in to_delete:
-        seqc.remote.remove_sg(sg.decode())
+        sg_id = sg.decode()
+        sg_name = ec2.SecurityGroup(sg_id).group_name
+        if 'SEQC-' in sg_name:
+            seqc.remote.remove_sg(sg_id)
 
     # check which instances in instances.txt are still running
-    ec2 = boto3.resource('ec2')
     inst_file = os.path.expanduser('~/.seqc/instance.txt')
 
     if os.path.isfile(inst_file):
@@ -176,10 +181,10 @@ def check_input_data(barcode_fastq: list, genomic_fastq: list, merged: str,
     args:
     -----
     barcode_fastq, genomic_fastq: Lists of fastq files OR single aws s3 links
-     specifying folders holding barcode and genomic fastq files
+    specifying folders holding barcode and genomic fastq files
     samfile: an alignment file or an aws s3 link specifying the location of a samfile
     merged: a merged fastq file or an aws s3 link specifying the location of a merged
-     fastq file
+    fastq file
     basespace: the sample id necessary to download files from BaseSpace
     """
 
@@ -208,7 +213,13 @@ def check_input_data(barcode_fastq: list, genomic_fastq: list, merged: str,
 
 
 def s3bucket_download(s3link: str, outdir: str):
-    """recursively downloads files from given S3 link"""
+    """
+    recursively downloads files from given S3 link
+    :param s3link: link to s3 bucket that holds files to download
+    :param outdir: output directory where files will be downloaded
+    returns sorted list of downloaded files
+    """
+
     bucket, prefix = seqc.io.S3.split_link(s3link)
     cut_dirs = prefix.count('/')
     downloaded_files = seqc.io.S3.download_files(bucket, prefix, outdir, cut_dirs)
@@ -216,7 +227,13 @@ def s3bucket_download(s3link: str, outdir: str):
 
 
 def s3files_download(s3links: list, outdir: str):
-    """downloads each file in list of s3 links"""
+    """
+    downloads each file in list of s3 links
+    :param s3links: list of s3 links to be downloaded
+    :param outdir: output directory where files will be downloaded
+    returns sorted list of downloaded files
+    """
+
     fnames = []
     for s3link in s3links:
         bucket, prefix = seqc.io.S3.split_link(s3link)
@@ -235,8 +252,18 @@ def main(args: list = None):
         check_input_data(args.barcode_fastq, args.genomic_fastq, args.merged_fastq,
                          args.samfile, args.basespace)
 
-        # split output_stem into path and prefix, read in config file
-        output_dir, output_prefix = os.path.split(args.output_stem)
+        # check whether output is an s3 or local directory, split output_stem
+        if args.output_stem.endswith('/'):
+            if args.output_stem.startswith('s3://'):
+                output_dir, output_prefix = os.path.split(args.output_stem[:-1])
+            else:
+                seqc.log.notify('-o/--output-stem should not be a directory for local '
+                                'SEQC runs.')
+                sys.exit(2)
+        else:
+            output_dir, output_prefix = os.path.split(args.output_stem)
+
+        # read in config file
         config_file = os.path.expanduser('~/.seqc/config')
         config = configparser.ConfigParser()
         if not config.read(config_file):
@@ -245,18 +272,19 @@ def main(args: list = None):
                                      'process_experiment.py.')
 
         if args.remote:
+            if not args.output_stem.startswith('s3://'):
+                raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
+                                 'runs.')
             cluster_cleanup()
-            run_remote(args.cluster_name, args.output_stem)
+            run_remote(args.output_stem)
             sys.exit()
 
         if args.aws:
+            aws_upload_key = args.output_stem
+            if not aws_upload_key.endswith('/'):
+                aws_upload_key += '/'
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
-
-        # do a bit of argument checking
-        if args.output_stem.endswith('/'):
-            seqc.log.notify('-o/--output-stem should not be a directory.')
-            sys.exit(2)
 
         # download data if necessary
         if args.basespace:
@@ -432,15 +460,17 @@ def main(args: list = None):
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
+        seqc.log.info('Successfully generated count matrix.')
 
-        seqc.log.info('Successfully generated count matrix, will begin '
-                      'uploading files onto %s.' % args.aws_upload_key)
+        # todo: check if local-only runs (not local on AWS) will ever upload onto S3
+        # in this version, local runs won't be able to upload to S3
+        # and also won't get an e-mail notification.
+        if args.aws:
+            seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
-        if args.email_status:
-            if not args.aws_upload_key.endswith('/'):
-                args.aws_upload_key += '/'
-            seqc.remote.upload_results(
-                args.output_stem, args.email_status, args.aws_upload_key)
+            if args.email_status:
+                seqc.remote.upload_results(
+                    args.output_stem, args.email_status, aws_upload_key)
 
     except:
         pass
@@ -454,7 +484,7 @@ def main(args: list = None):
     finally:
         if not args.remote:  # Is local
             if not args.no_terminate:  # terminate = True
-                fpath = output_dir + '/instance.txt'
+                fpath = '/data/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
                         inst_id = f.readline().strip('\n')

@@ -41,13 +41,12 @@ class ClusterServer(object):
         self.aws_id = None
         self.aws_key = None
 
-    def create_security_group(self, name=None):
+    def create_security_group(self):
         """Creates a new security group for the cluster
         :param name: cluster name if provided by user
         """
-        if name is None:
-            name = 'SEQC-%07d' % random.randint(1, int(1e7))
-            seqc.log.notify('No instance name provided, assigned %s.' % name)
+        name = 'SEQC-%07d' % random.randint(1, int(1e7))
+        seqc.log.notify('Assigned instance name %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
@@ -301,10 +300,10 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self, name=None):
+    def cluster_setup(self):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
-        self.create_security_group(name)
+        self.create_security_group()
         self.create_cluster()
         self.connect_server()
         self.create_raid()
@@ -360,6 +359,14 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     email_process.communicate(email_body)
 
 
+def gzip_file(filename):
+    """gzips a given file, returns name of gzipped file"""
+    cmd = 'gzip ' + filename
+    pname = Popen(cmd.split())
+    pname.communicate()
+    return filename + '.gz'
+
+
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str) -> None:
     """
     :param output_stem: specified output directory in cluster
@@ -369,6 +376,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     prefix, directory = os.path.split(output_stem)
 
     samfile = prefix + '/alignments/Aligned.out.sam'
+    bamfile = prefix + '/alignments/Aligned.out.bam'
     h5_archive = output_stem + '.h5'
     merged_fastq = output_stem + '_merged.fastq'
     counts = output_stem + '_read_and_count_matrices.p'
@@ -376,19 +384,26 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
                     '_alignment_summary.txt')
     alignment_summary = output_stem + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
-    files = [samfile, h5_archive, merged_fastq, counts, alignment_summary, log]
 
-    # gzip everything and upload to aws_upload_key
-    archive_name = output_stem + '.tar.gz'
-    archive_suffix = archive_name.split('/')[-1]
-    gzip_args = ['tar', '-czf', archive_name] + files
-    seqc.log.info('Gzipping SEQC files into archive %s.' % archive_name)
-    gzip = Popen(gzip_args)
-    gzip.communicate()
+    # converting samfile to bamfile
+    convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
+                                                                    samfile=samfile)
+    conv = Popen(convert_sam.split())
+    conv.communicate()
+    # bamfile = gzip_file(bamfile)
+    seqc.log.info('Successfully converted samfile to bamfile to upload.')
+
+    # gzipping merged_fastq file to upload
+    merged_fastq = gzip_file(merged_fastq)
+    seqc.log.info('Successfully gzipped merged fastq file to upload.')
+
+    files = [bamfile, h5_archive, merged_fastq, counts, alignment_summary, log]
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
-    seqc.log.info('Uploading results to the specified S3 location "%s%s.' %
-                  (aws_upload_key, archive_suffix))
-    seqc.io.S3.upload_file(archive_name, bucket, key)
+    for item in files:
+        seqc.io.S3.upload_file(item, bucket, key)
+        item_name = item.split('/')[-1]
+        seqc.log.info('Successfully uploaded %s to the specified S3 location '
+                      '"%s%s".' % (item, aws_upload_key, item_name))
 
     # todo @AJC put this back in
     # generate a run summary and append to the email
@@ -403,8 +418,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     body = ('SEQC RUN COMPLETE.\n\n'
             'The run log has been attached to this email and '
             'results are now available in the S3 location you specified: '
-            '"%s%s"\n\n'
-            'RUN SUMMARY:\n\n%s' % (aws_upload_key, archive_suffix, repr(run_summary)))
+            '"%s"\n\n'
+            'RUN SUMMARY:\n\n%s' % (aws_upload_key, repr(run_summary)))
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified')
