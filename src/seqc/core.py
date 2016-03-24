@@ -417,83 +417,14 @@ class Experiment:
         # get the intersection of all cell indices and gene columns
         cells = set()
         genes = set()
-        for e in experiments:
-            cells.update(e.molecules.index)
+        for i, e in enumerate(experiments):
+            suffix = '_{}'.format(str(i))
+            cells.update([str(c) + suffix for c in e.molecules.index])
             genes.update(e.molecules.columns)
 
         # create new, global maps of genes and cells to indices
-        cell2int = dict(zip(cells, range(len(cells))))
-        int2cell = {v: k for k, v in cell2int.items()}
-        gene2int = dict(zip(genes, range(len(genes))))
-        int2gene = {v: k for k, v in gene2int.items()}
-
-        # merge molecule counts
-        new_molecule_data = defaultdict(int)
-        new_read_data = defaultdict(int)
-        for e in experiments:
-
-            # map molecule and cell indices back to their respective cell and gene ids
-            local_cell_map = dict(zip(e.index, range(len(e.index))))
-            local_gene_map = dict(zip(e.columns, range(len(e.columns))))
-
-            for mols, reads, cell, gene in zip(e.molecules.data, e.reads.data,
-                                               e.molecules.row, e.molecules.col):
-                # transform from index -> ids -> global index
-                cell = cell2int[local_cell_map[cell]]
-                gene = gene2int[local_gene_map[gene]]
-
-                # add counts to global count matrices
-                new_molecule_data[(cell, gene)] += mols
-                new_read_data[(cell, gene)] += reads
-
-        # get global row and col for coo_matrix construction
-        row, col = (np.array(v) for v in zip(*new_molecule_data.keys()))
-
-        # extract read and molecule data from dictionaries
-        molecule_data = np.array(list(new_molecule_data.values()))
-        read_data = np.array(list(new_read_data.values()))
-
-        # make coo matrices
-        reads = coo_matrix((read_data, (row, col)), dtype=np.uint32)
-        molecules = coo_matrix((molecule_data, (row, col)), dtype=np.uint32)
-
-        # get gene ids and cell ids for SparseFrame construction
-        row_index = [int2cell[v] for v in row]
-        col_index = [int2gene[v] for v in col]
-
-        sparse_reads = SparseFrame(reads, row_index, col_index)
-        sparse_molecules = SparseFrame(molecules, row_index, col_index)
-
-        return Experiment(reads=sparse_reads, molecules=sparse_molecules)
-
-    @staticmethod
-    def merge(experiments):
-        """
-        Merge a set of Experiment objects. Cells with duplicate cell barcodes will have
-        their data summed across experiments.
-
-        If metadata_labels are provided, a new entry in metadata will be included for
-        each cell. This can be useful to mark each cell by which experiment it originated
-        from in order to track batch effects, for example.
-
-        :param self:
-        :param experiments:
-        :return:
-        """
-
-        if not all(e.is_sparse() for e in experiments):
-            raise ValueError('merge may only be run on sparse inputs.')
-
-        # get the intersection of all cell indices and gene columns
-        cells = set()
-        genes = set()
-        for e in experiments:
-            cells.update(e.molecules.index)
-            genes.update(e.molecules.columns)
-
-        # create new, global maps of genes and cells to indices
-        cell_index = list(cells)
-        gene_index = list(genes)
+        cell_index = np.array(list(cells))  # todo this and downstream lines need to be mutated so that each experiment has a different set of cells (even if the names collide)
+        gene_index = np.array(list(genes))
         cell2int = dict(zip(cell_index, range(len(cell_index))))
         gene2int = dict(zip(gene_index, range(len(gene_index))))
 
@@ -534,7 +465,79 @@ class Experiment:
         molecules = coo_matrix((molecule_data, (row, col)), shape=shape, dtype=np.uint32)
 
         sparse_reads = SparseFrame(reads, cell_index, gene_index)
-        sparse_molecules = SparseFrame(molecules, gene_index, cell_index)
+        sparse_molecules = SparseFrame(molecules, cell_index, gene_index)
+
+        return Experiment(reads=sparse_reads, molecules=sparse_molecules)
+
+    @staticmethod
+    def merge(experiments):
+        """
+        Merge a set of Experiment objects. Cells with duplicate cell barcodes will have
+        their data summed across experiments.
+
+        If metadata_labels are provided, a new entry in metadata will be included for
+        each cell. This can be useful to mark each cell by which experiment it originated
+        from in order to track batch effects, for example.
+
+        :param self:
+        :param experiments:
+        :return:
+        """
+
+        if not all(e.is_sparse() for e in experiments):
+            raise ValueError('merge may only be run on sparse inputs.')
+
+        # get the intersection of all cell indices and gene columns
+        cells = set()
+        genes = set()
+        for e in experiments:
+            cells.update(e.molecules.index)
+            genes.update(e.molecules.columns)
+
+        # create new, global maps of genes and cells to indices
+        cell_index = np.array(list(cells))
+        gene_index = np.array(list(genes))
+        cell2int = dict(zip(cell_index, range(len(cell_index))))
+        gene2int = dict(zip(gene_index, range(len(gene_index))))
+
+        # merge molecule counts
+        new_molecule_data = defaultdict(int)
+        new_read_data = defaultdict(int)
+        for e in experiments:
+
+            # map molecule and cell indices back to their respective cell and gene ids
+            local_cell_map = dict(zip(range(len(e.molecules.index)), e.molecules.index))
+            local_gene_map = dict(zip(range(len(e.molecules.columns)),
+                                      e.molecules.columns))
+
+            for mols, reads, cell, gene in zip(
+                    e.molecules.data.data, e.reads.data.data, e.molecules.data.row,
+                    e.molecules.data.col):
+
+                # transform from index -> ids -> global index
+                cell = cell2int[local_cell_map[cell]]
+                gene = gene2int[local_gene_map[gene]]
+
+                # add counts to global count matrices
+                new_molecule_data[(cell, gene)] += mols
+                new_read_data[(cell, gene)] += reads
+
+        # get global row and col for coo_matrix construction
+        row, col = (np.array(v) for v in zip(*new_molecule_data.keys()))
+
+        # extract read and molecule data from dictionaries
+        molecule_data = np.array(list(new_molecule_data.values()))
+        read_data = np.array(list(new_read_data.values()))
+
+        # get gene ids and cell ids for SparseFrame construction
+
+        # make coo matrices
+        shape = len(cell_index), len(gene_index)
+        reads = coo_matrix((read_data, (row, col)), shape=shape, dtype=np.uint32)
+        molecules = coo_matrix((molecule_data, (row, col)), shape=shape, dtype=np.uint32)
+
+        sparse_reads = SparseFrame(reads, cell_index, gene_index)
+        sparse_molecules = SparseFrame(molecules, cell_index, gene_index)
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
