@@ -8,7 +8,6 @@ import pickle
 import seqc
 import configparser
 import boto3
-from botocore.exceptions import ClientError
 from subprocess import Popen, check_output
 
 
@@ -444,8 +443,11 @@ def main(args: list = None):
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
 
-        # todo: catch potential error for local-only runs that aren't uploaded to S3
+        # todo: check if local-only runs will ever upload onto S3
         if args.aws:
+            seqc.log.info('The output stem is %s' % args.output_stem)
+            seqc.log.info('The output_dir is %s ' % output_dir)
+            seqc.log.info('The output_prefix is %s ' % output_prefix)
             seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
             if args.email_status:
