@@ -442,14 +442,15 @@ def main(args: list = None):
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
+        seqc.log.info('Successfully generated count matrix.')
 
         # todo: catch potential error for local-only runs that aren't uploaded to S3
-        seqc.log.info('Successfully generated count matrix, will begin '
-                      'uploading files onto %s.' % aws_upload_key)
+        if args.aws:
+            seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
-        if args.email_status:
-            seqc.remote.upload_results(
-                args.output_stem, args.email_status, aws_upload_key)
+            if args.email_status:
+                seqc.remote.upload_results(
+                    args.output_stem, args.email_status, aws_upload_key)
 
     except:
         pass
