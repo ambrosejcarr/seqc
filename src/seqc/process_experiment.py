@@ -433,7 +433,8 @@ def main(args: list = None):
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
 
-        seqc.log.info('Run complete.')
+        seqc.log.info('Run complete, will begin uploading files onto %s.' %
+                      args.aws_upload_key)
 
         if args.email_status:
             if not args.aws_upload_key.endswith('/'):
