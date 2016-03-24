@@ -114,7 +114,7 @@ def run_remote(name: str, stem: str) -> None:
     # writing name of instance in local machine to keep track of instance
     with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
         _, run_name = os.path.split(stem)
-        f.write('%s:%s' % (cluster.inst_id.instance_id, run_name))
+        f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
 
     # writing name of instance in /path/to/output_dir/instance.txt for clean up
     inst_path = '/data/instance.txt'
@@ -157,10 +157,10 @@ def cluster_cleanup():
         if seqc_list:
             with open(inst_file, 'w') as f:
                 for i in range(len(seqc_list)):
-                    entry = seqc_list[i]
-                    inst_id = entry.split(':')[0]
-                    instance = ec2.Instance(inst_id)
                     try:
+                        entry = seqc_list[i]
+                        inst_id = entry.split(':')[0]
+                        instance = ec2.Instance(inst_id)
                         if instance.state['Name'] == 'running':
                             f.write('%s\n' % entry)
                     except:
@@ -433,7 +433,8 @@ def main(args: list = None):
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
 
-        seqc.log.info('Run complete.')
+        seqc.log.info('Successfully generated count matrix, will begin '
+                      'uploading files onto %s.' % args.aws_upload_key)
 
         if args.email_status:
             if not args.aws_upload_key.endswith('/'):

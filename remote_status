@@ -26,20 +26,24 @@ try:
             # connecting to the remote instance
             s = seqc.remote.SSHServer(inst_id, rsa_key)
             try:
-                if s.instance.state['Name'] != 'running':
-                    print('Cluster (%s) for sample %s is not running.' % (inst_id, run_name))
+                inst_state = s.instance.state['Name']
+                if inst_state != 'running':
+                    print('Cluster (%s) for run "%s" is currently %s.' %
+                          (inst_id, run_name, inst_state))
                     continue
             except:
-                print('Cluster (%s) for sample %s is not running.' % (inst_id, run_name))
+                print('Cluster (%s) for run "%s" has been terminated.'
+                      % (inst_id,run_name))
                 continue
+
             s.connect()
             out, err = s.exec_command('less /data/seqc.log')
             if not out:
-                print('ERROR: SEQC log file not found in cluster (%s) for sample %s. '
+                print('ERROR: SEQC log file not found in cluster (%s) for run "%s." '
                       'Something went wrong during remote run.' % (inst_id, run_name))
                 continue
             print('-'*80)
-            print('Printing contents of the remote SEQC log file for run %s:' % run_name)
+            print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
             print('-'*80)
             for x in out:
                 print(x)
