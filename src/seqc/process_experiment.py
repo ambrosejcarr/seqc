@@ -73,6 +73,7 @@ def parse_args(args):
                    help='optional name for EC2 instance')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='do not terminate the EC2 instance after program completes')
+    # todo: get rid of --aws-upload-key argument
     r.add_argument('--aws-upload-key', default=None, metavar='A',
                    help='location to upload results')
     r.add_argument('--reverse-complement', default=False, action='store_true',
@@ -141,6 +142,8 @@ def cluster_cleanup():
     them prior to each SEQC run. Updates ~/.seqc/instance.txt as well"""
     cmd = 'aws ec2 describe-instances --output text'
     cmd2 = 'aws ec2 describe-security-groups --output text'
+    # todo: need to make sure that we don't get rid of 3rd party security groups
+    # todo: should also exclude "default" sg
     in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
     all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
     to_delete = list(all_sgs - in_use)
@@ -176,10 +179,10 @@ def check_input_data(barcode_fastq: list, genomic_fastq: list, merged: str,
     args:
     -----
     barcode_fastq, genomic_fastq: Lists of fastq files OR single aws s3 links
-     specifying folders holding barcode and genomic fastq files
+    specifying folders holding barcode and genomic fastq files
     samfile: an alignment file or an aws s3 link specifying the location of a samfile
     merged: a merged fastq file or an aws s3 link specifying the location of a merged
-     fastq file
+    fastq file
     basespace: the sample id necessary to download files from BaseSpace
     """
 
