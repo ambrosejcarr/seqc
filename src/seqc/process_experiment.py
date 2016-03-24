@@ -303,7 +303,7 @@ def main(args: list = None):
             except FileExistsError:
                 pass  # file is already present.
 
-        # same check for barcode fastq files --> todo: could make this less redundant
+        # todo: could make this less redundant. same code block but for barcode fastq
         if not args.barcode_fastq[0].startswith('s3://'):
             for bf in args.barcode_fastq:
                 if not os.path.isfile(bf):
@@ -373,8 +373,11 @@ def main(args: list = None):
                 barcode=args.barcode_fastq)
 
         if align:
-            # todo: need to check for S3 installation of args.merged_fastq
             seqc.log.info('Aligning merged fastq records.')
+            if args.merged_fastq.startswith('s3://'):
+                args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
+                seqc.log.info('Merged fastq file %s successfully installed from S3.' %
+                              args.merged_fastq)
             *base_directory, stem = args.output_stem.split('/')
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
@@ -382,13 +385,18 @@ def main(args: list = None):
                 args.merged_fastq, args.index, n_processes, alignment_directory)
 
         if process_samfile:
-            # todo: need to check for S3 installation of args.samfile
             seqc.log.info('Filtering aligned records and constructing record database')
+            if args.samfile.startswith('s3://'):
+                args.samfile = s3files_download([args.samfile], output_dir)[0]
+                seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
             ra = seqc.arrays.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
         else:
-            # todo: need to check for S3 installation of args.read_array
+            if args.read_array.startswith('s3://'):
+                args.read_array = s3files_download([args.read_array], output_dir)[0]
+                seqc.log.info('Read array %s successfully installed from S3.' %
+                              args.read_array)
             ra = seqc.arrays.ReadArray.load(args.read_array)
 
         seqc.log.info('Correcting cell barcode and RMT errors')
