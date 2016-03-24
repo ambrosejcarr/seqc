@@ -405,6 +405,8 @@ def main(args: list = None):
                 if not args.barcode_files[0].endswith('/'):
                     args.barcode_files[0] += '/'
                 args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
+                seqc.log.info('Barcode files [%s] successfully installed.' %
+                              ', '.join(map(str, args.barcode_files)))
             except FileNotFoundError:
                 raise FileNotFoundError('No barcode files were found at the specified '
                                         's3 location: %s' % args.barcode_files[0])
