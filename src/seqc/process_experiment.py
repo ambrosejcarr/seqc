@@ -219,7 +219,7 @@ def s3files_download(s3links: list, outdir: str):
         _, fname = os.path.split(prefix)
         fname = outdir + '/' + fname
         seqc.io.S3.download_file(bucket, prefix, fname)
-        fnames.append(fnames)
+        fnames.append(fname)
     return sorted(fnames)
 
 
@@ -291,7 +291,8 @@ def main(args: list = None):
                 else:
                     # individual s3 links provided, download each fastq file
                     args.genomic_fastq = s3files_download(args.genomic_fastq, output_dir)
-                    # todo: need to log
+                seqc.log.info('Genomic fastq files [%s] successfully installed.' %
+                              ', '.join(map(str, args.genomic_fastq)))
             except FileNotFoundError:
                 raise FileNotFoundError('No fastq files were found at the specified '
                                         's3 location: [%s]' %
@@ -314,7 +315,8 @@ def main(args: list = None):
                                                            output_dir)
                 else:
                     args.barcode_fastq = s3files_download(args.barcode_fastq, output_dir)
-                    # todo: need to log
+                seqc.log.info('Barcode fastq files [%s] successfully installed.' %
+                              ', '.join(map(str, args.barcode_fastq)))
             except FileNotFoundError:
                 raise FileNotFoundError('No fastq files were found at the specified '
                                         's3 location: [%s]' %
