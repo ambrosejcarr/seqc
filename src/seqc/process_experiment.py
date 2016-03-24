@@ -234,18 +234,18 @@ def main(args: list = None):
         check_input_data(args.barcode_fastq, args.genomic_fastq, args.merged_fastq,
                          args.samfile, args.basespace)
 
-        # check whether output is an s3 or local directory
-        if args.output_stem.startswith('s3://'):
-            if args.output_stem.endswith('/'):
+        # check whether output is an s3 or local directory, split output_stem
+        if args.output_stem.endswith('/'):
+            if args.output_stem.startswith('s3://'):
                 output_dir, output_prefix = os.path.split(args.output_stem[:-1])
-        else:
-            if args.output_stem.endswith('/'):
+            else:
                 seqc.log.notify('-o/--output-stem should not be a directory for local '
                                 'SEQC runs.')
                 sys.exit(2)
+        else:
+            output_dir, output_prefix = os.path.split(args.output_stem)
 
-        # split output_stem into path and prefix, read in config file
-        output_dir, output_prefix = os.path.split(args.output_stem)
+        # read in config file
         config_file = os.path.expanduser('~/.seqc/config')
         config = configparser.ConfigParser()
         if not config.read(config_file):
