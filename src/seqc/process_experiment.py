@@ -283,8 +283,8 @@ def main(args: list = None):
             if not args.genomic_fastq[0].startswith('s3://'):
                 for gf in args.genomic_fastq:
                     if not os.path.isfile(gf):
-                        raise ValueError('provided genomic fastq files: "[%s]" is neither '
-                                         'an s3 link or a valid filepath' %
+                        raise ValueError('provided genomic fastq files: "[%s]" is '
+                                         'neither an s3 link or a valid filepath' %
                                          ', '.join(map(str, args.genomic_fastq)))
             else:
                 try:
@@ -295,7 +295,8 @@ def main(args: list = None):
                                                            output_dir)
                     else:
                         # individual s3 links provided, download each fastq file
-                        args.genomic_fastq = s3files_download(args.genomic_fastq, output_dir)
+                        args.genomic_fastq = s3files_download(args.genomic_fastq,
+                                                              output_dir)
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
                 except FileNotFoundError:
@@ -310,8 +311,8 @@ def main(args: list = None):
             if not args.barcode_fastq[0].startswith('s3://'):
                 for bf in args.barcode_fastq:
                     if not os.path.isfile(bf):
-                        raise ValueError('provided genomic fastq files: "[%s]" is neither '
-                                         'an s3 link or a valid filepath' %
+                        raise ValueError('provided genomic fastq files: "[%s]" is '
+                                         'neither an s3 link or a valid filepath' %
                                          ', '.join(map(str, args.barcode_fastq)))
             else:
                 try:
@@ -320,7 +321,8 @@ def main(args: list = None):
                         args.barcode_fastq = s3bucket_download(args.barcode_fastq[0],
                                                                output_dir)
                     else:
-                        args.barcode_fastq = s3files_download(args.barcode_fastq, output_dir)
+                        args.barcode_fastq = s3files_download(args.barcode_fastq,
+                                                              output_dir)
                     seqc.log.info('Barcode fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_fastq)))
                 except FileNotFoundError:
