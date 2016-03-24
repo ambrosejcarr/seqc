@@ -380,11 +380,14 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
 
     # gzip everything and upload to aws_upload_key
     archive_name = output_stem + '.tar.gz'
+    archive_suffix = archive_name.split('/')[-1]
     gzip_args = ['tar', '-czf', archive_name] + files
     seqc.log.info('Gzipping SEQC files into archive %s.' % archive_name)
     gzip = Popen(gzip_args)
     gzip.communicate()
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
+    seqc.log.info('Uploading results to the specified S3 location "%s%s.' %
+                  (aws_upload_key, archive_suffix))
     seqc.io.S3.upload_file(archive_name, bucket, key)
 
     # todo @AJC put this back in
@@ -394,10 +397,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     run_summary = ''
 
     # get the name of the output file
-    archive_suffix = archive_name.split('/')[-1]
-    seqc.log.info('Successfully uploaded results to the specified S3 location "%s%s". '
-                  'An e-mail will be sent to %s.' % (aws_upload_key, archive_suffix,
-                                                     email_address))
+    seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
 
     # email results to user
     body = ('SEQC RUN COMPLETE.\n\n'
@@ -406,7 +406,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
             '"%s%s"\n\n'
             'RUN SUMMARY:\n\n%s' % (aws_upload_key, archive_suffix, repr(run_summary)))
     email_user(log, body, email_address)
-    seqc.log.info('SEQC Complete. Cluster will be terminated unless --no-terminate '
+    seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified')
 
 
