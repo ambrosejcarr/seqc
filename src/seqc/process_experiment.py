@@ -69,8 +69,6 @@ def parse_args(args):
                    help='automatic flag; no need for user specification')
     r.add_argument('--email-status', metavar='E', default=None,
                    help='email address to receive run summary when running remotely')
-    r.add_argument('--cluster-name', default=None, metavar='C',
-                   help='optional name for EC2 instance')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='do not terminate the EC2 instance after program completes')
     r.add_argument('--reverse-complement', default=False, action='store_true',
@@ -94,9 +92,9 @@ def check_arguments():
     raise NotImplementedError
 
 
-def run_remote(name: str, stem: str) -> None:
+def run_remote(stem: str) -> None:
     """
-    :param name: cluster name if provided by user, otherwise None
+    :param stem: output_prefix from main()
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
@@ -105,7 +103,7 @@ def run_remote(name: str, stem: str) -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    cluster.cluster_setup(name)
+    cluster.cluster_setup()
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
@@ -260,7 +258,7 @@ def main(args: list = None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            run_remote(args.cluster_name, args.output_stem)
+            run_remote(args.output_stem)
             sys.exit()
 
         if args.aws:
@@ -465,7 +463,7 @@ def main(args: list = None):
     finally:
         if not args.remote:  # Is local
             if not args.no_terminate:  # terminate = True
-                fpath = output_dir + '/instance.txt'
+                fpath = '/data/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
                         inst_id = f.readline().strip('\n')

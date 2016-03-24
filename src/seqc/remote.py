@@ -41,13 +41,12 @@ class ClusterServer(object):
         self.aws_id = None
         self.aws_key = None
 
-    def create_security_group(self, name=None):
+    def create_security_group(self):
         """Creates a new security group for the cluster
         :param name: cluster name if provided by user
         """
-        if name is None:
-            name = 'SEQC-%07d' % random.randint(1, int(1e7))
-            seqc.log.notify('No instance name provided, assigned %s.' % name)
+        name = 'SEQC-%07d' % random.randint(1, int(1e7))
+        seqc.log.notify('Assigned instance name %s.' % name)
         try:
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
@@ -302,10 +301,10 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self, name=None):
+    def cluster_setup(self):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
-        self.create_security_group(name)
+        self.create_security_group()
         self.create_cluster()
         self.connect_server()
         self.create_raid()
@@ -387,7 +386,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     alignment_summary = output_stem + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
 
-    # converting samfile to bamfile and gzipping bamfile to upload
+    # converting samfile to bamfile
     convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
                                                                     samfile=samfile)
     conv = Popen(convert_sam.split())
