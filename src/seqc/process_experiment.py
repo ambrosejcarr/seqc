@@ -269,12 +269,12 @@ def main(args: list = None):
                     'specified in the seqc config file.')
 
             # making extra directories for BaseSpace download, changing permissions
-            # todo: this is unnecessary if being run locally
             bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
             bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
             bf.communicate()
-            bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
-            bf2.communicate()
+            if args.aws: # changing permissions is unnecessary if local run
+                bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
+                bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, basespace_token)
 
