@@ -159,7 +159,8 @@ def cluster_cleanup():
                     entry = seqc_list[i]
                     inst_id = entry.split(':')[0]
                     instance = ec2.Instance(inst_id)
-                    # todo: could instance potentially be None?
+                    if not instance:
+                        continue
                     if instance.state['Name'] == 'running':
                         f.write('%s\n' % entry)
     else:
