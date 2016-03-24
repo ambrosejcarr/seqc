@@ -25,9 +25,15 @@ try:
 
             # connecting to the remote instance
             s = seqc.remote.SSHServer(inst_id, rsa_key)
-            if s.instance.state['Name'] != 'running':
+            try:
+                if s.instance.state['Name'] != 'running':
+                    print('Cluster (%s) for sample %s is not running.' %
+                          (inst_id, run_name))
+                    continue
+            except:
                 print('Cluster (%s) for sample %s is not running.' % (inst_id, run_name))
                 continue
+
             s.connect()
             out, err = s.exec_command('less /data/seqc.log')
             if not out:
