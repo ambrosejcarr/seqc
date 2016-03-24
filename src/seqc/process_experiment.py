@@ -106,6 +106,8 @@ def run_remote(stem: str) -> None:
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
+    if stem.endswith('/'):
+        stem = stem[:-1]
     # writing name of instance in local machine to keep track of instance
     with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
         _, run_name = os.path.split(stem)
