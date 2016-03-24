@@ -159,6 +159,7 @@ def cluster_cleanup():
                     entry = seqc_list[i]
                     inst_id = entry.split(':')[0]
                     instance = ec2.Instance(inst_id)
+                    # todo: could instance potentially be None?
                     if instance.state['Name'] == 'running':
                         f.write('%s\n' % entry)
     else:
@@ -290,6 +291,7 @@ def main(args: list = None):
                 else:
                     # individual s3 links provided, download each fastq file
                     args.genomic_fastq = s3files_download(args.genomic_fastq, output_dir)
+                    # todo: need to log
             except FileNotFoundError:
                 raise FileNotFoundError('No fastq files were found at the specified '
                                         's3 location: [%s]' %
@@ -297,7 +299,7 @@ def main(args: list = None):
             except FileExistsError:
                 pass  # file is already present.
 
-        # same check for barcode fastq files
+        # same check for barcode fastq files --> todo: could make this less redundant
         if not args.barcode_fastq[0].startswith('s3://'):
             for bf in args.barcode_fastq:
                 if not os.path.isfile(bf):
@@ -312,6 +314,7 @@ def main(args: list = None):
                                                            output_dir)
                 else:
                     args.barcode_fastq = s3files_download(args.barcode_fastq, output_dir)
+                    # todo: need to log
             except FileNotFoundError:
                 raise FileNotFoundError('No fastq files were found at the specified '
                                         's3 location: [%s]' %
@@ -363,6 +366,7 @@ def main(args: list = None):
                 barcode=args.barcode_fastq)
 
         if align:
+            # todo: need to check for S3 installation of args.merged_fastq
             seqc.log.info('Aligning merged fastq records.')
             *base_directory, stem = args.output_stem.split('/')
             alignment_directory = '/'.join(base_directory) + '/alignments/'
@@ -371,11 +375,13 @@ def main(args: list = None):
                 args.merged_fastq, args.index, n_processes, alignment_directory)
 
         if process_samfile:
+            # todo: need to check for S3 installation of args.samfile
             seqc.log.info('Filtering aligned records and constructing record database')
             ra = seqc.arrays.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
         else:
+            # todo: need to check for S3 installation of args.read_array
             ra = seqc.arrays.ReadArray.load(args.read_array)
 
         seqc.log.info('Correcting cell barcode and RMT errors')
