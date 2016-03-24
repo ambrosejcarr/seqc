@@ -343,107 +343,107 @@ def main(args: list = None):
                 except FileExistsError:
                     pass  # file is already present.
 
-        # check if the index must be downloaded
-        if not args.index.startswith('s3://'):
-            if not os.path.isdir(args.index):
-                raise ValueError('provided index: "%s" is neither an s3 link or a valid '
-                                 'filepath' % args.index)
-        else:
-            try:
-                seqc.log.info('AWS s3 link provided for index. Downloading index.')
-                if not args.index.endswith('/'):
-                    args.index += '/'
-                bucket, prefix = seqc.io.S3.split_link(args.index)
-                args.index = output_dir + '/index/'  # set index  based on s3 download
-                cut_dirs = prefix.count('/')
-                seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
-            except FileNotFoundError:
-                raise FileNotFoundError('No index file or folder was identified at the '
-                                        'specified s3 index location: %s' % args.index)
-            except FileExistsError:
-                pass  # file is already present.
-
-        n_processes = multiprocessing.cpu_count() - 1  # get number of processors
-
-        # determine where the script should start:
-        merge = True
-        align = True
-        process_samfile = True
-        if args.read_array:
-            merge = False
-            align = False
-            process_samfile = False
-        if args.samfile:
-            merge = False
-            align = False
-        if args.merged_fastq:
-            merge = False
-
-        if merge:
-            seqc.log.info('Merging genomic reads and barcode annotations.')
-            merge_function = getattr(seqc.sequence.merge_functions, args.platform)
-            args.merged_fastq = seqc.sequence.fastq.merge_paired(
-                merge_function=merge_function,
-                fout=args.output_stem + '_merged.fastq',
-                genomic=args.genomic_fastq,
-                barcode=args.barcode_fastq)
-
-        if align:
-            seqc.log.info('Aligning merged fastq records.')
-            if args.merged_fastq.startswith('s3://'):
-                args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
-                seqc.log.info('Merged fastq file %s successfully installed from S3.' %
-                              args.merged_fastq)
-            *base_directory, stem = args.output_stem.split('/')
-            alignment_directory = '/'.join(base_directory) + '/alignments/'
-            os.makedirs(alignment_directory, exist_ok=True)
-            args.samfile = seqc.alignment.star.align(
-                args.merged_fastq, args.index, n_processes, alignment_directory)
-
-        if process_samfile:
-            seqc.log.info('Filtering aligned records and constructing record database')
-            if args.samfile.startswith('s3://'):
-                args.samfile = s3files_download([args.samfile], output_dir)[0]
-                seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-            ra = seqc.arrays.ReadArray.from_samfile(
-                args.samfile, args.index + 'annotations.gtf')
-            ra.save(args.output_stem + '.h5')
-        else:
-            if args.read_array.startswith('s3://'):
-                args.read_array = s3files_download([args.read_array], output_dir)[0]
-                seqc.log.info('Read array %s successfully installed from S3.' %
-                              args.read_array)
-            ra = seqc.arrays.ReadArray.load(args.read_array)
-
-        seqc.log.info('Correcting cell barcode and RMT errors')
-        # check if barcode files need to be downloaded
-        if not args.barcode_files[0].startswith('s3://'):
-            for cb in args.barcode_files:
-                if not os.path.isfile(cb):
-                    raise ValueError('provided barcode files: "[%s]" is neither '
-                                     'an s3 link or a valid filepath' %
-                                     ', '.join(map(str, args.barcode_files)))
-        else:
-            try:
-                seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
-                if not args.barcode_files[0].endswith('/'):
-                    args.barcode_files[0] += '/'
-                args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
-                seqc.log.info('Barcode files [%s] successfully installed.' %
-                              ', '.join(map(str, args.barcode_files)))
-            except FileNotFoundError:
-                raise FileNotFoundError('No barcode files were found at the specified '
-                                        's3 location: %s' % args.barcode_files[0])
-            except FileExistsError:
-                pass  # file is already present.
-        cell_counts, _ = seqc.correct_errors.correct_errors(
-            ra, args.barcode_files, reverse_complement=args.reverse_complement)
-
-        seqc.log.info('Creating count matrices')
-        matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
-        with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
-            pickle.dump(matrices, f)
-        seqc.log.info('Successfully generated count matrix.')
+        # # check if the index must be downloaded
+        # if not args.index.startswith('s3://'):
+        #     if not os.path.isdir(args.index):
+        #         raise ValueError('provided index: "%s" is neither an s3 link or a valid '
+        #                          'filepath' % args.index)
+        # else:
+        #     try:
+        #         seqc.log.info('AWS s3 link provided for index. Downloading index.')
+        #         if not args.index.endswith('/'):
+        #             args.index += '/'
+        #         bucket, prefix = seqc.io.S3.split_link(args.index)
+        #         args.index = output_dir + '/index/'  # set index  based on s3 download
+        #         cut_dirs = prefix.count('/')
+        #         seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+        #     except FileNotFoundError:
+        #         raise FileNotFoundError('No index file or folder was identified at the '
+        #                                 'specified s3 index location: %s' % args.index)
+        #     except FileExistsError:
+        #         pass  # file is already present.
+        #
+        # n_processes = multiprocessing.cpu_count() - 1  # get number of processors
+        #
+        # # determine where the script should start:
+        # merge = True
+        # align = True
+        # process_samfile = True
+        # if args.read_array:
+        #     merge = False
+        #     align = False
+        #     process_samfile = False
+        # if args.samfile:
+        #     merge = False
+        #     align = False
+        # if args.merged_fastq:
+        #     merge = False
+        #
+        # if merge:
+        #     seqc.log.info('Merging genomic reads and barcode annotations.')
+        #     merge_function = getattr(seqc.sequence.merge_functions, args.platform)
+        #     args.merged_fastq = seqc.sequence.fastq.merge_paired(
+        #         merge_function=merge_function,
+        #         fout=args.output_stem + '_merged.fastq',
+        #         genomic=args.genomic_fastq,
+        #         barcode=args.barcode_fastq)
+        #
+        # if align:
+        #     seqc.log.info('Aligning merged fastq records.')
+        #     if args.merged_fastq.startswith('s3://'):
+        #         args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
+        #         seqc.log.info('Merged fastq file %s successfully installed from S3.' %
+        #                       args.merged_fastq)
+        #     *base_directory, stem = args.output_stem.split('/')
+        #     alignment_directory = '/'.join(base_directory) + '/alignments/'
+        #     os.makedirs(alignment_directory, exist_ok=True)
+        #     args.samfile = seqc.alignment.star.align(
+        #         args.merged_fastq, args.index, n_processes, alignment_directory)
+        #
+        # if process_samfile:
+        #     seqc.log.info('Filtering aligned records and constructing record database')
+        #     if args.samfile.startswith('s3://'):
+        #         args.samfile = s3files_download([args.samfile], output_dir)[0]
+        #         seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
+        #     ra = seqc.arrays.ReadArray.from_samfile(
+        #         args.samfile, args.index + 'annotations.gtf')
+        #     ra.save(args.output_stem + '.h5')
+        # else:
+        #     if args.read_array.startswith('s3://'):
+        #         args.read_array = s3files_download([args.read_array], output_dir)[0]
+        #         seqc.log.info('Read array %s successfully installed from S3.' %
+        #                       args.read_array)
+        #     ra = seqc.arrays.ReadArray.load(args.read_array)
+        #
+        # seqc.log.info('Correcting cell barcode and RMT errors')
+        # # check if barcode files need to be downloaded
+        # if not args.barcode_files[0].startswith('s3://'):
+        #     for cb in args.barcode_files:
+        #         if not os.path.isfile(cb):
+        #             raise ValueError('provided barcode files: "[%s]" is neither '
+        #                              'an s3 link or a valid filepath' %
+        #                              ', '.join(map(str, args.barcode_files)))
+        # else:
+        #     try:
+        #         seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+        #         if not args.barcode_files[0].endswith('/'):
+        #             args.barcode_files[0] += '/'
+        #         args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
+        #         seqc.log.info('Barcode files [%s] successfully installed.' %
+        #                       ', '.join(map(str, args.barcode_files)))
+        #     except FileNotFoundError:
+        #         raise FileNotFoundError('No barcode files were found at the specified '
+        #                                 's3 location: %s' % args.barcode_files[0])
+        #     except FileExistsError:
+        #         pass  # file is already present.
+        # cell_counts, _ = seqc.correct_errors.correct_errors(
+        #     ra, args.barcode_files, reverse_complement=args.reverse_complement)
+        #
+        # seqc.log.info('Creating count matrices')
+        # matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
+        # with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
+        #     pickle.dump(matrices, f)
+        # seqc.log.info('Successfully generated count matrix.')
 
         # todo: check if local-only runs will ever upload onto S3
         if args.aws:
