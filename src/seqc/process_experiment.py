@@ -73,9 +73,6 @@ def parse_args(args):
                    help='optional name for EC2 instance')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='do not terminate the EC2 instance after program completes')
-    # todo: get rid of --aws-upload-key argument
-    r.add_argument('--aws-upload-key', default=None, metavar='A',
-                   help='location to upload results')
     r.add_argument('--reverse-complement', default=False, action='store_true',
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
@@ -117,7 +114,7 @@ def run_remote(name: str, stem: str) -> None:
         _, run_name = os.path.split(stem)
         f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
 
-    # writing name of instance in /path/to/output_dir/instance.txt for clean up
+    # writing name of instance in /data/instance.txt for clean up
     inst_path = '/data/instance.txt'
     cluster.serv.exec_command(
         'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
@@ -140,10 +137,11 @@ def run_remote(name: str, stem: str) -> None:
 def cluster_cleanup():
     """checks for all security groups that are unused and deletes
     them prior to each SEQC run. Updates ~/.seqc/instance.txt as well"""
-    cmd = 'aws ec2 describe-instances --output text'
-    cmd2 = 'aws ec2 describe-security-groups --output text'
+
     # todo: need to make sure that we don't get rid of 3rd party security groups
     # todo: should also exclude "default" sg
+    cmd = 'aws ec2 describe-instances --output text'
+    cmd2 = 'aws ec2 describe-security-groups --output text'
     in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
     all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
     to_delete = list(all_sgs - in_use)
@@ -238,6 +236,16 @@ def main(args: list = None):
         check_input_data(args.barcode_fastq, args.genomic_fastq, args.merged_fastq,
                          args.samfile, args.basespace)
 
+        # check whether output is an s3 or local directory
+        if args.output_stem.startswith('s3://'):
+            if args.output_stem.endswith('/'):
+                output_dir, output_prefix = os.path.split(args.output_stem[:-1])
+        else:
+            if args.output_stem.endswith('/'):
+                seqc.log.notify('-o/--output-stem should not be a directory for local '
+                                'SEQC runs.')
+                sys.exit(2)
+
         # split output_stem into path and prefix, read in config file
         output_dir, output_prefix = os.path.split(args.output_stem)
         config_file = os.path.expanduser('~/.seqc/config')
@@ -248,18 +256,19 @@ def main(args: list = None):
                                      'process_experiment.py.')
 
         if args.remote:
+            if not args.output_stem.startswith('s3://'):
+                raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
+                                 'runs.')
             cluster_cleanup()
             run_remote(args.cluster_name, args.output_stem)
             sys.exit()
 
         if args.aws:
+            aws_upload_key = args.output_stem
+            if not aws_upload_key.endswith('/'):
+                aws_upload_key += '/'
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
-
-        # do a bit of argument checking
-        if args.output_stem.endswith('/'):
-            seqc.log.notify('-o/--output-stem should not be a directory.')
-            sys.exit(2)
 
         # download data if necessary
         if args.basespace:
@@ -436,14 +445,13 @@ def main(args: list = None):
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
 
+        # todo: catch potential error for local-only runs that aren't uploaded to S3
         seqc.log.info('Successfully generated count matrix, will begin '
-                      'uploading files onto %s.' % args.aws_upload_key)
+                      'uploading files onto %s.' % aws_upload_key)
 
         if args.email_status:
-            if not args.aws_upload_key.endswith('/'):
-                args.aws_upload_key += '/'
             seqc.remote.upload_results(
-                args.output_stem, args.email_status, args.aws_upload_key)
+                args.output_stem, args.email_status, aws_upload_key)
 
     except:
         pass

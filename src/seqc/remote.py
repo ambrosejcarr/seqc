@@ -275,8 +275,9 @@ class ClusterServer(object):
 
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
+            # todo change back to v0.1.6 after testing
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/remote | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
@@ -391,14 +392,13 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
                                                                     samfile=samfile)
     conv = Popen(convert_sam.split())
     conv.communicate()
-    bamfile = gzip_file(bamfile)
+    # bamfile = gzip_file(bamfile)
     seqc.log.info('Successfully converted samfile to bamfile to upload.')
 
     # gzipping merged_fastq file to upload
     merged_fastq = gzip_file(merged_fastq)
     seqc.log.info('Successfully gzipped merged fastq file to upload.')
 
-    # todo : check if you want samfile uploaded too
     files = [bamfile, h5_archive, merged_fastq, counts, alignment_summary, log]
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     for item in files:
