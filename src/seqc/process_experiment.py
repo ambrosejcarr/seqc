@@ -8,6 +8,7 @@ import pickle
 import seqc
 import configparser
 import boto3
+from botocore.exceptions import ClientError
 from subprocess import Popen, check_output
 
 
@@ -159,10 +160,11 @@ def cluster_cleanup():
                     entry = seqc_list[i]
                     inst_id = entry.split(':')[0]
                     instance = ec2.Instance(inst_id)
-                    if not instance:
+                    try:
+                        if instance.state['Name'] == 'running':
+                            f.write('%s\n' % entry)
+                    except ClientError:
                         continue
-                    if instance.state['Name'] == 'running':
-                        f.write('%s\n' % entry)
     else:
         pass  # instances.txt file has not yet been created
 
@@ -333,6 +335,8 @@ def main(args: list = None):
         else:
             try:
                 seqc.log.info('AWS s3 link provided for index. Downloading index.')
+                if not args.index.endswith('/'):
+                    args.index += '/'
                 bucket, prefix = seqc.io.S3.split_link(args.index)
                 args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
@@ -398,6 +402,8 @@ def main(args: list = None):
         else:
             try:
                 seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+                if not args.barcode_files[0].endswith('/'):
+                    args.barcode_files[0] += '/'
                 args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
             except FileNotFoundError:
                 raise FileNotFoundError('No barcode files were found at the specified '
