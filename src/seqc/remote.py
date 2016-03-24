@@ -374,10 +374,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     """
-    # todo: debugging --> get rid of this
     prefix, directory = os.path.split(output_stem)
-    seqc.log.info('prefix is: %s' % prefix)
-    seqc.log.info('directory is: %s' % directory)
 
     samfile = prefix + '/alignments/Aligned.out.sam'
     bamfile = prefix + '/alignments/Aligned.out.bam'
@@ -407,7 +404,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
         seqc.io.S3.upload_file(item, bucket, key)
         item_name = item.split('/')[-1]
         seqc.log.info('Successfully uploaded %s to the specified S3 location '
-                      '"%s%s".' % (item_name, aws_upload_key, item))
+                      '"%s%s".' % (item, aws_upload_key, item_name))
 
     # todo @AJC put this back in
     # generate a run summary and append to the email
