@@ -137,24 +137,23 @@ def cluster_cleanup():
     """checks for all security groups that are unused and deletes
     them prior to each SEQC run. Updates ~/.seqc/instance.txt as well"""
 
-    # todo: only remove SEQC security groups
     cmd = 'aws ec2 describe-instances --output text'
     cmd2 = 'aws ec2 describe-security-groups --output text'
     in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
     all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
     to_delete = list(all_sgs - in_use)
 
-    # keep default security group provided by AWS
-    default = b'sg-11e05c74'
-    if b'sg-11e05c74' in to_delete:
-        to_delete.remove(default)
+    # set up ec2 resource from boto3
+    ec2 = boto3.resource('ec2')
 
-    # iteratively remove unused security groups
+    # iteratively remove unused SEQC security groups
     for sg in to_delete:
-        seqc.remote.remove_sg(sg.decode())
+        sg_id = sg.decode()
+        sg_name = ec2.SecurityGroup(sg_id).group_name
+        if 'SEQC-' in sg_name:
+            seqc.remote.remove_sg(sg_id)
 
     # check which instances in instances.txt are still running
-    ec2 = boto3.resource('ec2')
     inst_file = os.path.expanduser('~/.seqc/instance.txt')
 
     if os.path.isfile(inst_file):
