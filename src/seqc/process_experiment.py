@@ -214,7 +214,13 @@ def check_input_data(barcode_fastq: list, genomic_fastq: list, merged: str,
 
 
 def s3bucket_download(s3link: str, outdir: str):
-    """recursively downloads files from given S3 link"""
+    """
+    recursively downloads files from given S3 link
+    :param s3link: link to s3 bucket that holds files to download
+    :param outdir: output directory where files will be downloaded
+    returns sorted list of downloaded files
+    """
+
     bucket, prefix = seqc.io.S3.split_link(s3link)
     cut_dirs = prefix.count('/')
     downloaded_files = seqc.io.S3.download_files(bucket, prefix, outdir, cut_dirs)
@@ -222,7 +228,13 @@ def s3bucket_download(s3link: str, outdir: str):
 
 
 def s3files_download(s3links: list, outdir: str):
-    """downloads each file in list of s3 links"""
+    """
+    downloads each file in list of s3 links
+    :param s3links: list of s3 links to be downloaded
+    :param outdir: output directory where files will be downloaded
+    returns sorted list of downloaded files
+    """
+
     fnames = []
     for s3link in s3links:
         bucket, prefix = seqc.io.S3.split_link(s3link)
@@ -451,7 +463,9 @@ def main(args: list = None):
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
 
-        # todo: check if local-only runs will ever upload onto S3
+        # todo: check if local-only runs (not local on AWS) will ever upload onto S3
+        # in this version, local runs won't be able to upload to S3
+        # and also won't get an e-mail notification.
         if args.aws:
             seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
