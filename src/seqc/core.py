@@ -47,7 +47,7 @@ matplotlib.rc('lines', **{'color': 'royalblue',
 
 matplotlib.rc('savefig', **{'dpi': '150'})
 cmap = matplotlib.cm.viridis
-size = 6
+size = 8
 
 
 def qualitative_colors(n):
@@ -434,7 +434,6 @@ class Experiment:
         metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
         each cell in the corresponding experiment
 
-        :param self:
         :param experiments:
         :param metadata_labels: dict {label_name: [values], ...}
         :return:
@@ -474,10 +473,10 @@ class Experiment:
             metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
 
         # add additional metadata
-        for k, v in metadata_labels:
+        for k, v in metadata_labels.items():
             metadata[k] = pd.Series(index=cells, dtype='O')
             for e in experiments:
-                metadata[k].ix[e.metadata.index] = v
+                metadata[k].ix[e.metadata.index] = [v] * len(e.metadata.index)
 
         return Experiment(reads=r_combined, molecules=m_combined, metadata=metadata)
 
@@ -575,10 +574,11 @@ class Experiment:
         return Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
 
     def plot_molecules_vs_reads_per_molecule(self, fig=None, ax=None, min_molecules=10,
-                                             ylim=(0, 150)):
+                                             ylim=(0, 150), title='Cell Coverage Plot'):
         """
         plots log10 molecules counts per barcode vs reads per molecule / molecules per
         barcode
+        :param title: str, title for the plot (e.g. the sample name)
         :param ylim: tuple, indicates the min and max for the y-axis of the plot
         :param min_molecules: display only cells with this number of molecules or more
         :param ax: axis
@@ -606,9 +606,10 @@ class Experiment:
         ax.scatter(x, y, edgecolor='none', s=size, c=z, cmap=cmap)
         ax.set_xlabel('log10(Molecules per barcode)')
         ax.set_ylabel('Reads per barcode / Molecules per barcode')
+        ax.set_title(title)
         ax.set_ylim(ylim)
         xlim = ax.get_xlim()
-        ax.set_xlim((np.log10(min_molecules), xlim[1]))  # todo if this fails later, this is the problem
+        ax.set_xlim((np.log10(min_molecules), xlim[1]))
         sns.despine(ax=ax)
 
         return fig, ax
@@ -653,9 +654,11 @@ class Experiment:
         metadata = self.metadata.ix[row_inds, :]
         return Experiment(reads=reads, molecules=molecules, metadata=metadata)
 
-    def plot_mitochondrial_molecule_fraction(self, fig=None, ax=None):
+    def plot_mitochondrial_molecule_fraction(self, fig=None, ax=None,
+                                             title='Dead Cell Identification Plot'):
         """ plot the fraction
 
+        :param title: title for the plot (e.g. the sample name)
         :param fig: figure
         :param ax: axis
         :return: fig, ax
@@ -678,6 +681,7 @@ class Experiment:
         ax.set_title('Mitochondrial Fraction')
         ax.set_xlabel('Molecules per cell')
         ax.set_ylabel('Mitochondrial molecules / Total molecules')
+        ax.set_title(title)
         xlim = ax.get_xlim()
         ax.set_xlim((0, xlim[1]))
         ylim = ax.get_ylim()
@@ -756,6 +760,11 @@ class Experiment:
             .mul(np.median(read_sums), axis=0)
         exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
         exp._normalized = True
+
+        # check that none of the genes are empty; if so remove them
+        nonzero_genes = exp.molecules.sum(axis=0) != 0
+        exp.molecules = exp.molecules.ix[:, nonzero_genes]
+        exp.reads = exp.reads.ix[:, nonzero_genes]
         return exp
 
     def run_pca_python(self, n_components=100):
@@ -857,12 +866,13 @@ class Experiment:
         self.tsne = pd.DataFrame(bh_sne(data),
                                  index=self.molecules.index, columns=['x', 'y'])
 
-    def plot_tsne(self, fig=None, ax=None):
+    def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
         fig, ax = get_fig(fig=fig, ax=ax)
         x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
         plt.scatter(x, y, c=z, s=size, cmap=cmap)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title(title)
         return fig, ax
 
     def run_phenograph(self, n_pca_components=15):
@@ -897,6 +907,8 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
+    # todo add plot for library sizes (see notebook ajc_worklogs/manuscript/MSKCC/TIL_processing.ipynb)
+    # todo for this one, going to want access to original library size
     def remove_clusters_based_on_library_size_distribution(self, clusters: list):
         """
         throws out low library size clusters; normally there is only one, but worth
@@ -914,6 +926,11 @@ class Experiment:
         metadata = self.metadata.ix[retain, :]
         experiment = Experiment(reads=reads, molecules=molecules, metadata=metadata)
         experiment._cluster_assignments = self.cluster_assignments[retain]
+
+        # remove any genes that now have zero expression
+        nonzero_genes = experiment.molecules.sum(axis=0) != 0
+        experiment.molecules = experiment.molecules.ix[:, nonzero_genes]
+        experiment.reads = experiment.reads.ix[:, nonzero_genes]
         return experiment
 
     def calculate_diffusion_map_components(self, knn=10, n_diffusion_components=20,
@@ -994,7 +1011,7 @@ class Experiment:
         os.remove('/tmp/dm_eigs_%f.csv' % rand_tag)
         os.remove('/tmp/dm_eig_vals_%f.csv' % rand_tag)
 
-    def plot_diffusion_components(self, fig=None, ax=None):
+    def plot_diffusion_components(self, title='Diffusion Components'):
         if self.tsne is None:
             raise RuntimeError('Please run tSNE before plotting diffusion components.')
 
@@ -1011,20 +1028,31 @@ class Experiment:
                         cmap=cmap, edgecolors='none', s=size)
             ax.set_axis_off()
 
-    def determine_gene_diffusion_correlations(self, no_cells=10):
+        fig.suptitle(title)
+        return fig
+
+    # todo extremely slow for large numbers of genes, components. parallelize across components
+    # multiprocessing pool
+    def determine_gene_diffusion_correlations(self, components=None, no_cells=10):
         """
 
         :param no_cells:
         :return:
         """
-        # Container
-        empty = np.zeros([self.molecules.shape[1], self.diffusion_eigenvectors.shape[1]])
+
+        if components is None:
+            components = np.arange(self.diffusion_eigenvectors.shape[1])
+
+        components = components[components != 0]
+
+        # Empty container
+        empty = np.zeros([self.molecules.shape[1], len(components)])
         self.diffusion_map_correlations = pd.DataFrame(
             empty, index=self.molecules.columns,
-            columns=self.diffusion_eigenvectors.columns)
+            columns=components)
 
         # Determine correlation for each component
-        for component in range(self.diffusion_eigenvectors.shape[1]):
+        for component in components:
 
             # Cell order
             order = self.diffusion_eigenvectors.iloc[:, component]\
@@ -1042,12 +1070,17 @@ class Experiment:
                 # Determine correlation
                 self.diffusion_map_correlations.ix[gene, component] = pearsonr(x, vals)[0]
 
+            print('component {} completed.'.format(component))
+
         # Reset NaNs
         self.diffusion_map_correlations = self.diffusion_map_correlations.fillna(0)
 
-    def plot_gene_component_correlations(self, components, fig=None, ax=None):
+    def plot_gene_component_correlations(
+            self, components=None, fig=None, ax=None,
+            title='Gene vs. Diffusion Component Correlations'):
         """ plots gene-component correlations for a subset of components
 
+        :param title: str, title for the plot
         :param components: Iterable of integer component numbers
         :param fig: Figure
         :param ax: Axis
@@ -1058,10 +1091,18 @@ class Experiment:
             raise RuntimeError('Please run determine_gene_diffusion_correlations() '
                                'before attempting to visualize the correlations.')
         colors = qualitative_colors(self.diffusion_map_correlations.shape[1])
+
+        if components is None:
+            components = self.diffusion_map_correlations.columns
+
         for c in components:
             sns.kdeplot(self.diffusion_map_correlations.iloc[:, c], label=c, ax=ax,
                         color=colors[c])
         sns.despine(ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel('correlation')
+        ax.set_ylabel('gene density')
+        plt.legend()
         return fig, ax
 
     @staticmethod
@@ -1073,6 +1114,7 @@ class Experiment:
                 h='\n'.join(human_options)))
         print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
 
+    # todo this is also incredibly slow. parallelize by component
     def run_gsea(self, output_stem, gmt_file=None, components=None):
         """
 
@@ -1099,7 +1141,7 @@ class Experiment:
             gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
 
         if components is None:
-            components = range(1, self.diffusion_eigenvectors.shape[1])
+            components = self.diffusion_map_correlations.columns
 
         # Run for each component
         for c in components:
@@ -1129,7 +1171,6 @@ class Experiment:
             # Call GSEA
             call(cmd)
 
-    # todo ask manu about this -- is outputting all genes (use_genes)
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
 
@@ -1166,11 +1207,83 @@ class Experiment:
         return Experiment(subset_reads, subset_molecules, metadata)
 
     # todo implement
-    def differential_expression(self, g1, g2):
+    def pairwise_differential_expression(self, g1, g2):
         """
         carry out differential expression between cells g1 and cells g2
         :param g1:
         :param g2:
         :return:
         """
+        # scipy.stats.ranksum
         raise NotImplementedError
+
+    @staticmethod
+    def multi_sample_differential_expression(experiments):
+        # scipy.stats.mstats.kruskalwallis
+        raise NotImplementedError
+
+    def plot_gene_expression(self, genes, suptitle='tSNE-projected Gene Expression'):
+
+        not_in_dataframe = set(genes).difference(self.molecules.columns)
+        if not_in_dataframe:
+            if len(not_in_dataframe) < len(genes):
+                print('The following genes were either not observed in the experiment, '
+                      'or the wrong gene symbol was used: {!r}'.format(not_in_dataframe))
+            else:
+                print('None of the listed genes were observed in the experiment, or the '
+                      'wrong symbols were used.')
+                return
+
+        # remove genes missing from experiment
+        genes = set(genes).difference(not_in_dataframe)
+
+        height = int(2 * np.ceil(len(genes) / 5))
+        width = 10
+        fig = plt.figure(figsize=[width, height])
+        n_rows = int(height / 2)
+        n_cols = int(width / 2)
+        gs = plt.GridSpec(n_rows, n_cols)
+
+        axes = []
+        for i, g in enumerate(genes):
+            ax = plt.subplot(gs[i // n_cols, i % n_cols])
+            axes.append(ax)
+            plt.scatter(self.tsne['x'], self.tsne['y'], c=np.arcsinh(self.molecules[g]),
+                        cmap=cmap, edgecolors='none', s=size)
+            ax.set_axis_off()
+            ax.set_title(g)
+
+        fig.suptitle(suptitle)
+
+        return fig, axes
+
+    def plot_aggregate_gene_expression(self, genes, fig=None, ax=None, title=None):
+
+        # remove genes missing from experiment
+        not_in_dataframe = set(genes).difference(self.molecules.columns)
+        if not_in_dataframe:
+            if len(not_in_dataframe) < len(genes):
+                print('The following genes were either not observed in the experiment, '
+                      'or the wrong gene symbol was used: {!r}'.format(not_in_dataframe))
+            else:
+                print('None of the listed genes were observed in the experiment, or the '
+                      'wrong symbols were used.')
+                return
+        genes = set(genes).difference(not_in_dataframe)
+
+        # create a generic title if not passed
+        if not title:
+            if len(repr(genes)) > 40:
+                title = 'Aggregated gene expression of:\n{:.40s}...'.format(repr(genes))
+            else:
+                title = 'Aggregated gene expression of:\n{:.40s}'.format(repr(genes))
+
+        # plot the data
+        fig, ax = get_fig(fig=fig, ax=ax)
+        ax.scatter(self.tsne['x'], self.tsne['y'],
+                   c=np.arcsinh(self.molecules[genes].sum(axis=1)),
+                   cmap=cmap, edgecolors='none', s=size)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title(title)
+        return fig, ax

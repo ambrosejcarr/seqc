@@ -170,7 +170,7 @@ class GeneIntervals:
                         interval_tree[(gene.chromosome, gene.strand)].addi(
                                 start, end, gene.integer_gene_id)
                     except ValueError:
-                        if start == end: # ensure this is the reason the error was raised
+                        if start == end:  # ensure this is the reason the error was raised
                             continue
                         else:
                             raise
