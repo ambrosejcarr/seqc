@@ -322,6 +322,10 @@ def correct_errors(alignments_ra, barcode_files = list(), apply_likelihood=True,
     :return:
     """
 
+    seqc.log.info('Correct errors ARGUMENT: Required poly T: %d' % args.min_poly_t)
+    seqc.log.info('Correct errors ARGUMENT: Maximum edit distance: %d' % args.max_ed)
+
+
     res_time_cnt = {}
     err_correction_res = ''#np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
     ra_grouped, error_rate = prepare_for_ec(

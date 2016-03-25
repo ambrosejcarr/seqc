@@ -56,7 +56,7 @@ def parse_args(args):
     f.add_argument('--min-poly-t', metavar='T',
                    help='minimum size of poly-T tail that is required for a barcode to '
                         'be considered a valid record',
-                   default=3)
+                   default=3, type=int)
     f.add_argument('--max-dust-score', metavar='D', help='maximum complexity score for a '
                                                          'read to be considered valid')
 
@@ -73,6 +73,9 @@ def parse_args(args):
     r.add_argument('--reverse-complement', default=False, action='store_true',
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
+    r.add_argument('--max-ed',  metavar='ED',
+                    help='maximum hamming distance for correcting barcode errors',
+                    default=2, type=int)
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -453,8 +456,12 @@ def main(args: list = None):
                                         's3 location: %s' % args.barcode_files[0])
             except FileExistsError:
                 pass  # file is already present.
+        print()
+        seqc.log.info('ARGUMENT: Required poly T: %d' % args.min_poly_t)
+        seqc.log.info('ARGUMENT: Maximum edit distance: %d' % args.max_ed)
         cell_counts, _ = seqc.correct_errors.correct_errors(
-            ra, args.barcode_files, reverse_complement=args.reverse_complement)
+            ra, args.barcode_files, reverse_complement=args.reverse_complement,
+            required_poly_t=args.min_poly_t, max_ed=args.max_ed)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
