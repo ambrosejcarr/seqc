@@ -466,11 +466,11 @@ def main(args: list = None):
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
         if args.aws:
-            seqc.log.info('Starting file upload onto %s.' % args.output_stem)
+            seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
             if args.email_status:
                 seqc.remote.upload_results(
-                    args.output_stem, args.email_status, args.output_stem)
+                    args.output_stem, args.email_status, aws_upload_key)
 
     except:
         seqc.log.exception()
