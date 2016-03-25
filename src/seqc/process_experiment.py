@@ -119,7 +119,6 @@ def run_remote(stem: str) -> None:
         'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
             cluster.inst_id.instance_id)))
     cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
-    cluster.serv.exec_command('mkdir /home/ubuntu/.seqc')
     cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                           '/home/ubuntu/.seqc/config')
     cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
