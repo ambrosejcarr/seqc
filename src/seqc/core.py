@@ -3,9 +3,12 @@ import os
 import random
 import pickle
 import warnings
+import multiprocessing
+import shlex
+from functools import partial
 from copy import deepcopy
 from collections import defaultdict
-from subprocess import call
+from subprocess import call, Popen, PIPE
 import numpy as np
 import pandas as pd
 import tables as tb
@@ -413,7 +416,7 @@ class Experiment:
         return not self.is_sparse()
 
     # todo currently, this method has side-effects (mutates existing dataframes) -- change?
-    # specifically, it mutates column ids
+    # specifically, it mutates index (cell) ids
     @staticmethod
     def concatenate(experiments, metadata_labels=None):
         """
@@ -1031,8 +1034,12 @@ class Experiment:
         fig.suptitle(title)
         return fig
 
-    # todo extremely slow for large numbers of genes, components. parallelize across components
-    # multiprocessing pool
+    # todo extremely slow for large numbers of genes, components. parallelize
+    # across components using multiprocessing pool similar to how the below GSEA function
+    # was programmed.
+    # NOTE: it will be more complex because larger arrays are involved in these
+    # calculations. Need to use memmapped numpy arrays to avoid large-scale copying of the
+    # input data.
     def determine_gene_diffusion_correlations(self, components=None, no_cells=10):
         """
 
@@ -1114,7 +1121,39 @@ class Experiment:
                 h='\n'.join(human_options)))
         print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
 
-    # todo this is also incredibly slow. parallelize by component
+    @staticmethod
+    def _gsea_process(c, diffusion_map_correlations, output_stem, gmt_file):
+
+        # save the .rnk file
+        out_dir, out_prefix = os.path.split(output_stem)
+        genes_file = '{stem}_cmpnt_{component}.rnk'.format(
+                stem=output_stem, component=c)
+        ranked_genes = diffusion_map_correlations.iloc[:, c]\
+            .sort_values(inplace=False, ascending=False)
+
+        # set any NaN to 0
+        ranked_genes = ranked_genes.fillna(0)
+
+        # dump to file
+        pd.DataFrame(ranked_genes).to_csv(genes_file, sep='\t', header=False)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix}_{component} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=genes_file,
+                      out_prefix=out_prefix, component=c, out_dir=out_dir,
+                      gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        return err
+
     def run_gsea(self, output_stem, gmt_file=None, components=None):
         """
 
@@ -1143,33 +1182,73 @@ class Experiment:
         if components is None:
             components = self.diffusion_map_correlations.columns
 
-        # Run for each component
-        for c in components:
+        n_workers = min((multiprocessing.cpu_count() - 1, len(components)))
+        print('initializing {n_workers} worker processes and mapping GSEA to them.'
+              ''.format(n_workers=n_workers))
 
-            print(c)
+        partial_gsea_process = partial(
+                self._gsea_process,
+                diffusion_map_correlations=self.diffusion_map_correlations,
+                output_stem=output_stem,
+                gmt_file=gmt_file)
 
-            # Write genes to file
-            genes_file = out_dir + out_prefix + '_cmpnt_%d.rnk' % c
-            ranked_genes = self.diffusion_map_correlations.iloc[:, c]\
-                .sort_values(inplace=False, ascending=False)
-            pd.DataFrame(ranked_genes).to_csv(genes_file, sep='\t', header=False)
+        pool = multiprocessing.Pool(n_workers)
+        errors = pool.map(partial_gsea_process, components)
+        return errors
 
-            # Construct the GSEA call
-            cmd = list()
-            cmd += ['java', '-cp', os.path.expanduser('~/.seqc/tools/gsea2-2.2.1.jar'),
-                    '-Xmx1G', 'xtools.gsea.GseaPreranked']
-            cmd += ['-collapse false', '-mode Max_probe', '-norm meandiv', '-nperm 1000']
-            cmd += ['-include_only_symbols true', '-make_sets true', '-plot_top_x 20']
-            cmd += ['-set_max 500', '-set_min 15', '-zip_report false -gui false']
-
-            # Input arguments
-            cmd += ['-rnk %s' % genes_file]
-            cmd += ['-rpt_label %s' % out_prefix]
-            cmd += ['-out %s' % out_dir]
-            cmd += ['-gmx %s' % gmt_file]
-
-            # Call GSEA
-            call(cmd)
+    # def run_gsea(self, output_stem, gmt_file=None, components=None):
+    #     """
+    #
+    #     :param output_stem:  the file location and prefix for the output of GSEA
+    #     :param gmt_file:
+    #     :param components:
+    #     :return:
+    #     """
+    #
+    #     out_dir, out_prefix = os.path.split(output_stem)
+    #     out_dir += '/'
+    #     os.makedirs(out_dir, exist_ok=True)
+    #
+    #     if self.diffusion_eigenvectors is None:
+    #         raise RuntimeError('Please run self.calculate_diffusion_map_components() '
+    #                            'before running GSEA to annotate those components.')
+    #
+    #     if not gmt_file:
+    #         self._gmt_options()
+    #         return
+    #     else:
+    #         if not len(gmt_file) == 2:
+    #             raise ValueError('gmt_file should be a tuple of (organism, filename).')
+    #         gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+    #
+    #     if components is None:
+    #         components = self.diffusion_map_correlations.columns
+    #
+    #     # Run for each component
+    #     for c in components:
+    #
+    #         # Write genes to file
+    #         genes_file = out_dir + out_prefix + '_cmpnt_%d.rnk' % c
+    #         ranked_genes = self.diffusion_map_correlations.iloc[:, c]\
+    #             .sort_values(inplace=False, ascending=False)
+    #         pd.DataFrame(ranked_genes).to_csv(genes_file, sep='\t', header=False)
+    #
+    #         # Construct the GSEA call
+    #         cmd = list()
+    #         cmd += ['java', '-cp', os.path.expanduser('~/.seqc/tools/gsea2-2.2.1.jar'),
+    #                 '-Xmx1G', 'xtools.gsea.GseaPreranked']
+    #         cmd += ['-collapse false', '-mode Max_probe', '-norm meandiv', '-nperm 1000']
+    #         cmd += ['-include_only_symbols true', '-make_sets true', '-plot_top_x 20']
+    #         cmd += ['-set_max 500', '-set_min 15', '-zip_report false -gui false']
+    #
+    #         # Input arguments
+    #         cmd += ['-rnk %s' % genes_file]
+    #         cmd += ['-rpt_label %s' % out_prefix]
+    #         cmd += ['-out %s' % out_dir]
+    #         cmd += ['-gmx %s' % gmt_file]
+    #
+    #         # Call GSEA
+    #         call(cmd)
 
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
