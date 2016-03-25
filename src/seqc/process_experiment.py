@@ -422,7 +422,7 @@ def main(args: list = None):
             if args.samfile.startswith('s3://'):
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-            ra = seqc.arrays.ReadArray.from_samfile(
+            ra = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
         else:
@@ -430,7 +430,7 @@ def main(args: list = None):
                 args.read_array = s3files_download([args.read_array], output_dir)[0]
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
-            ra = seqc.arrays.ReadArray.load(args.read_array)
+            ra = seqc.core.ReadArray.load(args.read_array)
 
         seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
