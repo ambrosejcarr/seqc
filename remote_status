@@ -1,0 +1,49 @@
+#!/usr/local/bin/python3
+
+import os
+import sys
+import seqc
+import configparser
+
+# reading in configuration file
+config_file = os.path.expanduser('~/.seqc/config')
+config = configparser.ConfigParser()
+if not config.read(config_file):
+    raise ValueError('Please run ./configure (found in the seqc directory) before '
+                     'attempting to run process_experiment.py.')
+
+# obtaining rsa key from configuration file
+rsa_key = config['key']['rsa_key_location']
+
+# checking for instance status
+inst_file = os.path.expanduser('~/.seqc/instance.txt')
+try:
+    with open(inst_file, 'r') as f:
+        for line in f:
+            entry = line.strip('\n')
+            inst_id, run_name = entry.split(':')
+
+            # connecting to the remote instance
+            s = seqc.remote.SSHServer(inst_id, rsa_key)
+            try:
+                if s.instance.state['Name'] != 'running':
+                    print('Cluster (%s) for sample %s is not running.' % (inst_id, run_name))
+                    continue
+            except:
+                print('Cluster (%s) for sample %s is not running.' % (inst_id, run_name))
+                continue
+            s.connect()
+            out, err = s.exec_command('less /data/seqc.log')
+            if not out:
+                print('ERROR: SEQC log file not found in cluster (%s) for sample %s. '
+                      'Something went wrong during remote run.' % (inst_id, run_name))
+                continue
+            print('-'*80)
+            print('Printing contents of the remote SEQC log file for run %s:' % run_name)
+            print('-'*80)
+            for x in out:
+                print(x)
+            print('-'*80 + '\n')
+except FileNotFoundError:
+    print('You have not started a remote instance -- exiting.')
+    sys.exit(0)

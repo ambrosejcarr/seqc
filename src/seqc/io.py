@@ -15,6 +15,8 @@ import seqc
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
+logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(logging.CRITICAL)
+logging.getLogger('requests').setLevel(logging.CRITICAL)
 
 
 class S3:

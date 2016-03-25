@@ -35,7 +35,6 @@ class ClusterServer(object):
         self.zone = None
         self.ec2 = boto3.resource('ec2')
         self.inst_id = None
-        self.dir_name = None
         self.n_tb = None
         self.sg = None
         self.serv = None
@@ -75,7 +74,6 @@ class ClusterServer(object):
         self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
         self.n_tb = config['raid']['n_tb']
-        self.dir_name = config['gitpull']['dir_name']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
@@ -233,7 +231,6 @@ class ClusterServer(object):
                 mdadm_failed = False
                 break
             else:
-                seqc.log.notify('Retrying sudo mdadm.')
                 time.sleep(2)
         if mdadm_failed:
             EC2RuntimeError('Error creating raid array md0 with mdadm function.')
@@ -270,9 +267,7 @@ class ClusterServer(object):
         """installs the SEQC directory in /data/software"""
         # todo: replace this with git clone once seqc repo is public
 
-        if not self.dir_name.endswith('/'):
-            self.dir_name += '/'
-        folder = self.dir_name
+        folder = '/data/software/'
         seqc.log.notify('Installing SEQC on remote instance.')
         self.serv.exec_command("sudo mkdir %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
@@ -286,7 +281,19 @@ class ClusterServer(object):
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
-        seqc.log.notify('SEQC successfully installed in %s.' % folder)
+        num_retries = 30
+        install_fail = True
+        for i in range(num_retries):
+            out, err = self.serv.exec_command('process_experiment.py -h | grep RNA')
+            if not out:
+                time.sleep(2)
+            else:
+                install_fail = False
+                break
+        if not install_fail:
+            seqc.log.notify('SEQC successfully installed in %s.' % folder)
+        else:
+            raise EC2RuntimeError('Error installing SEQC on the cluster.')
 
     def set_credentials(self):
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
@@ -427,7 +434,7 @@ class SSHServer(object):
             #     self.instance.reload()
             #     time.sleep(30)
             except FileNotFoundError:
-                print('the key %s was not found!' % self.key)
+                seqc.log.notify('The key %s was not found!' % self.key)
                 sys.exit(2)
             # except paramiko.BadHostKeyException:
             #     print('the host key %s could not be verified!' %self.key)
@@ -464,7 +471,8 @@ class SSHServer(object):
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.put(localfile, remotefile)
-        print('successfully placed %s in %s!' % (localfile, remotefile))
+        seqc.log.info('Successfully placed {local_file} in {remote_file}.'.format(
+            local_file=localfile, remote_file=remotefile))
         ftp.close()
 
     def exec_command(self, args):

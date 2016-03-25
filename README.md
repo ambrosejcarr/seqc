@@ -1,84 +1,20 @@
 ## SEquence Quality Control (SEQC -- /sek-si:/)
 
-### Overview:
+## Overview:
 
-SEQC is a package that is designed to process sequencing data on the cloud. It also
-contains tools to analyze processed data, which has a much smaller memory footprint. 
-Thus, it should be installed both locally and on your remote server. However, it should
-be noted that some portions of the data pre-processing software require 30GB of RAM to 
-run, and are unlikely to work on most laptops and workstations.
+SEQC is a python package that processes single-cell sequencing data in the cloud and analyzes it interactively on your local machine.
  
-To faciliate easy installation and use, we have made available Amazon Machine Images
-(AMIs) that come with all of SEQC's dependencies pre-installed. In addition, we have
-uploaded the indices (-i/--index parameter, see "Running SEQC) and barcode data
-(-b/--barcodes) to public amazon s3 repositories. These links can be provided to SEQC and
-it will automatically fetch them prior to initiating an analysis run. 
+To faciliate easy installation and use, we have made available Amazon Machine Images (AMIs) that come with all of SEQC's dependencies pre-installed. In addition, we have uploaded common genome indices (-i/--index parameter, see "Running SEQC) and barcode data (--barcode-files) to public amazon s3 repositories. These links can be provided to SEQC and it will automatically fetch them prior to initiating an analysis run. Finally, it will fetch data from BaseSpace or amazon s3 for analysis.
 
-Amazon Web Services (AWS) is only accessible through a programmatic interface. To
-simplify the starting and stopping of amazon compute servers, we have written several
-plug-ins for a popular AWS interface, StarCluster. By installing starcluster, users can
-simply call starcluster start <cluster name>; starcluster sm <cluster name> for instant
-access to a compute server that is immediately ready to run SEQC on data of your choosing.
+For users with access to in-house compute clusters, SEQC can be installed on your systems and run using the --local parameter.
 
-### Installation \& Dependencies:
+### Dependencies:
 
-#### Dependencies For Remotely Running on AWS:
-1. Amazon Web Services (optional): If you wish to run SEQC on amazon (AWS), 
-you must set up an AWS account (see below). SEQC will function on any machine running
-a nix-based operating system, but we only provide AMIs for AWS. 
-3. Starcluster (optional; install locally): If you run SEQC on aws, then you create aws
-compute instances with the python 2.7 
-<a href=https://github.com/jtriley/StarCluster>starcluster</a>
-package, which streamlines creation and shutdown of servers that are ready to run SEQC.
-Requires <a href=https://www.python.org/downloads/release/python-2710/>Python 2.7</a> 
-with <a href=http://pip.readthedocs.org/en/stable/installing/>pip</a>.
-            
-        $> git clone git://github.com/jtriley/StarCluster.git
-        $> cd StarCluster
-        $> sudo python distribute_setup.py
-        $> sudo python setup.py install
-    
-3. Install Starcluster plugins and config template from SEQC:
+#### Python3
+<a href=https://www.python.org/downloads/>Python 3</a> must be installed on your local machine to run SEQC.
 
-        $> git clone https://github.com/ambrosejcarr/seqc.git
-        $> cp seqc/src/plugins/*.py ~/.starcluster/plugins/
-        $> cp seqc/src/plugins/starcluster.config ~/.starcluster/config
-
-#### Dependencies for Local Installation or Other Cloud Computing Platforms:
-1. <a href=https://www.python.org/downloads/>Python 3</a>
-2. <a href=https://www.hdfgroup.org/HDF5>libhdf5</a>, a highly efficient database used to
-store SEQC output.
-3. SEQC depends on several python3 packages that are automatically installed and updated.
-to view these packages, please view the `setup.py` file packaged with SEQC.
-
-### Setting up HDF5 on your local computer:
-#### Installing from Source:
-1. After downloading libhdf5 from source, it can be installed by typing:
-
-        $> ./configure --prefix=/usr/local/
-        $> make
-        $> make install
-
-2. Install pytables by typing: `pip3 install tables`
-
-#### Installing without previous configuration
-1. If you installed libhdf5 without giving arguments in the "configure" step, make sure
-that you have the necessary prereqs already installed:
-    * numpy
-    * numexpr
-    * cython
-2. Then set the $HDF_DIR environment variable by typing: 
-
-        $> export HDF_DIR=/your/installation/directory/for/hdf5
-
-3. You should now be able to install pytables: `pip3 install tables`
-
-### Setting up AWS, SEQC, and starcluster
-
-Once all dependencies have been installed, SEQC can be installed on any machine by typing:
-
-    $> git clone https://github.com/ambrosejcarr/seqc.git
-    $> pip3 install -e seqc/
+#### Amazon Web Services:
+If you wish to run SEQC remotely on amazon (AWS), you must set up an AWS account (see below). SEQC will function on any machine running a Unix-based operating system (e.g. Google Compute Cloud), but we only provide AMIs for AWS.
 
 #### Setting up an AWS Account: 
 1. Navigate <a href=http://aws.amazon.com>here</a> and click “Create an AWS Account.”
@@ -97,22 +33,6 @@ wish to create an account.
 6. example: `<keyname>.rsa` and move it to a directory (e.g. `~/.ssh/`)
 7. Change the permission settings with `$> chmod 600 /path/to/key/keyname.rsa`
 
-#### Personalize the Dummy StarCluster Config File Provided by SEQC.
-1. Open the `~/.starcluster/config` file
-2. Under `[aws info]` enter the following information: 
-    1. `AWS_ACCESS_KEY_ID = #access_id` (This is your AWS Access ID from Step (1))
-    2. `AWS_SECRET_ACCESS_KEY = #secret_key` (This is your AWS Secret Key from Step (1))
-    3. `AWS_USER_ID= #user_id` (This is a numerical ID from AWS, found under IAM users)
-    4. Click on your username on the top right corner of the AWS dashboard and click
-    “My Account” -- your Account Id should pop up at the top of the page (a 12-digit 
-    number)
-3. Under Defining EC2 Keypairs:
-    1. rename `[key <your_key_name>]` to the name of the key you generate above.
-    2. change key location to the location of your `<keyname.rsa>` file:
-    `KEY_LOCATION=~/.ssh/<keyname>.rsa`
-5. Under templates, find `[cluster c3.large]`
-    1. change key to `<your_key_name>`
-    
 #### Install and Configure AWS CLI (AWS Command Line Interface).
 1. You can install by typing `pip install awscli`
 2. Then, configure it by typing `aws configure`:
@@ -121,23 +41,112 @@ wish to create an account.
     * Default region name [us-west-2]: `us-east-1` (Adjust accordingly)
     * Default output format [None]: `text`
 
-#### Start a cluster:
-1. `$> starcluster start -c <template_name> <cluster_name>`
-2. Wait until the cluster is finished setting up. Then, the cluster can be accessed
-using:
-3. `$> starcluster sshmaster -X <cluster_name>`  (-X gives you x-window plotting capability)
-4. To exit the cluster, simply type “exit”.
-5. Other things like `starcluster stop <cluster_name>`, `terminate`, `start -c`, etc.
-6. You can also copy files to/from the cluster using the put and get commands. 
-To copy a file or entire directory from your local computer to the cluster:
-`$> starcluster put mycluster /path/to/local/file/or/dir /remote/path/`
-7. To copy a file or an entire directory from the cluster to your local computer:
-`$> starcluster get mycluster /path/to/remote/file/or/dir /local/path/`
+### Optional Dependencies
 
+#### LibHDF5
+<a href=https://www.hdfgroup.org/HDF5>libhdf5</a>, is highly efficient database used to store intermediate SEQC outputs. If you wish to parse the ReadArray objects generated by SEQC on your local machine, you will need to install libHDF5. However, it is pre-installed on the AWS AMIs, and not required for the typical analysis run.
+
+#### Installing from Source:
+1. After downloading libhdf5 from source, it can be installed by typing:
+
+        $> ./configure --prefix=/usr/local/
+        $> make
+        $> make install
+
+#### Installing without previous configuration
+1. If you installed libhdf5 without giving arguments in the "configure" step, make sure
+that you have the necessary prereqs already installed:
+    * numpy
+    * numexpr
+    * cython
+2. Then set the $HDF_DIR environment variable by typing: 
+
+        $> export HDF_DIR=/your/installation/directory/for/hdf5
+
+
+#### Matlab
+Currently, some of our final analyses rely on Matlab implementations of DiffusionGeometry and PCA. We will phase these out, but for now, cell selection requires that Matlab be installed and accessible via the $PATH variable. Matlab is NOT required to generate expression matrices.
+
+### Installation:
+
+Once all dependencies have been installed, SEQC can be installed on any machine by typing:
+
+    $> git clone https://github.com/ambrosejcarr/seqc.git
+    $> pip3 install -e seqc/
+    $> .seqc/configure
+
+Please follow the instructions of the configure script by providing SEQC information about your AWS access keys and, if you desire, a BASESPACE token. Once you have configured SEQC, you are ready to process single-cell sequencing data.
 
 ### Running SEQC:
 
 After SEQC is installed, help can be listed:
+
+    $> process_experiment.py [-h] [--barcode-files [BF [BF ...]]] -o O -i I
+                                 [-g [G [G ...]]] [-b [B [B ...]]] [-m [M]]
+                                 [-s [S]] [-r [RA]] [--basespace BS]
+                                 [--max-insert-size F] [--min-poly-t T]
+                                 [--max-dust-score D] [--local] [--aws]
+                                 [--email-status E] [--cluster-name C]
+                                 [--no-terminate] [--aws-upload-key A]
+                                 [--reverse-complement] [-v]
+                                 {in_drop,drop_seq,mars1_seq,mars2_seq,in_drop_v2}
+    
+    Process Single-Cell RNA Sequencing Data
+    
+    positional arguments:
+      {in_drop,drop_seq,mars1_seq,mars2_seq,in_drop_v2}
+                            which platform are you merging annotations from?
+    
+    optional arguments:
+      -h, --help            show this help message and exit
+      -v, --version         show program's version number and exit
+    
+    required arguments:
+      --barcode-files [BF [BF ...]]
+                            text file(s) containing valid cell barcodes (one
+                            barcode per line)
+      -o O, --output-stem O
+                            file stem for output files e.g.
+                            ./seqc_output/tumor_run5
+      -i I, --index I       Folder or s3 link to folder containing index files for
+                            alignment and resolution of ambiguous reads.
+    
+    input arguments:
+      -g [G [G ...]], --genomic-fastq [G [G ...]]
+                            fastq file(s) containing genomic information
+      -b [B [B ...]], --barcode-fastq [B [B ...]]
+                            fastq file(s) containing barcode information
+      -m [M], --merged-fastq [M]
+                            fastq file containing genomic information annotated
+                            with barcode data
+      -s [S], --samfile [S]
+                            sam file containing aligned, merged fastq records.
+      -r [RA], --read-array [RA]
+                            ReadArray archive containing processed sam records
+      --basespace BS        BaseSpace sample ID. Identifies a sequencing run to
+                            download and process.
+    
+    filter arguments:
+      --max-insert-size F   maximum paired-end insert size that is considered a
+                            valid record
+      --min-poly-t T        minimum size of poly-T tail that is required for a
+                            barcode to be considered a valid record
+      --max-dust-score D    maximum complexity score for a read to be considered
+                            valid
+    
+    run options:
+      --local               run SEQC locally instead of initiating on AWS EC2
+                            servers
+      --aws                 automatic flag; no need for user specification
+      --email-status E      email address to receive run summary when running
+                            remotely
+      --cluster-name C      optional name for EC2 instance
+      --no-terminate        do not terminate the EC2 instance after program
+                            completes
+      --aws-upload-key A    location to upload results
+      --reverse-complement  indicates that provided barcode files contain reverse
+                            complements of what will be found in the sequencing
+                            data
 
     $> SEQC -h
     usage: SEQC [-h]
@@ -157,110 +166,6 @@ After SEQC is installed, help can be listed:
     optional arguments:
       -h, --help            show this help message and exit
 
+A typical run of a human "In-Drop" sequencing experiment where data is downloaded from Illumina's BaseSpace proceeds as follows:
 
-Help on parsing individual data types can be obtained by typing:
-
-    $> SEQC in-drop -h
-    usage: SEQC in-drop [-h] [-i I] [-n N] [-o O] [-b B] [-f [F [F ...]]]
-                        [-r [R [R ...]]] [-s [S]] [-m M] [-l L]
-                        [--star-args SA [SA ...]] [--list-default-star-args]
-    
-    optional arguments:
-      -h, --help            show this help message and exit
-    
-    Required Arguments:
-      -i I, --index I       star alignment index folder. This folder will be
-                            created if it does not exist
-      -n N, --n-threads N   number of threads to run
-      -o O, --output-file O
-                            stem of filename in which to store output
-      -b B, --barcodes B    location of serialized barcode object.
-    
-    Input Files:
-      pass one input file type: sam (-s), raw fastq (-f, [-r]), or processed
-      fastq (-m)
-    
-      -f [F [F ...]], --forward [F [F ...]]
-                            forward fastq file(s)
-      -r [R [R ...]], --reverse [R [R ...]]
-                            reverse fastq file(s)
-      -s [S], --sam [S]     sam file(s) containing aligned, pre-processed reads
-      -m M, --merged-fastq M
-                            fastq file containing merged, pre-processed records
-    
-    Optional arguments for disambiguation:
-      -l L, --frag-len L    the number of bases from the 3 prime end to consider
-                            when determining trancript overlaps
-    
-    Optional arguments for STAR aligner:
-      --star-args SA [SA ...]
-                            additional arguments for STAR. Pass as arg=value
-                            without leading "--". e.g. runMode=alignReads
-      --list-default-star-args
-                            list SEQDB default args for the STAR aligner
-
-
-All SEQC runs require that you pass a SEQC index (`-i/--index`). These are STAR indices,
-augmented by SEQC-specific files:
-
-1. `annotations.gtf`: a modified GTF file, containing truncated sequence sizes that
-reflect that we expect all data to fall within ~ 1kb of the transcriptional termination
-sites. In addition, transcripts are tagged with "SCIDs", identifiers that merge
-transcripts and genes which cannot be distinguished in the ~ 1kb of sequence that we
-expect to observe.
-2. `p_coalignments_array.p`: a binary file containing, for each SCID, the probability of
-observing a co-alignment to other genes.
-
-Human and mouse indices can be found on our aws s3 bucket at
-`s3://dplab-data/genomes/mm38/` and `s3://dplab-data/genomes/hg38`. These indices
-are built from recent releases of ENSEMBL genomes. These links can be passed directly to
-SEQC, which will download them before beginning the analysis
-
-If new indices must be generated, these can be produced by the SEQC index method:
-
-    $> SEQC index -h
-    usage: SEQC index [-h] [-b] [-t] -o O [O ...] -i I [-n N] [--phix]
-    
-    optional arguments:
-      -h, --help            show this help message and exit
-      -b, --build           build a SEQC index
-      -t, --test            test a SEQC index
-      -o O [O ...], --organism O [O ...]
-                            build index for these organism(s)
-      -i I, --index I       name of folder where index should be built or
-                            containing the index to be verified
-      -n N, --n-threads N   number of threads to use when building index
-      --phix                add phiX to the genome index and GTF file.
-     
-     $> # for example, to build a mouse index with phiX features added to mm38, in a
-     $> $ folder called 'mouse', using 7 threads
-     $> SEQC index -b -o mm38 -i mouse -n 7 --phix
-    
-Some data types require serialized barcode objects (`-b/--barcodes`). These objects contain
-all of the barcodes for an experiment, as they would be expected to be observed.
-For example, if you expect to observe the reverse complement of the barcodes you used to
-construct the library, then this object should be built from reverse complements.   
- 
-These barcode files can be found at `s3://dplab-data/barcodes/`. If you need to generate
-a new barcode object, this can be accomplished with the built-in `PROCESS_BARCODES`
-utility:
-
-    $> PROCESS_BARCODES -h
-    usage: PROCESS_BARCODES [-h] [-o O] [-b B [B ...]] [-p P]
-                            [--reverse-complement]
-    
-    optional arguments:
-      -h, --help            show this help message and exit
-      -o O, --output_stem O
-                            name and path for output file
-      -b B [B ...], --barcode_files B [B ...]
-                            barcode files
-      -p P, --processor P   type of experiment barcodes will be used in
-      --reverse-complement  indicates that barcodes in fastq files are reverse
-                            complements of the barcodes found in barcode files
-
-Example usage:
-
-`$> PROCESS_BARCODES -o ./in_drop_barcodes -b <barcode_file> -p in-drop --reverse-complement`
-would save a new, reverse-complemented barcode object built from `<barcode_file>` at
-`./in_drop_barcodes.p`
+    $> process_experiment.py in_drop -i s3://<s3 genome location> -o s3://<aws upload location> --basespace <sample id> --barcode-files s3://<barcode file folder>/ 
