@@ -275,7 +275,7 @@ class ClusterServer(object):
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/manu_ed_patch | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
