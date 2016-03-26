@@ -322,8 +322,8 @@ def correct_errors(alignments_ra, barcode_files = list(), apply_likelihood=True,
     :return:
     """
 
-    seqc.log.info('Correct errors ARGUMENT: Required poly T: %d' % args.min_poly_t)
-    seqc.log.info('Correct errors ARGUMENT: Maximum edit distance: %d' % args.max_ed)
+    seqc.log.info('Correct errors ARGUMENT: Required poly T: %d' % required_poly_t)
+    seqc.log.info('Correct errors ARGUMENT: Maximum edit distance: %d' % max_ed)
 
 
     res_time_cnt = {}
