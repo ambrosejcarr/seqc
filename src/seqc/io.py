@@ -506,7 +506,6 @@ class BaseSpace:
                              'find the requested data. Response status code: %d'
                              % response.status_code)
 
-
     @classmethod
     def download(
             cls, platform, sample_id: str, dest_path: str, access_token: str=None
