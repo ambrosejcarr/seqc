@@ -194,11 +194,6 @@ def check_arguments(args, basespace_token: str):
     an error if the provided input data is invalid.
     """
 
-    # make sure at least one input has been passed
-    if not any([args.barcode_fastq, args.genomic_fastq, args.merged, args.samfile,
-                args.basespace, args.read_array]):
-        raise ValueError('At least one input argument must be passed to SEQC.')
-
     # make sure only one filetype has been passed
     multi_input_error_message = ('Only one input type (-s, -m, -r/-f, or --basespace) '
                                  'should be passed to SEQC.')
@@ -210,10 +205,14 @@ def check_arguments(args, basespace_token: str):
     index_dir = args.index
     barcode_fastq = args.barcode_fastq
     genomic_fastq = args.genomic_fastq
-    merged = args.merged
+    merged = args.merged_fastq
     samfile = args.samfile
     read_array = args.read_array
     basespace = args.basespace
+
+    # make sure at least one input has been passed
+    if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
+        raise ValueError('At least one input argument must be passed to SEQC.')
 
     # keep track of which files need to be checked
     seqc_input = barcodes + [index_dir]
