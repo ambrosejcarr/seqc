@@ -42,7 +42,8 @@ setup(name='seqc',
           'nose2',
           'tsne==0.1.3',
           'matplotlib',
-          'seaborn'],
+          'seaborn',
+          'statsmodels'],
       scripts=['src/seqc/process_experiment.py']
       )
 
