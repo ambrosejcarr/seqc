@@ -5,6 +5,7 @@ import pickle
 import warnings
 import multiprocessing
 import shlex
+import shutil
 from functools import partial
 from copy import deepcopy
 from collections import defaultdict
@@ -1152,7 +1153,22 @@ class Experiment:
         p = Popen(cmd, stderr=PIPE)
         _, err = p.communicate()
 
-        return err
+        # remove annoying suffix from GSEA, or any errors that were thrown
+        if err:
+            return err
+        else:
+            pattern = out_prefix + '_' + str(c) + '.GseaPreranked.[0-9]*'
+            repl = out_prefix + '_' + str(c)
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move(curr_name, repl)
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
 
     def run_gsea(self, output_stem, gmt_file=None, components=None):
         """
