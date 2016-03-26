@@ -8,7 +8,6 @@ import pickle
 import seqc
 import configparser
 import boto3
-from botocore.exceptions import ClientError
 from subprocess import Popen, check_output
 
 
