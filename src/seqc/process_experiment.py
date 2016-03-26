@@ -180,11 +180,11 @@ def check_s3links(input_args: list):
                 else:
                     cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
                     res = check_output(cmd.split())
-                    if b'PRE ' in res:
-                        raise ValueError('Error: subdirectories found in provided s3 '
-                                         'link "%s"' % infile)
+                    if b'PRE ' in res:  # subdirectories present
+                        raise ValueError
         except:
-            seqc.log.notify('Provided s3 link "[%s]" does not exist -- exiting.' % infile)
+            seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
+                            'input files to SEQC.' % infile)
             sys.exit(2)
 
 
@@ -195,7 +195,7 @@ def check_arguments(args, basespace_token: str):
     """
 
     # make sure only one filetype has been passed
-    multi_input_error_message = ('Only one input type (-s, -m, -r/-f, or --basespace) '
+    multi_input_error_message = ('Only one input type (-s, -m, -b/-g, or --basespace) '
                                  'should be passed to SEQC.')
     unpaired_fastq_error_message = ('If either genomic or barcode fastq files are '
                                     'provided, both must be provided.')
@@ -295,7 +295,11 @@ def main(args: list = None):
             raise ConfigurationError('Please run ./configure (found in the seqc '
                                      'directory) before attempting to run '
                                      'process_experiment.py.')
+
+        # extract basespace token and make sure args.index is a directory
         basespace_token = config['BaseSpaceToken']['base_space_token']
+        if not args.index.endswith('/'):
+            args.index += '/'
 
         if not args.aws:  # if args.aws, arguments would already have passed checks.
             check_arguments(args, basespace_token)
@@ -405,8 +409,6 @@ def main(args: list = None):
         else:
             try:
                 seqc.log.info('AWS s3 link provided for index. Downloading index.')
-                if not args.index.endswith('/'):
-                    args.index += '/'
                 bucket, prefix = seqc.io.S3.split_link(args.index)
                 args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
