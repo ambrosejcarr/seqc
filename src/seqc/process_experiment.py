@@ -365,11 +365,6 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
-                # todo: can delete
-                # except FileNotFoundError:
-                #     raise FileNotFoundError('No fastq files were found at the specified '
-                #                             's3 location: [%s]' %
-                #                             ', '.join(map(str, args.genomic_fastq)))
                 except FileExistsError:
                     pass  # file is already present.
 
@@ -392,11 +387,6 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Barcode fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_fastq)))
-                # todo: could delete
-                # except FileNotFoundError:
-                #     raise FileNotFoundError('No fastq files were found at the specified '
-                #                             's3 location: [%s]' %
-                #                             ', '.join(map(str, args.barcode_fastq)))
                 except FileExistsError:
                     pass  # file is already present.
 
@@ -412,10 +402,6 @@ def main(args: list = None):
                 args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
-            # todo: could delete
-            # except FileNotFoundError:
-            #     raise FileNotFoundError('No index file or folder was identified at the '
-            #                             'specified s3 index location: %s' % args.index)
             except FileExistsError:
                 pass  # file is already present.
 
@@ -487,10 +473,6 @@ def main(args: list = None):
                 args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
                 seqc.log.info('Barcode files [%s] successfully installed.' %
                               ', '.join(map(str, args.barcode_files)))
-            # todo: could delete
-            # except FileNotFoundError:
-            #     raise FileNotFoundError('No barcode files were found at the specified '
-            #                             's3 location: %s' % args.barcode_files[0])
             except FileExistsError:
                 pass  # file is already present.
         cell_counts, _ = seqc.correct_errors.correct_errors(
