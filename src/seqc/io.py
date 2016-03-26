@@ -491,6 +491,23 @@ class BaseSpace:
             fd.close()
 
     @classmethod
+    def check_sample(cls, sample_id, access_token):
+        """checks whether provided basespace sample id is valid """
+
+        # send request to see whether basespace sample exists
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+
+        # check that a valid request was sent
+        if response.status_code != 200:
+            raise ValueError('Invalid access_token or sample_id. BaseSpace could not '
+                             'find the requested data. Response status code: %d'
+                             % response.status_code)
+
+
+    @classmethod
     def download(
             cls, platform, sample_id: str, dest_path: str, access_token: str=None
     ) -> (list, list):
@@ -511,31 +528,17 @@ class BaseSpace:
         :returns: (list, list), forward, reverse: lists of fastq files
         """
 
-        # if the access token isn't provided, look for it in config
-        if not access_token:
-            config = configparser.ConfigParser()
-            config.read(os.path.expanduser('~/.seqc/config'))
-            access_token = config['BaseSpaceToken']['base_space_token']
-            print(access_token)
-
+        # validity of response will already have been checked
         response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
                                 sample_id +
                                 '/files?Extensions=gz&access_token=' +
                                 access_token)
-        print(response)
-
-        # check that a valid request was sent
-        if response.status_code != 200:
-            raise ValueError('Invalid access_token or sample_id. BaseSpace could not '
-                             'find the requested data. Response status code: %d'
-                             % response.status_code)
-
         data = response.json()
 
         func = partial(cls._download_basespace_content, data['Response']['Items'],
                        access_token, dest_path)
         seqc.log.info('BaseSpace API link provided, downloading files from '
-                          'BaseSpace.')
+                      'BaseSpace.')
         with Pool(len(data['Response']['Items'])) as pool:
             pool.map(func, range(len(data['Response']['Items'])))
 
