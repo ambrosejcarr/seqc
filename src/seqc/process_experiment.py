@@ -457,8 +457,6 @@ def main(args: list = None):
             except FileExistsError:
                 pass  # file is already present.
         print()
-        seqc.log.info('ARGUMENT: Required poly T: %d' % args.min_poly_t)
-        seqc.log.info('ARGUMENT: Maximum edit distance: %d' % args.max_ed)
         cell_counts, _ = seqc.correct_errors.correct_errors(
             ra, args.barcode_files, reverse_complement=args.reverse_complement,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
