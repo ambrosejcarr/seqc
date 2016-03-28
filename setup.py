@@ -43,7 +43,9 @@ setup(name='seqc',
           'tsne==0.1.3',
           'matplotlib',
           'seaborn',
-          'statsmodels'],
+          'statsmodels',
+          'ecdsa',
+          'pycrypto'],
       scripts=['src/seqc/process_experiment.py']
       )
 
