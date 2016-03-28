@@ -6,7 +6,7 @@ import warnings
 import multiprocessing
 import shlex
 import shutil
-from itertools import combinations_with_replacement
+from itertools import combinations
 from functools import partial
 from copy import deepcopy
 from collections import defaultdict
@@ -956,8 +956,8 @@ class Experiment:
         experiment.reads = experiment.reads.ix[:, nonzero_genes]
         return experiment
 
-    def calculate_diffusion_map_components(self, knn=10, n_diffusion_components=20,
-                                           n_pca_components=15, params=pd.Series()):
+    def run_diffusion_map(self, knn=10, n_diffusion_components=20, n_pca_components=15,
+                          params=pd.Series()):
         """
         :param knn:
         :param n_diffusion_components:
@@ -1265,7 +1265,6 @@ class Experiment:
         # throws out analysis results; this makes sense
         return Experiment(subset_reads, subset_molecules, metadata)
 
-    # todo implement
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
         """
         carry out differential expression (post-hoc tests) between cells c1 and cells c2,
@@ -1324,8 +1323,7 @@ class Experiment:
         else:
             return pval, None
 
-    # todo test
-    def differential_expression(self, alpha):
+    def differential_expression(self, alpha=0.05):
         """
         carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
         correction to determine the genes that are differentially expressed in at least
@@ -1461,7 +1459,8 @@ class Experiment:
         cats = ['GO_0016072|rRNA metabolic process', 'GO_0006412|translation',
                 'GO_0006414|translational elongation', 'GO_0006364|rRNA processing']
 
-        with open('~/.seqc/tools/gofat.bp.v1.0.gmt.txt') as f:
+        with open(os.path.expanduser('~/.seqc/tools/{organism}/gofat.bp.v1.0.gmt.txt'
+                                     ''.format(organism=organism))) as f:
             data = {fields[0]: fields[1:] for fields in
                     [line[:-1].split('\t') for line in f.readlines()]}
 
@@ -1475,3 +1474,73 @@ class Experiment:
         genes = genes.difference(hk_genes)
 
         return Experiment(self.molecules[genes], self.reads[genes], self.metadata)
+
+    def annotate_clusters_by_expression(self, alpha=0.05):
+        """
+        considering only genes which are differentially expressed across the
+        population, label each cluster with the genes that are significantly expressed
+        in one population relative to > 80% of other populations.
+
+        :param alpha: allowable type-I error for ANOVA
+        :return: boolean matrix (clusters x genes)
+        """
+        if not isinstance(self.cluster_assignments, pd.Series):
+            raise RuntimeError('Please determine cluster assignments before carrying out '
+                               'differential expression')
+
+        # sort self.molecules by cluster assignment
+        idx = np.argsort(self.cluster_assignments)
+        data = self.molecules.values[idx, :]
+
+        # get points to split the array
+        split_indices = np.where(np.diff(self.cluster_assignments[idx]))[0] + 1
+
+        # create the function for the kruskal test
+        f = lambda v: kruskalwallis(*np.split(v, split_indices))[1]
+
+        # get p-values
+        pvals = np.apply_along_axis(f, 0, data)
+
+        # correct the pvals
+        reject, pval_corrected, _, _ = multipletests(pvals, alpha, method='fdr_tsbh')
+
+        # restrict genes to ones with significant anova results
+        data = data[:, reject]  # cells x genes
+
+        # get cluster positions in data
+        split_indices = np.concatenate(
+                [[0], split_indices, [len(self.cluster_assignments)]])  # add end points
+        cluster_slicers = [(i - 1, slice(split_indices[i - 1], split_indices[i]))
+                           for i in range(1, len(split_indices))]
+
+        # get pairs of clusters
+        cluster_pairs = list(combinations(cluster_slicers, 2))
+        n_clusters = len(set(self.cluster_assignments))
+        n_genes = np.sum(reject)
+        global_results = np.zeros((n_clusters, n_genes), dtype=np.bool)
+
+        # need to know gene means in order to fill up the experiment matrix.
+        mean_expression = np.zeros((n_clusters, n_genes), dtype=np.float)
+        for id_, slice_ in cluster_slicers:
+            mean_expression[id_, :] = np.mean(data[slice_, :], axis=0)
+
+        # for each gene in data, carry out all vs all mann-whitney
+        local_results_shape = (n_clusters, n_clusters)
+        for i, gene in enumerate(data.T):
+            gene_results = np.zeros(local_results_shape, dtype=np.bool)
+            for (aid, a), (bid, b) in cluster_pairs:  # all pairwise tests
+                try:
+                    p = mannwhitneyu(gene[a], gene[b])[1]
+                except ValueError:
+                    continue  # neither cell expresses this gene
+                if p < alpha:
+                    if mean_expression[aid, i] > mean_expression[bid, i]:
+                        gene_results[aid, bid] = 1
+                    else:
+                        gene_results[bid, aid] = 1
+
+            # update global results
+            res = gene_results.sum(axis=1) > gene_results.shape[0] * .8
+            global_results[:, i] = res
+
+        return pd.DataFrame(global_results, columns=self.molecules.columns[reject])
