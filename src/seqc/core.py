@@ -3,14 +3,21 @@ import os
 import random
 import pickle
 import warnings
+import multiprocessing
+import shlex
+import shutil
+from itertools import combinations_with_replacement
+from functools import partial
 from copy import deepcopy
 from collections import defaultdict
-from subprocess import call
+from subprocess import call, Popen, PIPE
 import numpy as np
 import pandas as pd
 import tables as tb
+from scipy.stats.mstats import kruskalwallis
+from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.sparse import coo_matrix
-from scipy.stats import gaussian_kde, pearsonr
+from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu
 import matplotlib
 try:
     os.environ['DISPLAY']
@@ -413,7 +420,7 @@ class Experiment:
         return not self.is_sparse()
 
     # todo currently, this method has side-effects (mutates existing dataframes) -- change?
-    # specifically, it mutates column ids
+    # specifically, it mutates index (cell) ids
     @staticmethod
     def concatenate(experiments, metadata_labels=None):
         """
@@ -712,7 +719,7 @@ class Experiment:
 
         return Experiment(reads=reads, molecules=molecules, metadata=metadata)
 
-    def plot_molecules_vs_genes(self, fig=None, ax=None):
+    def plot_molecules_vs_genes(self, fig=None, ax=None, title=None):
         """
         should be linear relationship
         :param ax:
@@ -730,6 +737,7 @@ class Experiment:
         ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
+        ax.set_title('')
         sns.despine(ax=ax)
 
         return fig, ax
@@ -850,6 +858,16 @@ class Experiment:
         os.remove('/tmp/pc_mapping_M_%f.csv' % rand_tag)
         os.remove('/tmp/pc_mapping_lambda_%f.csv' % rand_tag)
 
+    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30,
+                                    ylim=(0, 0.1)):
+        # plot the eigenvalues
+        fig, ax = get_fig(fig=fig, ax=ax)
+        ax.plot(np.ravel(self.pca['eigenvalues'].values))
+        plt.ylim(ylim)
+        plt.xlim((0, n_components))
+        sns.despine(ax=ax)
+        return fig, ax
+
     def run_tsne(self, n_components=15):
         """
         normally run on PCA components; 1st component is normally excluded
@@ -891,6 +909,11 @@ class Experiment:
         self.cluster_assignments = pd.Series(communities, index=data.index)
 
     def plot_phenograph(self, fig=None, ax=None, labels=None):
+
+        if self.tsne is None:
+            raise RuntimeError('Cannot plot phenograph before generating tSNE'
+                               'projection. Please call Experiment.run_tsne()')
+
         fig, ax = get_fig(fig=fig, ax=ax)
         clusters = sorted(set(self.cluster_assignments))
         colors = qualitative_colors(len(clusters))
@@ -901,7 +924,7 @@ class Experiment:
                 label = clusters[i]
             data = self.tsne.ix[self.cluster_assignments == clusters[i], :]
             ax.plot(data['x'], data['y'], c=colors[i], linewidth=0, marker='o',
-                    markersize=size, label=label)
+                    markersize=np.sqrt(size), label=label)
         plt.legend()
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
@@ -1031,8 +1054,12 @@ class Experiment:
         fig.suptitle(title)
         return fig
 
-    # todo extremely slow for large numbers of genes, components. parallelize across components
-    # multiprocessing pool
+    # todo extremely slow for large numbers of genes, components. parallelize
+    # across components using multiprocessing pool similar to how the below GSEA function
+    # was programmed.
+    # NOTE: it will be more complex because larger arrays are involved in these
+    # calculations. Need to use memmapped numpy arrays to avoid large-scale copying of the
+    # input data.
     def determine_gene_diffusion_correlations(self, components=None, no_cells=10):
         """
 
@@ -1070,8 +1097,6 @@ class Experiment:
                 # Determine correlation
                 self.diffusion_map_correlations.ix[gene, component] = pearsonr(x, vals)[0]
 
-            print('component {} completed.'.format(component))
-
         # Reset NaNs
         self.diffusion_map_correlations = self.diffusion_map_correlations.fillna(0)
 
@@ -1096,8 +1121,8 @@ class Experiment:
             components = self.diffusion_map_correlations.columns
 
         for c in components:
-            sns.kdeplot(self.diffusion_map_correlations.iloc[:, c], label=c, ax=ax,
-                        color=colors[c])
+            sns.kdeplot(self.diffusion_map_correlations.iloc[:, c].fillna(0), label=c,
+                        ax=ax, color=colors[c])
         sns.despine(ax=ax)
         ax.set_title(title)
         ax.set_xlabel('correlation')
@@ -1114,7 +1139,55 @@ class Experiment:
                 h='\n'.join(human_options)))
         print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
 
-    # todo this is also incredibly slow. parallelize by component
+    @staticmethod
+    def _gsea_process(c, diffusion_map_correlations, output_stem, gmt_file):
+
+        # save the .rnk file
+        out_dir, out_prefix = os.path.split(output_stem)
+        genes_file = '{stem}_cmpnt_{component}.rnk'.format(
+                stem=output_stem, component=c)
+        ranked_genes = diffusion_map_correlations.ix[:, c]\
+            .sort_values(inplace=False, ascending=False)
+
+        # set any NaN to 0
+        ranked_genes = ranked_genes.fillna(0)
+
+        # dump to file
+        pd.DataFrame(ranked_genes).to_csv(genes_file, sep='\t', header=False)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix}_{component} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=genes_file,
+                      out_prefix=out_prefix, component=c, out_dir=out_dir,
+                      gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            return err
+        else:
+            pattern = out_prefix + '_' + str(c) + '.GseaPreranked.[0-9]*'
+            repl = out_prefix + '_' + str(c)
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
     def run_gsea(self, output_stem, gmt_file=None, components=None):
         """
 
@@ -1143,33 +1216,19 @@ class Experiment:
         if components is None:
             components = self.diffusion_map_correlations.columns
 
-        # Run for each component
-        for c in components:
+        n_workers = min((multiprocessing.cpu_count() - 1, len(components)))
+        print('initializing {n_workers} worker processes and mapping GSEA to them.'
+              ''.format(n_workers=n_workers))
 
-            print(c)
+        partial_gsea_process = partial(
+                self._gsea_process,
+                diffusion_map_correlations=self.diffusion_map_correlations,
+                output_stem=output_stem,
+                gmt_file=gmt_file)
 
-            # Write genes to file
-            genes_file = out_dir + out_prefix + '_cmpnt_%d.rnk' % c
-            ranked_genes = self.diffusion_map_correlations.iloc[:, c]\
-                .sort_values(inplace=False, ascending=False)
-            pd.DataFrame(ranked_genes).to_csv(genes_file, sep='\t', header=False)
-
-            # Construct the GSEA call
-            cmd = list()
-            cmd += ['java', '-cp', os.path.expanduser('~/.seqc/tools/gsea2-2.2.1.jar'),
-                    '-Xmx1G', 'xtools.gsea.GseaPreranked']
-            cmd += ['-collapse false', '-mode Max_probe', '-norm meandiv', '-nperm 1000']
-            cmd += ['-include_only_symbols true', '-make_sets true', '-plot_top_x 20']
-            cmd += ['-set_max 500', '-set_min 15', '-zip_report false -gui false']
-
-            # Input arguments
-            cmd += ['-rnk %s' % genes_file]
-            cmd += ['-rpt_label %s' % out_prefix]
-            cmd += ['-out %s' % out_dir]
-            cmd += ['-gmx %s' % gmt_file]
-
-            # Call GSEA
-            call(cmd)
+        pool = multiprocessing.Pool(n_workers)
+        errors = pool.map(partial_gsea_process, components)
+        return errors
 
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
@@ -1207,20 +1266,113 @@ class Experiment:
         return Experiment(subset_reads, subset_molecules, metadata)
 
     # todo implement
-    def pairwise_differential_expression(self, g1, g2):
+    def pairwise_differential_expression(self, c1, c2, alpha=0.05):
         """
-        carry out differential expression between cells g1 and cells g2
+        carry out differential expression (post-hoc tests) between cells c1 and cells c2,
+        using bh-FDR to correct for multiple tests
+        :param alpha:
         :param g1:
         :param g2:
         :return:
         """
-        # scipy.stats.ranksum
-        raise NotImplementedError
+        g1 = self.molecules.loc[c1]
+        g2 = self.molecules.loc[c2]
 
-    @staticmethod
-    def multi_sample_differential_expression(experiments):
-        # scipy.stats.mstats.kruskalwallis
-        raise NotImplementedError
+        res = pd.Series(index=self.molecules.columns, dtype=float)
+        for g in self.molecules.columns:
+            try:
+                res[g] = mannwhitneyu(np.ravel(g1[g]), np.ravel(g2[g]))[1]
+            except ValueError:
+                res[g] = 1
+
+        pval_corrected = multipletests(res.values, alpha=alpha, method='fdr_tsbh')[1]
+
+        return pd.Series(pval_corrected, index=self.molecules.columns,
+                         dtype=float).sort_values()
+
+    # todo test
+    def single_gene_differential_expression(self, gene, alpha):
+        """
+        carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
+        correction to determine if gene is differentially expressed in different clusters
+
+        Explicitly, this tests the null hypothesis that all samples are drawn from the
+        same distribution.
+
+        if the KW-test is significant, Post-hoc rank-sum tests on the genes whose
+        corrected p-values are below alpha determine the specific samples that are
+        differentially expressed
+
+        :param gene:
+        :return: KW p-val, pairwise ranksums pvals
+        """
+        gene = self.molecules.ix[:, gene]
+
+        clusters = np.unique(self.cluster_assignments)
+        samples = [gene.ix[self.cluster_assignments == c].values for
+                   c in clusters]
+
+        pval = kruskalwallis(*samples)[1]
+
+        if pval < alpha:
+            pairs = list(combinations_with_replacement(np.arange(len(samples)), 2))
+            pvals = pd.Series(index=pairs, dtype=float)
+            for a, b in pairs:
+                pvals.ix[(a, b)] = mannwhitneyu(gene[self.cluster_assignments == a],
+                                                gene[self.cluster_assignments == b])[1]
+            return pval, pvals.sort_values()
+        else:
+            return pval, None
+
+    # todo test
+    def differential_expression(self, alpha):
+        """
+        carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
+        correction to determine the genes that are differentially expressed in at least
+        two populations, as defined by self._cluster_assignments
+
+        Explicitly, this tests the null hypothesis that all samples are drawn from the
+        same distribution.
+
+        Post-hoc tests on the genes whose corrected p-values are below alpha determine
+        the specific samples that are differentially expressed
+
+        Need:
+        (1) sense of an expression floor to call expressed vs. not expressed.
+
+        Intuitively: molecules vs. population size? if differential expression exists
+        then presumably there is a non-zero mean in at least one group.
+
+        Does not deal with the circumstance where all means are non-zero. can call
+        positive expression but not negative.
+
+        :param experiments:
+        :param gene:
+        :return:
+        """
+
+        if not isinstance(self.cluster_assignments, pd.Series):
+            raise RuntimeError('Please determine cluster assignments before carrying out '
+                               'differential expression')
+
+        # sort self.molecules by cluster assignment
+        idx = np.argsort(self.cluster_assignments)
+        data = self.molecules.values[idx, :]
+
+        # get points to split the array
+        split_indices = np.where(np.diff(self._cluster_assignments[idx]))[0] + 1
+
+        # create the function for the kruskal test
+        f = lambda v: kruskalwallis(*np.split(v, split_indices))[1]
+
+        # get p-values
+        pvals = np.apply_along_axis(f, 0, data)
+
+        # correct the pvals
+        alpha = 0.05
+        reject, pval_corrected, _, _ = multipletests(pvals, alpha, method='fdr_tsbh')
+
+        return pd.Series(pval_corrected, index=self.molecules.columns).sort_values(inplace=False)
 
     def plot_gene_expression(self, genes, suptitle='tSNE-projected Gene Expression'):
 

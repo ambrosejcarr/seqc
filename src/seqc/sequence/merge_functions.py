@@ -65,8 +65,8 @@ def _check_spacer_v1(sequence):
     elif identifier == b'TGAC':
         cb1 = sequence[:11]
         cb2 = sequence[33:41]
-        rmt = sequence[41:51]
-        poly_t = sequence[51:]
+        rmt = sequence[41:47]
+        poly_t = sequence[47:]
     else:
         return b'', b'', b''
     cell = cb1 + cb2
