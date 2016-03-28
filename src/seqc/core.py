@@ -1439,3 +1439,39 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
         return fig, ax
+
+    def remove_housekeeping_genes(self, organism='human'):
+        """
+        Remove snoRNA and miRNAs because they are undetectable by the library construction
+        procedure; their identification is a probable false-postive.
+
+        Next, removes housekeeping genes based on GO annotations.
+        :param organism: options: [human, mouse], default=human.
+        """
+
+        genes = self.molecules.columns
+        # MT genes
+        genes = genes[~genes.str.contains('MT-')]
+        # "AL" miRNA
+        genes = genes[~genes.str.contains('^AL[0-9]')]
+        # "FP" miRNA
+        genes = genes[~genes.str.contains('^FP[0-9]')]
+
+        # housekeeping gene ontologies
+        cats = ['GO_0016072|rRNA metabolic process', 'GO_0006412|translation',
+                'GO_0006414|translational elongation', 'GO_0006364|rRNA processing']
+
+        with open('~/.seqc/tools/gofat.bp.v1.0.gmt.txt') as f:
+            data = {fields[0]: fields[1:] for fields in
+                    [line[:-1].split('\t') for line in f.readlines()]}
+
+        hk_genes = {'B2M', 'AC091053.2', 'MALAT1', 'TMSB4X', 'RPL13AP5-RPL13A',
+                    'RP11-864I4.1-EEF1G', 'GAPDH', 'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB',
+                    'ACTG1', 'RP5-1056L3.3'}
+        for c in cats:
+            hk_genes.update(data[c])
+
+        # remove genes
+        genes = genes.difference(hk_genes)
+
+        return Experiment(self.molecules[genes], self.reads[genes], self.metadata)
