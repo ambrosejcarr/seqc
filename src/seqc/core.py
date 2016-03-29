@@ -582,11 +582,11 @@ class Experiment:
 
     # todo untested
     def plot_tsne_by_metadata(self, label, fig=None, ax=None):
-        cats = set(self.metadata['label'])
+        cats = set(self.metadata[label])
         colors = qualitative_colors(len(cats))
         fig, ax = get_fig(fig=fig, ax=ax)
         for c, color in zip(cats, colors):
-            rows = self.metadata['label'] == c
+            rows = self.metadata[label] == c
             plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'], marker='o',
                      markersize=np.sqrt(7), linewidth=0, c=color, label=c)
         ax.xaxis.set_major_locator(plt.NullLocator())
@@ -609,6 +609,29 @@ class Experiment:
                 match = re.match(pattern, line)
                 if match:
                     gene_id_map[int(match.group(2))].add(match.group(4))
+
+        reads = deepcopy(self.reads)
+        reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        molecules = deepcopy(self.molecules)
+        molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
+
+        return Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+
+    def scid_to_official_gene_symbol(self, gtf):
+        """convert scids to official gene symbols; useful for older v0.1.2 data
+
+        :param gtf:
+        :return:
+        """
+        pattern = re.compile(
+            r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?scseq_id "SC)(.*?)(".*?$)')
+
+        gene_id_map = defaultdict(set)
+        with open(gtf, 'r') as f:
+            for line in f:
+                match = re.match(pattern, line)
+                if match:
+                    gene_id_map[int(match.group(4))].add(match.group(2))
 
         reads = deepcopy(self.reads)
         reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
@@ -816,9 +839,16 @@ class Experiment:
 
         return exp
 
+    def merge_duplicate_genes(self):
+        """only necessary for v0.1.2 data where scids are duplicated
+
+        :return:
+        """
+        self.molecules = self.molecules.groupby(axis=1).sum()
+        self.reads = self.reads.groupby(axis=1).sum()
+
     def run_pca(self, n_components=100):
 
-        # todo refactored no_comp -> n_components=100
         X = self.molecules.values  # todo added this
         # Make sure data is zero mean
         X = np.subtract(X, np.amin(X))
@@ -935,12 +965,18 @@ class Experiment:
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
+        plt.colorbar()
         return fig, ax
 
-    def run_phenograph(self, n_pca_components=15):
+    def run_phenograph(self, n_pca_components=15, **kwargs):
         """
         normally run on PCA components; 1st component is normally excluded
         :param n_pca_components:
+        :param **kwargs: keyword arguments to pass directly to phenograph
+
+        one useful parameter is 'k', which inversely correlates with the number of
+        clusters that phenograph outputs.
+
         :return:
         """
         data = deepcopy(self.molecules)
@@ -949,7 +985,7 @@ class Experiment:
         data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
                             index=self.molecules.index)
 
-        communities, graph, Q = phenograph.cluster(data)
+        communities, graph, Q = phenograph.cluster(data, **kwargs)
         self.cluster_assignments = pd.Series(communities, index=data.index)
 
     def plot_phenograph(self, fig=None, ax=None, labels=None):
@@ -969,7 +1005,7 @@ class Experiment:
             data = self.tsne.ix[self.cluster_assignments == clusters[i], :]
             ax.plot(data['x'], data['y'], c=colors[i], linewidth=0, marker='o',
                     markersize=np.sqrt(size), label=label)
-        plt.legend()
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
