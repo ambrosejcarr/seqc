@@ -254,6 +254,7 @@ class Experiment:
         self._diffusion_eigenvalues = None
         self._diffusion_map_correlations = None
         self._cluster_assignments = None
+        self._unnormalized_cell_sizes = None
 
     def save(self, fout: str) -> None:
         """
@@ -383,8 +384,29 @@ class Experiment:
                             'object')
         self._cluster_assignments = item
 
+    @property
+    def unnormalized_cell_sizes(self):
+        return self._unnormalized_cell_sizes
+
+    @unnormalized_cell_sizes.setter
+    def unnormalized_cell_sizes(self, item):
+        if not (isinstance(item, pd.Series) or item is None):
+            raise TypeError('self.unnormalized_cell_sizes must be a pd.Series object')
+        self._cluster_assignments = item
+
     @classmethod
     def from_v012(cls, read_and_count_matrix: str):
+        warnings.warn('DeprecationWarning: please use Experiment.from_count_matrices()')
+        with open(read_and_count_matrix, 'rb') as f:
+            d = pickle.load(f)
+        reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
+                            columns=d['reads']['col_ids'])
+        molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
+                                columns=d['molecules']['col_ids'])
+        return cls(reads, molecules)
+
+    @classmethod
+    def from_count_matrices(cls, read_and_count_matrix: str):
         with open(read_and_count_matrix, 'rb') as f:
             d = pickle.load(f)
         reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
@@ -420,8 +442,7 @@ class Experiment:
     def is_dense(self):
         return not self.is_sparse()
 
-    # todo currently, this method has side-effects (mutates existing dataframes) -- change?
-    # specifically, it mutates index (cell) ids
+    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
     @staticmethod
     def concatenate(experiments, metadata_labels=None):
         """
@@ -558,6 +579,21 @@ class Experiment:
         sparse_molecules = SparseFrame(molecules, cell_index, gene_index)
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
+
+    # todo untested
+    def plot_tsne_by_metadata(self, label, fig=None, ax=None):
+        cats = set(self.metadata['label'])
+        colors = qualitative_colors(len(cats))
+        fig, ax = get_fig(fig=fig, ax=ax)
+        for c, color in zip(cats, colors):
+            rows = self.metadata['label'] == c
+            plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'],
+                     markersize=np.sqrt(7), linewidth=0, c=color, label=c)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title('tSNE projection colored by {}'.format(label))
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        return fig, ax
 
     def ensembl_gene_id_to_official_gene_symbol(self, gtf):
         """convert self.index containing scids into an index of gene names
@@ -743,8 +779,8 @@ class Experiment:
 
         return fig, ax
 
+    # todo implement, based on below-fit cells in the above plot
     def remove_low_complexity_cells(self):
-        # todo implement, based on below-fit cells in the above plot
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
                                'unnormalized data')
@@ -753,7 +789,7 @@ class Experiment:
 
     def normalize_data(self):
         """
-        uses AVO method of normalization
+        uses AVO method of normalization; stores original library sizes
         :return: Experiment
         """
 
@@ -774,6 +810,10 @@ class Experiment:
         nonzero_genes = exp.molecules.sum(axis=0) != 0
         exp.molecules = exp.molecules.ix[:, nonzero_genes]
         exp.reads = exp.reads.ix[:, nonzero_genes]
+
+        # set unnormalized_cell_sums
+        self.unnormalized_cell_sizes = molecule_sums
+
         return exp
 
     def run_pca(self, n_components=100):
@@ -931,8 +971,20 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
-    # todo add plot for library sizes (see notebook ajc_worklogs/manuscript/MSKCC/TIL_processing.ipynb)
-    # todo for this one, going to want access to original library size
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None):
+        fig, ax = get_fig(fig, ax)
+        if self.tsne is None:
+            raise RuntimeError('Please run self.run_tsne() before plotting.')
+        if self._normalized:
+            sizes = self.unnormalized_cell_sizes.values
+        else:
+            sizes = self.molecules.sum(axis=1)
+        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        plt.colorbar()
+        return fig, ax
+
     def remove_clusters_based_on_library_size_distribution(self, clusters: list):
         """
         throws out low library size clusters; normally there is only one, but worth
@@ -1454,6 +1506,10 @@ class Experiment:
         genes = genes[~genes.str.contains('^AL[0-9]')]
         # "FP" miRNA
         genes = genes[~genes.str.contains('^FP[0-9]')]
+        # SNO RNAs
+        genes = genes[~genes.str.contains('RNU|SNO|RNVU')]
+        # Ribobosomal RNA
+        genes = genes[~genes.str.contains('RNA5S')]
 
         # housekeeping gene ontologies
         cats = ['GO_0016072|rRNA metabolic process', 'GO_0006412|translation',
