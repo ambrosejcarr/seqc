@@ -6,7 +6,7 @@ import warnings
 import multiprocessing
 import shlex
 import shutil
-from itertools import combinations_with_replacement
+from itertools import combinations
 from functools import partial
 from copy import deepcopy
 from collections import defaultdict
@@ -226,6 +226,7 @@ class SparseFrame:
         return self.data.sum(axis=axis)
 
 
+# todo bug: at some point reads are being set == molecules
 class Experiment:
 
     def __init__(self, reads, molecules, metadata=None):
@@ -253,6 +254,7 @@ class Experiment:
         self._diffusion_eigenvalues = None
         self._diffusion_map_correlations = None
         self._cluster_assignments = None
+        self._unnormalized_cell_sizes = None
 
     def save(self, fout: str) -> None:
         """
@@ -382,8 +384,29 @@ class Experiment:
                             'object')
         self._cluster_assignments = item
 
+    @property
+    def unnormalized_cell_sizes(self):
+        return self._unnormalized_cell_sizes
+
+    @unnormalized_cell_sizes.setter
+    def unnormalized_cell_sizes(self, item):
+        if not (isinstance(item, pd.Series) or item is None):
+            raise TypeError('self.unnormalized_cell_sizes must be a pd.Series object')
+        self._cluster_assignments = item
+
     @classmethod
     def from_v012(cls, read_and_count_matrix: str):
+        warnings.warn('DeprecationWarning: please use Experiment.from_count_matrices()')
+        with open(read_and_count_matrix, 'rb') as f:
+            d = pickle.load(f)
+        reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
+                            columns=d['reads']['col_ids'])
+        molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
+                                columns=d['molecules']['col_ids'])
+        return cls(reads, molecules)
+
+    @classmethod
+    def from_count_matrices(cls, read_and_count_matrix: str):
         with open(read_and_count_matrix, 'rb') as f:
             d = pickle.load(f)
         reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
@@ -419,8 +442,7 @@ class Experiment:
     def is_dense(self):
         return not self.is_sparse()
 
-    # todo currently, this method has side-effects (mutates existing dataframes) -- change?
-    # specifically, it mutates index (cell) ids
+    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
     @staticmethod
     def concatenate(experiments, metadata_labels=None):
         """
@@ -557,6 +579,21 @@ class Experiment:
         sparse_molecules = SparseFrame(molecules, cell_index, gene_index)
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
+
+    # todo untested
+    def plot_tsne_by_metadata(self, label, fig=None, ax=None):
+        cats = set(self.metadata['label'])
+        colors = qualitative_colors(len(cats))
+        fig, ax = get_fig(fig=fig, ax=ax)
+        for c, color in zip(cats, colors):
+            rows = self.metadata['label'] == c
+            plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'], marker='o',
+                     markersize=np.sqrt(7), linewidth=0, c=color, label=c)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title('tSNE projection colored by {}'.format(label))
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        return fig, ax
 
     def ensembl_gene_id_to_official_gene_symbol(self, gtf):
         """convert self.index containing scids into an index of gene names
@@ -742,8 +779,8 @@ class Experiment:
 
         return fig, ax
 
+    # todo implement, based on below-fit cells in the above plot
     def remove_low_complexity_cells(self):
-        # todo implement, based on below-fit cells in the above plot
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
                                'unnormalized data')
@@ -752,7 +789,7 @@ class Experiment:
 
     def normalize_data(self):
         """
-        uses AVO method of normalization
+        uses AVO method of normalization; stores original library sizes
         :return: Experiment
         """
 
@@ -773,9 +810,13 @@ class Experiment:
         nonzero_genes = exp.molecules.sum(axis=0) != 0
         exp.molecules = exp.molecules.ix[:, nonzero_genes]
         exp.reads = exp.reads.ix[:, nonzero_genes]
+
+        # set unnormalized_cell_sums
+        self.unnormalized_cell_sizes = molecule_sums
+
         return exp
 
-    def run_pca_python(self, n_components=100):
+    def run_pca(self, n_components=100):
 
         # todo refactored no_comp -> n_components=100
         X = self.molecules.values  # todo added this
@@ -815,12 +856,13 @@ class Experiment:
 
         return mappedX, M, l
 
-    def run_pca(self, no_components=100):
+    def run_pca_matlab(self, no_components=100):
         """
 
         :param no_components:
         :return:
         """
+        warnings.warn('DeprecationWarning: please use Experiment.run_pca()')
 
         # Random tag to allow for multiple diffusion map runs
         rand_tag = random.random()
@@ -930,8 +972,20 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
-    # todo add plot for library sizes (see notebook ajc_worklogs/manuscript/MSKCC/TIL_processing.ipynb)
-    # todo for this one, going to want access to original library size
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None):
+        fig, ax = get_fig(fig, ax)
+        if self.tsne is None:
+            raise RuntimeError('Please run self.run_tsne() before plotting.')
+        if self._normalized:
+            sizes = self.unnormalized_cell_sizes.values
+        else:
+            sizes = self.molecules.sum(axis=1)
+        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        plt.colorbar()
+        return fig, ax
+
     def remove_clusters_based_on_library_size_distribution(self, clusters: list):
         """
         throws out low library size clusters; normally there is only one, but worth
@@ -956,8 +1010,8 @@ class Experiment:
         experiment.reads = experiment.reads.ix[:, nonzero_genes]
         return experiment
 
-    def calculate_diffusion_map_components(self, knn=10, n_diffusion_components=20,
-                                           n_pca_components=15, params=pd.Series()):
+    def run_diffusion_map(self, knn=10, n_diffusion_components=20, n_pca_components=15,
+                          params=pd.Series()):
         """
         :param knn:
         :param n_diffusion_components:
@@ -1265,7 +1319,6 @@ class Experiment:
         # throws out analysis results; this makes sense
         return Experiment(subset_reads, subset_molecules, metadata)
 
-    # todo implement
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
         """
         carry out differential expression (post-hoc tests) between cells c1 and cells c2,
@@ -1290,7 +1343,6 @@ class Experiment:
         return pd.Series(pval_corrected, index=self.molecules.columns,
                          dtype=float).sort_values()
 
-    # todo test
     def single_gene_differential_expression(self, gene, alpha):
         """
         carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
@@ -1315,7 +1367,7 @@ class Experiment:
         pval = kruskalwallis(*samples)[1]
 
         if pval < alpha:
-            pairs = list(combinations_with_replacement(np.arange(len(samples)), 2))
+            pairs = list(combinations(np.arange(len(samples)), 2))
             pvals = pd.Series(index=pairs, dtype=float)
             for a, b in pairs:
                 pvals.ix[(a, b)] = mannwhitneyu(gene[self.cluster_assignments == a],
@@ -1324,8 +1376,7 @@ class Experiment:
         else:
             return pval, None
 
-    # todo test
-    def differential_expression(self, alpha):
+    def differential_expression(self, alpha=0.05):
         """
         carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
         correction to determine the genes that are differentially expressed in at least
@@ -1439,3 +1490,114 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
         return fig, ax
+
+    def remove_housekeeping_genes(self, organism='human'):
+        """
+        Remove snoRNA and miRNAs because they are undetectable by the library construction
+        procedure; their identification is a probable false-postive.
+
+        Next, removes housekeeping genes based on GO annotations.
+        :param organism: options: [human, mouse], default=human.
+        """
+
+        genes = self.molecules.columns
+        # MT genes
+        genes = genes[~genes.str.contains('MT-')]
+        # "AL" miRNA
+        genes = genes[~genes.str.contains('^AL[0-9]')]
+        # "FP" miRNA
+        genes = genes[~genes.str.contains('^FP[0-9]')]
+        # SNO RNAs
+        genes = genes[~genes.str.contains('RNU|SNO|RNVU')]
+        # Ribobosomal RNA
+        genes = genes[~genes.str.contains('RNA5S')]
+
+        # housekeeping gene ontologies
+        cats = ['GO_0016072|rRNA metabolic process', 'GO_0006412|translation',
+                'GO_0006414|translational elongation', 'GO_0006364|rRNA processing']
+
+        with open(os.path.expanduser('~/.seqc/tools/{organism}/gofat.bp.v1.0.gmt.txt'
+                                     ''.format(organism=organism))) as f:
+            data = {fields[0]: fields[1:] for fields in
+                    [line[:-1].split('\t') for line in f.readlines()]}
+
+        hk_genes = {'B2M', 'AC091053.2', 'MALAT1', 'TMSB4X', 'RPL13AP5-RPL13A',
+                    'RP11-864I4.1-EEF1G', 'GAPDH', 'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB',
+                    'ACTG1', 'RP5-1056L3.3', 'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}
+        for c in cats:
+            hk_genes.update(data[c])
+
+        # remove genes
+        genes = genes.difference(hk_genes)
+
+        return Experiment(self.molecules[genes], self.reads[genes], self.metadata)
+
+    def annotate_clusters_by_expression(self, alpha=0.05):
+        """
+        considering only genes which are differentially expressed across the
+        population, label each cluster with the genes that are significantly expressed
+        in one population relative to > 80% of other populations.
+
+        :param alpha: allowable type-I error for ANOVA
+        :return: boolean matrix (clusters x genes)
+        """
+        if not isinstance(self.cluster_assignments, pd.Series):
+            raise RuntimeError('Please determine cluster assignments before carrying out '
+                               'differential expression')
+
+        # sort self.molecules by cluster assignment
+        idx = np.argsort(self.cluster_assignments)
+        data = self.molecules.values[idx, :]
+
+        # get points to split the array
+        split_indices = np.where(np.diff(self.cluster_assignments[idx]))[0] + 1
+
+        # create the function for the kruskal test
+        f = lambda v: kruskalwallis(*np.split(v, split_indices))[1]
+
+        # get p-values
+        pvals = np.apply_along_axis(f, 0, data)
+
+        # correct the pvals
+        reject, pval_corrected, _, _ = multipletests(pvals, alpha, method='fdr_tsbh')
+
+        # restrict genes to ones with significant anova results
+        data = data[:, reject]  # cells x genes
+
+        # get cluster positions in data
+        split_indices = np.concatenate(
+                [[0], split_indices, [len(self.cluster_assignments)]])  # add end points
+        cluster_slicers = [(i - 1, slice(split_indices[i - 1], split_indices[i]))
+                           for i in range(1, len(split_indices))]
+
+        # get pairs of clusters
+        cluster_pairs = list(combinations(cluster_slicers, 2))
+        n_clusters = len(set(self.cluster_assignments))
+        n_genes = np.sum(reject)
+        global_results = np.zeros((n_clusters, n_genes), dtype=np.bool)
+
+        # need to know gene means in order to fill up the experiment matrix.
+        mean_expression = np.zeros((n_clusters, n_genes), dtype=np.float)
+        for id_, slice_ in cluster_slicers:
+            mean_expression[id_, :] = np.mean(data[slice_, :], axis=0)
+
+        # for each gene in data, carry out all vs all mann-whitney
+        local_results_shape = (n_clusters, n_clusters)
+        for i, gene in enumerate(data.T):
+            gene_results = np.zeros(local_results_shape, dtype=np.bool)
+            for (aid, a), (bid, b) in cluster_pairs:  # all pairwise tests
+                try:
+                    p = mannwhitneyu(gene[a], gene[b])[1]
+                except ValueError:
+                    continue  # neither cell expresses this gene
+                if p < alpha:
+                    if mean_expression[aid, i] > mean_expression[bid, i]:
+                        gene_results[aid, bid] = 1
+                    else:
+                        gene_results[bid, aid] = 1
+
+            # update global results
+            res = gene_results.sum(axis=1) > gene_results.shape[0] * .8
+            global_results[:, i] = res
+
+        return pd.DataFrame(global_results, columns=self.molecules.columns[reject])
