@@ -76,7 +76,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
         if v['rmt'] == 0:
             filtered += 1
             continue
-        if v['n_poly_t'] <= required_poly_t:
+        if v['n_poly_t'] < required_poly_t:
             filtered += 1
             continue
 #        if BinRep.contains(int(v['cell']), N):
@@ -164,7 +164,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                           'setting default rate of %f' % (k, default_error_rate))
             err_rate[k] = default_error_rate
 
-    seqc.log.info('Error correction filtering results: total reads: {}; did not pass perliminary filters: {}; cell barcodes are wrong: '
+    seqc.log.info('Error correction filtering results: total reads: {}; did not pass preliminary filters: {}; cell barcodes are wrong: '
                   '{}'.format(tot, filtered, bc_filter))
     # print('error_table: ', error_table, ' cor_instance_table: ', cor_instance_table)
     return res, err_rate
