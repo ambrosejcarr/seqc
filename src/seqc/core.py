@@ -226,6 +226,7 @@ class SparseFrame:
         return self.data.sum(axis=axis)
 
 
+# todo bug: at some point reads are being set == molecules
 class Experiment:
 
     def __init__(self, reads, molecules, metadata=None):
@@ -775,7 +776,7 @@ class Experiment:
         exp.reads = exp.reads.ix[:, nonzero_genes]
         return exp
 
-    def run_pca_python(self, n_components=100):
+    def run_pca(self, n_components=100):
 
         # todo refactored no_comp -> n_components=100
         X = self.molecules.values  # todo added this
@@ -815,7 +816,7 @@ class Experiment:
 
         return mappedX, M, l
 
-    def run_pca(self, no_components=100):
+    def run_pca_matlab(self, no_components=100):
         """
 
         :param no_components:
@@ -1289,7 +1290,6 @@ class Experiment:
         return pd.Series(pval_corrected, index=self.molecules.columns,
                          dtype=float).sort_values()
 
-    # todo test
     def single_gene_differential_expression(self, gene, alpha):
         """
         carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
@@ -1314,7 +1314,7 @@ class Experiment:
         pval = kruskalwallis(*samples)[1]
 
         if pval < alpha:
-            pairs = list(combinations_with_replacement(np.arange(len(samples)), 2))
+            pairs = list(combinations(np.arange(len(samples)), 2))
             pvals = pd.Series(index=pairs, dtype=float)
             for a, b in pairs:
                 pvals.ix[(a, b)] = mannwhitneyu(gene[self.cluster_assignments == a],
