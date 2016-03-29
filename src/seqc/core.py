@@ -852,9 +852,11 @@ class Experiment:
         # Apply mapping on the data
         if X.shape[1] >= X.shape[0]:
             M = np.multiply(np.dot(X.T, M), (1 / np.sqrt(X.shape[0] * l)).T)
-        mappedX = np.dot(X, M)
 
-        return mappedX, M, l
+        loadings = pd.DataFrame(data=M, index=self.molecules.columns)
+        l = pd.DataFrame(l)
+
+        self.pca = {'loadings': loadings, 'eigenvalues': l}
 
     def run_pca_matlab(self, no_components=100):
         """
