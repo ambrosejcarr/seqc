@@ -952,7 +952,7 @@ class Experiment:
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_components].T),
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
                             index=self.molecules.index)
 
         self.tsne = pd.DataFrame(bh_sne(data),
@@ -982,7 +982,7 @@ class Experiment:
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
                             index=self.molecules.index)
 
         communities, graph, Q = phenograph.cluster(data, **kwargs)
@@ -1068,7 +1068,7 @@ class Experiment:
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
                             index=self.molecules.index)
 
         # Write to csv file
