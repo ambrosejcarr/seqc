@@ -587,7 +587,7 @@ class Experiment:
         fig, ax = get_fig(fig=fig, ax=ax)
         for c, color in zip(cats, colors):
             rows = self.metadata['label'] == c
-            plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'],
+            plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'], marker='o',
                      markersize=np.sqrt(7), linewidth=0, c=color, label=c)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
@@ -862,6 +862,7 @@ class Experiment:
         :param no_components:
         :return:
         """
+        warnings.warn('DeprecationWarning: please use Experiment.run_pca()')
 
         # Random tag to allow for multiple diffusion map runs
         rand_tag = random.random()
