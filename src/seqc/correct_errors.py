@@ -79,9 +79,9 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
         if v['n_poly_t'] <= required_poly_t:
             filtered += 1
             continue
-        if BinRep.contains(int(v['cell']), N):
-            filtered += 1
-            continue
+#        if BinRep.contains(int(v['cell']), N):
+#            filtered += 1
+#            continue
         if BinRep.contains(int(v['rmt']), N):
             filtered += 1
             continue
