@@ -1522,7 +1522,7 @@ class Experiment:
 
         hk_genes = {'B2M', 'AC091053.2', 'MALAT1', 'TMSB4X', 'RPL13AP5-RPL13A',
                     'RP11-864I4.1-EEF1G', 'GAPDH', 'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB',
-                    'ACTG1', 'RP5-1056L3.3'}
+                    'ACTG1', 'RP5-1056L3.3', 'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}
         for c in cats:
             hk_genes.update(data[c])
 
