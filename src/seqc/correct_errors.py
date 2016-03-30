@@ -100,8 +100,6 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             else:
                 err_l_1 = list_errors(cor_c1, c1)
             dynamic_codes_table_c1[c1] = (cor_c1, ed_1, err_l_1)
-        if BinRep.contains(cor_c1, N):
-            continue
 
         c2 = BinRep.c2_from_codes(int(v['cell']))
         try:
@@ -114,8 +112,6 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             else:
                 err_l_2 = list_errors(cor_c2, c2)
             dynamic_codes_table_c2[c2] = (cor_c2, ed_2, err_l_2)
-        if BinRep.contains(cor_c2, N):
-            continue
 
         # Filter reads with too many errors in their barcodes
         if ed_1 > max_ed or ed_2 > max_ed:
@@ -128,7 +124,10 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
         # For error rate estimation, only reads with at most a single error in both barcodes are counted
         if ed_1 + ed_2 <= 1:
             for er in err_l_1 + err_l_2:
-                error_table[er] += 1
+				try:
+					error_table[er] += 1
+				except KeyError:
+					continue
 
             # count non error bases
             tmp_c = BinRep.ints2int([c1, c2])
