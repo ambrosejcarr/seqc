@@ -696,7 +696,7 @@ class Experiment:
         :return: None
         """
         if self._normalized:
-            raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
+            raise RuntimeError('remove_non_cell_barcodes() should be run on '
                                'unnormalized data')
 
         # get molecule and read counts per cell
@@ -712,12 +712,15 @@ class Experiment:
         codes_passing_filter = molecule_cell_sums.index[filter_]
 
         row_inds = np.where(pd.Series(self.molecules.index).isin(codes_passing_filter))[0]
+
         read_data = self.reads.data.tocsr()[row_inds, :].todense()
         reads = pd.DataFrame(read_data, index=self.reads.index[row_inds],
                              columns=self.reads.columns)
+
         molecule_data = self.molecules.data.tocsr()[row_inds, :].todense()
         molecules = pd.DataFrame(molecule_data, index=self.molecules.index[row_inds],
                                  columns=self.molecules.columns)
+
         metadata = self.metadata.ix[row_inds, :]
         return Experiment(reads=reads, molecules=molecules, metadata=metadata)
 
@@ -774,7 +777,7 @@ class Experiment:
         pass_filter = ratios.index[ratios <= max_mt_fraction]
 
         molecules = self.molecules.ix[pass_filter]
-        reads = self.molecules.ix[pass_filter]
+        reads = self.reads.ix[pass_filter]
         metadata = self.metadata.ix[pass_filter]
 
         return Experiment(reads=reads, molecules=molecules, metadata=metadata)
