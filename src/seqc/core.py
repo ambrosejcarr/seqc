@@ -274,7 +274,8 @@ class Experiment:
         """
         with open(fin, 'rb') as f:
             data = pickle.load(f)
-        experiment = cls(data['_reads'], data['_molecules'], data['_metadata'])
+        experiment = cls(reads=data['_reads'], molecules=data['_molecules'],
+                         metadata=data['_metadata'])
         del data['_reads']
         del data['_molecules']
         del data['_metadata']
@@ -403,7 +404,7 @@ class Experiment:
                             columns=d['reads']['col_ids'])
         molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
                                 columns=d['molecules']['col_ids'])
-        return cls(reads, molecules)
+        return cls(reads=reads, molecules=molecules)
 
     @classmethod
     def from_count_matrices(cls, read_and_count_matrix: str):
@@ -413,25 +414,7 @@ class Experiment:
                             columns=d['reads']['col_ids'])
         molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
                                 columns=d['molecules']['col_ids'])
-        return cls(reads, molecules)
-
-    @classmethod
-    def refresh(cls, experiment):
-        """
-        Generate a new Experiment object from an old instance of experiment. Convenience
-        function for development, when class methods have changed.
-
-        :param experiment:
-        :return:
-        """
-        # todo not working because of copy vs. reference problems
-        exp = cls(experiment.reads, experiment.molecules, experiment.metadata)
-        properties = vars(experiment)
-        del properties['_reads']
-        del properties['_molecules']
-        del properties['_metadata']
-        for k, v in properties.items():
-            setattr(exp, k[1:], v)
+        return cls(reads=reads, molecules=molecules)
 
     def is_sparse(self):
         if all(isinstance(o, SparseFrame) for o in (self.reads, self.molecules)):
@@ -1402,7 +1385,8 @@ class Experiment:
         metadata = self.metadata.ix[:, use_genes]
 
         # throws out analysis results; this makes sense
-        return Experiment(subset_reads, subset_molecules, metadata)
+        return Experiment(reads=subset_reads, molecules=subset_molecules,
+                          metadata=metadata)
 
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
         """
