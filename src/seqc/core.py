@@ -393,7 +393,7 @@ class Experiment:
     def unnormalized_cell_sizes(self, item):
         if not (isinstance(item, pd.Series) or item is None):
             raise TypeError('self.unnormalized_cell_sizes must be a pd.Series object')
-        self.unnormalized_cell_sizes = item
+        self._unnormalized_cell_sizes = item
 
     @classmethod
     def from_v012(cls, read_and_count_matrix: str):
@@ -821,7 +821,7 @@ class Experiment:
         exp.reads = exp.reads.ix[:, nonzero_genes].astype(np.float32)
 
         # set unnormalized_cell_sums
-        self.unnormalized_cell_sizes = molecule_sums
+        exp.unnormalized_cell_sizes = molecule_sums
 
         return exp
 
