@@ -1176,8 +1176,9 @@ class Experiment:
 
         # this is sorted by order, need it in original order (reverse the sort)
 
-        return pd.DataFrame(diffusion_map_correlations[:, components],
-                            index=self.molecules.columns, columns=components)
+        self.diffusion_map_correlations = pd.DataFrame(
+                diffusion_map_correlations[:, components], index=self.molecules.columns,
+                columns=components)
 
     def determine_gene_diffusion_correlations(self, components=None, no_cells=10):
         """
