@@ -817,8 +817,8 @@ class Experiment:
 
         # check that none of the genes are empty; if so remove them
         nonzero_genes = exp.molecules.sum(axis=0) != 0
-        exp.molecules = exp.molecules.ix[:, nonzero_genes].astype(np.float32)
-        exp.reads = exp.reads.ix[:, nonzero_genes].astype(np.float32)
+        exp.molecules = exp.molecules.ix[:, nonzero_genes]
+        exp.reads = exp.reads.ix[:, nonzero_genes]
 
         # set unnormalized_cell_sums
         exp.unnormalized_cell_sizes = molecule_sums
