@@ -1613,7 +1613,8 @@ class Experiment:
         # remove genes
         genes = genes.difference(hk_genes)
 
-        return Experiment(self.molecules[genes], self.reads[genes], self.metadata)
+        return Experiment(reads=self.reads[genes], molecules=self.molecules[genes],
+                          metadata=self.metadata)
 
     def annotate_clusters_by_expression(self, alpha=0.05):
         """
