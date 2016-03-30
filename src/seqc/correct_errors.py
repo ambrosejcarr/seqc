@@ -94,7 +94,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c1, ed_1, err_l_1, seq_err_1 = dynamic_codes_table_c1[c1]
         except KeyError:
             cor_c1, ed_1 = find_correct_barcode(c1, correct_barcodes[0])
-			seq_err_1 = count_seqeuncer_errors(c1)
+            seq_err_1 = count_seqeuncer_errors(c1)
             # No point calculating errors on codes with more errors than allowed
             if ed_1 > max_ed:
                 err_l_1 = None
@@ -107,7 +107,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c2, ed_2, err_l_2, seq_err_2 = dynamic_codes_table_c2[c2]
         except KeyError:
             cor_c2, ed_2 = find_correct_barcode(c2, correct_barcodes[1])
-			seq_err_2 = count_seqeuncer_errors(c2)
+            seq_err_2 = count_seqeuncer_errors(c2)
             # No point calculating errors on codes with more errors than allowed
             if ed_2 > max_ed:
                 err_l_2 = None
@@ -124,13 +124,13 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             continue
         
         # For error rate estimation, only reads with at most a single error in both barcodes are counted.
-		# note that only base swicth errors are counted towards this threshold, sequencer errors (that cause an 'N') are ignored for this.
+        # note that only base swicth errors are counted towards this threshold, sequencer errors (that cause an 'N') are ignored for this.
         if ed_1 + ed_2 - seq_err_1 - seq_err_2 <= 1:
             for er in err_l_1 + err_l_2:
-				try:
-					error_table[er] += 1
-				except KeyError:	#happens for sequencer errors
-					continue
+                try:
+                    error_table[er] += 1
+                except KeyError:    #happens for sequencer errors
+                    continue
 
             # count non error bases
             tmp_c = BinRep.ints2int([c1, c2])
@@ -194,12 +194,12 @@ def hamming_dist_bin(c1, c2):
     return d
 
 def count_seqeuncer_errors(c):
-	err=0
-	while c>0:
-		if BinRep._bin2strdict[c&0b111] == 'N':
-			err+=1
-		c>>=3
-	return err
+    err=0
+    while c>0:
+        if BinRep._bin2strdict[c&0b111] == 'N':
+            err+=1
+        c>>=3
+    return err
 
 def generate_close_seq(seq):
     """ Return a list of all sequences that are up to 2 hamm distance from seq
