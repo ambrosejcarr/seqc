@@ -487,8 +487,8 @@ class Experiment:
         # add additional metadata
         for k, v in metadata_labels.items():
             metadata[k] = pd.Series(index=cells, dtype='O')
-            for e in experiments:
-                metadata[k].ix[e.metadata.index] = [v] * len(e.metadata.index)
+            for e, metadata_val in zip(experiments, v):
+                metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
 
         return Experiment(reads=r_combined, molecules=m_combined, metadata=metadata)
 
