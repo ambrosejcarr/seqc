@@ -393,7 +393,7 @@ class Experiment:
     def unnormalized_cell_sizes(self, item):
         if not (isinstance(item, pd.Series) or item is None):
             raise TypeError('self.unnormalized_cell_sizes must be a pd.Series object')
-        self._cluster_assignments = item
+        self.unnormalized_cell_sizes = item
 
     @classmethod
     def from_v012(cls, read_and_count_matrix: str):
