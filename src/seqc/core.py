@@ -491,8 +491,8 @@ class Experiment:
             meta_cols.update(e.metadata.columns)
 
         # combine data
-        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.float64)
-        empty_read = np.zeros((len(cells), len(genes)), dtype=np.float64)
+        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
+        empty_read = np.zeros((len(cells), len(genes)), dtype=np.uint32)
         metadata = pd.DataFrame(index=cells, columns=meta_cols)
         m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
         r_combined = pd.DataFrame(empty_read, index=cells, columns=genes)
