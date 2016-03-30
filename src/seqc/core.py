@@ -575,7 +575,7 @@ class Experiment:
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title('tSNE projection colored by {}'.format(label))
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         return fig, ax
 
     def ensembl_gene_id_to_official_gene_symbol(self, gtf):
@@ -991,7 +991,7 @@ class Experiment:
             data = self.tsne.ix[self.cluster_assignments == clusters[i], :]
             ax.plot(data['x'], data['y'], c=colors[i], linewidth=0, marker='o',
                     markersize=np.sqrt(size), label=label)
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
@@ -1383,7 +1383,7 @@ class Experiment:
         # Create new scdata object
         subset_molecules = self.molecules.ix[:, use_genes]
         subset_reads = self.reads.ix[:, use_genes]
-        metadata = self.metadata.ix[:, use_genes]
+        metadata = self.metadata
 
         # throws out analysis results; this makes sense
         return Experiment(reads=subset_reads, molecules=subset_molecules,
