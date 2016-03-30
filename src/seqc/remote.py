@@ -397,7 +397,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     merged_fastq = gzip_file(merged_fastq)
     seqc.log.info('Successfully gzipped merged fastq file to upload.')
 
-    files = [bamfile, h5_archive, merged_fastq, counts, alignment_summary, log]
+    files = [counts, log, alignment_summary, h5_archive, bamfile, merged_fastq]
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     for item in files:
         seqc.io.S3.upload_file(item, bucket, key)
