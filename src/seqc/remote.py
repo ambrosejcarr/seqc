@@ -380,7 +380,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     log = prefix + '/seqc.log'
     files = [counts, log]  # counts and seqc.log will always be uploaded
 
-    # infile can be: start, merged, samfile, readarray
+    # start_pos can be: start, merged, samfile, readarray
     if start_pos == 'start' or start_pos == 'merged':
         samfile = prefix + '/alignments/Aligned.out.sam'
         bamfile = prefix + '/alignments/Aligned.out.bam'
@@ -400,8 +400,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
         if start_pos != 'merged':
             merged_fastq = output_stem + '_merged.fastq'
-            merged_fastq = gzip_file(merged_fastq)
             # gzipping merged_fastq file to upload
+            merged_fastq = gzip_file(merged_fastq)
             seqc.log.info('Successfully gzipped merged fastq file to upload.')
             files.append(merged_fastq)
 
@@ -437,6 +437,55 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified')
+
+
+def check_status():
+    # reading in configuration file
+    config_file = os.path.expanduser('~/.seqc/config')
+    config = configparser.ConfigParser()
+    if not config.read(config_file):
+        raise ValueError('Please run ./configure (found in the seqc directory) before '
+                         'attempting to run process_experiment.py.')
+
+    # obtaining rsa key from configuration file
+    rsa_key = config['key']['rsa_key_location']
+
+    # checking for instance status
+    inst_file = os.path.expanduser('~/.seqc/instance.txt')
+    try:
+        with open(inst_file, 'r') as f:
+            for line in f:
+                entry = line.strip('\n')
+                inst_id, run_name = entry.split(':')
+
+                # connecting to the remote instance
+                s = seqc.remote.SSHServer(inst_id, rsa_key)
+                try:
+                    inst_state = s.instance.state['Name']
+                    if inst_state != 'running':
+                        print('Cluster (%s) for run "%s" is currently %s.' %
+                              (inst_id, run_name, inst_state))
+                        continue
+                except:
+                    print('Cluster (%s) for run "%s" has been terminated.'
+                          % (inst_id,run_name))
+                    continue
+
+                s.connect()
+                out, err = s.exec_command('less /data/seqc.log')
+                if not out:
+                    print('ERROR: SEQC log file not found in cluster (%s) for run "%s." '
+                          'Something went wrong during remote run.' % (inst_id, run_name))
+                    continue
+                print('-'*80)
+                print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
+                print('-'*80)
+                for x in out:
+                    print(x)
+                print('-'*80 + '\n')
+    except FileNotFoundError:
+        print('You have not started a remote instance -- exiting.')
+        sys.exit(0)
 
 
 class SSHServer(object):
@@ -519,3 +568,4 @@ class SSHServer(object):
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
         return data, errs
+
