@@ -15,8 +15,23 @@ class ConfigurationError(Exception):
     pass
 
 
+class ArgumentParserError(Exception):
+    pass
+
+
+class NewArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        # checks to see whether user wants to check remote experiment status
+        if '--check-status' in sys.argv[1:]:
+            seqc.remote.check_status()
+            sys.exit(0)
+        else:
+            print(message)
+            sys.exit(0)
+
+
 def parse_args(args):
-    p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
+    p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2'],
@@ -62,6 +77,7 @@ def parse_args(args):
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
+    r.set_defaults(check=False)
     r.add_argument('--local', dest="remote", action="store_false",
                    help='run SEQC locally instead of initiating on AWS EC2 servers')
     r.add_argument('--aws', default=False, action='store_true',
@@ -74,13 +90,18 @@ def parse_args(args):
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
     r.add_argument('--max-ed',  metavar='ED',
-                    help='maximum hamming distance for correcting barcode errors',
-                    default=2, type=int)
+                   help='maximum hamming distance for correcting barcode errors',
+                   default=2, type=int)
+    r.add_argument('--check-progress', dest="check", action="store_true",
+                   help='check progress of remote SEQC run')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
 
-    return p.parse_args(args)
+    try:
+        return p.parse_args(args)
+    except ArgumentParserError:
+        raise
 
 
 def run_remote(stem: str) -> None:
@@ -247,6 +268,8 @@ def check_arguments(args, basespace_token: str):
         seqc_input += [read_array]
 
     # check for validity of all links that will be used by SEQC
+    # todo: make sure none of the arguments are "" or []!!!
+    # todo: if drop_seq and not in_drop or in_drop_v2, barcodes aren't required
     check_s3links(seqc_input)
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
@@ -411,6 +434,7 @@ def main(args: list = None):
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
         # determine where the script should start:
+        input_data = 'start'
         merge = True
         align = True
         process_samfile = True
@@ -436,6 +460,7 @@ def main(args: list = None):
         if align:
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
+                input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
@@ -448,6 +473,7 @@ def main(args: list = None):
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
             if args.samfile.startswith('s3://'):
+                input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
             ra = seqc.core.ReadArray.from_samfile(
@@ -455,6 +481,7 @@ def main(args: list = None):
             ra.save(args.output_stem + '.h5')
         else:
             if args.read_array.startswith('s3://'):
+                input_data = 'readarray'
                 args.read_array = s3files_download([args.read_array], output_dir)[0]
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
@@ -496,8 +523,9 @@ def main(args: list = None):
             seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
             if args.email_status:
+                # todo: should pass in flag of where you started in upload_results()
                 seqc.remote.upload_results(
-                    args.output_stem, args.email_status, aws_upload_key)
+                    args.output_stem, args.email_status, aws_upload_key, input_data)
 
     except:
         seqc.log.exception()
@@ -523,3 +551,6 @@ def main(args: list = None):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
+# todo: script to test with read array
+# process_experiment.py in_drop_v2 -o s3://dplab-data/r_test/ -i s3://dplab-data/genomes/hg38/ --barcode-files s3://dplab-data/barcodes/in_drop_v2/flat/ --email-status kristy.choi24@gmail.com -r s3://ajc-data/DJ023/DJ023.h5
