@@ -439,7 +439,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
                   'flag was specified')
 
 
-def check_status():
+def check_progress():
     # reading in configuration file
     config_file = os.path.expanduser('~/.seqc/config')
     config = configparser.ConfigParser()

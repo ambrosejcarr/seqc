@@ -22,8 +22,8 @@ class ArgumentParserError(Exception):
 class NewArgumentParser(argparse.ArgumentParser):
     def error(self, message):
         # checks to see whether user wants to check remote experiment status
-        if '--check-status' in sys.argv[1:]:
-            seqc.remote.check_status()
+        if '--check-progress' in sys.argv[1:]:
+            seqc.remote.check_progress()
             sys.exit(0)
         else:
             print(message)
