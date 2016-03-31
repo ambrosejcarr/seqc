@@ -236,6 +236,9 @@ def check_arguments(args, basespace_token: str):
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
         raise ValueError('At least one input argument must be passed to SEQC.')
+    if not barcodes:
+        if args.platform != 'drop_seq':
+            raise ValueError('Barcode files are required for this SEQC run.')
 
     # keep track of which files need to be checked
     seqc_input = barcodes + [index_dir]
