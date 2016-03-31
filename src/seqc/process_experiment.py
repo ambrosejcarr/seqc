@@ -270,9 +270,6 @@ def check_arguments(args, basespace_token: str):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
 
-    # check for validity of all links that will be used by SEQC
-    # todo: make sure none of the arguments are "" or []!!!
-    # todo: if drop_seq and not in_drop or in_drop_v2, barcodes aren't required
     check_s3links(seqc_input)
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
@@ -526,7 +523,6 @@ def main(args: list = None):
             seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
             if args.email_status:
-                # todo: should pass in flag of where you started in upload_results()
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data)
 
@@ -554,6 +550,3 @@ def main(args: list = None):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-
-# todo: script to test with read array
-# process_experiment.py in_drop_v2 -o s3://dplab-data/r_test/ -i s3://dplab-data/genomes/hg38/ --barcode-files s3://dplab-data/barcodes/in_drop_v2/flat/ --email-status kristy.choi24@gmail.com -r s3://ajc-data/DJ023/DJ023.h5
