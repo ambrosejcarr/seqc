@@ -463,6 +463,11 @@ def main(args: list = None):
             if args.merged_fastq.startswith('s3://'):
                 input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
+                if args.merged_fastq.endswith('.gz'):
+                    gunzip_cmd = 'gunzip ' + args.merged_fastq
+                    full_file = Popen(gunzip_cmd.split())
+                    full_file.communicate()
+                    args.merged_fastq = args.merged_fastq.strip('.gz')
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
             *base_directory, stem = args.output_stem.split('/')
