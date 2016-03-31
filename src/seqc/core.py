@@ -226,7 +226,6 @@ class SparseFrame:
         return self.data.sum(axis=axis)
 
 
-# todo bug: at some point reads are being set == molecules
 class Experiment:
 
     def __init__(self, reads, molecules, metadata=None):
@@ -607,7 +606,7 @@ class Experiment:
         :return:
         """
         pattern = re.compile(
-            r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?scseq_id "SC)(.*?)(".*?$)')
+            r'(^.*?gene_name ")(.*?)(".*?scseq_id "SC)(.*?)(".*?$)')
 
         gene_id_map = defaultdict(set)
         with open(gtf, 'r') as f:
