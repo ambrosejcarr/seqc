@@ -367,43 +367,57 @@ def gzip_file(filename):
     return filename + '.gz'
 
 
-def upload_results(output_stem: str, email_address: str, aws_upload_key: str) -> None:
+def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
+                   start_pos: str) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
+    :param infile: determines where in the script SEQC started
     """
     prefix, directory = os.path.split(output_stem)
-
-    samfile = prefix + '/alignments/Aligned.out.sam'
-    bamfile = prefix + '/alignments/Aligned.out.bam'
-    h5_archive = output_stem + '.h5'
-    merged_fastq = output_stem + '_merged.fastq'
     counts = output_stem + '_read_and_count_matrices.p'
-    shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
-                    '_alignment_summary.txt')
-    alignment_summary = output_stem + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
+    files = [counts, log]  # counts and seqc.log will always be uploaded
 
-    # converting samfile to bamfile
-    convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
+    # infile can be: start, merged, samfile, readarray
+    if start_pos == 'start' or start_pos == 'merged':
+        samfile = prefix + '/alignments/Aligned.out.sam'
+        bamfile = prefix + '/alignments/Aligned.out.bam'
+        alignment_summary = output_stem + '_alignment_summary.txt'
+
+        # converting samfile to bamfile
+        convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
                                                                     samfile=samfile)
-    conv = Popen(convert_sam.split())
-    conv.communicate()
-    # bamfile = gzip_file(bamfile)
-    seqc.log.info('Successfully converted samfile to bamfile to upload.')
+        conv = Popen(convert_sam.split())
+        conv.communicate()
+        seqc.log.info('Successfully converted samfile to bamfile to upload.')
 
-    # gzipping merged_fastq file to upload
-    merged_fastq = gzip_file(merged_fastq)
-    seqc.log.info('Successfully gzipped merged fastq file to upload.')
+        shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
+                        '_alignment_summary.txt')
+        files.append(alignment_summary)
+        files.append(bamfile)
 
-    files = [counts, log, alignment_summary, h5_archive, bamfile, merged_fastq]
+        if start_pos != 'merged':
+            merged_fastq = output_stem + '_merged.fastq'
+            merged_fastq = gzip_file(merged_fastq)
+            # gzipping merged_fastq file to upload
+            seqc.log.info('Successfully gzipped merged fastq file to upload.')
+            files.append(merged_fastq)
+
+    if start_pos != 'readarray':
+        h5_archive = output_stem + '.h5'
+        files.append(h5_archive)
+
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     for item in files:
-        seqc.io.S3.upload_file(item, bucket, key)
-        item_name = item.split('/')[-1]
-        seqc.log.info('Successfully uploaded %s to the specified S3 location '
-                      '"%s%s".' % (item, aws_upload_key, item_name))
+        try:
+            seqc.io.S3.upload_file(item, bucket, key)
+            item_name = item.split('/')[-1]
+            seqc.log.info('Successfully uploaded %s to the specified S3 location '
+                          '"%s%s".' % (item, aws_upload_key, item_name))
+        except FileNotFoundError:
+            seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
 
     # todo @AJC put this back in
     # generate a run summary and append to the email
