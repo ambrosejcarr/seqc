@@ -10,6 +10,10 @@ import paramiko
 import boto3
 from botocore.exceptions import ClientError
 import seqc
+import logging
+
+# turn off paramiko non-error logging
+logging.getLogger('paramiko').setLevel(logging.CRITICAL)
 
 
 class EC2RuntimeError(Exception):
