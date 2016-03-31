@@ -65,17 +65,11 @@ setup_dir = os.path.dirname(os.path.realpath(__file__))
 if not shutil.which('STAR'):
     warn('SEQC: STAR is not installed. SEQC will not be able to align files.')
 
-# look for matlab
-if not shutil.which('Matlab'):
-    warn('SEQC: Matlab is not installed. SEQC\'s analysis suite will not be able to run '
-         'diffusion maps or PCA.')
 
 # install GSEA, diffusion components, Matlab PCA (pca2.m)
 tools_dir = os.path.expanduser('~/.seqc/tools')
 if os.path.isdir(tools_dir):
     shutil.rmtree(tools_dir)
 shutil.copytree(setup_dir + '/tools/', tools_dir)
-shutil.unpack_archive(tools_dir + '/DiffusionGeometry.zip', tools_dir +
-                      '/DiffusionGeometry/')
 shutil.unpack_archive(tools_dir + '/mouse_gene_sets.tar.gz', tools_dir)
 shutil.unpack_archive(tools_dir + '/human_gene_sets.tar.gz', tools_dir)

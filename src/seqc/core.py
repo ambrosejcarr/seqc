@@ -18,6 +18,10 @@ from scipy.stats.mstats import kruskalwallis
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
+from sklearn.neighbors import NearestNeighbors
+from scipy.sparse import csr_matrix, find
+from scipy.sparse.linalg import eigs
+from numpy.linalg import norm
 import matplotlib
 try:
     os.environ['DISPLAY']
@@ -1033,22 +1037,8 @@ class Experiment:
         experiment.reads = experiment.reads.ix[:, nonzero_genes]
         return experiment
 
-    def run_diffusion_map(self, knn=10, n_diffusion_components=20, n_pca_components=15,
-                          params=pd.Series()):
-        """
-        :param knn:
-        :param n_diffusion_components:
-        :param params:
-        :return:
-        """
-
-        if not self.pca:
-            raise RuntimeError('Please run PCA before calculating diffusion components. '
-                               'DiffusionGeometry is run on the PCA decomposition of '
-                               'self.molecules.')
-
-        # Random tag to allow for multiple diffusion map runs
-        rand_tag = random.random()
+    def run_diffusion_map(self, knn=10, n_diffusion_components=10,
+                          n_pca_components=15, epsilon=1):
 
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
@@ -1056,60 +1046,61 @@ class Experiment:
         data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
                             index=self.molecules.index)
 
-        # Write to csv file
-        data.to_csv('/tmp/dm_data_%f.csv' % rand_tag)
+        # Nearest neighbors
+        N = data.shape[0]
+        nbrs = NearestNeighbors(n_neighbors=knn, algorithm='ball_tree').fit(data)
+        distances, indices = nbrs.kneighbors(data)
 
-        # Construct matlab script
-        # Change directory to diffusion geometry
-        matlab_cmd = "\" cd {};".format(os.path.expanduser(
-                '~/.seqc/tools/DiffusionGeometry'))
-        # Set up diffusion geometry
-        matlab_cmd += "Startup_DiffusionGeometry;"
-        matlab_cmd += "data = csvread('/tmp/dm_data_%f.csv', 1, 1);" % rand_tag
+        # Adjacency matrix
+        rows = np.zeros(N * knn, dtype=np.int32)
+        cols = np.zeros(N * knn, dtype=np.int32)
+        dists = np.zeros(N * knn)
+        location = 0
+        for i in range(N):
+            inds = range(location, location + knn)
+            rows[inds] = indices[i, :]
+            cols[inds] = i
+            dists[inds] = distances[i, :]
+            location += knn
+        W = csr_matrix((dists, (rows, cols)), shape=[N, N])
 
-        # Diffusion map parameters
-        dm_params = pd.Series()
-        dm_params['Normalization'] = "'smarkov'"
-        dm_params['Epsilon'] = str(1)
-        dm_params['kNN'] = str(knn)
-        dm_params['kEigenVecs'] = str(n_diffusion_components)
-        dm_params['Symmetrization'] = "'W+Wt'"
+        # Symmetrize W
+        W = W + W.T
 
-        # Update additional parameters
-        for i in params.index:
-            dm_params[i] = str(params[i])
+        # Convert to affinity (with selfloops)
+        rows, cols, dists = find(W)
+        rows = np.append(rows, range(N))
+        cols = np.append(cols, range(N))
+        dists = np.append(dists/(epsilon ** 2), np.zeros(N))
+        W = csr_matrix((np.exp(-dists), (rows, cols)), shape=[N, N])
 
-        # Add to matlab command
-        print('Diffusion geometry parameters..')
-        for i in dm_params.index:
-            print("%s: %s" % (i, dm_params[i]))
-            matlab_cmd += "GraphDiffOpts.%s = %s; " % (i, dm_params[i])
+        # Create D
+        D = np.ravel(W.sum(axis=1))
+        D[D != 0] = 1 / D[D != 0]
 
-        # Run diffusion map
-        matlab_cmd += "G = GraphDiffusion(data', 0, GraphDiffOpts);"
+        # Symmetric markov normalization
+        D = csr_matrix((np.sqrt(D), (range(N), range(N))), shape=[N, N])
+        P = D
+        T = D.dot(W).dot(D)
+        T = (T + T.T) / 2
 
-        # Write eigen vectors to file
-        matlab_cmd += " csvwrite('/tmp/dm_eigs_%f.csv', G.EigenVecs);" % rand_tag
-        matlab_cmd += " csvwrite('/tmp/dm_eig_vals_%f.csv', G.EigenVals); exit;\"" % (
-            rand_tag)
+        # Eigen value decomposition
+        D, V = eigs(T, n_diffusion_components, tol=1e-4, maxiter=1000)
+        D = np.real(D)
+        V = np.real(V)
+        inds = np.argsort(D)[::-1]
+        D = D[inds]
+        V = V[:, inds]
+        V = P.dot(V)
 
-        # Run matlab command
-        call(['matlab', '-nodesktop', '-nosplash', '-r %s' % matlab_cmd])
+        # Normalize
+        for i in range(V.shape[1]):
+            V[:, i] = V[:, i] / norm(V[:, i])
+        V = np.round(V, 10)
 
-        # Read in results
-        eigs = pd.DataFrame.from_csv('/tmp/dm_eigs_%f.csv' % rand_tag, header=None,
-                                     index_col=None)
-        eigs.index = self.molecules.index
-        vals = pd.DataFrame.from_csv('/tmp/dm_eig_vals_%f.csv' % rand_tag, header=None,
-                                     index_col=None)
-
-        self.diffusion_eigenvectors = eigs
-        self.diffusion_eigenvalues = vals
-
-        # Clean up
-        os.remove('/tmp/dm_data_%f.csv' % rand_tag)
-        os.remove('/tmp/dm_eigs_%f.csv' % rand_tag)
-        os.remove('/tmp/dm_eig_vals_%f.csv' % rand_tag)
+        # Update object
+        self.diffusion_eigenvectors = pd.DataFrame(V, index=self.molecules.index)
+        self.diffusion_eigenvalues = pd.DataFrame(D)
 
     def plot_diffusion_components(self, title='Diffusion Components'):
         if self.tsne is None:
