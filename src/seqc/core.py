@@ -17,7 +17,7 @@ import tables as tb
 from scipy.stats.mstats import kruskalwallis
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.sparse import coo_matrix
-from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu
+from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 import matplotlib
 try:
     os.environ['DISPLAY']
@@ -1299,6 +1299,85 @@ class Experiment:
         else:
             pattern = out_prefix + '_' + str(c) + '.GseaPreranked.[0-9]*'
             repl = out_prefix + '_' + str(c)
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
+    def run_gsea_diffexpr(self, cluster_1, cluster_2, output_stem, gmt_file=None):
+        """
+
+        :param cluster_1:
+        :param cluster_2:
+        :param output_stem:  the file location and prefix for the output of GSEA
+        :param gmt_file:
+        :param components:
+        :return:
+        """
+
+        out_dir, out_prefix = os.path.split(output_stem)
+        out_dir += '/'
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not gmt_file:
+            self._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # save the .rnk file
+        out_dir, out_prefix = os.path.split(output_stem)
+        genes_file = '{stem}_cluster_{c1}_vs_{c2}.rnk'.format(
+                stem=output_stem, c1=cluster_1, c2=cluster_2)
+
+        # get cells in each group and convert to ranks
+        c1 = self.molecules.ix[self.cluster_assignments == cluster_1, :]
+        c2 = self.molecules.ix[self.cluster_assignments == cluster_2, :]
+        c1 = np.apply_along_axis(rankdata, 1, c1)
+        c2 = np.apply_along_axis(rankdata, 1, c2)
+
+        # get average ranks, compute fold change
+        c1_mu = pd.Series(np.mean(c1, axis=0), index=self.molecules.columns)
+        c2_mu = pd.Series(np.mean(c2, axis=0), index=self.molecules.columns)
+        fold_change = (c2_mu - c1_mu) / c1_mu
+
+        # dump to file
+        ranked_genes = fold_change.sort_values(inplace=False, ascending=False)
+        pd.DataFrame(ranked_genes).fillna(0).to_csv(genes_file, sep='\t', header=False)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix}_{c1}_vs_{c2} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=genes_file,
+                      out_prefix=out_prefix, c1=cluster_1, c2=cluster_2, out_dir=out_dir,
+                      gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}_{c1}_vs_{c2}.GseaPreranked.[0-9]*'.format(
+                    p=out_prefix, c1=cluster_1, c2=cluster_2)
+            repl = '{p}_{c1}_vs_{c2}'.format(p=out_prefix, c1=cluster_1, c2=cluster_2)
             files = os.listdir(out_dir)
             for f in files:
                 mo = re.match(pattern, f)
