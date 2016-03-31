@@ -505,7 +505,7 @@ def main(args: list = None):
                               ', '.join(map(str, args.barcode_files)))
             except FileExistsError:
                 pass  # file is already present.
-        print()
+
         cell_counts, _ = seqc.correct_errors.correct_errors(
             ra, args.barcode_files, reverse_complement=args.reverse_complement,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
