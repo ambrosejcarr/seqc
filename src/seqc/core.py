@@ -90,6 +90,43 @@ def density_2d(x, y):
     return np.ravel(x)[i], np.ravel(y)[i], np.arcsinh(z[i])
 
 
+class FigureGrid:
+
+    def __init__(self, n: int, max_cols=3):
+        self.n = n
+        self.nrows = int(np.ceil(n / max_cols))
+        self.ncols = int(min((max_cols, n)))
+        figsize = self.ncols * 4, self.nrows * 4
+
+        # create figure
+        self.gs = plt.GridSpec(nrows=self.nrows, ncols=self.ncols)
+        self.figure = plt.figure(figsize=figsize)
+
+        # create axes
+        self.axes = {}
+        for i in range(n):
+            row = int(i // self.ncols)
+            col = int(i % self.ncols)
+            self.axes[i] = plt.subplot(self.gs[row, col])
+
+    def __getitem__(self, item):
+        return self.axes[item]
+
+    def __iter__(self):
+        for i in range(self.n):
+            yield self[i]
+
+    def tight_layout(self):
+        self.gs.tight_layout(self.figure)
+
+    def despine(self, top=True, right=True, **kwargs):
+        for i in range(self.n):
+            sns.despine(ax=self[i], top=top, right=right, **kwargs)
+
+    def savefig(self, *args, **kwargs):
+        self.figure.savefig(*args, **kwargs)
+
+
 class ReadArray:
 
     _dtype = [
@@ -1102,7 +1139,7 @@ class Experiment:
         self.diffusion_eigenvectors = pd.DataFrame(V, index=self.molecules.index)
         self.diffusion_eigenvalues = pd.DataFrame(D)
 
-    def plot_diffusion_components(self, title='Diffusion Components'):
+    def plot_diffusion_components(self):
         if self.tsne is None:
             raise RuntimeError('Please run tSNE before plotting diffusion components.')
 
@@ -1119,7 +1156,6 @@ class Experiment:
                         cmap=cmap, edgecolors='none', s=size)
             ax.set_axis_off()
 
-        fig.suptitle(title)
         return fig
 
     @staticmethod
@@ -1565,7 +1601,7 @@ class Experiment:
         return pd.Series(pval_corrected, index=self.molecules.columns).sort_values(inplace=False)
 
     # todo add option to plot phenograph cluster that these are being DE in.
-    def plot_gene_expression(self, genes, suptitle='tSNE-projected Gene Expression'):
+    def plot_gene_expression(self, genes):
 
         not_in_dataframe = set(genes).difference(self.molecules.columns)
         if not_in_dataframe:
@@ -1595,8 +1631,6 @@ class Experiment:
                         cmap=cmap, edgecolors='none', s=size)
             ax.set_axis_off()
             ax.set_title(g)
-
-        fig.suptitle(suptitle)
 
         return fig, axes
 
