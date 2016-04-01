@@ -6,6 +6,7 @@ from warnings import warn
 
 # install phenograph
 call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
+call(['pip3','install','git+https://github.com/scikit-learn/scikit-learn.git'])
 
 # look in /usr/local/ and /usr/local/hdf5/ for hdf5 libraries;
 # if found in /usr/local/hdf5/, set an environment variable to help pip3 install it.
@@ -45,7 +46,8 @@ setup(name='seqc',
           'seaborn',
           'statsmodels',
           'ecdsa',
-          'pycrypto'],
+          'pycrypto',
+          'sklearn'],
       scripts=['src/seqc/process_experiment.py']
       )
 
