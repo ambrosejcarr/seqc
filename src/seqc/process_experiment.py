@@ -511,22 +511,23 @@ def main(args: list = None):
 
         seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
-        if not args.barcode_files[0].startswith('s3://'):
-            for cb in args.barcode_files:
-                if not os.path.isfile(cb):
-                    raise ValueError('provided barcode files: "[%s]" is neither '
-                                     'an s3 link or a valid filepath' %
-                                     ', '.join(map(str, args.barcode_files)))
-        else:
-            try:
-                seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
-                if not args.barcode_files[0].endswith('/'):
-                    args.barcode_files[0] += '/'
-                args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
-                seqc.log.info('Barcode files [%s] successfully installed.' %
-                              ', '.join(map(str, args.barcode_files)))
-            except FileExistsError:
-                pass  # file is already present.
+        if args.platform != 'drop-seq':
+            if not args.barcode_files[0].startswith('s3://'):
+                for cb in args.barcode_files:
+                    if not os.path.isfile(cb):
+                        raise ValueError('provided barcode files: "[%s]" is neither '
+                                         'an s3 link or a valid filepath' %
+                                         ', '.join(map(str, args.barcode_files)))
+            else:
+                try:
+                    seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+                    if not args.barcode_files[0].endswith('/'):
+                        args.barcode_files[0] += '/'
+                    args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
+                    seqc.log.info('Barcode files [%s] successfully installed.' %
+                                  ', '.join(map(str, args.barcode_files)))
+                except FileExistsError:
+                    pass  # file is already present.
 
         # todo: change hard-coded "False" value depending on correct_errors.py
         cell_counts, _ = seqc.correct_errors.correct_errors(
