@@ -509,7 +509,6 @@ def main(args: list = None):
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
 
-        seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
         if not args.barcode_files[0].startswith('s3://'):
             for cb in args.barcode_files:
@@ -529,6 +528,7 @@ def main(args: list = None):
                 pass  # file is already present.
 
         # correct errors
+        seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
         cell_counts, _ = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
