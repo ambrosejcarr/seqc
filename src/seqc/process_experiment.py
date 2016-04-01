@@ -233,6 +233,10 @@ def check_arguments(args, basespace_token: str):
     read_array = args.read_array
     basespace = args.basespace
 
+    # check to make sure that --email-status is passed with remote run
+    if args.remote and not args.email_status:
+        raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
+
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
         raise ValueError('At least one input argument must be passed to SEQC.')
