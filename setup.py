@@ -46,8 +46,7 @@ setup(name='seqc',
           'seaborn',
           'statsmodels',
           'ecdsa',
-          'pycrypto',
-          'sklearn'],
+          'pycrypto'],
       scripts=['src/seqc/process_experiment.py']
       )
 
