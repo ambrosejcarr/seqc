@@ -31,7 +31,7 @@ setup(name='seqc',
           'numpy>=1.10.0',
           'cython>0.14',  # tables requirement
           'numexpr>=2.4',  # tables requirement
-          'pandas>=0.16.0',
+          'pandas>=0.17.0',
           'paramiko',
           'regex',
           'requests',
