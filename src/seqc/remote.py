@@ -364,8 +364,8 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
 
 def gzip_file(filename):
-    """gzips a given file, returns name of gzipped file"""
-    cmd = 'gzip ' + filename
+    """gzips a given file using pigz, returns name of gzipped file"""
+    cmd = 'pigz ' + filename
     pname = Popen(cmd.split())
     pname.communicate()
     return filename + '.gz'
@@ -392,7 +392,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
         # converting samfile to bamfile
         convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
-                                                                    samfile=samfile)
+                                                                        samfile=samfile)
         conv = Popen(convert_sam.split())
         conv.communicate()
         seqc.log.info('Successfully converted samfile to bamfile to upload.')
@@ -404,7 +404,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
         if start_pos != 'merged':
             merged_fastq = output_stem + '_merged.fastq'
-            # gzipping merged_fastq file to upload
+            # zipping merged_fastq file to upload
             merged_fastq = gzip_file(merged_fastq)
             seqc.log.info('Successfully gzipped merged fastq file to upload.')
             files.append(merged_fastq)
