@@ -1750,12 +1750,13 @@ class Experiment:
         ax.set_title(title)
         return fig, ax
 
-    def remove_housekeeping_genes(self, organism='human'):
+    def remove_housekeeping_genes(self, organism='human', additional_hk_genes=set()):
         """
         Remove snoRNA and miRNAs because they are undetectable by the library construction
         procedure; their identification is a probable false-postive.
 
         Next, removes housekeeping genes based on GO annotations.
+        :param additional_hk_genes:
         :param organism: options: [human, mouse], default=human.
         """
 
@@ -1768,7 +1769,7 @@ class Experiment:
         genes = genes[~genes.str.contains('^FP[0-9]')]
         # SNO RNAs
         genes = genes[~genes.str.contains('RNU|SNO|RNVU')]
-        # Ribobosomal RNA
+        # Ribosomal RNA
         genes = genes[~genes.str.contains('RNA5S')]
 
         # housekeeping gene ontologies
@@ -1780,9 +1781,9 @@ class Experiment:
             data = {fields[0]: fields[1:] for fields in
                     [line[:-1].split('\t') for line in f.readlines()]}
 
-        hk_genes = {'B2M', 'AC091053.2', 'MALAT1', 'TMSB4X', 'RPL13AP5-RPL13A',
-                    'RP11-864I4.1-EEF1G', 'GAPDH', 'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB',
-                    'ACTG1', 'RP5-1056L3.3', 'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}
+        hk_genes = {'AC091053.2', 'RPL13AP5-RPL13A', 'RP11-864I4.1-EEF1G', 'GAPDH',
+                    'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB', 'ACTG1', 'RP5-1056L3.3',
+                    'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}.update(additional_hk_genes)
         for c in cats:
             hk_genes.update(data[c])
 
