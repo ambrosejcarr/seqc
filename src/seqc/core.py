@@ -42,7 +42,7 @@ class SparseMatrixError(Exception):
 
 # set plotting defaults
 sns.set_style('ticks')
-matplotlib.rc('font', **{'family': 'serif',
+matplotlib.rc('font', **{'family': ['serif'],
                          'serif': ['Computer Modern Roman'],
                          'monospace': ['Computer Modern Typewriter']
                          })
@@ -805,7 +805,7 @@ class Experiment:
 
         return Experiment(reads=reads, molecules=molecules, metadata=metadata)
 
-    def plot_molecules_vs_genes(self, fig=None, ax=None, title=None):
+    def plot_molecules_vs_genes(self, fig=None, ax=None, title=''):
         """
         should be linear relationship
         :param ax:
@@ -823,7 +823,7 @@ class Experiment:
         ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
-        ax.set_title('')
+        ax.set_title(title)
         sns.despine(ax=ax)
 
         return fig, ax
@@ -958,13 +958,15 @@ class Experiment:
         os.remove('/tmp/pc_mapping_M_%f.csv' % rand_tag)
         os.remove('/tmp/pc_mapping_lambda_%f.csv' % rand_tag)
 
-    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30,
-                                    ylim=(0, 0.1)):
+    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30):
         # plot the eigenvalues
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.plot(np.ravel(self.pca['eigenvalues'].values))
-        plt.ylim(ylim)
-        plt.xlim((0, n_components))
+        ax.set_ylim((0, float(np.max(self.pca['eigenvalues']))))
+        ax.set_xlim((0, n_components))
+        ax.set_title('PCA variance by component')
+        ax.set_xlabel('Component')
+        ax.set_ylabel('Loading')
         sns.despine(ax=ax)
         return fig, ax
 
@@ -1036,7 +1038,7 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
-    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None):
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None, title=''):
         fig, ax = get_fig(fig, ax)
         if self.tsne is None:
             raise RuntimeError('Please run self.run_tsne() before plotting.')
@@ -1047,6 +1049,7 @@ class Experiment:
         plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title(title)
         plt.colorbar()
         return fig, ax
 
@@ -1149,14 +1152,15 @@ class Experiment:
         n_rows = int(height / 2)
         n_cols = int(width / 2)
         gs = plt.GridSpec(n_rows, n_cols)
+        axes = []
 
         for i in range(self.diffusion_eigenvectors.shape[1]):
-            ax = plt.subplot(gs[i // n_cols, i % n_cols])
-            plt.scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
+            axes.append(plt.subplot(gs[i // n_cols, i % n_cols]))
+            axes[i].scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
                         cmap=cmap, edgecolors='none', s=size)
-            ax.set_axis_off()
+            axes[i].set_axis_off()
 
-        return fig
+        return fig, axes
 
     @staticmethod
     def _correlation(x: np.array, vals: np.array):
@@ -1337,6 +1341,58 @@ class Experiment:
             # execute if file cannot be found
             return b'GSEA output pattern was not found, and could not be changed.'
 
+    @classmethod
+    def run_gsea_preranked_list(cls, rnk_file, output_stem, gmt_file=None):
+        """helper function to run gsea on already generated .rnk files
+
+        :return:
+        """
+        out_dir, out_prefix = os.path.split(output_stem)
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not gmt_file:
+            cls._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=rnk_file, out_prefix=out_prefix,
+                      out_dir=out_dir, gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}.GseaPreranked.[0-9]*'.format(p=out_prefix)
+            repl = out_prefix
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
+
     def run_gsea_diffexpr(self, cluster_1, cluster_2, output_stem, gmt_file=None):
         """
 
@@ -1503,11 +1559,18 @@ class Experiment:
         :param g2:
         :return:
         """
-        g1 = self.molecules.loc[c1]
-        g2 = self.molecules.loc[c2]
+        # get genes expressed in either set
+        expressed = self.molecules.loc[c1 | c2].sum(axis=0) != 0
 
-        res = pd.Series(index=self.molecules.columns, dtype=float)
-        for g in self.molecules.columns:
+        g1 = self.molecules.loc[c1].ix[:, expressed]
+        g2 = self.molecules.loc[c2].ix[:, expressed]
+
+        g1mu = g1.mean(axis=0)
+        g2mu = g2.mean(axis=0)
+        fc = (g2mu - g1mu) / g1mu
+
+        res = pd.Series(index=self.molecules.columns[expressed], dtype=float)
+        for g in self.molecules.columns[expressed]:
             try:
                 res[g] = mannwhitneyu(np.ravel(g1[g]), np.ravel(g2[g]))[1]
             except ValueError:
@@ -1515,8 +1578,10 @@ class Experiment:
 
         pval_corrected = multipletests(res.values, alpha=alpha, method='fdr_tsbh')[1]
 
-        return pd.Series(pval_corrected, index=self.molecules.columns,
-                         dtype=float).sort_values()
+        pval_sorted = pd.Series(pval_corrected, index=self.molecules.columns[expressed],
+                                dtype=float).sort_values()
+        fc = fc.ix[pval_sorted.index]
+        return pval_sorted, fc
 
     def single_gene_differential_expression(self, gene, alpha):
         """
