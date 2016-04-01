@@ -315,11 +315,35 @@ def find_correct_barcode(code, barcodes_list):
 
     return cor_code, min_ed
 
+# todo implement bare bones construction of grouped_res_dic for pass-through functionality
+# for drop-seq
+def drop_seq(*args, **kwargs):
+    """should call error correction and return grouped_res_dic
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    err_correction_res = ''  # don't need this, it's just a string summary of EC results.
+    grouped_res_dic = None  # need this, it's the output of correct_errors_ajc
+    raise NotImplementedError  # ideally, -> return grouped_res_dic, ''
+
+
+def in_drop_v2(*args, **kwargs):
+    """very simple pass-through wrapper for in_drop error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for in_drop_v2
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    return in_drop(*args, **kwargs)
+
 
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
-def correct_errors(alignments_ra, barcode_files = list(), apply_likelihood=True,
-                   reverse_complement=True, donor_cutoff=1, alpha=0.05,
-                   required_poly_t=1, max_ed=2):
+def in_drop(alignments_ra, barcode_files = list(), apply_likelihood=True,
+            reverse_complement=True, donor_cutoff=1, alpha=0.05,
+            required_poly_t=1, max_ed=2):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
     method
