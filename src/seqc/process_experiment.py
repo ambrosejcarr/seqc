@@ -85,9 +85,9 @@ def parse_args(args):
                    help='email address to receive run summary when running remotely')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='do not terminate the EC2 instance after program completes')
-    r.add_argument('--reverse-complement', default=False, action='store_true',
-                   help='indicates that provided barcode files contain reverse '
-                        'complements of what will be found in the sequencing data')
+    # r.add_argument('--reverse-complement', default=False, action='store_true',
+    #                help='indicates that provided barcode files contain reverse '
+    #                     'complements of what will be found in the sequencing data')
     r.add_argument('--max-ed',  metavar='ED',
                    help='maximum hamming distance for correcting barcode errors',
                    default=2, type=int)
