@@ -19,6 +19,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 from sklearn.neighbors import NearestNeighbors
+from sklearn.manifold import TSNE
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from numpy.linalg import norm
@@ -977,6 +978,8 @@ class Experiment:
         :param n_components:
         :return:
         """
+        warnings.warn('DeprecationWarning: run_tsne() may be deprecated next release. '
+                      'Please test run_skl_tsne() and report any problems.')
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
@@ -985,6 +988,23 @@ class Experiment:
 
         self.tsne = pd.DataFrame(bh_sne(data),
                                  index=self.molecules.index, columns=['x', 'y'])
+
+    def run_skl_tsne(self, n_components=15, **kwargs):
+        """
+        normally run on PCA components; 1st component is normally excluded
+
+        :param n_components:
+        :return:
+        """
+        data = deepcopy(self.molecules)
+        data -= np.min(np.ravel(data))
+        data /= np.max(np.ravel(data))
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
+                            index=self.molecules.index)
+        tsne = TSNE(n_components=2, method='barnes_hut', n_iter=1000, perplexity=50,
+                    angle=0.2, init='pca', random_state=0, **kwargs)
+        res = tsne.fit_transform(data.values)
+        self.tsne = pd.DataFrame(res, index=self.molecules.index, columns=['x', 'y'])
 
     def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
         fig, ax = get_fig(fig=fig, ax=ax)
@@ -1555,8 +1575,8 @@ class Experiment:
         carry out differential expression (post-hoc tests) between cells c1 and cells c2,
         using bh-FDR to correct for multiple tests
         :param alpha:
-        :param g1:
-        :param g2:
+        :param c1:
+        :param c2:
         :return:
         """
         # get genes expressed in either set
