@@ -99,9 +99,6 @@ def parse_args(args):
                         'remotely.')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='Do not terminate the EC2 instance after program completes.')
-    r.add_argument('--reverse-complement', default=False, action='store_true',
-                   help='Indicates that provided barcode files contain reverse '
-                        'complements of what will be found in the sequencing data.')
     r.add_argument('--max-ed',  metavar='ED',
                    help='Maximum hamming distance for correcting barcode errors. Should '
                         'be set to 1 when running in_drop legacy barcodes. (Default=2).',
@@ -534,7 +531,7 @@ def main(args: list = None):
         # correct errors
         correct_errors = getattr(seqc.correct_errors, args.platform)
         cell_counts, _ = correct_errors(
-            ra, args.barcode_files, reverse_complement=args.reverse_complement,
+            ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
 
         seqc.log.info('Creating count matrices')
