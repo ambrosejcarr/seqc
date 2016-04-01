@@ -19,6 +19,7 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 from sklearn.neighbors import NearestNeighbors
+from sklearn.manifold import TSNE
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from numpy.linalg import norm
@@ -42,7 +43,7 @@ class SparseMatrixError(Exception):
 
 # set plotting defaults
 sns.set_style('ticks')
-matplotlib.rc('font', **{'family': 'serif',
+matplotlib.rc('font', **{'family': ['serif'],
                          'serif': ['Computer Modern Roman'],
                          'monospace': ['Computer Modern Typewriter']
                          })
@@ -805,7 +806,7 @@ class Experiment:
 
         return Experiment(reads=reads, molecules=molecules, metadata=metadata)
 
-    def plot_molecules_vs_genes(self, fig=None, ax=None, title=None):
+    def plot_molecules_vs_genes(self, fig=None, ax=None, title=''):
         """
         should be linear relationship
         :param ax:
@@ -823,7 +824,7 @@ class Experiment:
         ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
-        ax.set_title('')
+        ax.set_title(title)
         sns.despine(ax=ax)
 
         return fig, ax
@@ -958,17 +959,37 @@ class Experiment:
         os.remove('/tmp/pc_mapping_M_%f.csv' % rand_tag)
         os.remove('/tmp/pc_mapping_lambda_%f.csv' % rand_tag)
 
-    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30,
-                                    ylim=(0, 0.1)):
+    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30):
         # plot the eigenvalues
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.plot(np.ravel(self.pca['eigenvalues'].values))
-        plt.ylim(ylim)
-        plt.xlim((0, n_components))
+        ax.set_ylim((0, float(np.max(self.pca['eigenvalues']))))
+        ax.set_xlim((0, n_components))
+        ax.set_title('PCA variance by component')
+        ax.set_xlabel('Component')
+        ax.set_ylabel('Loading')
         sns.despine(ax=ax)
         return fig, ax
 
     def run_tsne(self, n_components=15):
+        """
+        normally run on PCA components; 1st component is normally excluded
+
+        :param n_components:
+        :return:
+        """
+        warnings.warn('DeprecationWarning: run_tsne() may be deprecated next release. '
+                      'Please test run_skl_tsne() and report any problems.')
+        data = deepcopy(self.molecules)
+        data -= np.min(np.ravel(data))
+        data /= np.max(np.ravel(data))
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
+                            index=self.molecules.index)
+
+        self.tsne = pd.DataFrame(bh_sne(data),
+                                 index=self.molecules.index, columns=['x', 'y'])
+
+    def run_skl_tsne(self, n_components=15, **kwargs):
         """
         normally run on PCA components; 1st component is normally excluded
 
@@ -980,9 +1001,10 @@ class Experiment:
         data /= np.max(np.ravel(data))
         data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
                             index=self.molecules.index)
-
-        self.tsne = pd.DataFrame(bh_sne(data),
-                                 index=self.molecules.index, columns=['x', 'y'])
+        tsne = TSNE(n_components=2, method='barnes_hut', n_iter=1000, perplexity=50,
+                    angle=0.2, init='pca', random_state=0, **kwargs)
+        res = tsne.fit_transform(data.values)
+        self.tsne = pd.DataFrame(res, index=self.molecules.index, columns=['x', 'y'])
 
     def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
         fig, ax = get_fig(fig=fig, ax=ax)
@@ -1036,7 +1058,7 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
-    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None):
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None, title=''):
         fig, ax = get_fig(fig, ax)
         if self.tsne is None:
             raise RuntimeError('Please run self.run_tsne() before plotting.')
@@ -1047,6 +1069,7 @@ class Experiment:
         plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title(title)
         plt.colorbar()
         return fig, ax
 
@@ -1149,14 +1172,15 @@ class Experiment:
         n_rows = int(height / 2)
         n_cols = int(width / 2)
         gs = plt.GridSpec(n_rows, n_cols)
+        axes = []
 
         for i in range(self.diffusion_eigenvectors.shape[1]):
-            ax = plt.subplot(gs[i // n_cols, i % n_cols])
-            plt.scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
+            axes.append(plt.subplot(gs[i // n_cols, i % n_cols]))
+            axes[i].scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
                         cmap=cmap, edgecolors='none', s=size)
-            ax.set_axis_off()
+            axes[i].set_axis_off()
 
-        return fig
+        return fig, axes
 
     @staticmethod
     def _correlation(x: np.array, vals: np.array):
@@ -1337,6 +1361,58 @@ class Experiment:
             # execute if file cannot be found
             return b'GSEA output pattern was not found, and could not be changed.'
 
+    @classmethod
+    def run_gsea_preranked_list(cls, rnk_file, output_stem, gmt_file=None):
+        """helper function to run gsea on already generated .rnk files
+
+        :return:
+        """
+        out_dir, out_prefix = os.path.split(output_stem)
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not gmt_file:
+            cls._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=rnk_file, out_prefix=out_prefix,
+                      out_dir=out_dir, gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}.GseaPreranked.[0-9]*'.format(p=out_prefix)
+            repl = out_prefix
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
+
     def run_gsea_diffexpr(self, cluster_1, cluster_2, output_stem, gmt_file=None):
         """
 
@@ -1499,15 +1575,22 @@ class Experiment:
         carry out differential expression (post-hoc tests) between cells c1 and cells c2,
         using bh-FDR to correct for multiple tests
         :param alpha:
-        :param g1:
-        :param g2:
+        :param c1:
+        :param c2:
         :return:
         """
-        g1 = self.molecules.loc[c1]
-        g2 = self.molecules.loc[c2]
+        # get genes expressed in either set
+        expressed = self.molecules.loc[c1 | c2].sum(axis=0) != 0
 
-        res = pd.Series(index=self.molecules.columns, dtype=float)
-        for g in self.molecules.columns:
+        g1 = self.molecules.loc[c1].ix[:, expressed]
+        g2 = self.molecules.loc[c2].ix[:, expressed]
+
+        g1mu = g1.mean(axis=0)
+        g2mu = g2.mean(axis=0)
+        fc = (g2mu - g1mu) / g1mu
+
+        res = pd.Series(index=self.molecules.columns[expressed], dtype=float)
+        for g in self.molecules.columns[expressed]:
             try:
                 res[g] = mannwhitneyu(np.ravel(g1[g]), np.ravel(g2[g]))[1]
             except ValueError:
@@ -1515,8 +1598,10 @@ class Experiment:
 
         pval_corrected = multipletests(res.values, alpha=alpha, method='fdr_tsbh')[1]
 
-        return pd.Series(pval_corrected, index=self.molecules.columns,
-                         dtype=float).sort_values()
+        pval_sorted = pd.Series(pval_corrected, index=self.molecules.columns[expressed],
+                                dtype=float).sort_values()
+        fc = fc.ix[pval_sorted.index]
+        return pval_sorted, fc
 
     def single_gene_differential_expression(self, gene, alpha):
         """
@@ -1665,12 +1750,13 @@ class Experiment:
         ax.set_title(title)
         return fig, ax
 
-    def remove_housekeeping_genes(self, organism='human'):
+    def remove_housekeeping_genes(self, organism='human', additional_hk_genes=set()):
         """
         Remove snoRNA and miRNAs because they are undetectable by the library construction
         procedure; their identification is a probable false-postive.
 
         Next, removes housekeeping genes based on GO annotations.
+        :param additional_hk_genes:
         :param organism: options: [human, mouse], default=human.
         """
 
@@ -1683,7 +1769,7 @@ class Experiment:
         genes = genes[~genes.str.contains('^FP[0-9]')]
         # SNO RNAs
         genes = genes[~genes.str.contains('RNU|SNO|RNVU')]
-        # Ribobosomal RNA
+        # Ribosomal RNA
         genes = genes[~genes.str.contains('RNA5S')]
 
         # housekeeping gene ontologies
@@ -1695,9 +1781,9 @@ class Experiment:
             data = {fields[0]: fields[1:] for fields in
                     [line[:-1].split('\t') for line in f.readlines()]}
 
-        hk_genes = {'B2M', 'AC091053.2', 'MALAT1', 'TMSB4X', 'RPL13AP5-RPL13A',
-                    'RP11-864I4.1-EEF1G', 'GAPDH', 'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB',
-                    'ACTG1', 'RP5-1056L3.3', 'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}
+        hk_genes = {'AC091053.2', 'RPL13AP5-RPL13A', 'RP11-864I4.1-EEF1G', 'GAPDH',
+                    'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB', 'ACTG1', 'RP5-1056L3.3',
+                    'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}.update(additional_hk_genes)
         for c in cats:
             hk_genes.update(data[c])
 

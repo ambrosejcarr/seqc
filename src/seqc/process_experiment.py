@@ -38,61 +38,76 @@ def parse_args(args):
 
     a = p.add_argument_group('required arguments')
     a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
-                   help='text file(s) containing valid cell barcodes (one barcode per '
-                        'line)')
+                   help='Either (a) an s3 link to a folder containing only barcode '
+                        'files, or (b) the full file path of each file on the local '
+                        'machine.')
     a.add_argument('-o', '--output-stem', metavar='O', required=True,
-                   help='file stem for output files e.g. ./seqc_output/tumor_run5')
+                   help='If remote=True (default), an s3 link to the directory where all '
+                        'output data should be uploaded when the run completes (e.g. '
+                        's3://my-bucket/seqc_output_run_x/). If remote=False, the '
+                        'complete path and prefix for the output data '
+                        '(e.g. /Users/me/data/seqc/run_x_output). Cannot have a terminal '
+                        '/.')
     a.add_argument('-i', '--index', metavar='I', required=True,
-                   help='Folder or s3 link to folder containing index files for '
-                        'alignment and resolution of ambiguous reads.')
+                   help='Local folder or s3 link to a directory containing the STAR '
+                        'index used for alignment.')
 
     i = p.add_argument_group('input arguments')
     i.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
-                   help='fastq file(s) containing genomic information')
+                   help='List of fastq file(s) containing genomic information, or an s3 '
+                        'link to a directory containing only genomic fastq file(s).')
     i.add_argument('-b', '--barcode-fastq', nargs='*', metavar='B', default=[],
-                   help='fastq file(s) containing barcode information')
+                   help='List of fastq file(s) containing barcode information, or an s3 '
+                        'link to a directory containing only barcode fastq file(s).')
     i.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
-                   help='fastq file containing genomic information annotated with '
-                        'barcode data')
+                   help='Filename or s3 link to a fastq file containing genomic '
+                        'information annotated with barcode data.')
     i.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
-                   help='sam file containing aligned, merged fastq records.')
+                   help='Filename or s3 link to a .sam file containing aligned, merged '
+                        'sequence records.')
     i.add_argument('-r', '--read-array', nargs='?', metavar='RA', default='',
-                   help='ReadArray archive containing processed sam records')
+                   help='Filename or s3 link to a ReadArray (.h5) archive containing '
+                        'processed sam records.')
     i.add_argument('--basespace', metavar='BS',
-                   help='BaseSpace sample ID. Identifies a sequencing run to download '
-                        'and process.')
+                   help='BaseSpace sample ID. The string of numbers indicating the id '
+                        'of the BaseSpace sample. (e.g. if the link to the sample is'
+                        'https://basespace.illumina.com/sample/34000253/0309, '
+                        '--basespace=34000253.')
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F',
                    help='maximum paired-end insert size that is considered a valid '
-                        'record',
+                        'record. For multialignment correction. Not currently used.',
                    default=1000)
     f.add_argument('--min-poly-t', metavar='T',
                    help='minimum size of poly-T tail that is required for a barcode to '
-                        'be considered a valid record',
+                        'be considered a valid record (default=3)',
                    default=3, type=int)
-    f.add_argument('--max-dust-score', metavar='D', help='maximum complexity score for a '
-                                                         'read to be considered valid')
+    f.add_argument('--max-dust-score', metavar='D',
+                   help='maximum complexity score for a read to be considered valid. '
+                        '(default=10, higher scores indicate lower complexity.)')
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
     r.set_defaults(check=False)
     r.add_argument('--local', dest="remote", action="store_false",
-                   help='run SEQC locally instead of initiating on AWS EC2 servers')
+                   help='Run SEQC locally instead of initiating on AWS EC2 servers.')
     r.add_argument('--aws', default=False, action='store_true',
-                   help='automatic flag; no need for user specification')
+                   help='Automatic flag; no need for user specification.')
     r.add_argument('--email-status', metavar='E', default=None,
-                   help='email address to receive run summary when running remotely')
+                   help='Email address to receive run summary or errors when running '
+                        'remotely.')
     r.add_argument('--no-terminate', default=False, action='store_true',
-                   help='do not terminate the EC2 instance after program completes')
-    # r.add_argument('--reverse-complement', default=False, action='store_true',
-    #                help='indicates that provided barcode files contain reverse '
-    #                     'complements of what will be found in the sequencing data')
+                   help='Do not terminate the EC2 instance after program completes.')
+    r.add_argument('--reverse-complement', default=False, action='store_true',
+                   help='Indicates that provided barcode files contain reverse '
+                        'complements of what will be found in the sequencing data.')
     r.add_argument('--max-ed',  metavar='ED',
-                   help='maximum hamming distance for correcting barcode errors',
+                   help='Maximum hamming distance for correcting barcode errors. Should '
+                        'be set to 1 when running in_drop legacy barcodes. (Default=2).',
                    default=2, type=int)
     r.add_argument('--check-progress', dest="check", action="store_true",
-                   help='check progress of remote SEQC run')
+                   help='Check progress of all currently running remote SEQC runs.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
