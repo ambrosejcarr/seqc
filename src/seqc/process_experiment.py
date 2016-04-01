@@ -24,10 +24,9 @@ class NewArgumentParser(argparse.ArgumentParser):
         # checks to see whether user wants to check remote experiment status
         if '--check-progress' in sys.argv[1:]:
             seqc.remote.check_progress()
-            sys.exit(0)
         else:
             print(message)
-            sys.exit(0)
+        sys.exit(0)
 
 
 def parse_args(args):
@@ -464,6 +463,7 @@ def main(args: list = None):
                 input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
                 if args.merged_fastq.endswith('.gz'):
+                    # todo: modify STAR to take in merged_fastq.gz
                     gunzip_cmd = 'gunzip ' + args.merged_fastq
                     full_file = Popen(gunzip_cmd.split())
                     full_file.communicate()
