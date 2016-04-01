@@ -15,8 +15,23 @@ class ConfigurationError(Exception):
     pass
 
 
+class ArgumentParserError(Exception):
+    pass
+
+
+class NewArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        # checks to see whether user wants to check remote experiment status
+        if '--check-progress' in sys.argv[1:]:
+            seqc.remote.check_progress()
+            sys.exit(0)
+        else:
+            print(message)
+            sys.exit(0)
+
+
 def parse_args(args):
-    p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
+    p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2'],
@@ -62,6 +77,7 @@ def parse_args(args):
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
+    r.set_defaults(check=False)
     r.add_argument('--local', dest="remote", action="store_false",
                    help='run SEQC locally instead of initiating on AWS EC2 servers')
     r.add_argument('--aws', default=False, action='store_true',
@@ -74,13 +90,18 @@ def parse_args(args):
                    help='indicates that provided barcode files contain reverse '
                         'complements of what will be found in the sequencing data')
     r.add_argument('--max-ed',  metavar='ED',
-                    help='maximum hamming distance for correcting barcode errors',
-                    default=2, type=int)
+                   help='maximum hamming distance for correcting barcode errors',
+                   default=2, type=int)
+    r.add_argument('--check-progress', dest="check", action="store_true",
+                   help='check progress of remote SEQC run')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
 
-    return p.parse_args(args)
+    try:
+        return p.parse_args(args)
+    except ArgumentParserError:
+        raise
 
 
 def run_remote(stem: str) -> None:
@@ -122,7 +143,8 @@ def run_remote(stem: str) -> None:
     if '/usr/local/bin/process_experiment.py' not in res:
         raise ConfigurationError('Error executing SEQC on the cluster!')
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
-                    'completes.')
+                    'completes. Please use "process_experiment.py --check-progress" to'
+                    'monitor the status of the remote run.')
 
 
 def cluster_cleanup():
@@ -215,6 +237,9 @@ def check_arguments(args, basespace_token: str):
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
         raise ValueError('At least one input argument must be passed to SEQC.')
+    if not barcodes:
+        if args.platform != 'drop_seq':
+            raise ValueError('Barcode files are required for this SEQC run.')
 
     # keep track of which files need to be checked
     seqc_input = barcodes + [index_dir]
@@ -246,7 +271,6 @@ def check_arguments(args, basespace_token: str):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
 
-    # check for validity of all links that will be used by SEQC
     check_s3links(seqc_input)
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
@@ -411,6 +435,7 @@ def main(args: list = None):
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
         # determine where the script should start:
+        input_data = 'start'
         merge = True
         align = True
         process_samfile = True
@@ -436,7 +461,13 @@ def main(args: list = None):
         if align:
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
+                input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
+                if args.merged_fastq.endswith('.gz'):
+                    gunzip_cmd = 'gunzip ' + args.merged_fastq
+                    full_file = Popen(gunzip_cmd.split())
+                    full_file.communicate()
+                    args.merged_fastq = args.merged_fastq.strip('.gz')
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
             *base_directory, stem = args.output_stem.split('/')
@@ -448,6 +479,7 @@ def main(args: list = None):
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
             if args.samfile.startswith('s3://'):
+                input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
             ra = seqc.core.ReadArray.from_samfile(
@@ -455,6 +487,7 @@ def main(args: list = None):
             ra.save(args.output_stem + '.h5')
         else:
             if args.read_array.startswith('s3://'):
+                input_data = 'readarray'
                 args.read_array = s3files_download([args.read_array], output_dir)[0]
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
@@ -478,7 +511,7 @@ def main(args: list = None):
                               ', '.join(map(str, args.barcode_files)))
             except FileExistsError:
                 pass  # file is already present.
-        print()
+
         cell_counts, _ = seqc.correct_errors.correct_errors(
             ra, args.barcode_files, reverse_complement=args.reverse_complement,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
@@ -497,7 +530,7 @@ def main(args: list = None):
 
             if args.email_status:
                 seqc.remote.upload_results(
-                    args.output_stem, args.email_status, aws_upload_key)
+                    args.output_stem, args.email_status, aws_upload_key, input_data)
 
     except:
         seqc.log.exception()
