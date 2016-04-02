@@ -511,7 +511,7 @@ def main(args: list = None):
 
         seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
-        if args.platform != 'drop-seq':
+        if args.platform != 'drop_seq':
             if not args.barcode_files[0].startswith('s3://'):
                 for cb in args.barcode_files:
                     if not os.path.isfile(cb):
