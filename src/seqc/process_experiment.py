@@ -509,7 +509,6 @@ def main(args: list = None):
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
 
-        seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
         if args.platform != 'drop_seq':
             if not args.barcode_files[0].startswith('s3://'):
@@ -529,8 +528,10 @@ def main(args: list = None):
                 except FileExistsError:
                     pass  # file is already present.
 
-        # todo: change hard-coded "False" value depending on correct_errors.py
-        cell_counts, _ = seqc.correct_errors.correct_errors(
+        # correct errors
+        seqc.log.info('Correcting cell barcode and RMT errors')
+        correct_errors = getattr(seqc.correct_errors, args.platform)
+        cell_counts, _ = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
 
@@ -540,7 +541,6 @@ def main(args: list = None):
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
 
-        # todo: check if local-only runs (not local on AWS) will ever upload onto S3
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
         if args.aws:
