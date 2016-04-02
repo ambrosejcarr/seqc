@@ -329,7 +329,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     molecules = defaultdict(set)
     reads = defaultdict(int)
     err_correction_res = ''
-    for row in alignments_ra:  # generates tuples of rows
+    for row in alignments_ra.data:  # generates tuples of rows
         molecules[(row[5], row[1])].add(row[2])
         reads[(row[5], row[1])] += 1
 
