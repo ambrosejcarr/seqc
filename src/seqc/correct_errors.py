@@ -333,7 +333,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
         molecules[(row[5], row[1])].add(row[2])
         reads[(row[5], row[1])] += 1
 
-    grouped_res_dic = None
+    grouped_res_dic = {}
     for k in molecules:
         grouped_res_dic[k] = (molecules[k], reads[k])
 
