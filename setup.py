@@ -45,6 +45,9 @@ setup(name='seqc',
           'statsmodels',
           'ecdsa',
           'pycrypto',
+          'lxml',
+          'html5lib',
+          'BeautifulSoup4',
           'scikit_learn>=0.17'],
       scripts=['src/seqc/process_experiment.py']
       )

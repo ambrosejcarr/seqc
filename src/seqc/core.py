@@ -42,8 +42,7 @@ class SparseMatrixError(Exception):
 
 # set plotting defaults
 sns.set_style('ticks')
-matplotlib.rc('font', **{'family': ['serif'],
-                         'serif': ['Computer Modern Roman'],
+matplotlib.rc('font', **{'serif': ['Computer Modern Roman'],
                          'monospace': ['Computer Modern Typewriter']
                          })
 
@@ -1536,6 +1535,39 @@ class Experiment:
         pool = multiprocessing.Pool(n_workers)
         errors = pool.map(partial_gsea_process, components)
         return errors
+
+    def select_biological_components(self, output_stem, n=10, components=None):
+        """
+        :param output_stem:
+        :param n:  number of significant enrichments to report
+        :param components:
+        :return:
+        """
+        if components is None:
+            components = self.diffusion_map_correlations.columns
+
+        # get positive enrichments for each component
+        for c in components:
+            report_pattern = 'gsea_report_for_na_pos_[0-9]*?\.html'
+            try:
+                files = os.listdir('{stem}_{c}'.format(stem=output_stem, c=c))
+            except FileNotFoundError:
+                print('No enrichments were calculated for component {c}'.format(c=c))
+                continue
+            for f in files:
+                mo = re.match(report_pattern, f)
+                if mo:
+                    try:
+                        report_data = pd.read_html('{stem}_{c}/{f}'.format(
+                            stem=output_stem, c=c, f=f), header=0, index_col=0)[0]
+                    except ValueError:
+                        print('could not find table for component {}'.format(c))
+                        break
+                    # report top n significant enrichments
+                    significant = np.where(report_data['FDR q-val'] < 0.05)[0][:n]
+                    print('component: {}'.format(c))
+                    print(list(report_data.iloc[significant, 0]))
+                    print('')
 
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
