@@ -1536,10 +1536,12 @@ class Experiment:
         errors = pool.map(partial_gsea_process, components)
         return errors
 
-    def select_biological_components(self, output_stem, n=10, components=None):
+    def select_biological_components(self, output_stem, n=10, alpha=0.5,
+                                     components=None):
         """
         :param output_stem:
         :param n:  number of significant enrichments to report
+        :param alpha:  float, significance threshold
         :param components:
         :return:
         """
@@ -1564,7 +1566,7 @@ class Experiment:
                         print('could not find table for component {}'.format(c))
                         break
                     # report top n significant enrichments
-                    significant = np.where(report_data['FDR q-val'] < 0.05)[0][:n]
+                    significant = np.where(report_data['FDR q-val'] < alpha)[0][:n]
                     print('component: {}'.format(c))
                     print(list(report_data.iloc[significant, 0]))
                     print('')
@@ -1833,7 +1835,6 @@ class Experiment:
                          metadata=self.metadata)
         exp._normalized = self._normalized
         return exp
-
 
     def annotate_clusters_by_expression(self, alpha=0.05):
         """
