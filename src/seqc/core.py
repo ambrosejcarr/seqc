@@ -604,7 +604,6 @@ class Experiment:
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
-    # todo untested
     def plot_tsne_by_metadata(self, label, fig=None, ax=None):
         cats = set(self.metadata[label])
         colors = qualitative_colors(len(cats))
@@ -1553,10 +1552,10 @@ class Experiment:
         # Select the genes
         use_genes = list()
         for component in components:
-            cutoff = (np.mean(self.diffusion_map_correlations.iloc[:, component]) +
-                      2 * np.std(self.diffusion_map_correlations.iloc[:, component]))
+            cutoff = (np.mean(self.diffusion_map_correlations.ix[:, component]) +
+                      2 * np.std(self.diffusion_map_correlations.ix[:, component]))
             use_genes = use_genes + list(self.diffusion_map_correlations.index[abs(
-                    self.diffusion_map_correlations.iloc[:, component]) > cutoff])
+                    self.diffusion_map_correlations.ix[:, component]) > cutoff])
 
         # Unique genes
         use_genes = list(set(use_genes))
