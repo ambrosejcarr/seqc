@@ -1,8 +1,14 @@
 import os
+import sys
 import shutil
 from subprocess import call
 from setuptools import setup
 from warnings import warn
+
+if sys.version_info.major != 3:
+    raise RuntimeError('SEQC requires Python 3')
+if sys.version_info.minor < 5:
+    warn('Multiprocessing analysis methods may not function on Python versions < 3.5')
 
 # install phenograph
 call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
