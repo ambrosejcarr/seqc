@@ -33,7 +33,6 @@ with warnings.catch_warnings():
     warnings.simplefilter('ignore')  # catch experimental ipython widget warning
     import seaborn as sns
 import phenograph
-from tsne import bh_sne
 import seqc
 
 
@@ -295,7 +294,6 @@ class Experiment:
         self._diffusion_eigenvalues = None
         self._diffusion_map_correlations = None
         self._cluster_assignments = None
-        self._unnormalized_cell_sizes = None
 
     def save(self, fout: str) -> None:
         """
@@ -638,7 +636,9 @@ class Experiment:
         molecules = deepcopy(self.molecules)
         molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
 
-        return Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp._normalized = self._normalized
+        return exp
 
     def scid_to_official_gene_symbol(self, gtf):
         """convert scids to official gene symbols; useful for older v0.1.2 data
@@ -661,7 +661,9 @@ class Experiment:
         molecules = deepcopy(self.molecules)
         molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
 
-        return Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp._normalized = self._normalized
+        return exp
 
     def plot_molecules_vs_reads_per_molecule(self, fig=None, ax=None, min_molecules=10,
                                              ylim=(0, 150), title='Cell Coverage Plot'):
@@ -745,7 +747,9 @@ class Experiment:
                                  columns=self.molecules.columns)
 
         metadata = self.metadata.ix[row_inds, :]
-        return Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp = Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp._normalized = self._normalized
+        return exp
 
     def plot_mitochondrial_molecule_fraction(self, fig=None, ax=None,
                                              title='Dead Cell Identification Plot'):
@@ -803,7 +807,9 @@ class Experiment:
         reads = self.reads.ix[pass_filter]
         metadata = self.metadata.ix[pass_filter]
 
-        return Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp = Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp._normalized = self._normalized
+        return exp
 
     def plot_molecules_vs_genes(self, fig=None, ax=None, title=''):
         """
@@ -859,9 +865,6 @@ class Experiment:
         nonzero_genes = exp.molecules.sum(axis=0) != 0
         exp.molecules = exp.molecules.ix[:, nonzero_genes]
         exp.reads = exp.reads.ix[:, nonzero_genes]
-
-        # set unnormalized_cell_sums
-        exp.unnormalized_cell_sizes = molecule_sums
 
         return exp
 
@@ -970,38 +973,38 @@ class Experiment:
         sns.despine(ax=ax)
         return fig, ax
 
-    def run_tsne(self, n_components=15):
+    # def run_tsne(self, n_components=15):
+    #     """
+    #     normally run on PCA components; 1st component is normally excluded
+    #
+    #     :param n_components:
+    #     :return:
+    #     """
+    #     warnings.warn('DeprecationWarning: run_tsne() may be deprecated next release. '
+    #                   'Please test run_skl_tsne() and report any problems.')
+    #     data = deepcopy(self.molecules)
+    #     data -= np.min(np.ravel(data))
+    #     data /= np.max(np.ravel(data))
+    #     data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
+    #                         index=self.molecules.index)
+    #
+    #     self.tsne = pd.DataFrame(bh_sne(data),
+    #                              index=self.molecules.index, columns=['x', 'y'])
+
+    def run_tsne(self, n_components=15, **kwargs):
         """
         normally run on PCA components; 1st component is normally excluded
 
         :param n_components:
         :return:
         """
-        warnings.warn('DeprecationWarning: run_tsne() may be deprecated next release. '
-                      'Please test run_skl_tsne() and report any problems.')
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
         data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
                             index=self.molecules.index)
-
-        self.tsne = pd.DataFrame(bh_sne(data),
-                                 index=self.molecules.index, columns=['x', 'y'])
-
-    def run_skl_tsne(self, n_components=15, **kwargs):
-        """
-        normally run on PCA components; 1st component is normally excluded
-
-        :param n_components:
-        :return:
-        """
-        data = deepcopy(self.molecules)
-        data -= np.min(np.ravel(data))
-        data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
-                            index=self.molecules.index)
-        tsne = TSNE(n_components=2, method='barnes_hut', n_iter=1000, perplexity=50,
-                    angle=0.2, init='pca', random_state=0, **kwargs)
+        tsne = TSNE(n_components=2, method='barnes_hut', n_iter=1000, perplexity=30,
+                    angle=0.5, init='pca', random_state=0, **kwargs)
         res = tsne.fit_transform(data.values)
         self.tsne = pd.DataFrame(res, index=self.molecules.index, columns=['x', 'y'])
 
@@ -1057,15 +1060,15 @@ class Experiment:
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
-    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None, title=''):
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None, title='',
+                                sizes=None):
         fig, ax = get_fig(fig, ax)
         if self.tsne is None:
             raise RuntimeError('Please run self.run_tsne() before plotting.')
-        if self._normalized:
-            sizes = self.unnormalized_cell_sizes.values
-        else:
-            sizes = self.molecules.sum(axis=1)
-        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap)
+        if sizes is None:
+            sizes = self.molecules.sum(axis=1)  # use current library sizes
+        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap, vmax=vmax,
+                    vmin=vmin)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1094,6 +1097,7 @@ class Experiment:
         nonzero_genes = experiment.molecules.sum(axis=0) != 0
         experiment.molecules = experiment.molecules.ix[:, nonzero_genes]
         experiment.reads = experiment.reads.ix[:, nonzero_genes]
+        experiment._normalized = self._normalized
         return experiment
 
     def run_diffusion_map(self, knn=10, n_diffusion_components=10,
@@ -1566,8 +1570,11 @@ class Experiment:
         metadata = self.metadata
 
         # throws out analysis results; this makes sense
-        return Experiment(reads=subset_reads, molecules=subset_molecules,
-                          metadata=metadata)
+        exp = Experiment(reads=subset_reads, molecules=subset_molecules,
+                         metadata=metadata)
+        exp._normalized = self._normalized
+        exp.molecules = exp.molecules.groupby(axis=1, level=0).sum()  # remove duplicate genes
+        return exp
 
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
         """
@@ -1790,8 +1797,11 @@ class Experiment:
         # remove genes
         genes = genes.difference(hk_genes)
 
-        return Experiment(reads=self.reads[genes], molecules=self.molecules[genes],
-                          metadata=self.metadata)
+        exp = Experiment(reads=self.reads[genes], molecules=self.molecules[genes],
+                         metadata=self.metadata)
+        exp._normalized = self._normalized
+        return exp
+
 
     def annotate_clusters_by_expression(self, alpha=0.05):
         """
@@ -1811,7 +1821,7 @@ class Experiment:
         data = self.molecules.values[idx, :]
 
         # get points to split the array
-        split_indices = np.where(np.diff(self.cluster_assignments[idx]))[0] + 1
+        split_indices = np.where(np.diff(self.cluster_assignments.iloc[idx]))[0] + 1
 
         # create the function for the kruskal test
         f = lambda v: kruskalwallis(*np.split(v, split_indices))[1]

@@ -40,7 +40,6 @@ setup(name='seqc',
           'intervaltree',
           'tables',
           'nose2',
-          'tsne==0.1.3',  # todo
           'matplotlib',
           'seaborn',
           'statsmodels',
