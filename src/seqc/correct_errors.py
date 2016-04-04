@@ -11,6 +11,7 @@ import seqc
 
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 
+# todo: increase number of error correction methods by 2
 NUM_OF_ERROR_CORRECTION_METHODS = 3
 #ERROR_CORRECTION_AJC = 0
 
@@ -338,6 +339,32 @@ def drop_seq(alignments_ra, *args, **kwargs):
         grouped_res_dic[k] = (molecules[k], reads[k])
 
     return grouped_res_dic, err_correction_res
+
+
+def mars1_seq(*args, **kwargs):
+    """very simple pass-through wrapper for mars1_seq error correction, needs to be
+    replaced with the actual error correction method instead of just drop_seq()
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    # todo: replace with actual mars1_seq error correction method
+    return drop_seq(*args, **kwargs)
+
+
+def mars2_seq(*args, **kwargs):
+    """very simple pass-through wrapper for mars1_seq error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for mars2_seq
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    # todo: replace with actual mars1_seq error correction method
+    return mars1_seq(*args, **kwargs)
 
 
 def in_drop_v2(*args, **kwargs):
