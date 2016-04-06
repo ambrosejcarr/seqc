@@ -86,6 +86,10 @@ def parse_args(args):
     f.add_argument('--max-dust-score', metavar='D',
                    help='maximum complexity score for a read to be considered valid. '
                         '(default=10, higher scores indicate lower complexity.)')
+    f.add_argument('--max-ed', metavar='ED',
+                   help='Maximum hamming distance for correcting barcode errors. Should '
+                        'be set to 1 when running in_drop legacy barcodes. (Default=2).',
+                   default=2, type=int)
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
@@ -99,10 +103,6 @@ def parse_args(args):
                         'remotely.')
     r.add_argument('--no-terminate', default=False, action='store_true',
                    help='Do not terminate the EC2 instance after program completes.')
-    r.add_argument('--max-ed',  metavar='ED',
-                   help='Maximum hamming distance for correcting barcode errors. Should '
-                        'be set to 1 when running in_drop legacy barcodes. (Default=2).',
-                   default=2, type=int)
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
 
