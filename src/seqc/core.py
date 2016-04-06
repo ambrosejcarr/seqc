@@ -1139,8 +1139,17 @@ class Experiment:
         experiment._normalized = self._normalized
         return experiment
 
-    def run_diffusion_map(self, knn=10, n_diffusion_components=10,
+    def run_diffusion_map(self, knn=20, n_diffusion_components=20,
                           n_pca_components=15, epsilon=1):
+        """
+
+        :param knn: default can be a bit low; I use 60+ for large datasets.
+        :param n_diffusion_components:
+        :param n_pca_components:
+        :param epsilon:
+        :return:
+        """
+
 
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
@@ -1222,7 +1231,21 @@ class Experiment:
                         cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             axes[i].set_axis_off()
 
+            # get outliers, plot in red
+            # mu = np.mean(self.diffusion_eigenvectors[i])
+            # std = np.std(self.diffusion_eigenvectors[i])
+            # emin = mu - 10 * std
+            # emax = mu + 10 * std
+            # is_outlier = (self.diffusion_eigenvectors[i] < emin) | (
+            # self.diffusion_eigenvectors[i] > emax)
+            # axes[i].plot(self.tsne.ix[is_outlier, 'x'], self.tsne.ix[is_outlier, 'y'],
+            #              c='r', linewidth=0, marker='o',
+            #              markersize=np.sqrt(size))
+
         return fig, axes
+
+    def remove_diffusion_outliers(self):
+        raise NotImplementedError
 
     @staticmethod
     def _correlation(x: np.array, vals: np.array):
