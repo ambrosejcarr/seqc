@@ -13,19 +13,6 @@ if sys.version_info.minor < 5:
 # install phenograph
 call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
 
-# look in /usr/local/ and /usr/local/hdf5/ for hdf5 libraries;
-# if found in /usr/local/hdf5/, set an environment variable to help pip3 install it.
-h5fail = True
-if os.path.isfile('/usr/lib/libhdf5.so'):
-    h5file = False
-elif os.path.isfile('/usr/local/lib/libhdf5.so'):
-    h5fail = False
-elif os.path.isfile('/usr/hdf5/lib/libhdf5.so'):
-    os.environ['HDF5_DIR'] = '/usr/hdf5/'
-elif os.path.isfile('/usr/local/hdf5/lib/libhdf5.so'):
-    os.environ['HDF5_DIR'] = '/usr/local/hdf5/'
-    h5fail = False
-
 setup(name='seqc',
       version='0.1.6',
       description='Single Cell Sequencing Processing and QC Suite',
@@ -35,8 +22,8 @@ setup(name='seqc',
       packages=['seqc', 'seqc.sequence', 'seqc.alignment'],
       install_requires=[
           'numpy>=1.10.0',
-          'cython>0.14',  # tables requirement
-          'numexpr>=2.4',  # tables requirement
+          'cython>0.14',
+          'numexpr>=2.4',
           'pandas>=0.17.0',
           'paramiko',
           'regex',
@@ -44,28 +31,19 @@ setup(name='seqc',
           'scipy>=0.14.0',
           'boto3',
           'intervaltree',
-          'tables',
-          'nose2',
           'matplotlib',
           'seaborn',
           'statsmodels',
           'ecdsa',
           'pycrypto',
-          'lxml',
-          'html5lib',
-          'BeautifulSoup4',
           'scikit_learn>=0.17'],
-      scripts=['src/seqc/process_experiment.py']
+      scripts=['src/seqc/process_experiment.py'],
+      extras_require={
+          'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
+          'HDF5': ['tables'],
+          'TEST': ['nose2']
+      }
       )
-
-# print any warnings
-if h5fail:
-    warn('SEQC: libhdf5 shared library "libhdf5.so" not found in /usr/local/lib/, '
-         '/usr/lib/, /usr/hdf5/lib/, or /usr/local/lib/hdf5/. '
-         'tables will not find h5lib and installation will likely fail unless the '
-         'HDF5_DIR environment variable has been set to the location that HDF5 was '
-         'installed into. If HDF5 is not installed, please install it prior to '
-         'installing SEQC if you wish to parse the .h5 archive.')
 
 # get location of setup.py
 setup_dir = os.path.dirname(os.path.realpath(__file__))
