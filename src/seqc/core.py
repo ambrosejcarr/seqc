@@ -460,7 +460,7 @@ class Experiment:
     def is_dense(self):
         return not self.is_sparse()
 
-
+    # todo may still be side-effecting
     @staticmethod
     def merge(experiments):
         """
@@ -777,7 +777,6 @@ class Experiment:
         :return:
         """
 
-        # todo fix this, we're dense now. Don't need to deal with reads at all. Reads are gone after we convert to dense!
 
         if metadata_labels is None:
             metadata_labels = {}
@@ -786,7 +785,9 @@ class Experiment:
 
         # todo are these getting mutated twice??
         # mutate cell identifiers to ensure they are unique after merging
+        old_index = []
         for i, e in enumerate(experiments):
+            old_index.append(e.molecules.index)
             suffix = '_{!s}'.format(i)
             new_cells = [str(c) + suffix for c in e.molecules.index]
             e.molecules.index = new_cells
@@ -798,8 +799,8 @@ class Experiment:
         meta_cols = set()
         for e in experiments:
             genes.update(list(e.molecules.columns))
-            cells.extend(list(e.molecules.index))
-            meta_cols.update(e.metadata.columns)
+            cells.extend(deepcopy(list(e.molecules.index)))
+            meta_cols.update(list(e.metadata.columns))  # list not necessary?
 
         # combine data
         empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
@@ -814,6 +815,11 @@ class Experiment:
             metadata[k] = pd.Series(index=cells, dtype='O')
             for e, metadata_val in zip(experiments, v):
                 metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
+
+        # regenerate original columns in experiemnt
+        for i, e in zip(old_index, experiments):
+            e.molecules.index = i
+            e.metadata.index = i
 
         return Experiment(molecules=m_combined, reads=None, metadata=metadata)
 
@@ -832,7 +838,7 @@ class Experiment:
         molecule_counts = self.molecules.sum(axis=1)
         gene_counts = np.sum(self.molecules > 0, axis=1)
         x, y, z = density_2d(np.log10(molecule_counts), np.log10(gene_counts))
-        ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap)
+        ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap, alpha=0.65)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
         ax.set_title(title)
@@ -851,7 +857,7 @@ class Experiment:
         # plot residuals that should be removed in red
         residuals = yhat - y
         remove = residuals > .15
-        ax.scatter(x[remove], y[remove], color='r', s=12)
+        ax.scatter(x[remove], y[remove], color='r', s=12, alpha=0.65)
 
         return fig, ax
 
@@ -1045,7 +1051,7 @@ class Experiment:
     def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
         fig, ax = get_fig(fig=fig, ax=ax)
         x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
-        plt.scatter(x, y, c=z, s=size, cmap=cmap)
+        plt.scatter(x, y, c=z, s=size, cmap=cmap, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1102,7 +1108,7 @@ class Experiment:
         if sizes is None:
             sizes = self.molecules.sum(axis=1)  # use current library sizes
         plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap, vmax=vmax,
-                    vmin=vmin)
+                    vmin=vmin, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1123,8 +1129,9 @@ class Experiment:
         retain = self.cluster_assignments.index[~self.cluster_assignments.isin(clusters)]
         molecules = self.molecules.ix[retain, :]
         metadata = self.metadata.ix[retain, :]
-        experiment = Experiment(molecules=molecules, reads=None, metadata=metadata)
-        experiment._cluster_assignments = self.cluster_assignments[retain]
+        experiment = Experiment(molecules=deepcopy(molecules), reads=None,
+                                metadata=deepcopy(metadata))
+        experiment._cluster_assignments = deepcopy(self.cluster_assignments[retain])
 
         # remove any genes that now have zero expression
         nonzero_genes = experiment.molecules.sum(axis=0) != 0
@@ -1212,7 +1219,7 @@ class Experiment:
         for i in range(self.diffusion_eigenvectors.shape[1]):
             axes.append(plt.subplot(gs[i // n_cols, i % n_cols]))
             axes[i].scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
-                        cmap=cmap, edgecolors='none', s=size)
+                        cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             axes[i].set_axis_off()
 
         return fig, axes
@@ -1632,14 +1639,17 @@ class Experiment:
         use_genes = list(set(use_genes))
 
         # Create new scdata object
-        subset_molecules = self.molecules.ix[:, use_genes]
-        metadata = self.metadata
+        subset_molecules = deepcopy(self.molecules.ix[:, use_genes])
+        metadata = deepcopy(self.metadata)
 
         # throws out analysis results; this makes sense
         exp = Experiment(molecules=subset_molecules, reads=None,
                          metadata=metadata)
         exp._normalized = self._normalized
-        exp.molecules = exp.molecules.groupby(axis=1, level=0).sum()  # remove duplicate genes
+
+        # remove duplicate genes
+        exp.molecules = exp.molecules.groupby(axis=1, level=0).sum()
+
         return exp
 
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
@@ -1785,7 +1795,7 @@ class Experiment:
             ax = plt.subplot(gs[i // n_cols, i % n_cols])
             axes.append(ax)
             plt.scatter(self.tsne['x'], self.tsne['y'], c=np.arcsinh(self.molecules[g]),
-                        cmap=cmap, edgecolors='none', s=size)
+                        cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             ax.set_axis_off()
             ax.set_title(g)
 
@@ -1816,7 +1826,7 @@ class Experiment:
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.scatter(self.tsne['x'], self.tsne['y'],
                    c=np.arcsinh(self.molecules[genes].sum(axis=1)),
-                   cmap=cmap, edgecolors='none', s=size)
+                   cmap=cmap, edgecolors='none', s=size, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1863,8 +1873,8 @@ class Experiment:
         # remove genes
         genes = genes.difference(hk_genes)
 
-        exp = Experiment(molecules=self.molecules[genes], reads=None,
-                         metadata=self.metadata)
+        exp = Experiment(molecules=deepcopy(self.molecules[genes]), reads=None,
+                         metadata=deepcopy(self.metadata))
         exp._normalized = self._normalized
         return exp
 
