@@ -558,7 +558,7 @@ class Experiment:
             for line in f:
                 match = re.match(pattern, line)
                 if match:
-                    gene_id_map[int(match.group(2))].add(match.group(4))
+                    gene_id_map[int(match.group(2))].add(match.group(4).upper())
         return gene_id_map
 
     def ensembl_gene_id_to_official_gene_symbol(self, gtf=None, gene_id_map=None):
@@ -1409,6 +1409,10 @@ class Experiment:
 
         :return:
         """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
+
         out_dir, out_prefix = os.path.split(output_stem)
         os.makedirs(out_dir, exist_ok=True)
 
@@ -1465,6 +1469,9 @@ class Experiment:
         :param components:
         :return:
         """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
 
         out_dir, out_prefix = os.path.split(output_stem)
         out_dir += '/'
@@ -1542,6 +1549,9 @@ class Experiment:
         :param components:
         :return:
         """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
 
         out_dir, out_prefix = os.path.split(output_stem)
         out_dir += '/'
