@@ -351,7 +351,7 @@ def mars1_seq(*args, **kwargs):
     """
 
     # todo: replace with actual mars1_seq error correction method
-    return drop_seq(*args, **kwargs)
+    return in_drop(*args, **kwargs)
 
 
 def mars2_seq(*args, **kwargs):
@@ -364,7 +364,7 @@ def mars2_seq(*args, **kwargs):
     """
 
     # todo: replace with actual mars1_seq error correction method
-    return mars1_seq(*args, **kwargs)
+    return in_drop(*args, **kwargs)
 
 
 def in_drop_v2(*args, **kwargs):
