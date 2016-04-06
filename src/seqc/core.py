@@ -20,6 +20,7 @@ from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import TSNE
+from sklearn import linear_model
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from numpy.linalg import norm
@@ -595,6 +596,7 @@ class Experiment:
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
+    # todo fix to plot all at once
     def plot_tsne_by_metadata(self, label, fig=None, ax=None):
         cats = set(self.metadata[label])
         colors = qualitative_colors(len(cats))
@@ -609,20 +611,29 @@ class Experiment:
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         return fig, ax
 
-    def ensembl_gene_id_to_official_gene_symbol(self, gtf):
-        """convert self.index containing scids into an index of gene names
-        :param gtf:
-        :return: Experiment
+    @staticmethod
+    def create_gene_id_to_official_gene_symbol_map(gtf):
+        """
         """
         pattern = re.compile(
-                r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
-
+            r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
         gene_id_map = defaultdict(set)
         with open(gtf, 'r') as f:
             for line in f:
                 match = re.match(pattern, line)
                 if match:
                     gene_id_map[int(match.group(2))].add(match.group(4))
+        return gene_id_map
+
+    def ensembl_gene_id_to_official_gene_symbol(self, gtf=None, gene_id_map=None):
+        """convert self.index containing scids into an index of gene names
+        :param gtf:
+        :return: Experiment
+        """
+        if gene_id_map is None:
+            if gtf is None:
+                raise ValueError('User must pass either GTF or a gene_id_map object')
+            gene_id_map = self.create_gene_id_to_official_gene_symbol_map(gtf)
 
         reads = deepcopy(self.reads)
         reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
@@ -825,15 +836,47 @@ class Experiment:
         ax.set_title(title)
         sns.despine(ax=ax)
 
+        # get line of best fit
+        regr = linear_model.LinearRegression()
+        regr.fit(x[:, np.newaxis], y)
+
+        # predicted y
+        yhat = regr.predict(x[:, np.newaxis])
+
+        # plot fit line
+        ax.plot(x, yhat, color='r', linewidth=1)
+
+        # plot residuals that should be removed in red
+        residuals = yhat - y
+        remove = residuals > .15
+        ax.scatter(x[remove], y[remove], color='r', s=12)
+
         return fig, ax
 
-    # todo implement, based on below-fit cells in the above plot
     def remove_low_complexity_cells(self):
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
                                'unnormalized data')
 
-        raise NotImplementedError
+        molecule_counts = self.molecules.sum(axis=1)
+        gene_counts = np.sum(self.molecules > 0, axis=1)
+        x = np.log10(molecule_counts)[:, np.newaxis]
+        y = np.log10(gene_counts)
+
+        # get line of best fit
+        regr = linear_model.LinearRegression()
+        regr.fit(x, y)
+
+        # predicted y
+        yhat = regr.predict(x)
+
+        # plot residuals that should be removed in red
+        residuals = yhat - y
+        retain = residuals < .15
+
+        self.molecules = self.molecules.ix[retain, :]
+        self.reads = self.reads.ix[retain, :]
+        self.metadata = self.metadata.ix[retain, :]
 
     def normalize_data(self):
         """
