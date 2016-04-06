@@ -20,6 +20,7 @@ from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import TSNE
+from sklearn import linear_model
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from numpy.linalg import norm
@@ -268,7 +269,7 @@ class SparseFrame:
 
 class Experiment:
 
-    def __init__(self, reads, molecules, metadata=None):
+    def __init__(self, molecules, reads=None, metadata=None):
         """
 
         :param reads:  DataFrame or SparseFrame
@@ -276,11 +277,12 @@ class Experiment:
         :param metadata: None or DataFrame
         :return:
         """
-        if not (isinstance(reads, SparseFrame) or isinstance(reads, pd.DataFrame)):
-            raise TypeError('reads must be of type SparseFrame or DataFrame')
         if not (isinstance(molecules, SparseFrame) or
                 isinstance(molecules, pd.DataFrame)):
             raise TypeError('molecules must be of type SparseFrame or DataFrame')
+        if not (isinstance(reads, SparseFrame) or isinstance(reads, pd.DataFrame) or
+                reads is None):
+            raise TypeError('reads must be of type SparseFrame or DataFrame')
         if metadata is None:
             metadata = pd.DataFrame(index=molecules.index, dtype='O')
         self._reads = reads
@@ -312,7 +314,7 @@ class Experiment:
         """
         with open(fin, 'rb') as f:
             data = pickle.load(f)
-        experiment = cls(reads=data['_reads'], molecules=data['_molecules'],
+        experiment = cls(molecules=data['_molecules'], reads=data['_reads'],
                          metadata=data['_metadata'])
         del data['_reads']
         del data['_molecules']
@@ -336,7 +338,8 @@ class Experiment:
 
     @reads.setter
     def reads(self, item):
-        if not (isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame)):
+        if not (isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame)
+                or item is None):
             raise TypeError('Experiment.reads must be of type SparseFrame or DataFrame')
         self._reads = item
 
@@ -424,14 +427,8 @@ class Experiment:
         self._cluster_assignments = item
 
     @property
-    def unnormalized_cell_sizes(self):
-        return self._unnormalized_cell_sizes
-
-    @unnormalized_cell_sizes.setter
-    def unnormalized_cell_sizes(self, item):
-        if not (isinstance(item, pd.Series) or item is None):
-            raise TypeError('self.unnormalized_cell_sizes must be a pd.Series object')
-        self._unnormalized_cell_sizes = item
+    def is_normalized(self):
+        return self._normalized
 
     @classmethod
     def from_v012(cls, read_and_count_matrix: str):
@@ -463,73 +460,7 @@ class Experiment:
     def is_dense(self):
         return not self.is_sparse()
 
-    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
-    @staticmethod
-    def concatenate(experiments, metadata_labels=None):
-        """
-        Concatenate a set of Experiment objects. Each cell is considered to be unique,
-        even if they share the same barcodes. If collisions are found, _%d will be added
-        to each cell, where %d is equal to the position of the Experiment in the input
-        experiments list.
-
-        Concatenate should be run after filtering each dataset individually, since the
-        datasets are considered to have distinct cells (even if they share the same
-        barcodes)
-
-        If metadata_labels are provided, a new entry in metadata will be included for
-        each cell. This can be useful to mark each cell by which experiment it originated
-        from in order to track batch effects, for example. metadata_labels should be a
-        dictionary of lists, where the list has the same number of entries as the number
-        of passed experiments. Thus, if one passed experiments=[e1, e2, e3] and
-        metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
-        each cell in the corresponding experiment
-
-        :param experiments:
-        :param metadata_labels: dict {label_name: [values], ...}
-        :return:
-        """
-
-        if metadata_labels is None:
-            metadata_labels = {}
-        if not all(e.is_dense() for e in experiments):
-            raise ValueError('merge may only be run on sparse inputs.')
-
-        # mutate cell identifiers to ensure they are unique after merging
-        for i, e in enumerate(experiments):
-            suffix = '_{!s}'.format(i)
-            new_cells = [str(c) + suffix for c in e.molecules.index]
-            e.molecules.index = new_cells
-            e.reads.index = new_cells
-            e.metadata.index = new_cells
-
-        # merge genes, create new cell list
-        genes = set()
-        cells = []
-        meta_cols = set()
-        for e in experiments:
-            genes.update(list(e.molecules.columns))
-            cells.extend(list(e.molecules.index))
-            meta_cols.update(e.metadata.columns)
-
-        # combine data
-        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
-        empty_read = np.zeros((len(cells), len(genes)), dtype=np.uint32)
-        metadata = pd.DataFrame(index=cells, columns=meta_cols)
-        m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
-        r_combined = pd.DataFrame(empty_read, index=cells, columns=genes)
-        for e in experiments:
-            m_combined.ix[e.molecules.index, e.molecules.columns] = e.molecules
-            r_combined.ix[e.reads.index, e.reads.columns] = e.reads
-            metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
-
-        # add additional metadata
-        for k, v in metadata_labels.items():
-            metadata[k] = pd.Series(index=cells, dtype='O')
-            for e, metadata_val in zip(experiments, v):
-                metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
-
-        return Experiment(reads=r_combined, molecules=m_combined, metadata=metadata)
-
+    # todo may still be side-effecting
     @staticmethod
     def merge(experiments):
         """
@@ -601,6 +532,7 @@ class Experiment:
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
+    # todo fix to plot all at once
     def plot_tsne_by_metadata(self, label, fig=None, ax=None):
         cats = set(self.metadata[label])
         colors = qualitative_colors(len(cats))
@@ -615,27 +547,38 @@ class Experiment:
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         return fig, ax
 
-    def ensembl_gene_id_to_official_gene_symbol(self, gtf):
-        """convert self.index containing scids into an index of gene names
-        :param gtf:
-        :return: Experiment
+    @staticmethod
+    def create_gene_id_to_official_gene_symbol_map(gtf):
+        """
         """
         pattern = re.compile(
-                r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
-
+            r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
         gene_id_map = defaultdict(set)
         with open(gtf, 'r') as f:
             for line in f:
                 match = re.match(pattern, line)
                 if match:
                     gene_id_map[int(match.group(2))].add(match.group(4))
+        return gene_id_map
 
-        reads = deepcopy(self.reads)
-        reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+    def ensembl_gene_id_to_official_gene_symbol(self, gtf=None, gene_id_map=None):
+        """convert self.index containing scids into an index of gene names
+        :param gtf:
+        :return: Experiment
+        """
+        if gene_id_map is None:
+            if gtf is None:
+                raise ValueError('User must pass either GTF or a gene_id_map object')
+            gene_id_map = self.create_gene_id_to_official_gene_symbol_map(gtf)
+        if self.reads is not None:
+            reads = deepcopy(self.reads)
+            reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        else:
+            reads = None
         molecules = deepcopy(self.molecules)
         molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
 
-        exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(molecules=molecules, reads=reads, metadata=self.metadata)
         exp._normalized = self._normalized
         return exp
 
@@ -655,12 +598,15 @@ class Experiment:
                 if match:
                     gene_id_map[int(match.group(4))].add(match.group(2))
 
-        reads = deepcopy(self.reads)
-        reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        if self.reads is not None:
+            reads = deepcopy(self.reads)
+            reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        else:
+            reads = None
         molecules = deepcopy(self.molecules)
         molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
 
-        exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(molecules=molecules, reads=reads, metadata=self.metadata)
         exp._normalized = self._normalized
         return exp
 
@@ -737,16 +683,12 @@ class Experiment:
 
         row_inds = np.where(pd.Series(self.molecules.index).isin(codes_passing_filter))[0]
 
-        read_data = self.reads.data.tocsr()[row_inds, :].todense()
-        reads = pd.DataFrame(read_data, index=self.reads.index[row_inds],
-                             columns=self.reads.columns)
-
         molecule_data = self.molecules.data.tocsr()[row_inds, :].todense()
         molecules = pd.DataFrame(molecule_data, index=self.molecules.index[row_inds],
                                  columns=self.molecules.columns)
 
         metadata = self.metadata.ix[row_inds, :]
-        exp = Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp = Experiment(molecules=molecules, reads=None, metadata=metadata)
         exp._normalized = self._normalized
         return exp
 
@@ -803,12 +745,83 @@ class Experiment:
         pass_filter = ratios.index[ratios <= max_mt_fraction]
 
         molecules = self.molecules.ix[pass_filter]
-        reads = self.reads.ix[pass_filter]
         metadata = self.metadata.ix[pass_filter]
 
-        exp = Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp = Experiment(molecules=molecules, reads=None, metadata=metadata)
         exp._normalized = self._normalized
         return exp
+
+    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
+    @staticmethod
+    def concatenate(experiments, metadata_labels=None):
+        """
+        Concatenate a set of Experiment objects. Each cell is considered to be unique,
+        even if they share the same barcodes. If collisions are found, _%d will be added
+        to each cell, where %d is equal to the position of the Experiment in the input
+        experiments list.
+
+        Concatenate should be run after filtering each dataset individually, since the
+        datasets are considered to have distinct cells (even if they share the same
+        barcodes)
+
+        If metadata_labels are provided, a new entry in metadata will be included for
+        each cell. This can be useful to mark each cell by which experiment it originated
+        from in order to track batch effects, for example. metadata_labels should be a
+        dictionary of lists, where the list has the same number of entries as the number
+        of passed experiments. Thus, if one passed experiments=[e1, e2, e3] and
+        metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
+        each cell in the corresponding experiment
+
+        :param experiments:
+        :param metadata_labels: dict {label_name: [values], ...}
+        :return:
+        """
+
+
+        if metadata_labels is None:
+            metadata_labels = {}
+        if not all(e.is_dense() for e in experiments):
+            raise ValueError('merge may only be run on sparse inputs.')
+
+        # todo are these getting mutated twice??
+        # mutate cell identifiers to ensure they are unique after merging
+        old_index = []
+        for i, e in enumerate(experiments):
+            old_index.append(e.molecules.index)
+            suffix = '_{!s}'.format(i)
+            new_cells = [str(c) + suffix for c in e.molecules.index]
+            e.molecules.index = new_cells
+            e.metadata.index = new_cells
+
+        # merge genes, create new cell list
+        genes = set()
+        cells = []
+        meta_cols = set()
+        for e in experiments:
+            genes.update(list(e.molecules.columns))
+            cells.extend(deepcopy(list(e.molecules.index)))
+            meta_cols.update(list(e.metadata.columns))  # list not necessary?
+
+        # combine data
+        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
+        metadata = pd.DataFrame(index=cells, columns=meta_cols)
+        m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
+        for e in experiments:
+            m_combined.ix[e.molecules.index, e.molecules.columns] = e.molecules
+            metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
+
+        # add additional metadata
+        for k, v in metadata_labels.items():
+            metadata[k] = pd.Series(index=cells, dtype='O')
+            for e, metadata_val in zip(experiments, v):
+                metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
+
+        # regenerate original columns in experiemnt
+        for i, e in zip(old_index, experiments):
+            e.molecules.index = i
+            e.metadata.index = i
+
+        return Experiment(molecules=m_combined, reads=None, metadata=metadata)
 
     def plot_molecules_vs_genes(self, fig=None, ax=None, title=''):
         """
@@ -825,21 +838,52 @@ class Experiment:
         molecule_counts = self.molecules.sum(axis=1)
         gene_counts = np.sum(self.molecules > 0, axis=1)
         x, y, z = density_2d(np.log10(molecule_counts), np.log10(gene_counts))
-        ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap)
+        ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap, alpha=0.65)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
         ax.set_title(title)
         sns.despine(ax=ax)
 
+        # get line of best fit
+        regr = linear_model.LinearRegression()
+        regr.fit(x[:, np.newaxis], y)
+
+        # predicted y
+        yhat = regr.predict(x[:, np.newaxis])
+
+        # plot fit line
+        ax.plot(x, yhat, color='r', linewidth=1)
+
+        # plot residuals that should be removed in red
+        residuals = yhat - y
+        remove = residuals > .15
+        ax.scatter(x[remove], y[remove], color='r', s=12, alpha=0.65)
+
         return fig, ax
 
-    # todo implement, based on below-fit cells in the above plot
     def remove_low_complexity_cells(self):
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
                                'unnormalized data')
 
-        raise NotImplementedError
+        molecule_counts = self.molecules.sum(axis=1)
+        gene_counts = np.sum(self.molecules > 0, axis=1)
+        x = np.log10(molecule_counts)[:, np.newaxis]
+        y = np.log10(gene_counts)
+
+        # get line of best fit
+        regr = linear_model.LinearRegression()
+        regr.fit(x, y)
+
+        # predicted y
+        yhat = regr.predict(x)
+
+        # plot residuals that should be removed in red
+        residuals = yhat - y
+        retain = residuals < .15
+
+        self.molecules = self.molecules.ix[retain, :]
+        self.metadata = self.metadata.ix[retain, :]
 
     def normalize_data(self):
         """
@@ -854,16 +898,12 @@ class Experiment:
         molecule_sums = self.molecules.sum(axis=1)
         molecules = self.molecules.div(molecule_sums, axis=0)\
             .mul(np.median(molecule_sums), axis=0)
-        read_sums = self.reads.sum(axis=1)
-        reads = self.reads.div(read_sums, axis=0)\
-            .mul(np.median(read_sums), axis=0)
-        exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(molecules=molecules, reads=None, metadata=self.metadata)
         exp._normalized = True
 
         # check that none of the genes are empty; if so remove them
         nonzero_genes = exp.molecules.sum(axis=0) != 0
         exp.molecules = exp.molecules.ix[:, nonzero_genes]
-        exp.reads = exp.reads.ix[:, nonzero_genes]
 
         return exp
 
@@ -873,7 +913,8 @@ class Experiment:
         :return:
         """
         self.molecules = self.molecules.groupby(axis=1).sum()
-        self.reads = self.reads.groupby(axis=1).sum()
+        if self.reads is not None:
+            self.reads = self.reads.groupby(axis=1).sum()
 
     def run_pca(self, n_components=100):
 
@@ -1010,7 +1051,7 @@ class Experiment:
     def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
         fig, ax = get_fig(fig=fig, ax=ax)
         x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
-        plt.scatter(x, y, c=z, s=size, cmap=cmap)
+        plt.scatter(x, y, c=z, s=size, cmap=cmap, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1067,7 +1108,7 @@ class Experiment:
         if sizes is None:
             sizes = self.molecules.sum(axis=1)  # use current library sizes
         plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap, vmax=vmax,
-                    vmin=vmin)
+                    vmin=vmin, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1087,15 +1128,14 @@ class Experiment:
         """
         retain = self.cluster_assignments.index[~self.cluster_assignments.isin(clusters)]
         molecules = self.molecules.ix[retain, :]
-        reads = self.reads.ix[retain, :]
         metadata = self.metadata.ix[retain, :]
-        experiment = Experiment(reads=reads, molecules=molecules, metadata=metadata)
-        experiment._cluster_assignments = self.cluster_assignments[retain]
+        experiment = Experiment(molecules=deepcopy(molecules), reads=None,
+                                metadata=deepcopy(metadata))
+        experiment._cluster_assignments = deepcopy(self.cluster_assignments[retain])
 
         # remove any genes that now have zero expression
         nonzero_genes = experiment.molecules.sum(axis=0) != 0
         experiment.molecules = experiment.molecules.ix[:, nonzero_genes]
-        experiment.reads = experiment.reads.ix[:, nonzero_genes]
         experiment._normalized = self._normalized
         return experiment
 
@@ -1179,7 +1219,7 @@ class Experiment:
         for i in range(self.diffusion_eigenvectors.shape[1]):
             axes.append(plt.subplot(gs[i // n_cols, i % n_cols]))
             axes[i].scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
-                        cmap=cmap, edgecolors='none', s=size)
+                        cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             axes[i].set_axis_off()
 
         return fig, axes
@@ -1599,15 +1639,17 @@ class Experiment:
         use_genes = list(set(use_genes))
 
         # Create new scdata object
-        subset_molecules = self.molecules.ix[:, use_genes]
-        subset_reads = self.reads.ix[:, use_genes]
-        metadata = self.metadata
+        subset_molecules = deepcopy(self.molecules.ix[:, use_genes])
+        metadata = deepcopy(self.metadata)
 
         # throws out analysis results; this makes sense
-        exp = Experiment(reads=subset_reads, molecules=subset_molecules,
+        exp = Experiment(molecules=subset_molecules, reads=None,
                          metadata=metadata)
         exp._normalized = self._normalized
-        exp.molecules = exp.molecules.groupby(axis=1, level=0).sum()  # remove duplicate genes
+
+        # remove duplicate genes
+        exp.molecules = exp.molecules.groupby(axis=1, level=0).sum()
+
         return exp
 
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
@@ -1753,7 +1795,7 @@ class Experiment:
             ax = plt.subplot(gs[i // n_cols, i % n_cols])
             axes.append(ax)
             plt.scatter(self.tsne['x'], self.tsne['y'], c=np.arcsinh(self.molecules[g]),
-                        cmap=cmap, edgecolors='none', s=size)
+                        cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             ax.set_axis_off()
             ax.set_title(g)
 
@@ -1784,7 +1826,7 @@ class Experiment:
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.scatter(self.tsne['x'], self.tsne['y'],
                    c=np.arcsinh(self.molecules[genes].sum(axis=1)),
-                   cmap=cmap, edgecolors='none', s=size)
+                   cmap=cmap, edgecolors='none', s=size, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1831,8 +1873,8 @@ class Experiment:
         # remove genes
         genes = genes.difference(hk_genes)
 
-        exp = Experiment(reads=self.reads[genes], molecules=self.molecules[genes],
-                         metadata=self.metadata)
+        exp = Experiment(molecules=deepcopy(self.molecules[genes]), reads=None,
+                         metadata=deepcopy(self.metadata))
         exp._normalized = self._normalized
         return exp
 
