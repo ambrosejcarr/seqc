@@ -1623,15 +1623,18 @@ class Experiment:
 
         # get positive enrichments for each component
         for c in components:
-            report_pattern = 'gsea_report_for_na_pos_[0-9]*?\.html'
+            pos_report_pattern = 'gsea_report_for_na_pos_[0-9]*?\.html'
+            neg_report_pattern = 'gsea_report_for_na_neg_[0-9]*?\.html'
             try:
                 files = os.listdir('{stem}_{c}'.format(stem=output_stem, c=c))
             except FileNotFoundError:
                 print('No enrichments were calculated for component {c}'.format(c=c))
                 continue
+            print('component: {}'.format(c))
             for f in files:
-                mo = re.match(report_pattern, f)
-                if mo:
+                mo_pos = re.match(pos_report_pattern, f)
+                mo_neg = re.match(neg_report_pattern, f)
+                if mo_pos:
                     try:
                         report_data = pd.read_html('{stem}_{c}/{f}'.format(
                             stem=output_stem, c=c, f=f), header=0, index_col=0)[0]
@@ -1640,9 +1643,20 @@ class Experiment:
                         break
                     # report top n significant enrichments
                     significant = np.where(report_data['FDR q-val'] < alpha)[0][:n]
-                    print('component: {}'.format(c))
+                    print('positive enrichment:')
                     print(list(report_data.iloc[significant, 0]))
-                    print('')
+                elif mo_neg:
+                    try:
+                        report_data = pd.read_html('{stem}_{c}/{f}'.format(
+                            stem=output_stem, c=c, f=f), header=0, index_col=0)[0]
+                    except ValueError:
+                        print('could not find table for component {}'.format(c))
+                        break
+                    # report top n significant enrichments
+                    significant = np.where(report_data['FDR q-val'] < alpha)[0][:n]
+                    print('negative enrichment:')
+                    print(list(report_data.iloc[significant, 0]))
+            print('')
 
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
