@@ -410,10 +410,58 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
     ra_grouped, error_rate = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
             err_correction_mat='')
-    grouped_res_dic, error_count = correct_errors_ajc(
-            alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha)
+    grouped_res_dic, error_count = correct_errors_min_support(
+            alignments_ra, ra_grouped)
 
     return grouped_res_dic, err_correction_res
+
+def correct_errors_min_support(ra, ra_grouped, min_support=2, err_correction_res=''):
+    """
+    Calculate and correct errors in barcode sets
+
+    :param ra:
+    :param ra_grouped:
+    :param min_support:
+    :param err_correction_res:
+    :return:
+    """
+    start = time.process_time()
+    d = ra_grouped
+    grouped_res_dic = {}
+    error_count = 0
+
+    tot_feats = len(ra_grouped)
+    cur_f = 0
+    N = BinRep._str2bindict['N']
+    for feature, cell in d.keys():
+        cur_f += 1
+        if feature == 0:
+            continue
+
+        retained_rmts = []
+        retained_reads = 0
+
+        for r_seq in d[feature, cell].keys():
+            if BinRep.contains(r_seq, N):
+                continue
+
+            gene = feature
+            support = len(d[gene , cell][r_seq])
+
+            if support  < min_support:
+                continue
+
+            retained_rmts.append(r_seq)
+            retained_reads += support
+
+        grouped_res_dic[feature, cell] = retained_rmts, retained_reads
+
+    # print('\nLikelihood model error_count: ', error_count)
+    tot_time=time.process_time()-start
+    # seqc.log.info('total error correction runtime: {}'.format(tot_time))
+    # f.close()
+    return grouped_res_dic, error_count
+
 
 
 def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,
