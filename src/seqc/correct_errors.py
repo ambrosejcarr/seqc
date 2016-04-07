@@ -5,11 +5,13 @@ import time
 from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import ThreeBit as BinRep
 import numpy as np
+from collections import defaultdict
 import sys
 import seqc
 
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 
+# todo: increase number of error correction methods by 2
 NUM_OF_ERROR_CORRECTION_METHODS = 3
 #ERROR_CORRECTION_AJC = 0
 
@@ -79,9 +81,9 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
         if v['n_poly_t'] < required_poly_t:
             filtered += 1
             continue
-#        if BinRep.contains(int(v['cell']), N):
-#            filtered += 1
-#            continue
+        # if BinRep.contains(int(v['cell']), N):
+        #     filtered += 1
+        #     continue
         if BinRep.contains(int(v['rmt']), N):
             filtered += 1
             continue
@@ -316,10 +318,78 @@ def find_correct_barcode(code, barcodes_list):
     return cor_code, min_ed
 
 
+def drop_seq(alignments_ra, *args, **kwargs):
+    """pass-through function that groups the read_array for count matrix construction but
+    does not perform any error correction. To be replaced by Ashley's function.
+
+    :param alignments_ra: seqc.core.ReadArray object
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    molecules = defaultdict(set)
+    reads = defaultdict(int)
+    err_correction_res = ''
+    for row in alignments_ra.data:  # generates tuples of rows
+        molecules[(row[5], row[1])].add(row[2])
+        reads[(row[5], row[1])] += 1
+
+    grouped_res_dic = {}
+    for k in molecules:
+        grouped_res_dic[k] = (molecules[k], reads[k])
+
+    return grouped_res_dic, err_correction_res
+
+
+def mars1_seq(*args, **kwargs):
+    """very simple pass-through wrapper for mars1_seq error correction, needs to be
+    replaced with the actual error correction method instead of just drop_seq()
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    # todo: replace with actual mars1_seq error correction method
+    return in_drop(*args, **kwargs)
+
+
+def mars2_seq(*args, **kwargs):
+    """very simple pass-through wrapper for mars1_seq error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for mars2_seq
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    # todo: replace with actual mars1_seq error correction method
+    return in_drop(*args, **kwargs)
+
+
+def in_drop_v2(*args, **kwargs):
+    """very simple pass-through wrapper for in_drop error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for in_drop_v2
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    return in_drop(*args, **kwargs)
+
+
+def mars1_seq(*args, **kwargs):
+    return in_drop(*args, **kwargs)
+
+
+def mars2_seq(*args, **kwargs):
+    return in_drop(*args, **kwargs)
+
+
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
-def correct_errors(alignments_ra, barcode_files = list(), apply_likelihood=True,
-                   reverse_complement=True, donor_cutoff=1, alpha=0.05,
-                   required_poly_t=1, max_ed=2):
+def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
+            reverse_complement=True, donor_cutoff=1, alpha=0.05,
+            required_poly_t=1, max_ed=2):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
     method

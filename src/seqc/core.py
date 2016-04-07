@@ -17,7 +17,13 @@ import tables as tb
 from scipy.stats.mstats import kruskalwallis
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.sparse import coo_matrix
-from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu
+from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
+from sklearn.neighbors import NearestNeighbors
+from sklearn.manifold import TSNE
+from sklearn import linear_model
+from scipy.sparse import csr_matrix, find
+from scipy.sparse.linalg import eigs
+from numpy.linalg import norm
 import matplotlib
 try:
     os.environ['DISPLAY']
@@ -28,7 +34,6 @@ with warnings.catch_warnings():
     warnings.simplefilter('ignore')  # catch experimental ipython widget warning
     import seaborn as sns
 import phenograph
-from tsne import bh_sne
 import seqc
 
 
@@ -38,8 +43,7 @@ class SparseMatrixError(Exception):
 
 # set plotting defaults
 sns.set_style('ticks')
-matplotlib.rc('font', **{'family': 'serif',
-                         'serif': ['Computer Modern Roman'],
+matplotlib.rc('font', **{'serif': ['Computer Modern Roman'],
                          'monospace': ['Computer Modern Typewriter']
                          })
 
@@ -84,6 +88,43 @@ def density_2d(x, y):
     z = gaussian_kde(xy)(xy)
     i = np.argsort(z)
     return np.ravel(x)[i], np.ravel(y)[i], np.arcsinh(z[i])
+
+
+class FigureGrid:
+
+    def __init__(self, n: int, max_cols=3):
+        self.n = n
+        self.nrows = int(np.ceil(n / max_cols))
+        self.ncols = int(min((max_cols, n)))
+        figsize = self.ncols * 4, self.nrows * 4
+
+        # create figure
+        self.gs = plt.GridSpec(nrows=self.nrows, ncols=self.ncols)
+        self.figure = plt.figure(figsize=figsize)
+
+        # create axes
+        self.axes = {}
+        for i in range(n):
+            row = int(i // self.ncols)
+            col = int(i % self.ncols)
+            self.axes[i] = plt.subplot(self.gs[row, col])
+
+    def __getitem__(self, item):
+        return self.axes[item]
+
+    def __iter__(self):
+        for i in range(self.n):
+            yield self[i]
+
+    def tight_layout(self):
+        self.gs.tight_layout(self.figure)
+
+    def despine(self, top=True, right=True, **kwargs):
+        for i in range(self.n):
+            sns.despine(ax=self[i], top=top, right=right, **kwargs)
+
+    def savefig(self, *args, **kwargs):
+        self.figure.savefig(*args, **kwargs)
 
 
 class ReadArray:
@@ -226,10 +267,9 @@ class SparseFrame:
         return self.data.sum(axis=axis)
 
 
-# todo bug: at some point reads are being set == molecules
 class Experiment:
 
-    def __init__(self, reads, molecules, metadata=None):
+    def __init__(self, molecules, reads=None, metadata=None):
         """
 
         :param reads:  DataFrame or SparseFrame
@@ -237,11 +277,12 @@ class Experiment:
         :param metadata: None or DataFrame
         :return:
         """
-        if not (isinstance(reads, SparseFrame) or isinstance(reads, pd.DataFrame)):
-            raise TypeError('reads must be of type SparseFrame or DataFrame')
         if not (isinstance(molecules, SparseFrame) or
                 isinstance(molecules, pd.DataFrame)):
             raise TypeError('molecules must be of type SparseFrame or DataFrame')
+        if not (isinstance(reads, SparseFrame) or isinstance(reads, pd.DataFrame) or
+                reads is None):
+            raise TypeError('reads must be of type SparseFrame or DataFrame')
         if metadata is None:
             metadata = pd.DataFrame(index=molecules.index, dtype='O')
         self._reads = reads
@@ -254,7 +295,6 @@ class Experiment:
         self._diffusion_eigenvalues = None
         self._diffusion_map_correlations = None
         self._cluster_assignments = None
-        self._unnormalized_cell_sizes = None
 
     def save(self, fout: str) -> None:
         """
@@ -274,7 +314,8 @@ class Experiment:
         """
         with open(fin, 'rb') as f:
             data = pickle.load(f)
-        experiment = cls(data['_reads'], data['_molecules'], data['_metadata'])
+        experiment = cls(molecules=data['_molecules'], reads=data['_reads'],
+                         metadata=data['_metadata'])
         del data['_reads']
         del data['_molecules']
         del data['_metadata']
@@ -297,7 +338,8 @@ class Experiment:
 
     @reads.setter
     def reads(self, item):
-        if not (isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame)):
+        if not (isinstance(item, SparseFrame) or isinstance(item, pd.DataFrame)
+                or item is None):
             raise TypeError('Experiment.reads must be of type SparseFrame or DataFrame')
         self._reads = item
 
@@ -385,14 +427,8 @@ class Experiment:
         self._cluster_assignments = item
 
     @property
-    def unnormalized_cell_sizes(self):
-        return self._unnormalized_cell_sizes
-
-    @unnormalized_cell_sizes.setter
-    def unnormalized_cell_sizes(self, item):
-        if not (isinstance(item, pd.Series) or item is None):
-            raise TypeError('self.unnormalized_cell_sizes must be a pd.Series object')
-        self._cluster_assignments = item
+    def is_normalized(self):
+        return self._normalized
 
     @classmethod
     def from_v012(cls, read_and_count_matrix: str):
@@ -403,7 +439,7 @@ class Experiment:
                             columns=d['reads']['col_ids'])
         molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
                                 columns=d['molecules']['col_ids'])
-        return cls(reads, molecules)
+        return cls(reads=reads, molecules=molecules)
 
     @classmethod
     def from_count_matrices(cls, read_and_count_matrix: str):
@@ -413,25 +449,7 @@ class Experiment:
                             columns=d['reads']['col_ids'])
         molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
                                 columns=d['molecules']['col_ids'])
-        return cls(reads, molecules)
-
-    @classmethod
-    def refresh(cls, experiment):
-        """
-        Generate a new Experiment object from an old instance of experiment. Convenience
-        function for development, when class methods have changed.
-
-        :param experiment:
-        :return:
-        """
-        # todo not working because of copy vs. reference problems
-        exp = cls(experiment.reads, experiment.molecules, experiment.metadata)
-        properties = vars(experiment)
-        del properties['_reads']
-        del properties['_molecules']
-        del properties['_metadata']
-        for k, v in properties.items():
-            setattr(exp, k[1:], v)
+        return cls(reads=reads, molecules=molecules)
 
     def is_sparse(self):
         if all(isinstance(o, SparseFrame) for o in (self.reads, self.molecules)):
@@ -442,73 +460,7 @@ class Experiment:
     def is_dense(self):
         return not self.is_sparse()
 
-    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
-    @staticmethod
-    def concatenate(experiments, metadata_labels=None):
-        """
-        Concatenate a set of Experiment objects. Each cell is considered to be unique,
-        even if they share the same barcodes. If collisions are found, _%d will be added
-        to each cell, where %d is equal to the position of the Experiment in the input
-        experiments list.
-
-        Concatenate should be run after filtering each dataset individually, since the
-        datasets are considered to have distinct cells (even if they share the same
-        barcodes)
-
-        If metadata_labels are provided, a new entry in metadata will be included for
-        each cell. This can be useful to mark each cell by which experiment it originated
-        from in order to track batch effects, for example. metadata_labels should be a
-        dictionary of lists, where the list has the same number of entries as the number
-        of passed experiments. Thus, if one passed experiments=[e1, e2, e3] and
-        metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
-        each cell in the corresponding experiment
-
-        :param experiments:
-        :param metadata_labels: dict {label_name: [values], ...}
-        :return:
-        """
-
-        if metadata_labels is None:
-            metadata_labels = {}
-        if not all(e.is_dense() for e in experiments):
-            raise ValueError('merge may only be run on sparse inputs.')
-
-        # mutate cell identifiers to ensure they are unique after merging
-        for i, e in enumerate(experiments):
-            suffix = '_{!s}'.format(i)
-            new_cells = [str(c) + suffix for c in e.molecules.index]
-            e.molecules.index = new_cells
-            e.reads.index = new_cells
-            e.metadata.index = new_cells
-
-        # merge genes, create new cell list
-        genes = set()
-        cells = []
-        meta_cols = set()
-        for e in experiments:
-            genes.update(list(e.molecules.columns))
-            cells.extend(list(e.molecules.index))
-            meta_cols.update(e.metadata.columns)
-
-        # combine data
-        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.float64)
-        empty_read = np.zeros((len(cells), len(genes)), dtype=np.float64)
-        metadata = pd.DataFrame(index=cells, columns=meta_cols)
-        m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
-        r_combined = pd.DataFrame(empty_read, index=cells, columns=genes)
-        for e in experiments:
-            m_combined.ix[e.molecules.index, e.molecules.columns] = e.molecules
-            r_combined.ix[e.reads.index, e.reads.columns] = e.reads
-            metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
-
-        # add additional metadata
-        for k, v in metadata_labels.items():
-            metadata[k] = pd.Series(index=cells, dtype='O')
-            for e in experiments:
-                metadata[k].ix[e.metadata.index] = [v] * len(e.metadata.index)
-
-        return Experiment(reads=r_combined, molecules=m_combined, metadata=metadata)
-
+    # todo may still be side-effecting
     @staticmethod
     def merge(experiments):
         """
@@ -580,42 +532,83 @@ class Experiment:
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
-    # todo untested
+    # todo fix to plot all at once
     def plot_tsne_by_metadata(self, label, fig=None, ax=None):
-        cats = set(self.metadata['label'])
+        cats = set(self.metadata[label])
         colors = qualitative_colors(len(cats))
         fig, ax = get_fig(fig=fig, ax=ax)
         for c, color in zip(cats, colors):
-            rows = self.metadata['label'] == c
+            rows = self.metadata[label] == c
             plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'], marker='o',
                      markersize=np.sqrt(7), linewidth=0, c=color, label=c)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title('tSNE projection colored by {}'.format(label))
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         return fig, ax
 
-    def ensembl_gene_id_to_official_gene_symbol(self, gtf):
+    @staticmethod
+    def create_gene_id_to_official_gene_symbol_map(gtf):
+        """
+        """
+        pattern = re.compile(
+            r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
+        gene_id_map = defaultdict(set)
+        with open(gtf, 'r') as f:
+            for line in f:
+                match = re.match(pattern, line)
+                if match:
+                    gene_id_map[int(match.group(2))].add(match.group(4).upper())
+        return gene_id_map
+
+    def ensembl_gene_id_to_official_gene_symbol(self, gtf=None, gene_id_map=None):
         """convert self.index containing scids into an index of gene names
         :param gtf:
         :return: Experiment
         """
+        if gene_id_map is None:
+            if gtf is None:
+                raise ValueError('User must pass either GTF or a gene_id_map object')
+            gene_id_map = self.create_gene_id_to_official_gene_symbol_map(gtf)
+        if self.reads is not None:
+            reads = deepcopy(self.reads)
+            reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        else:
+            reads = None
+        molecules = deepcopy(self.molecules)
+        molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
+
+        exp = Experiment(molecules=molecules, reads=reads, metadata=self.metadata)
+        exp._normalized = self._normalized
+        return exp
+
+    def scid_to_official_gene_symbol(self, gtf):
+        """convert scids to official gene symbols; useful for older v0.1.2 data
+
+        :param gtf:
+        :return:
+        """
         pattern = re.compile(
-                r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
+            r'(^.*?gene_name ")(.*?)(".*?scseq_id "SC)(.*?)(".*?$)')
 
         gene_id_map = defaultdict(set)
         with open(gtf, 'r') as f:
             for line in f:
                 match = re.match(pattern, line)
                 if match:
-                    gene_id_map[int(match.group(2))].add(match.group(4))
+                    gene_id_map[int(match.group(4))].add(match.group(2))
 
-        reads = deepcopy(self.reads)
-        reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        if self.reads is not None:
+            reads = deepcopy(self.reads)
+            reads.columns = ['-'.join(gene_id_map[i]) for i in self.reads.columns]
+        else:
+            reads = None
         molecules = deepcopy(self.molecules)
         molecules.columns = ['-'.join(gene_id_map[i]) for i in self.molecules.columns]
 
-        return Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(molecules=molecules, reads=reads, metadata=self.metadata)
+        exp._normalized = self._normalized
+        return exp
 
     def plot_molecules_vs_reads_per_molecule(self, fig=None, ax=None, min_molecules=10,
                                              ylim=(0, 150), title='Cell Coverage Plot'):
@@ -673,7 +666,7 @@ class Experiment:
         :return: None
         """
         if self._normalized:
-            raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
+            raise RuntimeError('remove_non_cell_barcodes() should be run on '
                                'unnormalized data')
 
         # get molecule and read counts per cell
@@ -689,14 +682,15 @@ class Experiment:
         codes_passing_filter = molecule_cell_sums.index[filter_]
 
         row_inds = np.where(pd.Series(self.molecules.index).isin(codes_passing_filter))[0]
-        read_data = self.reads.data.tocsr()[row_inds, :].todense()
-        reads = pd.DataFrame(read_data, index=self.reads.index[row_inds],
-                             columns=self.reads.columns)
+
         molecule_data = self.molecules.data.tocsr()[row_inds, :].todense()
         molecules = pd.DataFrame(molecule_data, index=self.molecules.index[row_inds],
                                  columns=self.molecules.columns)
+
         metadata = self.metadata.ix[row_inds, :]
-        return Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp = Experiment(molecules=molecules, reads=None, metadata=metadata)
+        exp._normalized = self._normalized
+        return exp
 
     def plot_mitochondrial_molecule_fraction(self, fig=None, ax=None,
                                              title='Dead Cell Identification Plot'):
@@ -751,12 +745,85 @@ class Experiment:
         pass_filter = ratios.index[ratios <= max_mt_fraction]
 
         molecules = self.molecules.ix[pass_filter]
-        reads = self.molecules.ix[pass_filter]
         metadata = self.metadata.ix[pass_filter]
 
-        return Experiment(reads=reads, molecules=molecules, metadata=metadata)
+        exp = Experiment(molecules=molecules, reads=None, metadata=metadata)
+        exp._normalized = self._normalized
+        return exp
 
-    def plot_molecules_vs_genes(self, fig=None, ax=None, title=None):
+    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
+    @staticmethod
+    def concatenate(experiments, metadata_labels=None):
+        """
+        Concatenate a set of Experiment objects. Each cell is considered to be unique,
+        even if they share the same barcodes. If collisions are found, _%d will be added
+        to each cell, where %d is equal to the position of the Experiment in the input
+        experiments list.
+
+        Concatenate should be run after filtering each dataset individually, since the
+        datasets are considered to have distinct cells (even if they share the same
+        barcodes)
+
+        If metadata_labels are provided, a new entry in metadata will be included for
+        each cell. This can be useful to mark each cell by which experiment it originated
+        from in order to track batch effects, for example. metadata_labels should be a
+        dictionary of lists, where the list has the same number of entries as the number
+        of passed experiments. Thus, if one passed experiments=[e1, e2, e3] and
+        metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
+        each cell in the corresponding experiment
+
+        :param experiments:
+        :param metadata_labels: dict {label_name: [values], ...}
+        :return:
+        """
+
+
+        if metadata_labels is None:
+            metadata_labels = {}
+        if not all(e.is_dense() for e in experiments):
+            raise ValueError('merge may only be run on sparse inputs.')
+
+        # todo are these getting mutated twice??
+        # mutate cell identifiers to ensure they are unique after merging
+        old_index = []
+        for i, e in enumerate(experiments):
+            old_index.append(e.molecules.index)
+            suffix = '_{!s}'.format(i)
+            new_cells = [str(c) + suffix for c in e.molecules.index]
+            e.molecules.index = new_cells
+            e.metadata.index = new_cells
+
+        # merge genes, create new cell list
+        genes = set()
+        cells = []
+        meta_cols = set()
+        for e in experiments:
+            genes.update(list(e.molecules.columns))
+            cells.extend(deepcopy(list(e.molecules.index)))
+            meta_cols.update(list(e.metadata.columns))  # list not necessary?
+
+        # combine data
+        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
+        metadata = pd.DataFrame(index=cells, columns=meta_cols)
+        m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
+        for e in experiments:
+            m_combined.ix[e.molecules.index, e.molecules.columns] = e.molecules
+            metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
+
+        # add additional metadata
+        for k, v in metadata_labels.items():
+            metadata[k] = pd.Series(index=cells, dtype='O')
+            for e, metadata_val in zip(experiments, v):
+                metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
+
+        # regenerate original columns in experiemnt
+        for i, e in zip(old_index, experiments):
+            e.molecules.index = i
+            e.metadata.index = i
+
+        return Experiment(molecules=m_combined, reads=None, metadata=metadata)
+
+    def plot_molecules_vs_genes(self, fig=None, ax=None, title=''):
         """
         should be linear relationship
         :param ax:
@@ -771,21 +838,52 @@ class Experiment:
         molecule_counts = self.molecules.sum(axis=1)
         gene_counts = np.sum(self.molecules > 0, axis=1)
         x, y, z = density_2d(np.log10(molecule_counts), np.log10(gene_counts))
-        ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap)
+        ax.scatter(x, y, c=z, edgecolor='none', s=size, cmap=cmap, alpha=0.65)
         ax.set_xlabel('log10(Number of molecules)')
         ax.set_ylabel('log10(Number of genes)')
-        ax.set_title('')
+        ax.set_title(title)
         sns.despine(ax=ax)
+
+        # get line of best fit
+        regr = linear_model.LinearRegression()
+        regr.fit(x[:, np.newaxis], y)
+
+        # predicted y
+        yhat = regr.predict(x[:, np.newaxis])
+
+        # plot fit line
+        ax.plot(x, yhat, color='r', linewidth=1)
+
+        # plot residuals that should be removed in red
+        residuals = yhat - y
+        remove = residuals > .15
+        ax.scatter(x[remove], y[remove], color='r', s=12, alpha=0.65)
 
         return fig, ax
 
-    # todo implement, based on below-fit cells in the above plot
     def remove_low_complexity_cells(self):
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
                                'unnormalized data')
 
-        raise NotImplementedError
+        molecule_counts = self.molecules.sum(axis=1)
+        gene_counts = np.sum(self.molecules > 0, axis=1)
+        x = np.log10(molecule_counts)[:, np.newaxis]
+        y = np.log10(gene_counts)
+
+        # get line of best fit
+        regr = linear_model.LinearRegression()
+        regr.fit(x, y)
+
+        # predicted y
+        yhat = regr.predict(x)
+
+        # plot residuals that should be removed in red
+        residuals = yhat - y
+        retain = residuals < .15
+
+        self.molecules = self.molecules.ix[retain, :]
+        self.metadata = self.metadata.ix[retain, :]
 
     def normalize_data(self):
         """
@@ -800,25 +898,26 @@ class Experiment:
         molecule_sums = self.molecules.sum(axis=1)
         molecules = self.molecules.div(molecule_sums, axis=0)\
             .mul(np.median(molecule_sums), axis=0)
-        read_sums = self.reads.sum(axis=1)
-        reads = self.reads.div(read_sums, axis=0)\
-            .mul(np.median(read_sums), axis=0)
-        exp = Experiment(reads=reads, molecules=molecules, metadata=self.metadata)
+        exp = Experiment(molecules=molecules, reads=None, metadata=self.metadata)
         exp._normalized = True
 
         # check that none of the genes are empty; if so remove them
         nonzero_genes = exp.molecules.sum(axis=0) != 0
         exp.molecules = exp.molecules.ix[:, nonzero_genes]
-        exp.reads = exp.reads.ix[:, nonzero_genes]
-
-        # set unnormalized_cell_sums
-        self.unnormalized_cell_sizes = molecule_sums
 
         return exp
 
+    def merge_duplicate_genes(self):
+        """only necessary for v0.1.2 data where scids are duplicated
+
+        :return:
+        """
+        self.molecules = self.molecules.groupby(axis=1).sum()
+        if self.reads is not None:
+            self.reads = self.reads.groupby(axis=1).sum()
+
     def run_pca(self, n_components=100):
 
-        # todo refactored no_comp -> n_components=100
         X = self.molecules.values  # todo added this
         # Make sure data is zero mean
         X = np.subtract(X, np.amin(X))
@@ -852,9 +951,11 @@ class Experiment:
         # Apply mapping on the data
         if X.shape[1] >= X.shape[0]:
             M = np.multiply(np.dot(X.T, M), (1 / np.sqrt(X.shape[0] * l)).T)
-        mappedX = np.dot(X, M)
 
-        return mappedX, M, l
+        loadings = pd.DataFrame(data=M, index=self.molecules.columns)
+        l = pd.DataFrame(l)
+
+        self.pca = {'loadings': loadings, 'eigenvalues': l}
 
     def run_pca_matlab(self, no_components=100):
         """
@@ -900,17 +1001,37 @@ class Experiment:
         os.remove('/tmp/pc_mapping_M_%f.csv' % rand_tag)
         os.remove('/tmp/pc_mapping_lambda_%f.csv' % rand_tag)
 
-    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30,
-                                    ylim=(0, 0.1)):
+    def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30):
         # plot the eigenvalues
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.plot(np.ravel(self.pca['eigenvalues'].values))
-        plt.ylim(ylim)
-        plt.xlim((0, n_components))
+        ax.set_ylim((0, float(np.max(self.pca['eigenvalues']))))
+        ax.set_xlim((0, n_components))
+        ax.set_title('PCA variance by component')
+        ax.set_xlabel('Component')
+        ax.set_ylabel('Loading')
         sns.despine(ax=ax)
         return fig, ax
 
-    def run_tsne(self, n_components=15):
+    # def run_tsne(self, n_components=15):
+    #     """
+    #     normally run on PCA components; 1st component is normally excluded
+    #
+    #     :param n_components:
+    #     :return:
+    #     """
+    #     warnings.warn('DeprecationWarning: run_tsne() may be deprecated next release. '
+    #                   'Please test run_skl_tsne() and report any problems.')
+    #     data = deepcopy(self.molecules)
+    #     data -= np.min(np.ravel(data))
+    #     data /= np.max(np.ravel(data))
+    #     data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
+    #                         index=self.molecules.index)
+    #
+    #     self.tsne = pd.DataFrame(bh_sne(data),
+    #                              index=self.molecules.index, columns=['x', 'y'])
+
+    def run_tsne(self, n_components=15, **kwargs):
         """
         normally run on PCA components; 1st component is normally excluded
 
@@ -920,34 +1041,41 @@ class Experiment:
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_components].T),
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
                             index=self.molecules.index)
-
-        self.tsne = pd.DataFrame(bh_sne(data),
-                                 index=self.molecules.index, columns=['x', 'y'])
+        tsne = TSNE(n_components=2, method='barnes_hut', n_iter=1000, perplexity=30,
+                    angle=0.5, init='pca', random_state=0, **kwargs)
+        res = tsne.fit_transform(data.values)
+        self.tsne = pd.DataFrame(res, index=self.molecules.index, columns=['x', 'y'])
 
     def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
         fig, ax = get_fig(fig=fig, ax=ax)
         x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
-        plt.scatter(x, y, c=z, s=size, cmap=cmap)
+        plt.scatter(x, y, c=z, s=size, cmap=cmap, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
+        plt.colorbar()
         return fig, ax
 
-    def run_phenograph(self, n_pca_components=15):
+    def run_phenograph(self, n_pca_components=15, **kwargs):
         """
         normally run on PCA components; 1st component is normally excluded
         :param n_pca_components:
+        :param **kwargs: keyword arguments to pass directly to phenograph
+
+        one useful parameter is 'k', which inversely correlates with the number of
+        clusters that phenograph outputs.
+
         :return:
         """
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
                             index=self.molecules.index)
 
-        communities, graph, Q = phenograph.cluster(data)
+        communities, graph, Q = phenograph.cluster(data, **kwargs)
         self.cluster_assignments = pd.Series(communities, index=data.index)
 
     def plot_phenograph(self, fig=None, ax=None, labels=None):
@@ -967,22 +1095,23 @@ class Experiment:
             data = self.tsne.ix[self.cluster_assignments == clusters[i], :]
             ax.plot(data['x'], data['y'], c=colors[i], linewidth=0, marker='o',
                     markersize=np.sqrt(size), label=label)
-        plt.legend()
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         return fig, ax
 
-    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None):
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None, title='',
+                                sizes=None):
         fig, ax = get_fig(fig, ax)
         if self.tsne is None:
             raise RuntimeError('Please run self.run_tsne() before plotting.')
-        if self._normalized:
-            sizes = self.unnormalized_cell_sizes.values
-        else:
-            sizes = self.molecules.sum(axis=1)
-        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap)
+        if sizes is None:
+            sizes = self.molecules.sum(axis=1)  # use current library sizes
+        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap, vmax=vmax,
+                    vmin=vmin, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title(title)
         plt.colorbar()
         return fig, ax
 
@@ -999,96 +1128,92 @@ class Experiment:
         """
         retain = self.cluster_assignments.index[~self.cluster_assignments.isin(clusters)]
         molecules = self.molecules.ix[retain, :]
-        reads = self.reads.ix[retain, :]
         metadata = self.metadata.ix[retain, :]
-        experiment = Experiment(reads=reads, molecules=molecules, metadata=metadata)
-        experiment._cluster_assignments = self.cluster_assignments[retain]
+        experiment = Experiment(molecules=deepcopy(molecules), reads=None,
+                                metadata=deepcopy(metadata))
+        experiment._cluster_assignments = deepcopy(self.cluster_assignments[retain])
 
         # remove any genes that now have zero expression
         nonzero_genes = experiment.molecules.sum(axis=0) != 0
         experiment.molecules = experiment.molecules.ix[:, nonzero_genes]
-        experiment.reads = experiment.reads.ix[:, nonzero_genes]
+        experiment._normalized = self._normalized
         return experiment
 
-    def run_diffusion_map(self, knn=10, n_diffusion_components=20, n_pca_components=15,
-                          params=pd.Series()):
+    def run_diffusion_map(self, knn=20, n_diffusion_components=20,
+                          n_pca_components=15, epsilon=1):
         """
-        :param knn:
+
+        :param knn: default can be a bit low; I use 60+ for large datasets.
         :param n_diffusion_components:
-        :param params:
+        :param n_pca_components:
+        :param epsilon:
         :return:
         """
 
-        if not self.pca:
-            raise RuntimeError('Please run PCA before calculating diffusion components. '
-                               'DiffusionGeometry is run on the PCA decomposition of '
-                               'self.molecules.')
-
-        # Random tag to allow for multiple diffusion map runs
-        rand_tag = random.random()
 
         data = deepcopy(self.molecules)
         data -= np.min(np.ravel(data))
         data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.inner(data, self.pca['loadings'].iloc[:, 0:n_pca_components].T),
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
                             index=self.molecules.index)
 
-        # Write to csv file
-        data.to_csv('/tmp/dm_data_%f.csv' % rand_tag)
+        # Nearest neighbors
+        N = data.shape[0]
+        nbrs = NearestNeighbors(n_neighbors=knn, algorithm='ball_tree').fit(data)
+        distances, indices = nbrs.kneighbors(data)
 
-        # Construct matlab script
-        # Change directory to diffusion geometry
-        matlab_cmd = "\" cd {};".format(os.path.expanduser(
-                '~/.seqc/tools/DiffusionGeometry'))
-        # Set up diffusion geometry
-        matlab_cmd += "Startup_DiffusionGeometry;"
-        matlab_cmd += "data = csvread('/tmp/dm_data_%f.csv', 1, 1);" % rand_tag
+        # Adjacency matrix
+        rows = np.zeros(N * knn, dtype=np.int32)
+        cols = np.zeros(N * knn, dtype=np.int32)
+        dists = np.zeros(N * knn)
+        location = 0
+        for i in range(N):
+            inds = range(location, location + knn)
+            rows[inds] = indices[i, :]
+            cols[inds] = i
+            dists[inds] = distances[i, :]
+            location += knn
+        W = csr_matrix((dists, (rows, cols)), shape=[N, N])
 
-        # Diffusion map parameters
-        dm_params = pd.Series()
-        dm_params['Normalization'] = "'smarkov'"
-        dm_params['Epsilon'] = str(1)
-        dm_params['kNN'] = str(knn)
-        dm_params['kEigenVecs'] = str(n_diffusion_components)
-        dm_params['Symmetrization'] = "'W+Wt'"
+        # Symmetrize W
+        W = W + W.T
 
-        # Update additional parameters
-        for i in params.index:
-            dm_params[i] = str(params[i])
+        # Convert to affinity (with selfloops)
+        rows, cols, dists = find(W)
+        rows = np.append(rows, range(N))
+        cols = np.append(cols, range(N))
+        dists = np.append(dists/(epsilon ** 2), np.zeros(N))
+        W = csr_matrix((np.exp(-dists), (rows, cols)), shape=[N, N])
 
-        # Add to matlab command
-        print('Diffusion geometry parameters..')
-        for i in dm_params.index:
-            print("%s: %s" % (i, dm_params[i]))
-            matlab_cmd += "GraphDiffOpts.%s = %s; " % (i, dm_params[i])
+        # Create D
+        D = np.ravel(W.sum(axis=1))
+        D[D != 0] = 1 / D[D != 0]
 
-        # Run diffusion map
-        matlab_cmd += "G = GraphDiffusion(data', 0, GraphDiffOpts);"
+        # Symmetric markov normalization
+        D = csr_matrix((np.sqrt(D), (range(N), range(N))), shape=[N, N])
+        P = D
+        T = D.dot(W).dot(D)
+        T = (T + T.T) / 2
 
-        # Write eigen vectors to file
-        matlab_cmd += " csvwrite('/tmp/dm_eigs_%f.csv', G.EigenVecs);" % rand_tag
-        matlab_cmd += " csvwrite('/tmp/dm_eig_vals_%f.csv', G.EigenVals); exit;\"" % (
-            rand_tag)
+        # Eigen value decomposition
+        D, V = eigs(T, n_diffusion_components, tol=1e-4, maxiter=1000)
+        D = np.real(D)
+        V = np.real(V)
+        inds = np.argsort(D)[::-1]
+        D = D[inds]
+        V = V[:, inds]
+        V = P.dot(V)
 
-        # Run matlab command
-        call(['matlab', '-nodesktop', '-nosplash', '-r %s' % matlab_cmd])
+        # Normalize
+        for i in range(V.shape[1]):
+            V[:, i] = V[:, i] / norm(V[:, i])
+        V = np.round(V, 10)
 
-        # Read in results
-        eigs = pd.DataFrame.from_csv('/tmp/dm_eigs_%f.csv' % rand_tag, header=None,
-                                     index_col=None)
-        eigs.index = self.molecules.index
-        vals = pd.DataFrame.from_csv('/tmp/dm_eig_vals_%f.csv' % rand_tag, header=None,
-                                     index_col=None)
+        # Update object
+        self.diffusion_eigenvectors = pd.DataFrame(V, index=self.molecules.index)
+        self.diffusion_eigenvalues = pd.DataFrame(D)
 
-        self.diffusion_eigenvectors = eigs
-        self.diffusion_eigenvalues = vals
-
-        # Clean up
-        os.remove('/tmp/dm_data_%f.csv' % rand_tag)
-        os.remove('/tmp/dm_eigs_%f.csv' % rand_tag)
-        os.remove('/tmp/dm_eig_vals_%f.csv' % rand_tag)
-
-    def plot_diffusion_components(self, title='Diffusion Components'):
+    def plot_diffusion_components(self):
         if self.tsne is None:
             raise RuntimeError('Please run tSNE before plotting diffusion components.')
 
@@ -1098,28 +1223,87 @@ class Experiment:
         n_rows = int(height / 2)
         n_cols = int(width / 2)
         gs = plt.GridSpec(n_rows, n_cols)
+        axes = []
 
         for i in range(self.diffusion_eigenvectors.shape[1]):
-            ax = plt.subplot(gs[i // n_cols, i % n_cols])
-            plt.scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
-                        cmap=cmap, edgecolors='none', s=size)
-            ax.set_axis_off()
+            axes.append(plt.subplot(gs[i // n_cols, i % n_cols]))
+            axes[i].scatter(self.tsne['x'], self.tsne['y'], c=self.diffusion_eigenvectors[i],
+                        cmap=cmap, edgecolors='none', s=size, alpha=0.65)
+            axes[i].set_axis_off()
 
-        fig.suptitle(title)
-        return fig
+            # get outliers, plot in red
+            # mu = np.mean(self.diffusion_eigenvectors[i])
+            # std = np.std(self.diffusion_eigenvectors[i])
+            # emin = mu - 10 * std
+            # emax = mu + 10 * std
+            # is_outlier = (self.diffusion_eigenvectors[i] < emin) | (
+            # self.diffusion_eigenvectors[i] > emax)
+            # axes[i].plot(self.tsne.ix[is_outlier, 'x'], self.tsne.ix[is_outlier, 'y'],
+            #              c='r', linewidth=0, marker='o',
+            #              markersize=np.sqrt(size))
 
-    # todo extremely slow for large numbers of genes, components. parallelize
-    # across components using multiprocessing pool similar to how the below GSEA function
-    # was programmed.
-    # NOTE: it will be more complex because larger arrays are involved in these
-    # calculations. Need to use memmapped numpy arrays to avoid large-scale copying of the
-    # input data.
+        return fig, axes
+
+    def remove_diffusion_outliers(self):
+        raise NotImplementedError
+
+    @staticmethod
+    def _correlation(x: np.array, vals: np.array):
+        x = x[:, np.newaxis]
+        mu_x = x.mean()  # cells
+        mu_vals = vals.mean(axis=0)  # cells by gene --> cells by genes
+        sigma_x = x.std()
+        sigma_vals = vals.std(axis=0)
+
+        return ((vals * x).mean(axis=0) - mu_vals * mu_x) / (sigma_vals * sigma_x)
+
+    def run_diffusion_map_correlations(self, components=None, no_cells=10):
+        if components is None:
+            components = np.arange(self.diffusion_eigenvectors.shape[1])
+        else:
+            components = np.array(components)
+        components = components[components != 0]
+
+        component_shape = self.diffusion_eigenvectors.shape[1]
+
+        diffusion_map_correlations = np.empty((self.molecules.shape[1],
+                                               self.diffusion_eigenvectors.shape[1]),
+                                               dtype=np.float)
+        # assert diffusion_map_correlations.shape == (gene_shape, component_shape),
+        #     '{!r}, {!r}'.format(diffusion_map_correlations.shape,
+        #                         (gene_shape, component_shape))
+
+        for component_index in components:
+            component_data = self.diffusion_eigenvectors.values[:, component_index]
+
+            # assert component_data.shape == (cell_shape,), '{!r} != {!r}'.format(
+            #     component_data.shape, (cell_shape,))
+            order = np.argsort(component_data)
+            x = pd.rolling_mean(component_data[order], no_cells)[no_cells:]
+            # assert x.shape == (cell_shape - no_cells,)
+
+            # this fancy indexing will copy self.molecules
+            vals = pd.rolling_mean(self.molecules.values[order, :], no_cells, axis=0)[no_cells:]
+            # assert vals.shape == (cell_shape - no_cells, gene_shape)
+            cor_res = self._correlation(x, vals)
+            # assert cor_res.shape == (gene_shape,)
+            diffusion_map_correlations[:, component_index] = self._correlation(x, vals)
+
+        # this is sorted by order, need it in original order (reverse the sort)
+
+        self.diffusion_map_correlations = pd.DataFrame(
+                diffusion_map_correlations[:, components], index=self.molecules.columns,
+                columns=components)
+
     def determine_gene_diffusion_correlations(self, components=None, no_cells=10):
         """
 
         :param no_cells:
         :return:
         """
+        warnings.warn('DeprecationWarning: please use '
+                      'Experiment.run_diffusion_map_correlations(). It offers a 10x '
+                      'speed-up')
 
         if components is None:
             components = np.arange(self.diffusion_eigenvectors.shape[1])
@@ -1242,6 +1426,144 @@ class Experiment:
             # execute if file cannot be found
             return b'GSEA output pattern was not found, and could not be changed.'
 
+    @classmethod
+    def run_gsea_preranked_list(cls, rnk_file, output_stem, gmt_file=None):
+        """helper function to run gsea on already generated .rnk files
+
+        :return:
+        """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
+
+        out_dir, out_prefix = os.path.split(output_stem)
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not gmt_file:
+            cls._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=rnk_file, out_prefix=out_prefix,
+                      out_dir=out_dir, gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}.GseaPreranked.[0-9]*'.format(p=out_prefix)
+            repl = out_prefix
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
+
+    def run_gsea_diffexpr(self, cluster_1, cluster_2, output_stem, gmt_file=None):
+        """
+
+        :param cluster_1:
+        :param cluster_2:
+        :param output_stem:  the file location and prefix for the output of GSEA
+        :param gmt_file:
+        :param components:
+        :return:
+        """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
+
+        out_dir, out_prefix = os.path.split(output_stem)
+        out_dir += '/'
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not gmt_file:
+            self._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # save the .rnk file
+        out_dir, out_prefix = os.path.split(output_stem)
+        genes_file = '{stem}_cluster_{c1}_vs_{c2}.rnk'.format(
+                stem=output_stem, c1=cluster_1, c2=cluster_2)
+
+        # get cells in each group and convert to ranks
+        c1 = self.molecules.ix[self.cluster_assignments == cluster_1, :]
+        c2 = self.molecules.ix[self.cluster_assignments == cluster_2, :]
+        c1 = np.apply_along_axis(rankdata, 1, c1)
+        c2 = np.apply_along_axis(rankdata, 1, c2)
+
+        # get average ranks, compute fold change
+        c1_mu = pd.Series(np.mean(c1, axis=0), index=self.molecules.columns)
+        c2_mu = pd.Series(np.mean(c2, axis=0), index=self.molecules.columns)
+        fold_change = (c2_mu - c1_mu) / c1_mu
+
+        # dump to file
+        ranked_genes = fold_change.sort_values(inplace=False, ascending=False)
+        pd.DataFrame(ranked_genes).fillna(0).to_csv(genes_file, sep='\t', header=False)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix}_{c1}_vs_{c2} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=genes_file,
+                      out_prefix=out_prefix, c1=cluster_1, c2=cluster_2, out_dir=out_dir,
+                      gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}_{c1}_vs_{c2}.GseaPreranked.[0-9]*'.format(
+                    p=out_prefix, c1=cluster_1, c2=cluster_2)
+            repl = '{p}_{c1}_vs_{c2}'.format(p=out_prefix, c1=cluster_1, c2=cluster_2)
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
     def run_gsea(self, output_stem, gmt_file=None, components=None):
         """
 
@@ -1250,6 +1572,9 @@ class Experiment:
         :param components:
         :return:
         """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
 
         out_dir, out_prefix = os.path.split(output_stem)
         out_dir += '/'
@@ -1284,6 +1609,55 @@ class Experiment:
         errors = pool.map(partial_gsea_process, components)
         return errors
 
+    def select_biological_components(self, output_stem, n=10, alpha=0.5,
+                                     components=None):
+        """
+        :param output_stem:
+        :param n:  number of significant enrichments to report
+        :param alpha:  float, significance threshold
+        :param components:
+        :return:
+        """
+        if components is None:
+            components = self.diffusion_map_correlations.columns
+
+        # get positive enrichments for each component
+        for c in components:
+            pos_report_pattern = 'gsea_report_for_na_pos_[0-9]*?\.html'
+            neg_report_pattern = 'gsea_report_for_na_neg_[0-9]*?\.html'
+            try:
+                files = os.listdir('{stem}_{c}'.format(stem=output_stem, c=c))
+            except FileNotFoundError:
+                print('No enrichments were calculated for component {c}'.format(c=c))
+                continue
+            print('component: {}'.format(c))
+            for f in files:
+                mo_pos = re.match(pos_report_pattern, f)
+                mo_neg = re.match(neg_report_pattern, f)
+                if mo_pos:
+                    try:
+                        report_data = pd.read_html('{stem}_{c}/{f}'.format(
+                            stem=output_stem, c=c, f=f), header=0, index_col=0)[0]
+                    except ValueError:
+                        print('could not find table for component {}'.format(c))
+                        break
+                    # report top n significant enrichments
+                    significant = np.where(report_data['FDR q-val'] < alpha)[0][:n]
+                    print('positive enrichment:')
+                    print(list(report_data.iloc[significant, 0]))
+                elif mo_neg:
+                    try:
+                        report_data = pd.read_html('{stem}_{c}/{f}'.format(
+                            stem=output_stem, c=c, f=f), header=0, index_col=0)[0]
+                    except ValueError:
+                        print('could not find table for component {}'.format(c))
+                        break
+                    # report top n significant enrichments
+                    significant = np.where(report_data['FDR q-val'] < alpha)[0][:n]
+                    print('negative enrichment:')
+                    print(list(report_data.iloc[significant, 0]))
+            print('')
+
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
 
@@ -1303,36 +1677,49 @@ class Experiment:
         # Select the genes
         use_genes = list()
         for component in components:
-            cutoff = (np.mean(self.diffusion_map_correlations.iloc[:, component]) +
-                      2 * np.std(self.diffusion_map_correlations.iloc[:, component]))
+            cutoff = (np.mean(self.diffusion_map_correlations.ix[:, component]) +
+                      2 * np.std(self.diffusion_map_correlations.ix[:, component]))
             use_genes = use_genes + list(self.diffusion_map_correlations.index[abs(
-                    self.diffusion_map_correlations.iloc[:, component]) > cutoff])
+                    self.diffusion_map_correlations.ix[:, component]) > cutoff])
 
         # Unique genes
         use_genes = list(set(use_genes))
 
         # Create new scdata object
-        subset_molecules = self.molecules.ix[:, use_genes]
-        subset_reads = self.reads.ix[:, use_genes]
-        metadata = self.metadata.ix[:, use_genes]
+        subset_molecules = deepcopy(self.molecules.ix[:, use_genes])
+        metadata = deepcopy(self.metadata)
 
         # throws out analysis results; this makes sense
-        return Experiment(subset_reads, subset_molecules, metadata)
+        exp = Experiment(molecules=subset_molecules, reads=None,
+                         metadata=metadata)
+        exp._normalized = self._normalized
+
+        # remove duplicate genes
+        exp.molecules = exp.molecules.groupby(axis=1, level=0).sum()
+
+        return exp
 
     def pairwise_differential_expression(self, c1, c2, alpha=0.05):
         """
         carry out differential expression (post-hoc tests) between cells c1 and cells c2,
         using bh-FDR to correct for multiple tests
         :param alpha:
-        :param g1:
-        :param g2:
+        :param c1:
+        :param c2:
         :return:
         """
-        g1 = self.molecules.loc[c1]
-        g2 = self.molecules.loc[c2]
+        # get genes expressed in either set
+        expressed = self.molecules.loc[c1 | c2].sum(axis=0) != 0
 
-        res = pd.Series(index=self.molecules.columns, dtype=float)
-        for g in self.molecules.columns:
+        g1 = self.molecules.loc[c1].ix[:, expressed]
+        g2 = self.molecules.loc[c2].ix[:, expressed]
+
+        g1mu = g1.mean(axis=0)
+        g2mu = g2.mean(axis=0)
+        fc = (g2mu - g1mu) / g1mu
+
+        res = pd.Series(index=self.molecules.columns[expressed], dtype=float)
+        for g in self.molecules.columns[expressed]:
             try:
                 res[g] = mannwhitneyu(np.ravel(g1[g]), np.ravel(g2[g]))[1]
             except ValueError:
@@ -1340,8 +1727,10 @@ class Experiment:
 
         pval_corrected = multipletests(res.values, alpha=alpha, method='fdr_tsbh')[1]
 
-        return pd.Series(pval_corrected, index=self.molecules.columns,
-                         dtype=float).sort_values()
+        pval_sorted = pd.Series(pval_corrected, index=self.molecules.columns[expressed],
+                                dtype=float).sort_values()
+        fc = fc.ix[pval_sorted.index]
+        return pval_sorted, fc
 
     def single_gene_differential_expression(self, gene, alpha):
         """
@@ -1425,7 +1814,8 @@ class Experiment:
 
         return pd.Series(pval_corrected, index=self.molecules.columns).sort_values(inplace=False)
 
-    def plot_gene_expression(self, genes, suptitle='tSNE-projected Gene Expression'):
+    # todo add option to plot phenograph cluster that these are being DE in.
+    def plot_gene_expression(self, genes):
 
         not_in_dataframe = set(genes).difference(self.molecules.columns)
         if not_in_dataframe:
@@ -1452,11 +1842,9 @@ class Experiment:
             ax = plt.subplot(gs[i // n_cols, i % n_cols])
             axes.append(ax)
             plt.scatter(self.tsne['x'], self.tsne['y'], c=np.arcsinh(self.molecules[g]),
-                        cmap=cmap, edgecolors='none', s=size)
+                        cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             ax.set_axis_off()
             ax.set_title(g)
-
-        fig.suptitle(suptitle)
 
         return fig, axes
 
@@ -1485,18 +1873,19 @@ class Experiment:
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.scatter(self.tsne['x'], self.tsne['y'],
                    c=np.arcsinh(self.molecules[genes].sum(axis=1)),
-                   cmap=cmap, edgecolors='none', s=size)
+                   cmap=cmap, edgecolors='none', s=size, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
         return fig, ax
 
-    def remove_housekeeping_genes(self, organism='human'):
+    def remove_housekeeping_genes(self, organism='human', additional_hk_genes=set()):
         """
         Remove snoRNA and miRNAs because they are undetectable by the library construction
         procedure; their identification is a probable false-postive.
 
         Next, removes housekeeping genes based on GO annotations.
+        :param additional_hk_genes:
         :param organism: options: [human, mouse], default=human.
         """
 
@@ -1509,7 +1898,7 @@ class Experiment:
         genes = genes[~genes.str.contains('^FP[0-9]')]
         # SNO RNAs
         genes = genes[~genes.str.contains('RNU|SNO|RNVU')]
-        # Ribobosomal RNA
+        # Ribosomal RNA
         genes = genes[~genes.str.contains('RNA5S')]
 
         # housekeeping gene ontologies
@@ -1521,16 +1910,20 @@ class Experiment:
             data = {fields[0]: fields[1:] for fields in
                     [line[:-1].split('\t') for line in f.readlines()]}
 
-        hk_genes = {'B2M', 'AC091053.2', 'MALAT1', 'TMSB4X', 'RPL13AP5-RPL13A',
-                    'RP11-864I4.1-EEF1G', 'GAPDH', 'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB',
-                    'ACTG1', 'RP5-1056L3.3', 'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}
+        hk_genes = {'AC091053.2', 'RPL13AP5-RPL13A', 'RP11-864I4.1-EEF1G', 'GAPDH',
+                    'CTD-3035D6.1', 'CTC-575D19.1', 'ACTB', 'ACTG1', 'RP5-1056L3.3',
+                    'U1', 'U2', 'U3', 'U4', 'U6', 'U7'}
+        hk_genes.update(additional_hk_genes)
         for c in cats:
             hk_genes.update(data[c])
 
         # remove genes
         genes = genes.difference(hk_genes)
 
-        return Experiment(self.molecules[genes], self.reads[genes], self.metadata)
+        exp = Experiment(molecules=deepcopy(self.molecules[genes]), reads=None,
+                         metadata=deepcopy(self.metadata))
+        exp._normalized = self._normalized
+        return exp
 
     def annotate_clusters_by_expression(self, alpha=0.05):
         """
@@ -1550,7 +1943,7 @@ class Experiment:
         data = self.molecules.values[idx, :]
 
         # get points to split the array
-        split_indices = np.where(np.diff(self.cluster_assignments[idx]))[0] + 1
+        split_indices = np.where(np.diff(self.cluster_assignments.iloc[idx]))[0] + 1
 
         # create the function for the kruskal test
         f = lambda v: kruskalwallis(*np.split(v, split_indices))[1]
