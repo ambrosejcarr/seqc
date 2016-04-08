@@ -279,7 +279,7 @@ class ClusterServer(object):
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/0.1.6 | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/min_support_error_correction | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
@@ -381,8 +381,9 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     """
     prefix, directory = os.path.split(output_stem)
     counts = output_stem + '_read_and_count_matrices.p'
+    counts_min_support = output_stem + '_read_and_count_matrices_min_support.p'
     log = prefix + '/seqc.log'
-    files = [counts, log]  # counts and seqc.log will always be uploaded
+    files = [counts, counts_min_support,  log]  # counts and seqc.log will always be uploaded
 
     # start_pos can be: start, merged, samfile, readarray
     if start_pos == 'start' or start_pos == 'merged':

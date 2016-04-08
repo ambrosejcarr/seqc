@@ -410,10 +410,12 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
     ra_grouped, error_rate = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
             err_correction_mat='')
-    grouped_res_dic, error_count = correct_errors_min_support(
+    grouped_res_dic, error_count = correct_errors_ajc(
+        alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha)
+    min_support_correction, error_count = correct_errors_min_support(
             alignments_ra, ra_grouped)
 
-    return grouped_res_dic, err_correction_res
+    return grouped_res_dic, min_support_correction, err_correction_res
 
 def correct_errors_min_support(ra, ra_grouped, min_support=2, err_correction_res=''):
     """
