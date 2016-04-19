@@ -12,6 +12,7 @@ import random
 
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 
+# todo: increase number of error correction methods by 2
 NUM_OF_ERROR_CORRECTION_METHODS = 3
 #ERROR_CORRECTION_AJC = 0
 
@@ -484,6 +485,74 @@ def in_drop_v2(*args, **kwargs):
     :param kwargs:
     :return:
     """
+    return in_drop(*args, **kwargs)
+
+
+def drop_seq(alignments_ra, *args, **kwargs):
+    """pass-through function that groups the read_array for count matrix construction but
+    does not perform any error correction. To be replaced by Ashley's function.
+
+    :param alignments_ra: seqc.core.ReadArray object
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    molecules = defaultdict(set)
+    reads = defaultdict(int)
+    err_correction_res = ''
+    for row in alignments_ra.data:  # generates tuples of rows
+        molecules[(row[5], row[1])].add(row[2])
+        reads[(row[5], row[1])] += 1
+
+    grouped_res_dic = {}
+    for k in molecules:
+        grouped_res_dic[k] = (molecules[k], reads[k])
+
+    return grouped_res_dic, err_correction_res
+
+
+def mars1_seq(*args, **kwargs):
+    """very simple pass-through wrapper for mars1_seq error correction, needs to be
+    replaced with the actual error correction method instead of just drop_seq()
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    # todo: replace with actual mars1_seq error correction method
+    return in_drop(*args, **kwargs)
+
+
+def mars2_seq(*args, **kwargs):
+    """very simple pass-through wrapper for mars1_seq error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for mars2_seq
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    # todo: replace with actual mars1_seq error correction method
+    return in_drop(*args, **kwargs)
+
+
+def in_drop_v2(*args, **kwargs):
+    """very simple pass-through wrapper for in_drop error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for in_drop_v2
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    return in_drop(*args, **kwargs)
+
+
+def mars1_seq(*args, **kwargs):
+    return in_drop(*args, **kwargs)
+
+
+def mars2_seq(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 

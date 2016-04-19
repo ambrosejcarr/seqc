@@ -10,6 +10,10 @@ import paramiko
 import boto3
 from botocore.exceptions import ClientError
 import seqc
+import logging
+
+# turn off paramiko non-error logging
+logging.getLogger('paramiko').setLevel(logging.CRITICAL)
 
 
 class EC2RuntimeError(Exception):
@@ -275,7 +279,7 @@ class ClusterServer(object):
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/v0.1.6 | '
+            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/0.1.6 | '
             'sudo tee %s > /dev/null' % location)
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
@@ -360,50 +364,64 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
 
 def gzip_file(filename):
-    """gzips a given file, returns name of gzipped file"""
-    cmd = 'gzip ' + filename
+    """gzips a given file using pigz, returns name of gzipped file"""
+    cmd = 'pigz ' + filename
     pname = Popen(cmd.split())
     pname.communicate()
     return filename + '.gz'
 
 
-def upload_results(output_stem: str, email_address: str, aws_upload_key: str) -> None:
+def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
+                   start_pos: str) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
+    :param infile: determines where in the script SEQC started
     """
     prefix, directory = os.path.split(output_stem)
-
-    samfile = prefix + '/alignments/Aligned.out.sam'
-    bamfile = prefix + '/alignments/Aligned.out.bam'
-    h5_archive = output_stem + '.h5'
-    merged_fastq = output_stem + '_merged.fastq'
     counts = output_stem + '_read_and_count_matrices.p'
-    shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
-                    '_alignment_summary.txt')
-    alignment_summary = output_stem + '_alignment_summary.txt'
     log = prefix + '/seqc.log'
+    files = [counts, log]  # counts and seqc.log will always be uploaded
 
-    # converting samfile to bamfile
-    convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
-                                                                    samfile=samfile)
-    conv = Popen(convert_sam.split())
-    conv.communicate()
-    # bamfile = gzip_file(bamfile)
-    seqc.log.info('Successfully converted samfile to bamfile to upload.')
+    # start_pos can be: start, merged, samfile, readarray
+    if start_pos == 'start' or start_pos == 'merged':
+        samfile = prefix + '/alignments/Aligned.out.sam'
+        bamfile = prefix + '/alignments/Aligned.out.bam'
+        alignment_summary = output_stem + '_alignment_summary.txt'
 
-    # gzipping merged_fastq file to upload
-    merged_fastq = gzip_file(merged_fastq)
-    seqc.log.info('Successfully gzipped merged fastq file to upload.')
+        # converting samfile to bamfile
+        convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
+                                                                        samfile=samfile)
+        conv = Popen(convert_sam.split())
+        conv.communicate()
+        seqc.log.info('Successfully converted samfile to bamfile to upload.')
 
-    files = [counts, log, alignment_summary, h5_archive, bamfile, merged_fastq]
+        shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
+                        '_alignment_summary.txt')
+        files.append(alignment_summary)
+        files.append(bamfile)
+
+        if start_pos != 'merged':
+            merged_fastq = output_stem + '_merged.fastq'
+            # zipping merged_fastq file to upload
+            merged_fastq = gzip_file(merged_fastq)
+            seqc.log.info('Successfully gzipped merged fastq file to upload.')
+            files.append(merged_fastq)
+
+    if start_pos != 'readarray':
+        h5_archive = output_stem + '.h5'
+        files.append(h5_archive)
+
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     for item in files:
-        seqc.io.S3.upload_file(item, bucket, key)
-        item_name = item.split('/')[-1]
-        seqc.log.info('Successfully uploaded %s to the specified S3 location '
-                      '"%s%s".' % (item, aws_upload_key, item_name))
+        try:
+            seqc.io.S3.upload_file(item, bucket, key)
+            item_name = item.split('/')[-1]
+            seqc.log.info('Successfully uploaded %s to the specified S3 location '
+                          '"%s%s".' % (item, aws_upload_key, item_name))
+        except FileNotFoundError:
+            seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
 
     # todo @AJC put this back in
     # generate a run summary and append to the email
@@ -423,6 +441,55 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str) ->
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified')
+
+
+def check_progress():
+    # reading in configuration file
+    config_file = os.path.expanduser('~/.seqc/config')
+    config = configparser.ConfigParser()
+    if not config.read(config_file):
+        raise ValueError('Please run ./configure (found in the seqc directory) before '
+                         'attempting to run process_experiment.py.')
+
+    # obtaining rsa key from configuration file
+    rsa_key = os.path.expanduser(config['key']['rsa_key_location'])
+
+    # checking for instance status
+    inst_file = os.path.expanduser('~/.seqc/instance.txt')
+    try:
+        with open(inst_file, 'r') as f:
+            for line in f:
+                entry = line.strip('\n')
+                inst_id, run_name = entry.split(':')
+
+                # connecting to the remote instance
+                s = seqc.remote.SSHServer(inst_id, rsa_key)
+                try:
+                    inst_state = s.instance.state['Name']
+                    if inst_state != 'running':
+                        print('Cluster (%s) for run "%s" is currently %s.' %
+                              (inst_id, run_name, inst_state))
+                        continue
+                except:
+                    print('Cluster (%s) for run "%s" has been terminated.'
+                          % (inst_id,run_name))
+                    continue
+
+                s.connect()
+                out, err = s.exec_command('less /data/seqc.log')
+                if not out:
+                    print('ERROR: SEQC log file not found in cluster (%s) for run "%s." '
+                          'Something went wrong during remote run.' % (inst_id, run_name))
+                    continue
+                print('-'*80)
+                print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
+                print('-'*80)
+                for x in out:
+                    print(x)
+                print('-'*80 + '\n')
+    except FileNotFoundError:
+        print('You have not started a remote instance -- exiting.')
+        sys.exit(0)
 
 
 class SSHServer(object):
@@ -505,3 +572,4 @@ class SSHServer(object):
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
         return data, errs
+

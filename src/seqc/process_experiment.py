@@ -15,8 +15,22 @@ class ConfigurationError(Exception):
     pass
 
 
+class ArgumentParserError(Exception):
+    pass
+
+
+class NewArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        # checks to see whether user wants to check remote experiment status
+        if '--check-progress' in sys.argv[1:]:
+            seqc.remote.check_progress()
+        else:
+            print(message)
+        sys.exit(0)
+
+
 def parse_args(args):
-    p = argparse.ArgumentParser(description='Process Single-Cell RNA Sequencing Data')
+    p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2'],
@@ -24,63 +38,81 @@ def parse_args(args):
 
     a = p.add_argument_group('required arguments')
     a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
-                   help='text file(s) containing valid cell barcodes (one barcode per '
-                        'line)')
+                   help='Either (a) an s3 link to a folder containing only barcode '
+                        'files, or (b) the full file path of each file on the local '
+                        'machine.')
     a.add_argument('-o', '--output-stem', metavar='O', required=True,
-                   help='file stem for output files e.g. ./seqc_output/tumor_run5')
+                   help='If remote=True (default), an s3 link to the directory where all '
+                        'output data should be uploaded when the run completes (e.g. '
+                        's3://my-bucket/seqc_output_run_x/). If remote=False, the '
+                        'complete path and prefix for the output data '
+                        '(e.g. /Users/me/data/seqc/run_x_output). Cannot have a terminal '
+                        '/.')
     a.add_argument('-i', '--index', metavar='I', required=True,
-                   help='Folder or s3 link to folder containing index files for '
-                        'alignment and resolution of ambiguous reads.')
+                   help='Local folder or s3 link to a directory containing the STAR '
+                        'index used for alignment.')
 
     i = p.add_argument_group('input arguments')
     i.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
-                   help='fastq file(s) containing genomic information')
+                   help='List of fastq file(s) containing genomic information, or an s3 '
+                        'link to a directory containing only genomic fastq file(s).')
     i.add_argument('-b', '--barcode-fastq', nargs='*', metavar='B', default=[],
-                   help='fastq file(s) containing barcode information')
+                   help='List of fastq file(s) containing barcode information, or an s3 '
+                        'link to a directory containing only barcode fastq file(s).')
     i.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
-                   help='fastq file containing genomic information annotated with '
-                        'barcode data')
+                   help='Filename or s3 link to a fastq file containing genomic '
+                        'information annotated with barcode data.')
     i.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
-                   help='sam file containing aligned, merged fastq records.')
+                   help='Filename or s3 link to a .sam file containing aligned, merged '
+                        'sequence records.')
     i.add_argument('-r', '--read-array', nargs='?', metavar='RA', default='',
-                   help='ReadArray archive containing processed sam records')
+                   help='Filename or s3 link to a ReadArray (.h5) archive containing '
+                        'processed sam records.')
     i.add_argument('--basespace', metavar='BS',
-                   help='BaseSpace sample ID. Identifies a sequencing run to download '
-                        'and process.')
+                   help='BaseSpace sample ID. The string of numbers indicating the id '
+                        'of the BaseSpace sample. (e.g. if the link to the sample is'
+                        'https://basespace.illumina.com/sample/34000253/0309, '
+                        '--basespace=34000253.')
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F',
                    help='maximum paired-end insert size that is considered a valid '
-                        'record',
+                        'record. For multialignment correction. Not currently used.',
                    default=1000)
     f.add_argument('--min-poly-t', metavar='T',
                    help='minimum size of poly-T tail that is required for a barcode to '
-                        'be considered a valid record',
+                        'be considered a valid record (default=3)',
                    default=3, type=int)
-    f.add_argument('--max-dust-score', metavar='D', help='maximum complexity score for a '
-                                                         'read to be considered valid')
+    f.add_argument('--max-dust-score', metavar='D',
+                   help='maximum complexity score for a read to be considered valid. '
+                        '(default=10, higher scores indicate lower complexity.)')
+    f.add_argument('--max-ed', metavar='ED',
+                   help='Maximum hamming distance for correcting barcode errors. Should '
+                        'be set to 1 when running in_drop legacy barcodes. (Default=2).',
+                   default=2, type=int)
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
+    r.set_defaults(check=False)
     r.add_argument('--local', dest="remote", action="store_false",
-                   help='run SEQC locally instead of initiating on AWS EC2 servers')
+                   help='Run SEQC locally instead of initiating on AWS EC2 servers.')
     r.add_argument('--aws', default=False, action='store_true',
-                   help='automatic flag; no need for user specification')
+                   help='Automatic flag; no need for user specification.')
     r.add_argument('--email-status', metavar='E', default=None,
-                   help='email address to receive run summary when running remotely')
+                   help='Email address to receive run summary or errors when running '
+                        'remotely.')
     r.add_argument('--no-terminate', default=False, action='store_true',
-                   help='do not terminate the EC2 instance after program completes')
-    r.add_argument('--reverse-complement', default=False, action='store_true',
-                   help='indicates that provided barcode files contain reverse '
-                        'complements of what will be found in the sequencing data')
-    r.add_argument('--max-ed',  metavar='ED',
-                    help='maximum hamming distance for correcting barcode errors',
-                    default=2, type=int)
+                   help='Do not terminate the EC2 instance after program completes.')
+    r.add_argument('--check-progress', dest="check", action="store_true",
+                   help='Check progress of all currently running remote SEQC runs.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
 
-    return p.parse_args(args)
+    try:
+        return p.parse_args(args)
+    except ArgumentParserError:
+        raise
 
 
 def run_remote(stem: str) -> None:
@@ -122,7 +154,8 @@ def run_remote(stem: str) -> None:
     if '/usr/local/bin/process_experiment.py' not in res:
         raise ConfigurationError('Error executing SEQC on the cluster!')
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
-                    'completes.')
+                    'completes. Please use "process_experiment.py --check-progress" to'
+                    'monitor the status of the remote run.')
 
 
 def cluster_cleanup():
@@ -212,9 +245,16 @@ def check_arguments(args, basespace_token: str):
     read_array = args.read_array
     basespace = args.basespace
 
+    # check to make sure that --email-status is passed with remote run
+    if args.remote and not args.email_status:
+        raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
+
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
         raise ValueError('At least one input argument must be passed to SEQC.')
+    if not barcodes:
+        if args.platform != 'drop_seq':
+            raise ValueError('Barcode files are required for this SEQC run.')
 
     # keep track of which files need to be checked
     seqc_input = barcodes + [index_dir]
@@ -246,7 +286,6 @@ def check_arguments(args, basespace_token: str):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
 
-    # check for validity of all links that will be used by SEQC
     check_s3links(seqc_input)
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
@@ -411,6 +450,7 @@ def main(args: list = None):
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
         # determine where the script should start:
+        input_data = 'start'
         merge = True
         align = True
         process_samfile = True
@@ -436,7 +476,14 @@ def main(args: list = None):
         if align:
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
+                input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
+                if args.merged_fastq.endswith('.gz'):
+                    # todo: modify STAR to take in merged_fastq.gz
+                    gunzip_cmd = 'gunzip ' + args.merged_fastq
+                    full_file = Popen(gunzip_cmd.split())
+                    full_file.communicate()
+                    args.merged_fastq = args.merged_fastq.strip('.gz')
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
             *base_directory, stem = args.output_stem.split('/')
@@ -448,6 +495,7 @@ def main(args: list = None):
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
             if args.samfile.startswith('s3://'):
+                input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
             ra = seqc.core.ReadArray.from_samfile(
@@ -455,32 +503,36 @@ def main(args: list = None):
             ra.save(args.output_stem + '.h5')
         else:
             if args.read_array.startswith('s3://'):
+                input_data = 'readarray'
                 args.read_array = s3files_download([args.read_array], output_dir)[0]
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
 
-        seqc.log.info('Correcting cell barcode and RMT errors')
         # check if barcode files need to be downloaded
-        if not args.barcode_files[0].startswith('s3://'):
-            for cb in args.barcode_files:
-                if not os.path.isfile(cb):
-                    raise ValueError('provided barcode files: "[%s]" is neither '
-                                     'an s3 link or a valid filepath' %
-                                     ', '.join(map(str, args.barcode_files)))
-        else:
-            try:
-                seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
-                if not args.barcode_files[0].endswith('/'):
-                    args.barcode_files[0] += '/'
-                args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
-                seqc.log.info('Barcode files [%s] successfully installed.' %
-                              ', '.join(map(str, args.barcode_files)))
-            except FileExistsError:
-                pass  # file is already present.
-        print()
-        cell_counts, _ = seqc.correct_errors.correct_errors(
-            ra, args.barcode_files, reverse_complement=args.reverse_complement,
+        if args.platform != 'drop_seq':
+            if not args.barcode_files[0].startswith('s3://'):
+                for cb in args.barcode_files:
+                    if not os.path.isfile(cb):
+                        raise ValueError('provided barcode files: "[%s]" is neither '
+                                         'an s3 link or a valid filepath' %
+                                         ', '.join(map(str, args.barcode_files)))
+            else:
+                try:
+                    seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+                    if not args.barcode_files[0].endswith('/'):
+                        args.barcode_files[0] += '/'
+                    args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
+                    seqc.log.info('Barcode files [%s] successfully installed.' %
+                                  ', '.join(map(str, args.barcode_files)))
+                except FileExistsError:
+                    pass  # file is already present.
+
+        # correct errors
+        seqc.log.info('Correcting cell barcode and RMT errors')
+        correct_errors = getattr(seqc.correct_errors, args.platform)
+        cell_counts, _ = correct_errors(
+            ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
 
         seqc.log.info('Creating count matrices')
@@ -489,7 +541,6 @@ def main(args: list = None):
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
 
-        # todo: check if local-only runs (not local on AWS) will ever upload onto S3
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
         if args.aws:
@@ -497,7 +548,7 @@ def main(args: list = None):
 
             if args.email_status:
                 seqc.remote.upload_results(
-                    args.output_stem, args.email_status, aws_upload_key)
+                    args.output_stem, args.email_status, aws_upload_key, input_data)
 
     except:
         seqc.log.exception()
