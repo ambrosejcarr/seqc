@@ -317,165 +317,6 @@ def find_correct_barcode(code, barcodes_list):
             cor_code = bc
 
     return cor_code, min_ed
-
-def pass_filter(read, filters_counter, required_poly_t):
-    """
-    return true if a read pass the filters.
-    """
-    #TODO: we need to use this for InDrop as well
-
-    if read['gene'] == 0:
-        filters_counter['gene_0'] += 1
-        return False
-    if read['cell'] == 0:
-        filters_counter['cell_0'] += 1
-        return False
-    if read['rmt'] == 0:
-        filters_counter['rmt_0'] += 1
-        return False
-    if read['n_poly_t'] < required_poly_t:
-        filters_counter['poly_t'] += 1
-        return False
-    if BinRep.contains(int(read['rmt']), 'N'):
-        filters_counter['rmt_N'] += 1
-        return False
-    return True
-
-def group_for_dropseq(ra, required_poly_t=4):
-    """
-    Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
-    :param err_correction_mat:
-    :param max_ed:
-    :param reverse_complement:
-    :param required_poly_t:
-    :param barcode_files:
-    :param ra:
-    """
-    res = {}
-    tot = 0
-    filtered = {'gene_0':0, 'cell_0':0, 'rmt_0':0, 'poly_t':0, 'rmt_N':0}
-
-    N = BinRep._str2bindict['N']
-
-    for i, v in enumerate(ra.data):
-        tot += 1
-        if not pass_filter(v, filtered, required_poly_t):
-            continue
-        
-
-        # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads, gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
-        cell = v['cell']
-        cell_header = cell>>3   #we only look at the first 11 bases
-        rmt = v['rmt']
-        gene = v['gene']
-        try:
-            res[cell_header][rmt][gene,cell] += 1
-        except KeyError:
-            try:
-                res[cell_header][rmt][gene,cell] = 1
-            except KeyError:
-                try:
-                    res[cell_header][rmt]={(gene,cell):1}
-                except KeyError:
-                    res[cell_header] = {rmt:{(gene,cell):1}}
-
-
-
-    seqc.log.info('Error correction filtering results: total reads: {}; did not pass preliminary filters: {}'.format(tot, sum(filtered.values())))
-    return res
-
-def drop_seq(alignments_ra, *args, **kwargs):
-    """pass-through function that groups the read_array for count matrix construction but
-    does not perform any error correction. To be replaced by Ashley's function.
-
-    :param alignments_ra: seqc.core.ReadArray object
-    :param args:
-    :param kwargs:
-    :return:
-    """
-    
-    start = time.process_time()
-    pos_filter_threshold = 0.8
-    barcode_base_shift_threshold = 0.9
-    umi_len = 8
-    min_umi_cutoff = 10
-    # TODO:
-    # 4. collapse UMI's that are 1 ED from one another (This requires more thought as there are plenty of edge cases)
-    
-    res_dic = {}
-    
-    if 'grouped_ra' in kwargs:
-        grouped_ra = kwargs['grouped_ra']
-    else:
-        grouped_ra = group_for_dropseq(alignments_ra)
-    if 'min_umi_cutoff' in kwargs:
-        min_umi_cutoff = kwargs['min_umi_cutoff']
-        
-    base_shift_count = 0
-    pos_bias_count = 0
-    small_cell_groups = 0
-    
-    for cell in grouped_ra:
-        retain = True
-        base_shift = False
-        correct_cell = cell
-        size = len(grouped_ra[cell])
-        
-        #Check minimum size of cell group
-        if size < min_umi_cutoff:   #if the number of UMI's for this cell don't meet the threshold, we have to retain them
-            retain = True
-            small_cell_groups+=1
-            
-        else:
-            # Check for bias in any single base of the UMI (1-7)
-            base_mat = base_count(grouped_ra[cell])
-            for pos in range(umi_len-1):
-                for base in base_mat:
-                    if base_mat[base][pos]>pos_filter_threshold:
-                        retain = False
-                        pos_bias_count += 1
-                        continue
-            
-            # Check for base shift
-            if base_mat['T'][-1] > barcode_base_shift_threshold:
-                retain = True
-                base_shift = True
-                # Retain, but insert an 'N'
-                base_shift_count += 1            
-                
-        if retain:
-            for rmt in grouped_ra[cell]:
-                for gene, full_cell in grouped_ra[cell][rmt]:
-                    if base_shift:
-                        correct_cell = BinRep.ints2int([cell, BinRep._str2bindict['N']])    #replace the last base of cell with 'N'
-                        correct_rmt = BinRep.ints2int([full_cell&0b111, rmt]) >> 3         # correct the rmt with the last base of the cell, and dump the last 'T'
-                    else:
-                        correct_cell = full_cell
-                        correct_rmt = rmt
-                    try:
-                        retained_rmt, retained_reads = res_dic[gene, correct_cell]
-                        retained_rmt.append(correct_rmt)
-                        retained_reads += grouped_ra[cell][rmt][gene, full_cell]
-                        
-                        res_dic[gene,correct_cell] = retained_rmt, retained_reads
-                    except KeyError:
-                        res_dic[gene, correct_cell] = [correct_rmt], grouped_ra[cell][rmt][gene, full_cell]
-        
-        
-    seqc.log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
-    tot_time=time.process_time()-start
-    #print('tot time: {}'.format(tot_time))
-    return res_dic, grouped_ra
-
-def base_count(seq_dic, umi_len=8):
-    count_mat = {'A':np.zeros(umi_len), 'C':np.zeros(umi_len), 'G':np.zeros(umi_len), 'T':np.zeros(umi_len)}
-    for seq in seq_dic:
-        for i, base in enumerate(BinRep.bin2str(seq)):
-            count_mat[base][i] += 1
-    tot = len(seq_dic)
-    for base in count_mat:
-        count_mat[base] = count_mat[base]/tot
-    return count_mat
         
 def in_drop_v2(*args, **kwargs):
     """very simple pass-through wrapper for in_drop error correction, designed so that
@@ -585,11 +426,15 @@ def drop_seq(alignments_ra, *args, **kwargs):
     pos_bias_count = 0
     small_cell_groups = 0
     
+    close_pairs = 0
+    
     for cell in grouped_ra:
         retain = True
         base_shift = False
         correct_cell = cell
         size = len(grouped_ra[cell])
+        
+        #close_pairs += count_close_umi(grouped_ra[cell])
         
         #Check minimum size of cell group
         if size < min_umi_cutoff:   #if the number of UMI's for this cell don't meet the threshold, we have to retain them
@@ -633,6 +478,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
         
         
     seqc.log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
+    print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
     tot_time=time.process_time()-start
     #print('tot time: {}'.format(tot_time))
     return res_dic, grouped_ra
@@ -647,6 +493,14 @@ def base_count(seq_dic, umi_len=8):
         count_mat[base] = count_mat[base]/tot
     return count_mat
 
+#Used for research only
+def count_close_umi(seq_dic):
+    count=0
+    for seq1 in seq_dic:
+        for seq2 in seq_dic:
+            if hamming_dist_bin(seq1, seq2) <= 1:
+                count+=1
+    return (count-len(seq_dic))/2
 
 
 def mars1_seq(*args, **kwargs):
