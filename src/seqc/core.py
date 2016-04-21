@@ -43,9 +43,11 @@ class SparseMatrixError(Exception):
 
 # set plotting defaults
 sns.set_style('ticks')
-matplotlib.rc('font', **{'serif': ['Computer Modern Roman'],
-                         'monospace': ['Computer Modern Typewriter']
-                         })
+matplotlib.rc('font', **{
+    'serif': ['Computer Modern Roman'],
+    'monospace': ['Inconsolata'],
+    'sans-serif': ['Helvetica']
+    })
 
 matplotlib.rc('figure', **{'figsize': (4, 4),
                            'dpi': 150})
@@ -62,7 +64,7 @@ size = 8
 
 
 def qualitative_colors(n):
-    return sns.color_palette('husl', n)
+    return sns.color_palette('rainbow', n)
 
 
 def get_fig(fig=None, ax=None):
@@ -1078,7 +1080,7 @@ class Experiment:
         communities, graph, Q = phenograph.cluster(data, **kwargs)
         self.cluster_assignments = pd.Series(communities, index=data.index)
 
-    def plot_phenograph(self, fig=None, ax=None, labels=None):
+    def plot_phenograph(self, fig=None, ax=None, labels=None, **kwargs):
 
         if self.tsne is None:
             raise RuntimeError('Cannot plot phenograph before generating tSNE'
@@ -1094,7 +1096,7 @@ class Experiment:
                 label = clusters[i]
             data = self.tsne.ix[self.cluster_assignments == clusters[i], :]
             ax.plot(data['x'], data['y'], c=colors[i], linewidth=0, marker='o',
-                    markersize=np.sqrt(size), label=label)
+                    markersize=np.sqrt(size), label=label, **kwargs)
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
@@ -1815,7 +1817,7 @@ class Experiment:
         return pd.Series(pval_corrected, index=self.molecules.columns).sort_values(inplace=False)
 
     # todo add option to plot phenograph cluster that these are being DE in.
-    def plot_gene_expression(self, genes):
+    def plot_gene_expression(self, genes, log=False):
 
         not_in_dataframe = set(genes).difference(self.molecules.columns)
         if not_in_dataframe:
@@ -1836,12 +1838,16 @@ class Experiment:
         n_rows = int(height / 2)
         n_cols = int(width / 2)
         gs = plt.GridSpec(n_rows, n_cols)
+        if log:
+            molecules = self.molecules
+        else:
+            molecules = np.arcsinh(self.molecules)
 
         axes = []
         for i, g in enumerate(genes):
             ax = plt.subplot(gs[i // n_cols, i % n_cols])
             axes.append(ax)
-            plt.scatter(self.tsne['x'], self.tsne['y'], c=np.arcsinh(self.molecules[g]),
+            plt.scatter(self.tsne['x'], self.tsne['y'], c=molecules[g],
                         cmap=cmap, edgecolors='none', s=size, alpha=0.65)
             ax.set_axis_off()
             ax.set_title(g)
@@ -1990,7 +1996,8 @@ class Experiment:
                         gene_results[bid, aid] = 1
 
             # update global results
-            res = gene_results.sum(axis=1) > gene_results.shape[0] * .8
+            res = gene_results.sum(axis=1) >= gene_results.shape[0] - 1
             global_results[:, i] = res
 
-        return pd.DataFrame(global_results, columns=self.molecules.columns[reject])
+        return pd.DataFrame(global_results, columns=self.molecules.columns[reject],
+                            index=np.unique(self.cluster_assignments))

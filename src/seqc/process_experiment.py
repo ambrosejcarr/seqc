@@ -531,16 +531,13 @@ def main(args: list = None):
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
-        cell_counts, cell_counts_min_support, _ = correct_errors(
+        cell_counts, _ = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
-            pickle.dump(matrices, f)
-        matrices = seqc.correct_errors.convert_to_matrix(cell_counts_min_support)
-        with open(args.output_stem + '_read_and_count_matrices_min_support.p', 'wb') as f:
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
 
