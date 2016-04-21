@@ -426,7 +426,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     pos_bias_count = 0
     small_cell_groups = 0
     
-    close_pairs = 0
+    #close_pairs = 0
     
     for cell in grouped_ra:
         retain = True
@@ -478,7 +478,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
         
         
     seqc.log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
-    print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
+    #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
     tot_time=time.process_time()-start
     #print('tot time: {}'.format(tot_time))
     return res_dic, grouped_ra
