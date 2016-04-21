@@ -540,14 +540,6 @@ def in_drop_v2(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 
-def mars1_seq(*args, **kwargs):
-    return in_drop(*args, **kwargs)
-
-
-def mars2_seq(*args, **kwargs):
-    return in_drop(*args, **kwargs)
-
-
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
 def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
             reverse_complement=True, donor_cutoff=1, alpha=0.05,
