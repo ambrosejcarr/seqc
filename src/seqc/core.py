@@ -1080,7 +1080,7 @@ class Experiment:
         communities, graph, Q = phenograph.cluster(data, **kwargs)
         self.cluster_assignments = pd.Series(communities, index=data.index)
 
-    def plot_phenograph(self, fig=None, ax=None, labels=None, **kwargs):
+    def plot_clusters(self, fig=None, ax=None, labels=None, **kwargs):
 
         if self.tsne is None:
             raise RuntimeError('Cannot plot phenograph before generating tSNE'
