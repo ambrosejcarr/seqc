@@ -487,6 +487,8 @@ def base_count(seq_dic, umi_len=8):
     count_mat = {'A':np.zeros(umi_len), 'C':np.zeros(umi_len), 'G':np.zeros(umi_len), 'T':np.zeros(umi_len)}
     for seq in seq_dic:
         for i, base in enumerate(BinRep.bin2str(seq)):
+            if base=='N':
+              continue
             count_mat[base][i] += 1
     tot = len(seq_dic)
     for base in count_mat:
