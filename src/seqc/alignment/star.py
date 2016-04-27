@@ -62,7 +62,7 @@ def align(fastq_file, index, n_threads, alignment_dir, reverse_fastq_file=None,
                 v = str(v)
             except ValueError:
                 raise ValueError('arguments passed to STAR must be strings')
-        runtime_args[k] = v
+        runtime_args['--' + k] = v
 
     # construct command line arguments for STAR
     cmd = ['STAR']
