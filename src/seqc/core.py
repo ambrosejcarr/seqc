@@ -46,21 +46,23 @@ sns.set_style('ticks')
 matplotlib.rc('font', **{
     'serif': ['Computer Modern Roman'],
     'monospace': ['Inconsolata'],
-    'sans-serif': ['Helvetica']
+    'sans-serif': ['Lato']
     })
 
-matplotlib.rc('figure', **{'figsize': (4, 4),
-                           'dpi': 150})
+# todo change to kwargs
+matplotlib.rc('figure', **{'figsize': (4, 4), 'dpi': 150})
 
-matplotlib.rc('patch', **{'facecolor': 'royalblue',
-                          'edgecolor': 'none'})
+matplotlib.rc('patch', **{'facecolor': 'royalblue', 'edgecolor': 'none'})
 
-matplotlib.rc('lines', **{'color': 'royalblue',
-                          'markersize': 7})
+matplotlib.rc('lines', **{'color': 'royalblue', 'markersize': 7})
 
 matplotlib.rc('savefig', **{'dpi': '150'})
-cmap = matplotlib.cm.viridis
-size = 8
+
+matplotlib.rc('image', **{'cmap': 'viridis'})
+
+# todo remove
+size=7
+cmap=plt.cm.viridis
 
 
 def qualitative_colors(n):
@@ -534,21 +536,6 @@ class Experiment:
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
-    # todo fix to plot all at once
-    def plot_tsne_by_metadata(self, label, fig=None, ax=None):
-        cats = set(self.metadata[label])
-        colors = qualitative_colors(len(cats))
-        fig, ax = get_fig(fig=fig, ax=ax)
-        for c, color in zip(cats, colors):
-            rows = self.metadata[label] == c
-            plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'], marker='o',
-                     markersize=np.sqrt(7), linewidth=0, c=color, label=c)
-        ax.xaxis.set_major_locator(plt.NullLocator())
-        ax.yaxis.set_major_locator(plt.NullLocator())
-        ax.set_title('tSNE projection colored by {}'.format(label))
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
-        return fig, ax
-
     @staticmethod
     def create_gene_id_to_official_gene_symbol_map(gtf):
         """
@@ -611,47 +598,6 @@ class Experiment:
         exp = Experiment(molecules=molecules, reads=reads, metadata=self.metadata)
         exp._normalized = self._normalized
         return exp
-
-    def plot_molecules_vs_reads_per_molecule(self, fig=None, ax=None, min_molecules=10,
-                                             ylim=(0, 150), title='Cell Coverage Plot'):
-        """
-        plots log10 molecules counts per barcode vs reads per molecule / molecules per
-        barcode
-        :param title: str, title for the plot (e.g. the sample name)
-        :param ylim: tuple, indicates the min and max for the y-axis of the plot
-        :param min_molecules: display only cells with this number of molecules or more
-        :param ax: axis
-        :param fig: figure
-
-        :return: figure, axis
-        """
-        if self._normalized:
-            raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
-                               'unnormalized data')
-
-        fig, ax = get_fig(fig, ax)
-
-        # get molecule and read counts per cell
-        molecule_cell_sums = np.ravel(self.molecules.sum(axis=1))
-        read_cell_sums = np.ravel(self.reads.sum(axis=1))
-
-        # remove low expression reads
-        mask = molecule_cell_sums >= min_molecules
-        molecule_cell_sums = molecule_cell_sums[mask]
-        read_cell_sums = read_cell_sums[mask]
-
-        ratios = read_cell_sums / molecule_cell_sums
-        x, y, z = density_2d(np.log10(molecule_cell_sums), ratios)
-        ax.scatter(x, y, edgecolor='none', s=size, c=z, cmap=cmap)
-        ax.set_xlabel('log10(Molecules per barcode)')
-        ax.set_ylabel('Reads per barcode / Molecules per barcode')
-        ax.set_title(title)
-        ax.set_ylim(ylim)
-        xlim = ax.get_xlim()
-        ax.set_xlim((np.log10(min_molecules), xlim[1]))
-        sns.despine(ax=ax)
-
-        return fig, ax
 
     def remove_non_cell_barcodes(self, min_rpm=10, min_mpc=250):
         """removes low abundance cell barcodes
@@ -1050,10 +996,65 @@ class Experiment:
         res = tsne.fit_transform(data.values)
         self.tsne = pd.DataFrame(res, index=self.molecules.index, columns=['x', 'y'])
 
-    def plot_tsne(self, fig=None, ax=None, title='tSNE projection'):
+
+    def plot_tsne_by_metadata(self, label, fig=None, ax=None):
+        cats = set(self.metadata[label])
+        colors = qualitative_colors(len(cats))
         fig, ax = get_fig(fig=fig, ax=ax)
-        x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
-        plt.scatter(x, y, c=z, s=size, cmap=cmap, alpha=0.65)
+        for c, color in zip(cats, colors):
+            rows = self.metadata[label] == c
+            plt.plot(self.tsne.ix[rows, 'x'], self.tsne.ix[rows, 'y'], marker='o',
+                     markersize=np.sqrt(7), linewidth=0, c=color, label=c)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        ax.set_title('tSNE projection colored by {}'.format(label))
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
+        return fig, ax
+
+    def plot_tsne(self, fig=None, ax=None, c=None, **kwargs):
+        """
+
+        plot tsne by metadata column: c=self.metadata['column']
+        plot tsne by clusters:
+
+        :param fig:
+        :param ax:
+        :param c:
+        :param kwargs:
+        :return:
+        """
+        fig, ax = get_fig(fig=fig, ax=ax)
+
+        if c is not None:
+
+            # get colormap
+            if 'cmap' in kwargs.keys():
+                cmap = getattr(plt.cm, kwargs['cmap'])
+            else:
+                cmap = plt.get_cmap()
+
+        if c is None:
+            x, y, z = density_2d(self.tsne['x'], self.tsne['y'])
+        else:
+            x, y, z = self.tsne['x'], self.tsne['y'], c
+
+        plt.scatter(x, y, c=z, **kwargs)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+        plt.colorbar()
+        return fig, ax
+
+    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None,
+                                    title='',
+                                    sizes=None):
+
+        fig, ax = get_fig(fig, ax)
+        if self.tsne is None:
+            raise RuntimeError('Please run self.run_tsne() before plotting.')
+        if sizes is None:
+            sizes = self.molecules.sum(axis=1)  # use current library sizes
+        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap, vmax=vmax,
+                    vmin=vmin, alpha=0.65)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
@@ -1061,24 +1062,24 @@ class Experiment:
         return fig, ax
 
     def run_phenograph(self, n_pca_components=15, **kwargs):
-        """
-        normally run on PCA components; 1st component is normally excluded
-        :param n_pca_components:
-        :param **kwargs: keyword arguments to pass directly to phenograph
+            """
+            normally run on PCA components; 1st component is normally excluded
+            :param n_pca_components:
+            :param **kwargs: keyword arguments to pass directly to phenograph
 
-        one useful parameter is 'k', which inversely correlates with the number of
-        clusters that phenograph outputs.
+            one useful parameter is 'k', which inversely correlates with the number of
+            clusters that phenograph outputs.
 
-        :return:
-        """
-        data = deepcopy(self.molecules)
-        data -= np.min(np.ravel(data))
-        data /= np.max(np.ravel(data))
-        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
-                            index=self.molecules.index)
+            :return:
+            """
+            data = deepcopy(self.molecules)
+            data -= np.min(np.ravel(data))
+            data /= np.max(np.ravel(data))
+            data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
+                                index=self.molecules.index)
 
-        communities, graph, Q = phenograph.cluster(data, **kwargs)
-        self.cluster_assignments = pd.Series(communities, index=data.index)
+            communities, graph, Q = phenograph.cluster(data, **kwargs)
+            self.cluster_assignments = pd.Series(communities, index=data.index)
 
     def plot_clusters(self, fig=None, ax=None, labels=None, **kwargs):
 
@@ -1100,21 +1101,6 @@ class Experiment:
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), markerscale=3)
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
-        return fig, ax
-
-    def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None, title='',
-                                sizes=None):
-        fig, ax = get_fig(fig, ax)
-        if self.tsne is None:
-            raise RuntimeError('Please run self.run_tsne() before plotting.')
-        if sizes is None:
-            sizes = self.molecules.sum(axis=1)  # use current library sizes
-        plt.scatter(self.tsne['x'], self.tsne['y'], s=7, c=sizes, cmap=cmap, vmax=vmax,
-                    vmin=vmin, alpha=0.65)
-        ax.xaxis.set_major_locator(plt.NullLocator())
-        ax.yaxis.set_major_locator(plt.NullLocator())
-        ax.set_title(title)
-        plt.colorbar()
         return fig, ax
 
     def remove_clusters_based_on_library_size_distribution(self, clusters: list):
@@ -1816,7 +1802,6 @@ class Experiment:
 
         return pd.Series(pval_corrected, index=self.molecules.columns).sort_values(inplace=False)
 
-    # todo add option to plot phenograph cluster that these are being DE in.
     def plot_gene_expression(self, genes, log=False):
 
         not_in_dataframe = set(genes).difference(self.molecules.columns)
@@ -1883,6 +1868,53 @@ class Experiment:
         ax.xaxis.set_major_locator(plt.NullLocator())
         ax.yaxis.set_major_locator(plt.NullLocator())
         ax.set_title(title)
+        return fig, ax
+
+    def plot_molecules_vs_reads_per_molecule(
+            self,
+            fig=None,
+            ax=None,
+            min_molecules=10,
+            ylim=(0, 150),
+            title='Cell Coverage Plot'):
+
+        """
+        plots log10 molecules counts per barcode vs reads per molecule / molecules per
+        barcode
+        :param title: str, title for the plot (e.g. the sample name)
+        :param ylim: tuple, indicates the min and max for the y-axis of the plot
+        :param min_molecules: display only cells with this number of molecules or more
+        :param ax: axis
+        :param fig: figure
+
+        :return: figure, axis
+        """
+        if self._normalized:
+            raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
+                               'unnormalized data')
+
+        fig, ax = get_fig(fig, ax)
+
+        # get molecule and read counts per cell
+        molecule_cell_sums = np.ravel(self.molecules.sum(axis=1))
+        read_cell_sums = np.ravel(self.reads.sum(axis=1))
+
+        # remove low expression reads
+        mask = molecule_cell_sums >= min_molecules
+        molecule_cell_sums = molecule_cell_sums[mask]
+        read_cell_sums = read_cell_sums[mask]
+
+        ratios = read_cell_sums / molecule_cell_sums
+        x, y, z = density_2d(np.log10(molecule_cell_sums), ratios)
+        ax.scatter(x, y, edgecolor='none', s=size, c=z, cmap=cmap)
+        ax.set_xlabel('log10(Molecules per barcode)')
+        ax.set_ylabel('Reads per barcode / Molecules per barcode')
+        ax.set_title(title)
+        ax.set_ylim(ylim)
+        xlim = ax.get_xlim()
+        ax.set_xlim((np.log10(min_molecules), xlim[1]))
+        sns.despine(ax=ax)
+
         return fig, ax
 
     def remove_housekeeping_genes(self, organism='human', additional_hk_genes=set()):
