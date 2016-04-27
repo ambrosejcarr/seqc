@@ -318,16 +318,6 @@ def find_correct_barcode(code, barcodes_list):
 
     return cor_code, min_ed
         
-def in_drop_v2(*args, **kwargs):
-    """very simple pass-through wrapper for in_drop error correction, designed so that
-    getattr() on seqc.correct_errors will find the correct error function for in_drop_v2
-
-    :param args:
-    :param kwargs:
-    :return:
-    """
-    return in_drop(*args, **kwargs)
-
 
 def pass_filter(read, filters_counter, required_poly_t):
     """
@@ -373,7 +363,6 @@ def group_for_dropseq(ra, required_poly_t=4):
         if not pass_filter(v, filtered, required_poly_t):
             continue
         
-
         # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads, gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
         cell = v['cell']
         cell_header = cell>>3   #we only look at the first 11 bases
@@ -389,8 +378,6 @@ def group_for_dropseq(ra, required_poly_t=4):
                     res[cell_header][rmt]={(gene,cell):1}
                 except KeyError:
                     res[cell_header] = {rmt:{(gene,cell):1}}
-
-
 
     seqc.log.info('Error correction filtering results: total reads: {}; did not pass preliminary filters: {}'.format(tot, sum(filtered.values())))
     return res
@@ -545,7 +532,7 @@ def in_drop_v2(*args, **kwargs):
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
 def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
             reverse_complement=True, donor_cutoff=1, alpha=0.05,
-            required_poly_t=1, max_ed=2):
+            required_poly_t=1, max_ed=2, singleton_weight=1):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
     method
@@ -566,14 +553,15 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
     ra_grouped, error_rate = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
             err_correction_mat='')
-    grouped_res_dic, error_count = correct_errors_ajc(
-            alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha)
+    grouped_res_dic, error_count = correct_errors(
+            alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha,
+            singleton_weight=singleton_weight)
 
     return grouped_res_dic, err_correction_res
 
 
-def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,
-                       p_value=0.05, apply_likelihood=True, fname=''):
+def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,
+                   p_value=0.05, apply_likelihood=True, singleton_weight=1, fname=''):
     """
     Calculate and correct errors in barcode sets
 
@@ -603,11 +591,11 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res='', donor_cu
         if feature == 0:
             continue
 
-        retained_rmts = []
+        retained_rmts = 0
         retained_reads = 0
 
         for r_seq in d[feature, cell].keys():
-            if BinRep.contains(r_seq, N):
+            if BinRep.contains(r_seq, N):  # todo This throws out more than we want?
                 continue
 
             gene = feature
@@ -652,11 +640,17 @@ def correct_errors_ajc(ra, ra_grouped, err_rate, err_correction_res='', donor_cu
             #                       ERROR_CORRECTION_JAIT_LIKELIHOOD] = 1
 
             if apply_likelihood:
-                if (not jait) or p_val_not_err <= p_value:
-                    retained_rmts.append(r_seq)
-                    retained_reads+=r_num_occurences
+                if not jait or p_val_not_err <= p_value:
+                    if r_num_occurences == 1:
+                        retained_rmts += singleton_weight
+                    else:
+                        retained_rmts += 1
+                    retained_reads += r_num_occurences
             elif not jait:
-                retained_rmts.append(r_seq)
+                if r_num_occurences == 1:
+                    retained_rmts += singleton_weight
+                else:
+                    retained_rmts += 1
                 retained_reads += r_num_occurences
 
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
@@ -678,7 +672,7 @@ def convert_to_matrix(counts_dictionary):
     cols = [k[0] for k in counts_dictionary.keys()]
     rows = [k[1] for k in counts_dictionary.keys()]
 
-    molecules = np.array(list(len(v[0]) for v in counts_dictionary.values()))
+    molecules = np.array(list(v[0] for v in counts_dictionary.values()))
     reads = np.array(list(v[1] for v in counts_dictionary.values()))
 
     # Map row and cell to integer values for indexing
@@ -699,6 +693,7 @@ def convert_to_matrix(counts_dictionary):
     mol_coo = coo_matrix((molecules, (row_ind, col_ind)), shape=shape, dtype=np.uint32)
     return {'molecules': {'matrix': mol_coo, 'row_ids': unq_row, 'col_ids': unq_col},
             'reads': {'matrix': read_coo, 'row_ids': unq_row, 'col_ids': unq_col}}
+
 
 # For research use only.
 def plot_ed_dist(ra, iter):
