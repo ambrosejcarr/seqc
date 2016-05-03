@@ -4,6 +4,7 @@ import shutil
 from subprocess import call
 from setuptools import setup
 from warnings import warn
+import seqc
 
 if sys.version_info.major != 3:
     raise RuntimeError('SEQC requires Python 3')
@@ -14,7 +15,7 @@ if sys.version_info.minor < 5:
 call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
 
 setup(name='seqc',
-      version='0.1.6',
+      version=seqc.__version__,
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
