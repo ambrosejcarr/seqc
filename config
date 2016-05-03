@@ -12,7 +12,7 @@ rsa_key_name = None
 
 [c3]
 cluster_size = 1
-node_image_id = ami-afdf80c5
+node_image_id = ami-eada3c87
 node_instance_type = c3.8xlarge
 availability_zone = us-east-1c
 
