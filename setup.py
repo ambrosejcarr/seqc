@@ -4,7 +4,6 @@ import shutil
 from subprocess import call
 from setuptools import setup
 from warnings import warn
-import seqc
 
 if sys.version_info.major != 3:
     raise RuntimeError('SEQC requires Python 3')
