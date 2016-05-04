@@ -12,24 +12,59 @@ with warnings.catch_warnings():
     warnings.simplefilter('ignore')  # catch experimental ipython widget warning
     import seaborn as sns
 
-# set plotting defaults
-sns.set_style('ticks')
-matplotlib.rc('font', **{
-    'serif': ['Computer Modern Roman'],
-    'monospace': ['Inconsolata'],
-    'sans-serif': ['Lato']
-    })
+fm = matplotlib.font_manager.fontManager
+fm.findfont('Raleway')
+fm.findfont('Lato')
 
-# todo change to kwargs
-matplotlib.rc('figure', **{'figsize': (3, 3), 'dpi': 150})
+dark_gray = '.15'
+light_gray = '.8'
 
-matplotlib.rc('patch', **{'facecolor': 'royalblue', 'edgecolor': 'none'})
+style_dictionary = {
+    'figure.figsize': (3, 3),
+    'figure.facecolor': 'white',
 
-matplotlib.rc('lines', **{'color': 'royalblue', 'markersize': 7})
+    'figure.dpi': 150,
+    'savefig.dpi': 150,
 
-matplotlib.rc('savefig', **{'dpi': '150'})
+    'text.color': dark_gray,
 
-matplotlib.rc('image', **{'cmap': 'viridis'})
+    "legend.frameon": False,
+    "legend.numpoints": 1,
+    "legend.scatterpoints": 1,
+
+    'font.family': ['sans-serif'],
+    'font.serif': 'Computer Modern Roman',
+    'font.monospace': 'Inconsolata',
+    'font.sans-serif': 'Lato',
+
+    'patch.facecolor': 'royalblue',
+    'patch.edgecolor': 'none',
+
+    "grid.linestyle": "-",
+
+    "axes.labelcolor": dark_gray,
+    "axes.axisbelow": True,
+    'axes.edgecolor': dark_gray,
+
+    "lines.solid_capstyle": "round",
+    'lines.color': 'royalblue',
+    'lines.markersize': 7,
+
+    'image.cmap': 'viridis',
+    'image.interpolation': 'none',
+
+    'xtick.direction': 'out',
+    'xtick.major.size': 5,
+    'xtick.minor.size': 2.5,
+    "xtick.color": dark_gray,
+
+    'ytick.direction': 'out',
+    'ytick.major.size': 5,
+    'ytick.minor.size': 2.5,
+    "ytick.color": dark_gray,
+}
+
+matplotlib.rcParams.update(style_dictionary)
 
 
 class FigureGrid:
@@ -65,8 +100,20 @@ class FigureGrid:
         for i in range(self.n):
             sns.despine(ax=self[i], top=top, right=right, **kwargs)
 
+    def detick(self, x=True, y=True):
+        for ax in self:
+            if x:
+                ax.xaxis.set_major_locator(plt.NullLocator())
+            if y:
+                ax.yaxis.set_major_locator(plt.NullLocator())
+
     def savefig(self, *args, **kwargs):
         self.figure.savefig(*args, **kwargs)
+
+
+def xtick_vertical(ax):
+    xt = ax.get_xticks()
+    ax.set_xticklabels(xt, rotation='vertical')
 
 
 def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
@@ -104,8 +151,8 @@ class scatter:
 
     @staticmethod
     def categorical(
-            x, y, c, ax=None, cmap=plt.get_cmap(), legend_kwargs=None, randomize=True,
-            *args, **kwargs):
+            x, y, c, ax=None, cmap=plt.get_cmap(), legend=True, legend_kwargs=None,
+            randomize=True, *args, **kwargs):
         """
         :param x:
         :param y:
@@ -134,7 +181,8 @@ class scatter:
 
         labels, colors = zip(*sorted(category_to_color.items()))
         sns.despine(ax=ax)
-        add_legend_to_categorical_vector(colors, labels, ax, **legend_kwargs)
+        if legend:
+            add_legend_to_categorical_vector(colors, labels, ax, **legend_kwargs)
         return ax
 
     @staticmethod
