@@ -16,10 +16,10 @@ call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
 
 # get version
 with open('src/seqc/version.py') as f:
-    __version__ = f.read().split()[-1]
+    exec(f.read())
 
 setup(name='seqc',
-      version=__version__,
+      version=__version__,  # read in from the exec of version.py
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
