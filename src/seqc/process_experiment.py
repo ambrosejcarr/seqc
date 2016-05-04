@@ -93,7 +93,7 @@ def parse_args(args):
     f.add_argument('--singleton-weight', metavar='SW',
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
-                   default=1, type=float)
+                   default=1.0, type=float)
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
