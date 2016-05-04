@@ -13,8 +13,12 @@ if sys.version_info.minor < 5:
 # install phenograph
 call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
 
+# get version
+with open('src/seqc/version.py') as f:
+    exec(f.read())
+
 setup(name='seqc',
-      version='0.1.6',
+      version=__version__,  # read in from the exec of version.py
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',

@@ -90,6 +90,10 @@ def parse_args(args):
                    help='Maximum hamming distance for correcting barcode errors. Should '
                         'be set to 1 when running in_drop legacy barcodes. (Default=2).',
                    default=2, type=int)
+    f.add_argument('--singleton-weight', metavar='SW',
+                   help='Weight to apply to singletons in the count matrix. Float '
+                        'between 0 and 1, default=1 (all molecules get full weight)',
+                   default=1.0, type=float)
 
     r = p.add_argument_group('run options')
     r.set_defaults(remote=True)
@@ -533,7 +537,8 @@ def main(args: list = None):
         correct_errors = getattr(seqc.correct_errors, args.platform)
         cell_counts, _ = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
-            required_poly_t=args.min_poly_t, max_ed=args.max_ed)
+            required_poly_t=args.min_poly_t, max_ed=args.max_ed,
+            singleton_weight=args.singleton_weight)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
