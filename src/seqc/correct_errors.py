@@ -450,20 +450,21 @@ def drop_seq(alignments_ra, *args, **kwargs):
                 for gene, full_cell in grouped_ra[cell][rmt]:
                     if base_shift:
                         correct_cell = BinRep.ints2int([cell, BinRep._str2bindict['N']])    #replace the last base of cell with 'N'
+                        # todo next line unnecessary now that rmts are not being stored
                         correct_rmt = BinRep.ints2int([full_cell&0b111, rmt]) >> 3         # correct the rmt with the last base of the cell, and dump the last 'T'
                     else:
                         correct_cell = full_cell
+                        # todo next line unnecessary now that rmts are not being stored
                         correct_rmt = rmt
                     try:
-                        retained_rmt, retained_reads = res_dic[gene, correct_cell]
-                        retained_rmt.append(correct_rmt)
-                        retained_reads += grouped_ra[cell][rmt][gene, full_cell]
-                        
-                        res_dic[gene,correct_cell] = retained_rmt, retained_reads
+                        res_dic[gene, correct_cell][0] += 1
+                        res_dic[gene, correct_cell][1] += (
+                            grouped_ra[cell][rmt][gene, full_cell])
+
                     except KeyError:
-                        res_dic[gene, correct_cell] = [correct_rmt], grouped_ra[cell][rmt][gene, full_cell]
-        
-        
+                        res_dic[gene, correct_cell] = [
+                            1, grouped_ra[cell][rmt][gene, full_cell]]
+
     seqc.log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
     #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
     tot_time=time.process_time()-start
