@@ -462,8 +462,8 @@ def drop_seq(alignments_ra, *args, **kwargs):
                             grouped_ra[cell][rmt][gene, full_cell])
 
                     except KeyError:
-                        res_dic[gene, correct_cell] = (
-                            1, grouped_ra[cell][rmt][gene, full_cell])
+                        res_dic[gene, correct_cell] = [
+                            1, grouped_ra[cell][rmt][gene, full_cell]]
 
     seqc.log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
     #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
