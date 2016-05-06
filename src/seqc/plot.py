@@ -102,13 +102,18 @@ class FigureGrid:
 
     def detick(self, x=True, y=True):
         for ax in self:
-            if x:
-                ax.xaxis.set_major_locator(plt.NullLocator())
-            if y:
-                ax.yaxis.set_major_locator(plt.NullLocator())
+            detick(ax, x=x, y=y)
 
-    def savefig(self, *args, **kwargs):
-        self.figure.savefig(*args, **kwargs)
+    def savefig(self, filename, pad_inches=0.1, bbox_inches='tight', *args, **kwargs):
+        self.figure.savefig(
+            filename, pad_inches=pad_inches, bbox_inches=bbox_inches, *args, **kwargs)
+
+
+def detick(ax, x=True, y=True):
+    if x:
+        ax.xaxis.set_major_locator(plt.NullLocator())
+    if y:
+        ax.yaxis.set_major_locator(plt.NullLocator())
 
 
 def xtick_vertical(ax):
