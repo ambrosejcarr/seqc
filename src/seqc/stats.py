@@ -663,3 +663,92 @@ class GSEA:
         #     sns.despine(top=True, bottom=True, right=True)
         #     seqc.plot.detick(ax, x=True, y=False)
         #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
+
+
+class DifferentialExpression:
+
+    def __init__(self, data, group_assignments):
+        """
+        :param data:
+        :param group_assignments:
+        """
+
+        # make sure group_assignments and data have the same length
+        if not data.shape[0] == group_assignments.shape[0]:
+            raise ValueError()
+
+        if not (isinstance(data, pd.DataFrame) or isinstance(data, np.ndarray)):
+            raise ValueError('data must be a pd.DataFrame or np.ndarray')
+        if not (isinstance(group_assignments, pd.Series) or
+                isinstance(group_assignments, np.ndarray)):
+            raise TypeError('group_assignments must be a pd.Series or np.ndarray')
+
+        # if inputs both contain indices, those indicies will be maintained in the output
+        if isinstance(data, pd.DataFrame) and isinstance(group_assignments, pd.Series):
+
+            idx = np.argsort(group_assignments.values)
+
+
+        # organize experiment by cluster
+        if isinstance(group_assignments, pd.Series):
+
+        idx = np.argsort(group_assignments.values)
+        self._data = data.molecules.iloc[idx, :]
+        self._group_assignments = group_assignments.iloc[idx]
+        self._groups = np.unique(group_assignments)
+
+        # get points to split the array, create slicers for each group
+        self._split_indices = np.where(np.diff(group_assignments))[0] + 1
+        array_views = np.array_split(self._data.values, self._split_indices, axis=0)
+
+        self._group_data = {g: array_view for (g, array_view) in
+                            zip(self._groups, array_views)}
+
+        self._anova = None
+
+    def anova(self, alpha=0.05):
+
+        if self._anova is not None:
+            if alpha == self._anova[0]:
+                return self._anova[1]
+
+        # run anova
+        f = lambda v: kruskalwallis(*np.split(v, self._split_indices))[1]
+        pvals = np.apply_along_axis(f, 0, self._data)
+
+        # correct the pvals
+        _, pval_corrected, _, _ = multipletests(pvals, alpha, method='fdr_tsbh')
+
+        # store data
+        self._anova = (alpha, pd.Series(pval_corrected, index=self._data.columns))
+
+        return self._anova[1]
+
+    @staticmethod
+    def mannwhitneyu(g1, g2):
+
+
+    @staticmethod
+    def _pairwise(g1, g2):
+
+        g1mu = g1.mean(axis=0)
+        g2mu = g2.mean(axis=0)
+        expressed = g1mu | g2mu
+        g1mu = g1mu[expressed]
+        g2mu = g2mu[expressed]
+        fc = (g2mu - g1mu) / g1mu
+
+        # write a vectorized version of this here; mannwhitneyu is very simple.
+        res = pd.Series(index=self.molecules.columns[expressed], dtype=float)
+        for g in self.molecules.columns[expressed]:
+            try:
+                res[g] = mannwhitneyu(np.ravel(g1[g]), np.ravel(g2[g]))[1]
+            except ValueError:
+                res[g] = 1
+
+        pval_corrected = multipletests(res.values, alpha=alpha, method='fdr_tsbh')[1]
+
+        pval_sorted = pd.Series(pval_corrected, index=self.molecules.columns[expressed],
+                                dtype=float).sort_values()
+        fc = fc.ix[pval_sorted.index]
+        return pval_sorted, fc
