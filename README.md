@@ -51,7 +51,7 @@ Once all dependencies have been installed, SEQC can be installed on any machine 
 
     $> git clone https://github.com/ambrosejcarr/seqc.git
     $> pip3 install -e seqc/
-    $> .seqc/configure
+    $> seqc/configure
 
 Please follow the instructions of the configure script by providing SEQC information about your AWS access keys and, if you desire, a BASESPACE token. Once you have configured SEQC, you are ready to process single-cell sequencing data. Also note that when supplying the location of the RSA key during the configuration process, **the full path must be specified**.
 
