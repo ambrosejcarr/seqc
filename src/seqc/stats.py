@@ -9,8 +9,12 @@ from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from numpy.linalg import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
+from scipy.stats.mstats import kruskalwallis, rankdata
+from scipy.stats import t
 from tinydb import TinyDB, Query
 from functools import partial
+from collections import namedtuple
+
 
 def keigs(T, k, P, take_diagonal=0):
     """ return k largest magnitude eigenvalues for the matrix T.
@@ -578,6 +582,10 @@ class GSEA:
             n_perm=n_perm,
             alpha=alpha)
 
+        # todo
+        # can split sets in cases where the number of samples is smaller than the number
+        # of processes; this will ensure parallelization is maximized in all circumstances
+
         pool = multiprocessing.Pool(self.nproc)
         res = pool.map(
             partial_gsea_process, self.correlations)
@@ -667,88 +675,214 @@ class GSEA:
 
 class DifferentialExpression:
 
-    def __init__(self, data, group_assignments):
+    def __init__(self, data, group_assignments, alpha=0.05):
         """
-        :param data:
-        :param group_assignments:
+        :param data: n cells x k genes 2d array
+        :param group_assignments: n cells 1d vector
+        :param alpha: float (0, 1], acceptable type I error
         """
-
         # make sure group_assignments and data have the same length
         if not data.shape[0] == group_assignments.shape[0]:
-            raise ValueError()
+            raise ValueError(
+                'Group assignments shape ({!s}) must equal the number of rows in data '
+                '({!s}).'.format(group_assignments.shape[0], data.shape[0]))
 
-        if not (isinstance(data, pd.DataFrame) or isinstance(data, np.ndarray)):
-            raise ValueError('data must be a pd.DataFrame or np.ndarray')
-        if not (isinstance(group_assignments, pd.Series) or
-                isinstance(group_assignments, np.ndarray)):
-            raise TypeError('group_assignments must be a pd.Series or np.ndarray')
+        # todo
+        # may want to verify that each group has at least two observations
+        # (else variance won't work)
 
-        # if inputs both contain indices, those indicies will be maintained in the output
+        # store index if both data and group_assignments are pandas objects
         if isinstance(data, pd.DataFrame) and isinstance(group_assignments, pd.Series):
+            # ensure assignments and data indices are aligned
+            try:
+                ordered_assignments = group_assignments[data.index]
+                if not len(ordered_assignments) == data.shape[0]:
+                    raise ValueError(
+                        'Index mismatch between data and group_assignments detected when '
+                        'aligning indices. check for duplicates.')
+            except:
+                raise ValueError('Index mismatch between data and group_assignments.')
 
-            idx = np.argsort(group_assignments.values)
+            # sort data by cluster assignment
+            idx = np.argsort(ordered_assignments.values)
+            self.data = data.iloc[idx, :].values
+            ordered_assignments = ordered_assignments.iloc[idx]
+            self.group_assignments = ordered_assignments.values
+            self.index = data.columns
 
+        else:  # get arrays from input values
+            self.index = None  # inputs were not all indexed pandas objects
 
-        # organize experiment by cluster
-        if isinstance(group_assignments, pd.Series):
+            try:
+                data = np.array(data)
+            except:
+                raise ValueError('data must be convertible to a np.ndarray')
 
-        idx = np.argsort(group_assignments.values)
-        self._data = data.molecules.iloc[idx, :]
-        self._group_assignments = group_assignments.iloc[idx]
-        self._groups = np.unique(group_assignments)
+            try:
+                group_assignments = np.array(group_assignments)
+            except:
+                raise ValueError('group_assignments must be convertible to a np.ndarray')
+
+            idx = np.argsort(group_assignments)
+            self.data = data[idx, :]
+            self.group_assignments = group_assignments[idx]
+
+        self.post_hoc = None
+        self.groups = np.unique(group_assignments)
 
         # get points to split the array, create slicers for each group
-        self._split_indices = np.where(np.diff(group_assignments))[0] + 1
-        array_views = np.array_split(self._data.values, self._split_indices, axis=0)
+        self.split_indices = np.where(np.diff(self.group_assignments))[0] + 1
+        # todo is this a faster way of calculating the below anova?
+        # self.array_views = np.array_split(self.data, self.split_indices, axis=0)
 
-        self._group_data = {g: array_view for (g, array_view) in
-                            zip(self._groups, array_views)}
+        if not 0 < alpha <= 1:
+            raise ValueError('Parameter alpha must fall within the interval (0, 1].')
+        self.alpha = alpha
 
         self._anova = None
 
-    def anova(self, alpha=0.05):
-
+    # todo implement min_mean_expr
+    def anova(self, min_mean_expr=None):
+        """
+        :param min_mean_expr: minimum average gene expression value that must be reached
+          in at least one cluster for the gene to be considered
+        :return:
+        """
         if self._anova is not None:
-            if alpha == self._anova[0]:
-                return self._anova[1]
+            return self._anova
 
         # run anova
-        f = lambda v: kruskalwallis(*np.split(v, self._split_indices))[1]
-        pvals = np.apply_along_axis(f, 0, self._data)
+        f = lambda v: kruskalwallis(*np.split(v, self.split_indices))[1]
+        pvals = np.apply_along_axis(f, 0, self.data)  # todo could shunt to a multiprocessing pool
 
         # correct the pvals
-        _, pval_corrected, _, _ = multipletests(pvals, alpha, method='fdr_tsbh')
+        _, pval_corrected, _, _ = multipletests(pvals, self.alpha, method='fdr_tsbh')
 
-        # store data
-        self._anova = (alpha, pd.Series(pval_corrected, index=self._data.columns))
+        # store data & return
+        if self.index is not None:
+            self._anova = pd.Series(pval_corrected, index=self.index)
+        else:
+            self._anova = pval_corrected
+        return self._anova
 
-        return self._anova[1]
+    def post_hoc_tests(self):
+        """
+        carries out post-hoc tests using Welch's U-test on ranked data.
+        """
+        if self._anova is None:
+            self.anova()
 
-    @staticmethod
-    def mannwhitneyu(g1, g2):
+        anova_significant = np.array(self._anova) < 1  # call array in case it is a Series
+
+        # limit to significant data, convert to column-wise ranks.
+        data = self.data[:, anova_significant]
+        rank_data = np.apply_along_axis(rankdata, 0, data)
+        # assignments = self.group_assignments[anova_significant]
+
+        split_indices = np.where(np.diff(self.group_assignments))[0] + 1
+        array_views = np.array_split(rank_data, split_indices, axis=0)
+
+        # get mean and standard deviations of each
+        fmean = partial(np.mean, axis=0)
+        fvar = partial(np.var, axis=0)
+        mu = np.vstack(list(map(fmean, array_views))).T  # transpose to get gene rows
+        n = np.array(list(map(lambda x: x.shape[0], array_views)))
+        s = np.vstack(list(map(fvar, array_views))).T
+        s_norm = s / n  # transpose to get gene rows
+
+        # calculate T
+        numerator = mu[:, np.newaxis, :] - mu[:, :, np.newaxis]
+        denominator = np.sqrt(s_norm[:, np.newaxis, :] + s_norm[:, :, np.newaxis])
+        statistic = numerator / denominator
+
+        # calculate df
+        s_norm2 = s**2 / (n**2 * n-1)
+        numerator = (s_norm[:, np.newaxis, :] + s_norm[:, :, np.newaxis]) ** 2
+        denominator = (s_norm2[:, np.newaxis, :] + s_norm2[:, :, np.newaxis])
+        df = np.floor(numerator / denominator)
+
+        # get significance
+        p = t.cdf(np.abs(statistic), df)  # note, two tailed test
+
+        # calculate fdr correction; because above uses 2-tails, alpha here is halved
+        # because each test is evaluated twice due to the symmetry of vectorization.
+        p_adj = multipletests(np.ravel(p), alpha=self.alpha, method='fdr_tsbh')[1]
+        p_adj = p_adj.reshape(*p.shape)
+
+        phr = namedtuple('PostHocResults', ['p_adj', 'statistic', 'mu'])
+        self.post_hoc = phr(p_adj, statistic, mu)
+
+        if self.index is not None:
+            p_adj = pd.Panel(
+                p_adj, items=self.index[anova_significant], major_axis=self.groups,
+                minor_axis=self.groups)
+            statistic = pd.Panel(
+                statistic, items=self.index[anova_significant], major_axis=self.groups,
+                minor_axis=self.groups)
+            mu = pd.DataFrame(mu, self.index[anova_significant], columns=self.groups)
+
+        return p_adj, statistic, mu
+
+    def population_markers(self, p_crit=0.0):
+        """
+        Return markers that are significantly differentially expressed in one
+        population vs all others
+
+        :param p_crit: float, fraction populations that may be indistinguishable from the
+          highest expressing population for each gene. If zero, each marker gene is
+          significantly higher expressed in one population relative to all others.
+          If 0.1, 10% of populations may share high expression of a gene, and those
+          populations will be marked as expressing that gene.
+
+        """
+        if self.post_hoc is None:
+            self.post_hoc_tests()
+
+        # get highest mean for each gene
+        top_gene_idx = np.argmax(self.post_hoc.mu, axis=1)
+
+        # index p_adj first dimension with each sample, will reduce to 2d genes x samples
+        top_gene_sig = self.post_hoc.p_adj[:, top_gene_idx, :]
+
+        # for each gene, count the number of non-significant DE results.
+        sig = np.array(top_gene_sig < self.alpha)
+        num_sig = np.sum(sig, axis=2)
+
+        # if this is greater than N - 1 * p_crit, discard the gene.
+        n = self.post_hoc.p_adj.shape[2] - 1  # number of genes, sub 1 for self
+        idx_marker_genes = np.where(num_sig < n * (1 - p_crit))
+        marker_genes = sig[idx_marker_genes, :]
+
+        # correctly index these genes
+        if self.index:
+            pass  # todo fix this
+
+        return marker_genes
 
 
-    @staticmethod
-    def _pairwise(g1, g2):
 
-        g1mu = g1.mean(axis=0)
-        g2mu = g2.mean(axis=0)
-        expressed = g1mu | g2mu
-        g1mu = g1mu[expressed]
-        g2mu = g2mu[expressed]
-        fc = (g2mu - g1mu) / g1mu
 
-        # write a vectorized version of this here; mannwhitneyu is very simple.
-        res = pd.Series(index=self.molecules.columns[expressed], dtype=float)
-        for g in self.molecules.columns[expressed]:
-            try:
-                res[g] = mannwhitneyu(np.ravel(g1[g]), np.ravel(g2[g]))[1]
-            except ValueError:
-                res[g] = 1
 
-        pval_corrected = multipletests(res.values, alpha=alpha, method='fdr_tsbh')[1]
 
-        pval_sorted = pd.Series(pval_corrected, index=self.molecules.columns[expressed],
-                                dtype=float).sort_values()
-        fc = fc.ix[pval_sorted.index]
-        return pval_sorted, fc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
