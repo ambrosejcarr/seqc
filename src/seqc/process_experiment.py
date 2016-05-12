@@ -158,7 +158,7 @@ def run_remote(stem: str) -> None:
     if '/usr/local/bin/process_experiment.py' not in res:
         raise ConfigurationError('Error executing SEQC on the cluster!')
     seqc.log.notify('Terminating local client. Email will be sent when remote run '
-                    'completes. Please use "process_experiment.py --check-progress" to'
+                    'completes. Please use "process_experiment.py --check-progress" to '
                     'monitor the status of the remote run.')
 
 
