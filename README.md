@@ -26,6 +26,7 @@ wish to create an account.
 
 #### Create an RSA key to allow you to launch a cluster
 1. Sign into your AWS account and go to the EC2 Dashboard.
+2. Select the appropriate region (e.g. us-east-1 North Virginia)
 2. Click “Key Pairs” in the NETWORK & SECURITY tab.
 3. Click “Create Key Pair” and give it a new name.
 4. This will install a new key called `<keyname>.pem` on your local machine. 
