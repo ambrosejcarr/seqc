@@ -26,6 +26,7 @@ wish to create an account.
 
 #### Create an RSA key to allow you to launch a cluster
 1. Sign into your AWS account and go to the EC2 Dashboard.
+2. Select the appropriate region (e.g. us-east-1 North Virginia)
 2. Click “Key Pairs” in the NETWORK & SECURITY tab.
 3. Click “Create Key Pair” and give it a new name.
 4. This will install a new key called `<keyname>.pem` on your local machine. 
@@ -51,7 +52,7 @@ Once all dependencies have been installed, SEQC can be installed on any machine 
 
     $> git clone https://github.com/ambrosejcarr/seqc.git
     $> pip3 install -e seqc/
-    $> .seqc/configure
+    $> seqc/configure
 
 Please follow the instructions of the configure script by providing SEQC information about your AWS access keys and, if you desire, a BASESPACE token. Once you have configured SEQC, you are ready to process single-cell sequencing data. Also note that when supplying the location of the RSA key during the configuration process, **the full path must be specified**.
 
