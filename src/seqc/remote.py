@@ -145,7 +145,7 @@ class ClusterServer(object):
         """creates a volume of size vol_size and returns the volume's id"""
         vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
-                                     VolumeType='standard')
+                                     VolumeType='gp2')
         vol_id = vol.id
         vol_state = vol.state
         max_tries = 40
