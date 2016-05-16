@@ -24,7 +24,6 @@ subnet_id = subnet-70d7ec36
 availability_zone = us-east-1c
 
 [raid]
-n_tb = 2
 availability_zone = us-east-1c
 
 [BaseSpaceToken]

@@ -39,7 +39,6 @@ class ClusterServer(object):
         self.zone = None
         self.ec2 = boto3.resource('ec2')
         self.inst_id = None
-        self.n_tb = None
         self.sg = None
         self.serv = None
         self.aws_id = None
@@ -76,7 +75,6 @@ class ClusterServer(object):
         self.inst_type = config[template]['node_instance_type']
         self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
-        self.n_tb = config['raid']['n_tb']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
 
