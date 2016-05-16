@@ -1,5 +1,5 @@
 [global]
-default_template = c3
+default_template = c4
 
 [aws_info]
 aws_access_key_id = None
