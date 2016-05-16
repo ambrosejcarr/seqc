@@ -9,6 +9,7 @@ import seqc
 import configparser
 import boto3
 from subprocess import Popen, check_output
+import numpy as np
 
 
 class ConfigurationError(Exception):
@@ -130,6 +131,7 @@ def run_remote(stem: str, volsize: int) -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
+    volsize = str(np.ceil(volsize/(1e9)))
     cluster.cluster_setup(volsize)
     cluster.serv.connect()
 
