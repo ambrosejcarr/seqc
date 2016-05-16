@@ -204,11 +204,11 @@ class ClusterServer(object):
             seqc.log.notify('Connection successful!')
         self.serv = ssh_server
 
-    def allocate_space(self, vol_size):
+    def allocate_space(self, vol_size: int):
         """creates a raid array of a specified number of volumes on /data"""
         seqc.log.notify('Creating and attaching storage volumes.')
         dev_id = "/dev/xvdf"
-        seqc.log.notify("Creating volume of size %s..." % vol_size)
+        seqc.log.notify("Creating volume of size %d..." % vol_size)
         vol_id = self.create_volume(vol_size)
         self.attach_volume(vol_id, dev_id)
         seqc.log.notify("Successfully attached %s GB in 1 volume." % vol_size)
