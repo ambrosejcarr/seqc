@@ -363,7 +363,7 @@ def s3files_download(s3links: list, outdir: str):
 
 
 def obtain_size(item):
-    cmd = 'aws ls s3 --summarize --recursive' + item + ' | grep "Total Size"'
+    cmd = 'aws ls s3 --summarize --recursive ' + item + ' | grep "Total Size"'
     obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
     return obj_size
 
