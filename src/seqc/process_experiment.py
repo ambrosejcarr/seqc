@@ -119,7 +119,7 @@ def parse_args(args):
         raise
 
 
-def run_remote(stem: str) -> None:
+def run_remote(stem: str, volsize: int) -> None:
     """
     :param stem: output_prefix from main()
     """
@@ -130,7 +130,7 @@ def run_remote(stem: str) -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    cluster.cluster_setup()
+    cluster.cluster_setup(volsize)
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
@@ -231,6 +231,9 @@ def check_arguments(args, basespace_token: str):
     """
     checks data input through the command line arguments and throws
     an error if the provided input data is invalid.
+
+    additionally, this function obtains a rough estimate of how much
+    volume storage is needed for the overall SEQC run.
     """
 
     # make sure only one filetype has been passed
@@ -263,20 +266,41 @@ def check_arguments(args, basespace_token: str):
     # keep track of which files need to be checked
     seqc_input = barcodes + [index_dir]
 
+    # keep track of how much space is needed given input
+    cushion = 50000000000
+    total = 0
+
     if barcode_fastq or genomic_fastq:
         if not all((barcode_fastq, genomic_fastq)):
             raise ValueError(unpaired_fastq_error_message)
         if any((merged, samfile, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input = seqc_input + barcode_fastq + genomic_fastq
+        check_s3links(seqc_input)
+
+        # checking size of input file
+        input_fastq = barcode_fastq + genomic_fastq
+        for item in input_fastq:
+            total += obtain_size(item)
+        total += (total * 6.5) + 3333694141 + cushion
     if samfile:
         if any((merged, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input += [samfile]
+        check_s3links(seqc_input)
+
+        # checking size of input file
+        total += obtain_size(samfile)
+        total += (total * 5.2) + 5067134579 + cushion
     if merged:
         if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input += [merged]
+        check_s3links(seqc_input)
+
+        # checking size of input file
+        total += obtain_size(merged)
+        total += (total * 7.9) + 4639320330 + cushion
     if basespace:
         if any((samfile, merged, barcode_fastq, genomic_fastq, read_array)):
             raise ValueError(multi_input_error_message)
@@ -285,14 +309,25 @@ def check_arguments(args, basespace_token: str):
                 'If the --basespace argument is used, the BaseSpace token must be '
                 'specified in the seqc config file.')
         seqc_input += [basespace]
+        check_s3links(seqc_input)
     if read_array:
         if any((samfile, merged, barcode_fastq, genomic_fastq, basespace)):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
+        check_s3links(seqc_input)
 
-    check_s3links(seqc_input)
+        # checking size of input
+        for item in seqc_input:
+            total += obtain_size(item)
+        total += cushion
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
+        # checking size of input file
+        total = seqc.io.BaseSpace.check_size(basespace, basespace_token)
+        total += (total * 6.5) + 3333694141 + cushion
+
+    # return total size needed for EBS volume
+    return total
 
 
 def s3bucket_download(s3link: str, outdir: str):
@@ -327,6 +362,12 @@ def s3files_download(s3links: list, outdir: str):
     return sorted(fnames)
 
 
+def obtain_size(item):
+    cmd = 'aws ls s3 --summarize --recursive' + item + ' | grep "Total Size"'
+    obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
+    return obj_size
+
+
 def main(args: list = None):
     seqc.log.setup_logger()
     args = parse_args(args)
@@ -347,7 +388,7 @@ def main(args: list = None):
             args.index += '/'
 
         if not args.aws:  # if args.aws, arguments would already have passed checks.
-            check_arguments(args, basespace_token)
+            total_size = check_arguments(args, basespace_token)
 
         # check whether output is an s3 or local directory, split output_stem
         if args.output_stem.endswith('/'):
@@ -366,7 +407,7 @@ def main(args: list = None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            run_remote(args.output_stem)
+            run_remote(args.output_stem, total_size)
             sys.exit()
 
         if args.aws:
