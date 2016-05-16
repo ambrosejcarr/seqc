@@ -131,7 +131,7 @@ def run_remote(stem: str, volsize: int) -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    volsize = str(np.ceil(volsize/(1e9)))
+    volsize = str(int(np.ceil(volsize/(1e9))))
     cluster.cluster_setup(volsize)
     cluster.serv.connect()
 
