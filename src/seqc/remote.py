@@ -141,9 +141,8 @@ class ClusterServer(object):
         else:
             seqc.log.notify('Instance %s is not running!' % self.inst_id)
 
-    def create_volume(self):
+    def create_volume(self, vol_size):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='gp2')
         vol_id = vol.id
@@ -207,64 +206,14 @@ class ClusterServer(object):
             seqc.log.notify('Connection successful!')
         self.serv = ssh_server
 
-    def create_raid(self):
+    def allocate_space(self, vol_size):
         """creates a raid array of a specified number of volumes on /data"""
         seqc.log.notify('Creating and attaching storage volumes.')
-        dev_base = "/dev/xvd"
-        alphabet = string.ascii_lowercase[5:]  # starts at f
-        dev_names = []
-        for i in range(int(self.n_tb)):
-            seqc.log.notify("Creating volume %s of %s..." % (i + 1, self.n_tb))
-            vol_id = self.create_volume()
-            dev_id = dev_base + alphabet[i]
-            dev_names.append(dev_id)
-            self.attach_volume(vol_id, dev_id)
-        seqc.log.notify("Successfully attached %s TB in %s volumes." %
-                        (self.n_tb, self.n_tb))
-        seqc.log.notify("Creating logical RAID device...")
-        all_dev = ' '.join(dev_names)
-
-        num_retries = 30
-        mdadm_failed = True
-        for i in range(num_retries):
-            _, res = self.serv.exec_command(
-                "sudo mdadm --create --verbose /dev/md0 --level=0 --name=my_raid "
-                "--raid-devices=%s %s" % (self.n_tb, all_dev))
-            if 'started' in ''.join(res):
-                mdadm_failed = False
-                break
-            else:
-                time.sleep(2)
-        if mdadm_failed:
-            EC2RuntimeError('Error creating raid array md0 with mdadm function.')
-
-        ls_failed = True
-        for i in range(num_retries):
-            out, err = self.serv.exec_command('ls /dev | grep md0')
-            if out:
-                ls_failed = False
-                break
-            else:
-                time.sleep(1)
-        if ls_failed:
-            EC2RuntimeError('Error creating raid array md0 with mdadm function.')
-        self.serv.exec_command("sudo mkfs.ext4 -L my_raid /dev/md0")
-        self.serv.exec_command("sudo mkdir -p /data")
-        self.serv.exec_command("sudo mount LABEL=my_raid /data")
-
-        # checking for proper raid mounting
-        md0_failed = True
-        for i in range(num_retries):
-            output, err = self.serv.exec_command('df -h | grep /dev/md0')
-            if output and output[0].endswith('/data'):
-                seqc.log.notify("Successfully created RAID array in /data.")
-                md0_failed = False
-                break
-            else:
-                seqc.log.notify('retrying df -h')
-                time.sleep(1)
-        if md0_failed:
-            EC2RuntimeError("Error occurred in mounting RAID array to /data! Exiting.")
+        dev_id = "/dev/xvdf"
+        seqc.log.notify("Creating volume of size %d..." % vol_size)
+        vol_id = self.create_volume(vol_size)
+        self.attach_volume(vol_id, dev_id)
+        seqc.log.notify("Successfully attached %s GB in 1 volume." % vol_size)
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
@@ -305,13 +254,13 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self):
+    def cluster_setup(self, volsize):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group()
         self.create_cluster()
         self.connect_server()
-        self.create_raid()
+        self.allocate_space(volsize)
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
