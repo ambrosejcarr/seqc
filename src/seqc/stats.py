@@ -2,11 +2,13 @@ import numpy as np
 from numpy import ma
 import pandas as pd
 import multiprocessing
+import fastcluster
 from sklearn.neighbors import NearestNeighbors
 import warnings
 import time
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
+from scipy.spatial.distance import pdist
 from numpy.linalg import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.stats.mstats import kruskalwallis, rankdata
@@ -741,7 +743,176 @@ class DifferentialExpression:
 
         self._anova = None
 
+    # todo implement hierarchical differential expression
+    # todo implement parameter to do iterative downsampling to median cell size of
+    # todo  the smaller population size being compared.
     # todo implement min_mean_expr
+
+    class Node:
+        __slots__ = ['node_id', 'left', 'right', 'distance', 'n_daughters']
+
+        def __init__(self, node_id, left=None, right=None, distance=None,
+                     n_daughters=None):
+            self.node_id = node_id
+            self.left = left
+            self.right = right
+            self.distance = distance
+            self.n_daughters = n_daughters
+
+        def __repr__(self):
+            return 'Node id: {!s}, left: {!s}, right: {!s}, distance: {!s}'.format(
+                self.node_id, self.left, self.right, self.distance)
+
+        def __hash__(self):
+            return hash(self.node_id)
+
+    class Tree:
+
+        def __init__(self, linkage, data=None):
+
+            # store expression data
+            self.linkage = linkage
+            self.data = data
+
+            # set up tree
+            root_id = np.max(linkage[:, :2]) + 1  # node names
+            current_id = root_id
+            self.tree = {}
+            self.n_nodes = linkage.shape[0]
+
+            # construct tree
+            for row in linkage[::-1, ]:
+                self.tree[current_id] = DifferentialExpression.Node(current_id, *row)
+                current_id -= 1
+
+            # add leaf nodes
+            for i in np.arange(self.n_nodes + 1, dtype=float):
+                self.tree[i] = DifferentialExpression.Node(i)
+
+            self.root = self.tree[root_id]
+
+        def __getitem__(self, item):
+            if isinstance(item, DifferentialExpression.Node):
+                return self.tree[item.node_id]
+            elif isinstance(item, (float, int)):
+                return self.tree[item]
+            elif item is None:
+                return None
+            else:
+                raise TypeError(
+                    'Tree objects support indexing by Node, Node.node_id, or None, not {!s}'.format(
+                        type(item)))
+
+        def __repr__(self):
+            return 'Hierarchical Tree: {:.0f} nodes'.format(self.n_nodes)
+
+        def dfs(self, node=None, visited=None):
+            if visited is None:
+                visited = []
+            if node is None:
+                node = self.root
+            if isinstance(node, (int, float)):
+                node = self[node]
+            visited.append(node)
+            for next_ in (self[node.left], self[node.right]):
+                if next_ is not None:
+                    self.dfs(next_, visited)
+            return visited
+
+        def bfs(self, node=None):
+
+            if node is None:
+                node = self.root
+            elif isinstance(node, (int, float)):
+                node = self[node]
+            elif not isinstance(node, DifferentialExpression.Node):
+                raise ValueError('node must be a node object, a node_id, or None.')
+
+            visited, queue = [], [node]
+            while queue:
+                node = queue.pop(0)
+                visited.append(node)
+                for next_ in [self[node.left], self[node.right]]:
+                    if next_ is not None:
+                        queue.append(next_)
+            return visited
+
+        def agglomerate(self, node):
+            return set(n.node_id for n in self.dfs(node))
+
+    @staticmethod
+    def welchs_t(a, b):
+
+        # get mean and standard deviations of each
+        a_mu = np.mean(a, axis=0)
+        b_mu = np.mean(b, axis=0)
+        a_n = a.shape[0]
+        b_n = b.shape[0]
+        a_s = np.var(a, axis=0)
+        b_s = np.var(b, axis=0)
+        a_s_norm = a_s / a_n
+        b_s_norm = b_s / b_n
+
+        # calculate statistic
+        numerator = a_mu - b_mu
+        denominator = np.sqrt(a_s_norm + b_s_norm)
+        statistic = numerator / denominator
+
+        # calculate df
+        numerator = (a_s_norm + b_s_norm) ** 2
+        denominator = (a_s ** 2 / a_n * (a_n - 1)) + (b_s ** 2 / b_n * (b_n - 1))
+        df = np.floor(numerator / denominator)
+
+        # get significance & return
+        p = t.cdf(np.abs(statistic), df)  # note, two tailed test
+        return np.array(statistic, p)
+
+    def downsample(self, func=None, *groups):
+        """
+        :param func: function to apply to groups to find the value that groups should be
+          downsampled to. e.g. partial(np.mean, axis=0), partial(np.median, axis=0),
+          partial(np.percentage, q=80, axis=0), ... etc. Downsampling will be carried out
+          to the minimum central value calculated across the groups
+        :param *groups: arrays to downsample
+        :return:
+        """
+        if func is None:
+            func = partial(np.mean, axis=0)
+        downsampling_value = min(map(func, groups))
+        # todo think about how to best do this sampling.
+        # could multinomial; could normalize and sample the means (I have a feeling this
+        # may converge to the same thing but be more efficient?)
+        # np.random.multinomial
+
+
+    def compare_hierarchy(self, median_downsample=False):
+        """
+        :param median_downsample: Indicates that clusters should be downsampled to the
+          median of all populations prior to comparison to control for sampling bias.
+          This can be done to check clustering stability and to get reliable gene
+          expression differences.
+        :return:
+        """
+
+        # get expression means
+        fmean = partial(np.mean, axis=0)
+
+        cluster_array_views = np.array_split(self.data, self.split_indices, axis=0)
+        means = np.vstack(map(fmean, cluster_array_views))
+        distance = pdist(means)
+        linkage = fastcluster.linkage(distance, method='complete')
+
+        tree = self.Tree(linkage)
+
+        results = {}
+        for node in tree.dfs():
+            l_clusters = np.array(tree.agglomerate(node.left))
+            r_clusters = np.array(tree.agglomerate(node.right))
+            l_cells = np.in1d(self.group_assignments, l_clusters)
+            r_cells = np.in1d(self.group_assignments, r_clusters)
+            res = self.welchs_t(self.data[l_cells], self.data[r_cells])
+            results[(node.left.node_id, node.right.node_id)] = res
+
     def anova(self, min_mean_expr=None):
         """
         :param min_mean_expr: minimum average gene expression value that must be reached
