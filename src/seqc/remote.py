@@ -213,6 +213,11 @@ class ClusterServer(object):
         self.attach_volume(vol_id, dev_id)
         seqc.log.notify("Successfully attached %s GB in 1 volume." % vol_size)
 
+        self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
+        self.serv.exec_command("sudo mkdir -p /data")
+        self.serv.exec_command("sudo mount %s /data" % dev_id)
+        seqc.log.notify("Successfully mounted new volume onto /data.")
+
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
         # todo: replace this with git clone once seqc repo is public
