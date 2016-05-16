@@ -507,6 +507,25 @@ class BaseSpace:
                              % response.status_code)
 
     @classmethod
+    def check_size(cls, sample_id, access_token):
+        """checks size of basespace files to be downloaded.
+         this function will be executed after check_sample(), so
+         the API request will already have returned status code 200"""
+
+        # send request to obtain json metadata
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+
+        # obtain sizes
+        total_size = 0
+        resp = response.json()['Response']['Items']
+        for item in resp:
+            total_size += item['Size']
+        return total_size
+
+    @classmethod
     def download(
             cls, platform, sample_id: str, dest_path: str, access_token: str=None
     ) -> (list, list):
