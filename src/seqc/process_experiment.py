@@ -433,7 +433,7 @@ def main(args: list = None):
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, basespace_token)
             # todo: delete this after testing successfully
-            output = check_output(['lsblk']).decode()
+            output = check_output(['df', '-h']).decode()
             seqc.log.info('After downloading files from BaseSpace:')
             seqc.log.info(output)
 
@@ -459,7 +459,7 @@ def main(args: list = None):
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
                     # todo: delete this after testing successfully
-                    output = check_output(['lsblk']).decode()
+                    output = check_output(['df', '-h']).decode()
                     seqc.log.info('After downloading genomic files from S3:')
                     seqc.log.info(output)
                 except FileExistsError:
@@ -504,7 +504,7 @@ def main(args: list = None):
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
                 # todo: delete this after testing successfully
-                output = check_output(['lsblk']).decode()
+                output = check_output(['df', '-h']).decode()
                 seqc.log.info('After downloading index files from S3:')
                 seqc.log.info(output)
             except FileExistsError:
@@ -536,7 +536,7 @@ def main(args: list = None):
                 genomic=args.genomic_fastq,
                 barcode=args.barcode_fastq)
             # todo: delete this after testing successfully
-            output = check_output(['lsblk']).decode()
+            output = check_output(['df', '-h']).decode()
             seqc.log.info('After running merge function:')
             seqc.log.info(output)
 
@@ -573,7 +573,7 @@ def main(args: list = None):
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
             # todo: delete this after testing
-            output = check_output(['lsblk']).decode()
+            output = check_output(['df', '-h']).decode()
             seqc.log.info('After creating read array:')
             seqc.log.info(output)
         else:
@@ -584,7 +584,7 @@ def main(args: list = None):
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
             # todo: delete this after testing
-            output = check_output(['lsblk']).decode()
+            output = check_output(['df', '-h']).decode()
             seqc.log.info('After creating read array:')
             seqc.log.info(output)
 
@@ -615,7 +615,7 @@ def main(args: list = None):
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
         # todo: delete this after testing
-        output = check_output(['lsblk']).decode()
+        output = check_output(['df', '-h']).decode()
         seqc.log.info('After error correction:')
         seqc.log.info(output)
 
@@ -625,7 +625,7 @@ def main(args: list = None):
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
         # todo: delete this after testing
-        output = check_output(['lsblk']).decode()
+        output = check_output(['df', '-h']).decode()
         seqc.log.info('After count matrix creation:')
         seqc.log.info(output)
 
