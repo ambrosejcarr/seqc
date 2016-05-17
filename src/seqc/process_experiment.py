@@ -432,6 +432,10 @@ def main(args: list = None):
                 bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, basespace_token)
+            # todo: delete this after testing successfully
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After downloading files from BaseSpace:')
+            seqc.log.info(output)
 
         # check for genomic fastq files
         if args.genomic_fastq:
@@ -454,6 +458,10 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
+                    # todo: delete this after testing successfully
+                    output = check_output(['df', '-h']).decode()
+                    seqc.log.info('After downloading genomic files from S3:')
+                    seqc.log.info(output)
                 except FileExistsError:
                     pass  # file is already present.
 
@@ -476,6 +484,10 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Barcode fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_fastq)))
+                    # todo: delete this after testing successfully
+                    output = check_output(['df', '-h']).decode()
+                    seqc.log.info('After downloading barcode files from S3:')
+                    seqc.log.info(output)
                 except FileExistsError:
                     pass  # file is already present.
 
@@ -491,6 +503,10 @@ def main(args: list = None):
                 args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+                # todo: delete this after testing successfully
+                output = check_output(['df', '-h']).decode()
+                seqc.log.info('After downloading index files from S3:')
+                seqc.log.info(output)
             except FileExistsError:
                 pass  # file is already present.
 
@@ -519,6 +535,10 @@ def main(args: list = None):
                 fout=args.output_stem + '_merged.fastq',
                 genomic=args.genomic_fastq,
                 barcode=args.barcode_fastq)
+            # todo: delete this after testing successfully
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After running merge function:')
+            seqc.log.info(output)
 
         if align:
             seqc.log.info('Aligning merged fastq records.')
@@ -538,6 +558,10 @@ def main(args: list = None):
             os.makedirs(alignment_directory, exist_ok=True)
             args.samfile = seqc.alignment.star.align(
                 args.merged_fastq, args.index, n_processes, alignment_directory)
+            # todo: delete this after testing successfully
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After aligning with STAR:')
+            seqc.log.info(output)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -548,6 +572,10 @@ def main(args: list = None):
             ra = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
+            # todo: delete this after testing
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After creating read array:')
+            seqc.log.info(output)
         else:
             if args.read_array.startswith('s3://'):
                 input_data = 'readarray'
@@ -555,6 +583,10 @@ def main(args: list = None):
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
+            # todo: delete this after testing
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After creating read array:')
+            seqc.log.info(output)
 
         # check if barcode files need to be downloaded
         if args.platform != 'drop_seq':
@@ -582,12 +614,20 @@ def main(args: list = None):
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
+        # todo: delete this after testing
+        output = check_output(['df', '-h']).decode()
+        seqc.log.info('After error correction:')
+        seqc.log.info(output)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
+        # todo: delete this after testing
+        output = check_output(['df', '-h']).decode()
+        seqc.log.info('After count matrix creation:')
+        seqc.log.info(output)
 
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.

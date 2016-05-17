@@ -1,5 +1,4 @@
 import time
-import string
 import sys
 import os
 import configparser
@@ -11,6 +10,8 @@ import boto3
 from botocore.exceptions import ClientError
 import seqc
 import logging
+# todo: delete this after testing
+from subprocess import check_output
 
 # turn off paramiko non-error logging
 logging.getLogger('paramiko').setLevel(logging.CRITICAL)
@@ -208,10 +209,10 @@ class ClusterServer(object):
         """creates a raid array of a specified number of volumes on /data"""
         seqc.log.notify('Creating and attaching storage volumes.')
         dev_id = "/dev/xvdf"
-        seqc.log.notify("Creating volume of size %d..." % vol_size)
+        seqc.log.notify("Creating volume of size %d GB..." % vol_size)
         vol_id = self.create_volume(vol_size)
         self.attach_volume(vol_id, dev_id)
-        seqc.log.notify("Successfully attached %s GB in 1 volume." % vol_size)
+        seqc.log.notify("Successfully attached %d GB in 1 volume." % vol_size)
 
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
         self.serv.exec_command("sudo mkdir -p /data")
@@ -354,6 +355,10 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         conv = Popen(convert_sam.split())
         conv.communicate()
         seqc.log.info('Successfully converted samfile to bamfile to upload.')
+        # todo: delete this after testing
+        output = check_output(['df', '-h']).decode()
+        seqc.log.info('After samfile to bamfile conversion:')
+        seqc.log.info(output)
 
         shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
                         '_alignment_summary.txt')
@@ -366,6 +371,10 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             merged_fastq = gzip_file(merged_fastq)
             seqc.log.info('Successfully gzipped merged fastq file to upload.')
             files.append(merged_fastq)
+            # todo: delete this after testing
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After gzipping merged fastq:')
+            seqc.log.info(output)
 
     if start_pos != 'readarray':
         h5_archive = output_stem + '.h5'
