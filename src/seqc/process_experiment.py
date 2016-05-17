@@ -10,6 +10,7 @@ import configparser
 import boto3
 from subprocess import Popen, check_output
 import numpy as np
+import time
 
 
 class ConfigurationError(Exception):
@@ -503,6 +504,7 @@ def main(args: list = None):
                 args.index = output_dir + '/index/'  # set index  based on s3 download
                 cut_dirs = prefix.count('/')
                 seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+
                 # todo: delete this after testing successfully
                 output = check_output(['df', '-h']).decode()
                 seqc.log.info('After downloading index files from S3:')
@@ -535,18 +537,22 @@ def main(args: list = None):
                 fout=args.output_stem + '_merged.fastq',
                 genomic=args.genomic_fastq,
                 barcode=args.barcode_fastq)
+
             # todo: delete this after testing successfully
             output = check_output(['df', '-h']).decode()
             seqc.log.info('After running merge function:')
             seqc.log.info(output)
 
+            # deleting genomic/barcode fastq files after merged.fastq creation
+            delete_fastq = ['rm'] + args.genomic_fastq + args.barcode_fastq
+            Popen(delete_fastq)
+            # todo: see if we need to do any checks with deleting fastq
         if align:
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
                 input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
                 if args.merged_fastq.endswith('.gz'):
-                    # todo: modify STAR to take in merged_fastq.gz
                     gunzip_cmd = 'gunzip ' + args.merged_fastq
                     full_file = Popen(gunzip_cmd.split())
                     full_file.communicate()
@@ -558,10 +564,17 @@ def main(args: list = None):
             os.makedirs(alignment_directory, exist_ok=True)
             args.samfile = seqc.alignment.star.align(
                 args.merged_fastq, args.index, n_processes, alignment_directory)
+
             # todo: delete this after testing successfully
             output = check_output(['df', '-h']).decode()
             seqc.log.info('After aligning with STAR:')
             seqc.log.info(output)
+
+            # gzipping merged fastq, uploading to S3
+            # todo: gzipping probably doesn't happen in the background here
+            args.merged_fastq = seqc.remote.gzip_file(args.merged_fastq)
+            # todo: need to account for if this is a local
+            merge_upload = seqc.io.FileManager(args.merged_fastq, aws_upload_key)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -572,10 +585,20 @@ def main(args: list = None):
             ra = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             ra.save(args.output_stem + '.h5')
+
             # todo: delete this after testing
             output = check_output(['df', '-h']).decode()
             seqc.log.info('After creating read array:')
             seqc.log.info(output)
+
+            # converting sam to bam
+            bamfile = output_dir + '/alignments/Aligned.out.bam'
+            convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
+                format(bamfile=bamfile, samfile=args.samfile)
+            conv = Popen(convert_sam.split())
+            # todo: need to make sure conv is done before sam_upload()
+            sam_upload = seqc.io.FileManager(bamfile, aws_upload_key)
+
         else:
             if args.read_array.startswith('s3://'):
                 input_data = 'readarray'
@@ -583,6 +606,7 @@ def main(args: list = None):
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
+
             # todo: delete this after testing
             output = check_output(['df', '-h']).decode()
             seqc.log.info('After creating read array:')
@@ -614,16 +638,21 @@ def main(args: list = None):
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
+
         # todo: delete this after testing
         output = check_output(['df', '-h']).decode()
         seqc.log.info('After error correction:')
         seqc.log.info(output)
+
+        # uploading Read Array to S3
+        ra_upload = seqc.io.FileManager(ra, aws_upload_key)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
+
         # todo: delete this after testing
         output = check_output(['df', '-h']).decode()
         seqc.log.info('After count matrix creation:')
@@ -637,6 +666,16 @@ def main(args: list = None):
             if args.email_status:
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data)
+                # make sure that all other files are uploaded before termination
+                completed = False
+                while not completed:
+                    merge = merge_upload.check_running()
+                    sam = sam_upload.check_running()
+                    h5file = ra_upload.check_running()
+                    if merge or sam or h5file:
+                        time.sleep(5)
+                    else:
+                        completed = True
 
     except:
         seqc.log.exception()
@@ -644,6 +683,7 @@ def main(args: list = None):
             email_body = 'Process interrupted -- see attached error message'
             seqc.remote.email_user(attachment='seqc.log', email_body=email_body,
                                    email_address=args.email_status)
+
         raise
 
     finally:
