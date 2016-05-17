@@ -867,6 +867,7 @@ class DifferentialExpression:
         p = t.cdf(np.abs(statistic), df)  # note, two tailed test
         return np.array(statistic, p)
 
+    @staticmethod
     def equalize_sampling(self, func=None, n_iter=1000, *groups):
         """
         :param func: function to apply to groups to find the value that groups should be
