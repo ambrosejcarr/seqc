@@ -348,6 +348,10 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         samfile = prefix + '/alignments/Aligned.out.sam'
         bamfile = prefix + '/alignments/Aligned.out.bam'
         alignment_summary = output_stem + '_alignment_summary.txt'
+        # todo: delete this after testing
+        output = check_output(['df', '-h']).decode()
+        seqc.log.info('Just running df -h to try:')
+        seqc.log.info(output)
 
         # converting samfile to bamfile
         convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
@@ -356,7 +360,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         conv.communicate()
         seqc.log.info('Successfully converted samfile to bamfile to upload.')
         # todo: delete this after testing
-        output = check_output(['df', '-h']).decode()
+        output = check_output(['lsblk']).decode()
         seqc.log.info('After samfile to bamfile conversion:')
         seqc.log.info(output)
 
@@ -372,7 +376,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             seqc.log.info('Successfully gzipped merged fastq file to upload.')
             files.append(merged_fastq)
             # todo: delete this after testing
-            output = check_output(['df', '-h']).decode()
+            output = check_output(['lsblk']).decode()
             seqc.log.info('After gzipping merged fastq:')
             seqc.log.info(output)
 
