@@ -1,9 +1,9 @@
 from glob import glob
 import os
 import ftplib
+import shlex
 from functools import partial
 from multiprocessing import Process, Pool
-import configparser
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
@@ -573,3 +573,24 @@ class BaseSpace:
             barcode_fastq = [dest_path + f for f in filenames if '_R2_' in f]
 
         return barcode_fastq, genomic_fastq
+
+
+class FileManager:
+    """moves files from remote aws instance to s3"""
+
+    def __init__(self, fname, s3link):
+        cmdstring = 'aws s3 mv {fname} {s3link}'.format(fname=fname, s3link=s3link)
+        cmd = shlex.split(cmdstring)
+        self._pipe = Popen(cmd)
+
+    def check_running(self):
+        msg = self._pipe.poll()
+        if msg is None:
+            return True
+        return False
+
+    def kill_process(self):
+        try:
+            self._pipe.terminate()
+        except ProcessLookupError:
+            seqc.log.notify('Process not found, unsuccessful attempt to terminate.')
