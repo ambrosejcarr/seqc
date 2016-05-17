@@ -17,7 +17,6 @@ fm.findfont('Raleway')
 fm.findfont('Lato')
 
 dark_gray = '.15'
-light_gray = '.8'
 
 style_dictionary = {
     'figure.figsize': (3, 3),
@@ -26,16 +25,16 @@ style_dictionary = {
     'figure.dpi': 150,
     'savefig.dpi': 150,
 
-    'text.color': dark_gray,
+    'text.color': 'k',
 
     "legend.frameon": False,
     "legend.numpoints": 1,
     "legend.scatterpoints": 1,
 
     'font.family': ['sans-serif'],
-    'font.serif': 'Computer Modern Roman',
-    'font.monospace': 'Inconsolata',
-    'font.sans-serif': 'Lato',
+    'font.serif': ['Computer Modern Roman', 'serif'],
+    'font.monospace': ['Inconsolata', 'Computer Modern Typewriter', 'Monaco'],
+    'font.sans-serif': ['Lato', 'sans-serif'],
 
     'patch.facecolor': 'royalblue',
     'patch.edgecolor': 'none',

@@ -18,36 +18,6 @@ from functools import partial
 from collections import namedtuple
 
 
-def keigs(T, k, P, take_diagonal=0):
-    """ return k largest magnitude eigenvalues for the matrix T.
-    :param T: Matrix to find eigen values/vectors of
-    :param k: number of eigen values/vectors to return
-    :param P: in the case of symmetric normalizations,
-              this is the NxN diagonal matrix which relates the nonsymmetric
-              version to the symmetric form via conjugation
-    :param take_diagonal: if 1, returns the eigenvalues as a vector rather than as a
-                          diagonal matrix.
-    """
-    D, V = eigs(T, k, tol=1e-4, maxiter=1000)
-    D = np.real(D)
-    V = np.real(V)
-    inds = np.argsort(D)[::-1]
-    D = D[inds]
-    V = V[:, inds]
-    if P is not None:
-        V = P.dot(V)
-
-    # Normalize
-    for i in range(V.shape[1]):
-        V[:, i] = V[:, i] / norm(V[:, i])
-    V = np.round(V, 10)
-
-    if take_diagonal == 0:
-        D = np.diag(D)
-
-    return V, D
-
-
 class GraphDiffusion:
     def __init__(self, knn=10, normalization='smarkov', epsilon=1,
                  n_diffusion_components=10):
@@ -84,6 +54,36 @@ class GraphDiffusion:
         self.eigenvalues = None
         self.diffusion_operator = None
         self.weights = None
+
+    @staticmethod
+    def keigs(T, k, P, take_diagonal=0):
+        """ return k largest magnitude eigenvalues for the matrix T.
+        :param T: Matrix to find eigen values/vectors of
+        :param k: number of eigen values/vectors to return
+        :param P: in the case of symmetric normalizations,
+                  this is the NxN diagonal matrix which relates the nonsymmetric
+                  version to the symmetric form via conjugation
+        :param take_diagonal: if 1, returns the eigenvalues as a vector rather than as a
+                              diagonal matrix.
+        """
+        D, V = eigs(T, k, tol=1e-4, maxiter=1000)
+        D = np.real(D)
+        V = np.real(V)
+        inds = np.argsort(D)[::-1]
+        D = D[inds]
+        V = V[:, inds]
+        if P is not None:
+            V = P.dot(V)
+
+        # Normalize
+        for i in range(V.shape[1]):
+            V[:, i] = V[:, i] / norm(V[:, i])
+        V = np.round(V, 10)
+
+        if take_diagonal == 0:
+            D = np.diag(D)
+
+        return V, D
 
     @staticmethod  # todo fix; what is S?
     def bimarkov(W, max_iters=100, abs_error=0.00001, verbose=False, **kwargs):
@@ -237,7 +237,7 @@ class GraphDiffusion:
             print('%.2f seconds' % (time.process_time() - start))
 
         # Eigen value decomposition
-        V, D = keigs(T, self.n_diffusion_components, P, take_diagonal=1)
+        V, D = GraphDiffusion.keigs(T, self.n_diffusion_components, P, take_diagonal=1)
         self.eigenvectors = V
         self.eigenvalues = D
         self.diffusion_operator = T
@@ -867,7 +867,7 @@ class DifferentialExpression:
         p = t.cdf(np.abs(statistic), df)  # note, two tailed test
         return np.array(statistic, p)
 
-    def downsample(self, func=None, *groups):
+    def equalize_sampling(self, func=None, n_iter=1000, *groups):
         """
         :param func: function to apply to groups to find the value that groups should be
           downsampled to. e.g. partial(np.mean, axis=0), partial(np.median, axis=0),
@@ -877,13 +877,39 @@ class DifferentialExpression:
         :return:
         """
         if func is None:
-            func = partial(np.mean, axis=0)
+            func = partial(np.median, axis=0)
         downsampling_value = min(map(func, groups))
-        # todo think about how to best do this sampling.
-        # could multinomial; could normalize and sample the means (I have a feeling this
-        # may converge to the same thing but be more efficient?)
-        # np.random.multinomial
 
+        # for each group, normalize library sizes and find mean value for multinomial sampling
+        # todo map to multiprocessing pool
+
+        def sampling_func(x, n, size=1000):
+            x /= x.sum(axis=1)[:, np.newaxis]
+            mu = x.mean(axis=0)
+            s = n * mu * (1 - mu)  # (genes,)
+            res = np.random.multinomial(n, mu, size=size)  # (samples, genes)
+            return res, s
+
+        partial(sampling_func, n=downsampling_value, size=n_iter)
+        mu, s = map(sampling_func, groups)
+
+        def test_function(mu_a, mu_b, s_a, s_b, n_a, n_b):
+            s_a_norm = s_a / n_a
+            s_b_norm = s_b / n_b
+
+            # calculate statistic
+            numerator = mu_a - mu_b
+            denominator = np.sqrt(s_a_norm + s_b_norm)
+            statistic = numerator / denominator
+
+            # calculate df
+            numerator = (s_a_norm + s_b_norm) ** 2
+            denominator = (s_a ** 2 / n_a * (n_a - 1)) + (s_b ** 2 / n_b * (n_b - 1))
+            df = np.floor(numerator / denominator)
+
+            # get significance & return
+            p = t.cdf(np.abs(statistic), df)  # note, two tailed test
+            return np.array(statistic, p)
 
     def compare_hierarchy(self, median_downsample=False):
         """
