@@ -675,7 +675,7 @@ class GSEA:
         #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
 
 
-class DifferentialExpression:
+class ExpressionTree:
 
     def __init__(self, data, group_assignments, alpha=0.05):
         """
@@ -868,7 +868,7 @@ class DifferentialExpression:
         return np.array(statistic, p)
 
     @staticmethod
-    def equalize_sampling(self, func=None, n_iter=1000, *groups):
+    def equalize_sampling(func=None, n_iter=1000, *groups):
         """
         :param func: function to apply to groups to find the value that groups should be
           downsampled to. e.g. partial(np.mean, axis=0), partial(np.median, axis=0),
@@ -939,6 +939,75 @@ class DifferentialExpression:
             r_cells = np.in1d(self.group_assignments, r_clusters)
             res = self.welchs_t(self.data[l_cells], self.data[r_cells])
             results[(node.left.node_id, node.right.node_id)] = res
+
+
+class DifferentialExpression:
+
+    def __init__(self, data, group_assignments, alpha=0.05):
+        """
+        :param data: n cells x k genes 2d array
+        :param group_assignments: n cells 1d vector
+        :param alpha: float (0, 1], acceptable type I error
+        """
+        # make sure group_assignments and data have the same length
+        if not data.shape[0] == group_assignments.shape[0]:
+            raise ValueError(
+                'Group assignments shape ({!s}) must equal the number of rows in data '
+                '({!s}).'.format(group_assignments.shape[0], data.shape[0]))
+
+        # todo
+        # may want to verify that each group has at least two observations
+        # (else variance won't work)
+
+        # store index if both data and group_assignments are pandas objects
+        if isinstance(data, pd.DataFrame) and isinstance(group_assignments, pd.Series):
+            # ensure assignments and data indices are aligned
+            try:
+                ordered_assignments = group_assignments[data.index]
+                if not len(ordered_assignments) == data.shape[0]:
+                    raise ValueError(
+                        'Index mismatch between data and group_assignments detected when '
+                        'aligning indices. check for duplicates.')
+            except:
+                raise ValueError('Index mismatch between data and group_assignments.')
+
+            # sort data by cluster assignment
+            idx = np.argsort(ordered_assignments.values)
+            self.data = data.iloc[idx, :].values
+            ordered_assignments = ordered_assignments.iloc[idx]
+            self.group_assignments = ordered_assignments.values
+            self.index = data.columns
+
+        else:  # get arrays from input values
+            self.index = None  # inputs were not all indexed pandas objects
+
+            try:
+                data = np.array(data)
+            except:
+                raise ValueError('data must be convertible to a np.ndarray')
+
+            try:
+                group_assignments = np.array(group_assignments)
+            except:
+                raise ValueError('group_assignments must be convertible to a np.ndarray')
+
+            idx = np.argsort(group_assignments)
+            self.data = data[idx, :]
+            self.group_assignments = group_assignments[idx]
+
+        self.post_hoc = None
+        self.groups = np.unique(group_assignments)
+
+        # get points to split the array, create slicers for each group
+        self.split_indices = np.where(np.diff(self.group_assignments))[0] + 1
+        # todo is this a faster way of calculating the below anova?
+        # self.array_views = np.array_split(self.data, self.split_indices, axis=0)
+
+        if not 0 < alpha <= 1:
+            raise ValueError('Parameter alpha must fall within the interval (0, 1].')
+        self.alpha = alpha
+
+        self._anova = None
 
     def anova(self, min_mean_expr=None):
         """
