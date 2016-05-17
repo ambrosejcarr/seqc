@@ -615,7 +615,7 @@ def main(args: list = None):
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
         # todo: delete this after testing
-        output = check_output(['lsblk').decode()
+        output = check_output(['lsblk']).decode()
         seqc.log.info('After error correction:')
         seqc.log.info(output)
 
