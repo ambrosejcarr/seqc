@@ -547,6 +547,10 @@ def main(args: list = None):
             delete_fastq = ['rm'] + args.genomic_fastq + args.barcode_fastq
             Popen(delete_fastq)
             # todo: see if we need to do any checks with deleting fastq
+            # todo: delete this after testing successfully
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After deleting original fastq files:')
+            seqc.log.info(output)
         if align:
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
@@ -576,6 +580,11 @@ def main(args: list = None):
             # todo: need to account for if this is a local
             merge_upload = seqc.io.FileManager(args.merged_fastq, aws_upload_key)
 
+            # todo: delete this after testing successfully
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After running merge function:')
+            seqc.log.info(output)
+
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
             if args.samfile.startswith('s3://'):
@@ -596,8 +605,14 @@ def main(args: list = None):
             convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
                 format(bamfile=bamfile, samfile=args.samfile)
             conv = Popen(convert_sam.split())
+            conv.wait()
             # todo: need to make sure conv is done before sam_upload()
             sam_upload = seqc.io.FileManager(bamfile, aws_upload_key)
+
+            # todo: delete this after testing
+            output = check_output(['df', '-h']).decode()
+            seqc.log.info('After uploading converted bamfile to S3:')
+            seqc.log.info(output)
 
         else:
             if args.read_array.startswith('s3://'):
