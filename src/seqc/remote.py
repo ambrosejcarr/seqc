@@ -25,6 +25,10 @@ class VolumeCreationError(Exception):
     pass
 
 
+class SpotBidError(Exception):
+    pass
+
+
 class ClusterServer(object):
     """Connects to AWS instance using paramiko and a private RSA key,
     allows for the creation/manipulation of EC2 instances and executions
@@ -88,13 +92,12 @@ class ClusterServer(object):
         if 'c4' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
-            resp = client.request_spot_instances(
+            client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
-                    'SecurityGroups': [self.sg],
                     'InstanceType': self.inst_type,
                     'Placement': {
                         'AvailabilityZone': self.zone
@@ -108,17 +111,17 @@ class ClusterServer(object):
                             }
                         }
                     ],
-                    'SubnetId': self.subnet
+                    'SubnetId': self.subnet,
+                    'SecurityGroupIds': [self.sg],
                 }
             )
         elif 'c3' in self.inst_type:
-            resp = client.request_spot_instances(
+            client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
-                    'SecurityGroups': [self.sg],
                     'InstanceType': self.inst_type,
                     'Placement': {
                         'AvailabilityZone': self.zone
@@ -132,10 +135,25 @@ class ClusterServer(object):
                             }
                         }
                     ],
+                    'SecurityGroupIds': [self.sg],
                 }
             )
-        # todo: you must mount this device
-        # check this resp['State'] == 'active'
+
+        # todo: need to do some sort of grep check for when you do multiple spot requests
+        # could check for the SEQC id that was launched and use that element
+        # basically you can't just index the 0th element all the time
+        spot_resp = client.describe_spot_instance_requests()['SpotInstanceRequests'][0]
+        max_tries = 40
+        i = 0
+        while spot_resp['State'] != 'active':
+            time.sleep(10)
+            spot_resp = client.describe_spot_instance_requests()[
+                'SpotInstanceRequests'][0]
+            i += 1
+            if i >= max_tries:
+                raise SpotBidError('Spot Bid could not be fulfilled.')
+        # spot request was approved, instance launched
+        self.inst_id = self.ec2.Instance(spot_resp['InstanceId'])
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
@@ -264,14 +282,15 @@ class ClusterServer(object):
             seqc.log.notify('Connection successful!')
         self.serv = ssh_server
 
-    def allocate_space(self, vol_size: int):
-        """creates a raid array of a specified number of volumes on /data"""
-        seqc.log.notify('Creating and attaching storage volumes.')
+    def allocate_space(self, spot: bool, vol_size: int):
+        """dynamically allocates the specified amount of space on /data"""
+
         dev_id = "/dev/xvdf"
-        seqc.log.notify("Creating volume of size %d GB..." % vol_size)
-        vol_id = self.create_volume(vol_size)
-        self.attach_volume(vol_id, dev_id)
-        seqc.log.notify("Successfully attached %d GB in 1 volume." % vol_size)
+        if not spot:
+            seqc.log.notify("Creating volume of size %d GB..." % vol_size)
+            vol_id = self.create_volume(vol_size)
+            self.attach_volume(vol_id, dev_id)
+            seqc.log.notify("Successfully attached %d GB in 1 volume." % vol_size)
 
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
         self.serv.exec_command("sudo mkdir -p /data")
@@ -326,16 +345,16 @@ class ClusterServer(object):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group()
-        # modified cluster creation here for spot bid
+
+        # modified cluster creation for spot bid
         if self.spot_bid != 'None':
             self.create_spot_cluster(volsize)
             self.connect_server()
-            # todo: need to mount volume here, use different allocate_space()
-        # otherwise proceed normally
+            self.allocate_space(True, volsize)
         else:
             self.create_cluster()
             self.connect_server()
-            self.allocate_space(volsize)
+            self.allocate_space(False, volsize)
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
