@@ -9,6 +9,7 @@ import seqc
 import configparser
 import boto3
 from subprocess import Popen, check_output
+import threading
 import numpy as np
 import time
 
@@ -546,11 +547,7 @@ def main(args: list = None):
             # deleting genomic/barcode fastq files after merged.fastq creation
             delete_fastq = ['rm'] + args.genomic_fastq + args.barcode_fastq
             Popen(delete_fastq)
-            # todo: see if we need to do any checks with deleting fastq
-            # todo: delete this after testing successfully
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After deleting original fastq files:')
-            seqc.log.info(output)
+
         if align:
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
@@ -574,16 +571,11 @@ def main(args: list = None):
             seqc.log.info('After aligning with STAR:')
             seqc.log.info(output)
 
-            # gzipping merged fastq, uploading to S3
-            # todo: gzipping probably doesn't happen in the background here
-            args.merged_fastq = seqc.remote.gzip_file(args.merged_fastq)
-            # todo: need to account for if this is a local
-            merge_upload = seqc.io.FileManager(args.merged_fastq, aws_upload_key)
-
-            # todo: delete this after testing successfully
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After running merge function:')
-            seqc.log.info(output)
+            # gzipping file and upload in one Popen session
+            cmd1 = 'pigz ' + args.merged_fastq
+            cmd2 = 'aws s3 mv {fname} {s3lnk}'.format(fname=args.merged_fastq+'.gz',
+                                                      s3link=aws_upload_key)
+            merge_upload = Popen("{}; {}".format(cmd1, cmd2), shell=True)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -597,22 +589,16 @@ def main(args: list = None):
 
             # todo: delete this after testing
             output = check_output(['df', '-h']).decode()
-            seqc.log.info('After creating read array:')
+            seqc.log.info('After creating read array from samfile:')
             seqc.log.info(output)
 
-            # converting sam to bam
+            # converting sam to bam and uploading to S3
             bamfile = output_dir + '/alignments/Aligned.out.bam'
             convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
                 format(bamfile=bamfile, samfile=args.samfile)
-            conv = Popen(convert_sam.split())
-            conv.wait()
-            # todo: need to make sure conv is done before sam_upload()
-            sam_upload = seqc.io.FileManager(bamfile, aws_upload_key)
-
-            # todo: delete this after testing
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After uploading converted bamfile to S3:')
-            seqc.log.info(output)
+            cmd2 = 'aws s3 mv {fname} {s3lnk}'.format(fname=bamfile,
+                                                      s3link=aws_upload_key)
+            sam_upload = Popen("{}; {}".format(convert_sam, cmd2), shell=True)
 
         else:
             if args.read_array.startswith('s3://'):
@@ -669,8 +655,8 @@ def main(args: list = None):
         seqc.log.info('Successfully generated count matrix.')
 
         # todo: delete this after testing
-        output = check_output(['df', '-h']).decode()
-        seqc.log.info('After count matrix creation:')
+        output = check_output(['ll']).decode()
+        seqc.log.info('After count matrix creation, all total files:')
         seqc.log.info(output)
 
         # in this version, local runs won't be able to upload to S3
@@ -682,15 +668,19 @@ def main(args: list = None):
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data)
                 # make sure that all other files are uploaded before termination
-                completed = False
-                while not completed:
-                    merge = merge_upload.check_running()
-                    sam = sam_upload.check_running()
-                    h5file = ra_upload.check_running()
-                    if merge or sam or h5file:
-                        time.sleep(5)
-                    else:
-                        completed = True
+                merge_upload.wait()
+                sam_upload.wait()
+                ra_upload.wait()
+
+                # todo: delete this after testing
+                output = check_output(['ll']).decode()
+                seqc.log.info('About to terminate, all total files:')
+                seqc.log.info(output)
+
+                # todo: delete this after testing
+                output = check_output(['df', '-h']).decode()
+                seqc.log.info('About to terminate, all total files:')
+                seqc.log.info(output)
 
     except:
         seqc.log.exception()
