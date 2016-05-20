@@ -115,6 +115,7 @@ class ClusterServer(object):
                     'SecurityGroupIds': [self.sg],
                 }
             )
+
         elif 'c3' in self.inst_type:
             client.request_spot_instances(
                 DryRun=False,
@@ -139,19 +140,33 @@ class ClusterServer(object):
                 }
             )
 
-        # todo: need to do some sort of grep check for when you do multiple spot requests
-        # could check for the SEQC id that was launched and use that element
-        # basically you can't just index the 0th element all the time
-        spot_resp = client.describe_spot_instance_requests()['SpotInstanceRequests'][0]
+        # check status of spot bid request
+        ids = []
+        all_resp = client.describe_spot_instance_requests()['SpotInstanceRequests']
+        for item in all_resp:
+            try:
+                ids.append(item['InstanceId'])
+            except KeyError:
+                continue
+        idx = ids.index(self.inst_id.id)
+        spot_resp = all_resp[idx]
         max_tries = 40
         i = 0
         while spot_resp['State'] != 'active':
+            status_code = spot_resp['Status']['Code']
+            bad_status = ['price-too-low', 'capacity-oversubscribed',
+                          'capacity-not-available', 'launch-group-constraint',
+                          'az-group-constraint', 'placement-group-constraint',
+                          'constraint-not-fulfillable', 'schedule-expired',
+                          'bad-parameters', 'system-error']
+            if status_code in bad_status:
+                raise SpotBidError('Please adjust your spot bid request.')
             time.sleep(10)
             spot_resp = client.describe_spot_instance_requests()[
-                'SpotInstanceRequests'][0]
+                'SpotInstanceRequests'][idx]
             i += 1
             if i >= max_tries:
-                raise SpotBidError('Spot Bid could not be fulfilled.')
+                raise SpotBidError('Timeout: spot bid could not be fulfilled.')
         # spot request was approved, instance launched
         self.inst_id = self.ec2.Instance(spot_resp['InstanceId'])
 
