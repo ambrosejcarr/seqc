@@ -81,13 +81,13 @@ class ClusterServer(object):
         self.aws_key = config['aws_info']['aws_secret_access_key']
         self.spot_bid = config['SpotBid']['spot_bid']
 
-    def create_cluster(self):
-        """creates a new AWS cluster with specifications from config"""
+    def create_spot_cluster(self, volume_size):
+        """launches an instance using the specified spot bid"""
 
-        # check if user wants to start a spot bid
-        if self.spot_bid != 'None':
-            client = boto3.client('ec2')
-            # todo: need to check c3/c4 within spot instance
+        client = boto3.client('ec2')
+        if 'c4' in self.inst_type:
+            if not self.subnet:
+                raise ValueError('A subnet-id must be specified for C4 instances!')
             resp = client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
@@ -103,17 +103,42 @@ class ClusterServer(object):
                         {
                             'DeviceName': '/dev/xvdf',
                             'Ebs': {
-                                'VolumeSize': 'TBD',
+                                'VolumeSize': volume_size,
                                 'DeleteOnTermination': True,
-
                             }
-                            # you must mount the device
                         }
                     ],
-                    'SubnetId': False # SUBNET ID GOES HERE
+                    'SubnetId': self.subnet
                 }
             )
-            # check this resp['State'] == 'active'
+        elif 'c3' in self.inst_type:
+            resp = client.request_spot_instances(
+                DryRun=False,
+                SpotPrice=self.spot_bid,
+                LaunchSpecification={
+                    'ImageId': self.image_id,
+                    'KeyName': self.keyname,
+                    'SecurityGroups': [self.sg],
+                    'InstanceType': self.inst_type,
+                    'Placement': {
+                        'AvailabilityZone': self.zone
+                    },
+                    'BlockDeviceMappings': [
+                        {
+                            'DeviceName': '/dev/xvdf',
+                            'Ebs': {
+                                'VolumeSize': volume_size,
+                                'DeleteOnTermination': True,
+                            }
+                        }
+                    ],
+                }
+            )
+        # todo: you must mount this device
+        # check this resp['State'] == 'active'
+
+    def create_cluster(self):
+        """creates a new AWS cluster with specifications from config"""
 
         if 'c4' in self.inst_type:
             if not self.subnet:
@@ -301,9 +326,16 @@ class ClusterServer(object):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file)
         self.create_security_group()
-        self.create_cluster()
-        self.connect_server()
-        self.allocate_space(volsize)
+        # modified cluster creation here for spot bid
+        if self.spot_bid != 'None':
+            self.create_spot_cluster(volsize)
+            self.connect_server()
+            # todo: need to mount volume here, use different allocate_space()
+        # otherwise proceed normally
+        else:
+            self.create_cluster()
+            self.connect_server()
+            self.allocate_space(volsize)
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')

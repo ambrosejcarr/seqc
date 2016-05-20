@@ -432,6 +432,7 @@ def main(args: list = None):
                 bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, basespace_token)
+
             # todo: delete this after testing successfully
             output = check_output(['df', '-h']).decode()
             seqc.log.info('After downloading files from BaseSpace:')
@@ -484,6 +485,7 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Barcode fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_fastq)))
+
                     # todo: delete this after testing successfully
                     output = check_output(['df', '-h']).decode()
                     seqc.log.info('After downloading barcode files from S3:')
@@ -543,6 +545,7 @@ def main(args: list = None):
             seqc.log.info(output)
 
             # deleting genomic/barcode fastq files after merged.fastq creation
+            seqc.log.info('Removing original fastq file for memory management.')
             delete_fastq = ['rm'] + args.genomic_fastq + args.barcode_fastq
             Popen(delete_fastq)
 
@@ -570,6 +573,7 @@ def main(args: list = None):
             seqc.log.info(output)
 
             # gzipping file and upload in one Popen session
+            seqc.log.info('Gzipping merged fastq file and uploading to S3.')
             cmd1 = 'pigz ' + args.merged_fastq
             cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=args.merged_fastq+'.gz',
                                                        s3link=aws_upload_key)
@@ -591,6 +595,7 @@ def main(args: list = None):
             seqc.log.info(output)
 
             # converting sam to bam and uploading to S3
+            seqc.log.info('Converting samfile to bamfile and uploading to S3.')
             bamfile = output_dir + '/alignments/Aligned.out.bam'
             convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
                 format(bamfile=bamfile, samfile=args.samfile)
@@ -644,6 +649,7 @@ def main(args: list = None):
         seqc.log.info(output)
 
         # uploading Read Array to S3
+        seqc.log.info('Uploading Read Array to S3.')
         ra_upload = seqc.io.FileManager(ra, aws_upload_key)
 
         seqc.log.info('Creating count matrices')
@@ -661,18 +667,14 @@ def main(args: list = None):
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data)
                 # make sure that all other files are uploaded before termination
+                seqc.log.info('Waiting for all uploads to complete before termination...')
                 merge_upload.wait()
                 sam_upload.wait()
-                ra_upload.wait()
-
-                # todo: delete this after testing
-                output = check_output(['ll']).decode()
-                seqc.log.info('About to terminate, all total files:')
-                seqc.log.info(output)
+                ra_upload.get_pipe.wait()
 
                 # todo: delete this after testing
                 output = check_output(['df', '-h']).decode()
-                seqc.log.info('About to terminate, all total files:')
+                seqc.log.info('About to terminate, total storage:')
                 seqc.log.info(output)
 
     except:
