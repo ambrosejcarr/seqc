@@ -573,8 +573,8 @@ def main(args: list = None):
 
             # gzipping file and upload in one Popen session
             cmd1 = 'pigz ' + args.merged_fastq
-            cmd2 = 'aws s3 mv {fname} {s3lnk}'.format(fname=args.merged_fastq+'.gz',
-                                                      s3link=aws_upload_key)
+            cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=args.merged_fastq+'.gz',
+                                                       s3link=aws_upload_key)
             merge_upload = Popen("{}; {}".format(cmd1, cmd2), shell=True)
 
         if process_samfile:
@@ -596,8 +596,8 @@ def main(args: list = None):
             bamfile = output_dir + '/alignments/Aligned.out.bam'
             convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
                 format(bamfile=bamfile, samfile=args.samfile)
-            cmd2 = 'aws s3 mv {fname} {s3lnk}'.format(fname=bamfile,
-                                                      s3link=aws_upload_key)
+            cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
+                                                       s3link=aws_upload_key)
             sam_upload = Popen("{}; {}".format(convert_sam, cmd2), shell=True)
 
         else:
