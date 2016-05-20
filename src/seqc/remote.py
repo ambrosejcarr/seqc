@@ -86,14 +86,15 @@ class ClusterServer(object):
         self.spot_bid = config['SpotBid']['spot_bid']
 
     def create_spot_cluster(self, volume_size):
-        """launches an instance using the specified spot bid"""
+        """launches an instance using the specified spot bid
+        and cancels bid in case of error or timeout"""
 
         client = boto3.client('ec2')
         seqc.log.info('Launching cluster with spot bid $%s...' % self.spot_bid)
         if 'c4' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
-            client.request_spot_instances(
+            resp = client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
                 LaunchSpecification={
@@ -117,8 +118,8 @@ class ClusterServer(object):
                 }
             )
 
-        elif 'c3' in self.inst_type:
-            client.request_spot_instances(
+        elif 'c3' or 'r3' in self.inst_type:
+            resp = client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
                 LaunchSpecification={
@@ -150,6 +151,7 @@ class ClusterServer(object):
         max_tries = 40
         i = 0
         seqc.log.info('Waiting for spot bid request to be fulfilled...')
+        request_id = resp['SpotInstanceRequests'][0]['SpotInstanceRequestId']
         while spot_resp['State'] != 'active':
             status_code = spot_resp['Status']['Code']
             bad_status = ['price-too-low', 'capacity-oversubscribed',
@@ -158,12 +160,16 @@ class ClusterServer(object):
                           'constraint-not-fulfillable', 'schedule-expired',
                           'bad-parameters', 'system-error']
             if status_code in bad_status:
+                client.cancel_spot_instance_requests(DryRun=False,
+                                                     SpotInstanceRequestIds=[request_id])
                 raise SpotBidError('Please adjust your spot bid request.')
             time.sleep(10)
             spot_resp = client.describe_spot_instance_requests()[
                 'SpotInstanceRequests'][idx]
             i += 1
             if i >= max_tries:
+                client.cancel_spot_instance_requests(DryRun=False,
+                                                     SpotInstanceRequestIds=[request_id])
                 raise SpotBidError('Timeout: spot bid could not be fulfilled.')
         # spot request was approved, instance launched
         self.inst_id = self.ec2.Instance(spot_resp['InstanceId'])
