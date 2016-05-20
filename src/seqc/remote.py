@@ -141,16 +141,10 @@ class ClusterServer(object):
             )
 
         # check status of spot bid request
-        ids = []
         all_resp = client.describe_spot_instance_requests()['SpotInstanceRequests']
-        for item in all_resp:
-            try:
-                ids.append(item['InstanceId'])
-            except KeyError:
-                continue
-        # todo: need to change this to look for security groups and not AMIs
-        # all_resp[0]['LaunchSpecification']['SecurityGroups'][0]['GroupId']
-        idx = ids.index(self.inst_id.id)
+        sec_groups = [item['LaunchSpecification']['SecurityGroups'][0]['GroupId'] for
+                      item in all_resp]
+        idx = sec_groups.index(self.sg)
         spot_resp = all_resp[idx]
         max_tries = 40
         i = 0
