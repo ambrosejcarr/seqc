@@ -1,5 +1,5 @@
 [global]
-default_template = c4
+default_template = r3
 
 [aws_info]
 aws_access_key_id = None
@@ -21,6 +21,12 @@ cluster_size = 1
 node_image_id = ami-28cb2345
 node_instance_type = c4.8xlarge
 subnet_id = subnet-70d7ec36
+availability_zone = us-east-1c
+
+[r3]
+cluster_size = 1
+node_image_id = ami-28cb2345
+node_instance_type = r3.8xlarge
 availability_zone = us-east-1c
 
 [raid]

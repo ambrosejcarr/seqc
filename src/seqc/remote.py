@@ -94,15 +94,16 @@ class ClusterServer(object):
                                                       'AvailabilityZone': self.zone},
                                                   SecurityGroupIds=[self.sg],
                                                   SubnetId=self.subnet)
-        elif 'c3' in self.inst_type:
+        elif 'c3' or 'r3' in self.inst_type:
             clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
                                               MaxCount=1,
                                               KeyName=self.keyname,
                                               InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
+
         else:
-            raise ValueError('self.inst_type must be a c3 or c4 instance')
+            raise ValueError('self.inst_type must be a c3, c4, or r3 instance')
         instance = clust[0]
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
                         instance)
