@@ -583,6 +583,9 @@ class FileManager:
         cmd = shlex.split(cmdstring)
         self._pipe = Popen(cmd)
 
+    def get_pipe(self):
+        return self._pipe
+
     def check_running(self):
         msg = self._pipe.poll()
         if msg is None:
