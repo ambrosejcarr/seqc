@@ -675,14 +675,46 @@ class GSEA:
         #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
 
 
-class ExpressionTree:
+def sampling_function(n_iter, n_molecules, theta, n_cells):
 
+    def online_mean_var(nb, mu_b, var_b, na, mu_a, var_a):
+        nx = na + nb
+        delta = mu_b - mu_a
+        mu_x = mu_a + delta * nb / nx
+        var_x = (na * (var_a + mu_a ** 2) + nb * (var_b + mu_b ** 2)) / nx - mu_x ** 2
+        return nx, mu_x, var_x
+
+    res_mu = np.zeros((n_iter, theta.shape[0]), dtype=np.float32)
+    res_var = np.zeros((n_iter, theta.shape[0]), dtype=np.float32)
+    n_cells //= 10
+    for i in np.arange(n_iter):
+        # break sampling (n_cells) into 10 pieces
+        obs = np.random.multinomial(n_molecules, theta, n_cells)
+        mu_x = np.mean(obs, axis=0)
+        var_x = np.mean(obs, axis=0)
+        n_x = obs.shape[0]
+        for _ in np.arange(9):
+            obs = np.random.multinomial(n_molecules, theta, n_cells)
+            mu = np.mean(obs, axis=0)
+            var = np.mean(obs, axis=0)
+            n = obs.shape[0]
+            n_x, mu_x, var_x = online_mean_var(n, mu, var, n_x, mu_x, var_x)
+        res_mu[i, :] = mu_x
+        res_var[i, :] = var_x / n_x
+    return res_mu, res_var
+
+
+class ExpressionTree:
     def __init__(self, data, group_assignments, alpha=0.05):
         """
         :param data: n cells x k genes 2d array
         :param group_assignments: n cells 1d vector
         :param alpha: float (0, 1], acceptable type I error
         """
+
+        self._tree = None
+        self.results = None
+
         # make sure group_assignments and data have the same length
         if not data.shape[0] == group_assignments.shape[0]:
             raise ValueError(
@@ -707,9 +739,13 @@ class ExpressionTree:
 
             # sort data by cluster assignment
             idx = np.argsort(ordered_assignments.values)
-            self.data = data.iloc[idx, :].values
-            ordered_assignments = ordered_assignments.iloc[idx]
-            self.group_assignments = ordered_assignments.values
+            if not np.array_equal(idx, np.arange(idx.shape[0])):
+                self.data = data.iloc[idx, :].values
+                ordered_assignments = ordered_assignments.iloc[idx]
+                self.group_assignments = ordered_assignments.values
+            else:
+                self.data = data.values
+                self.group_assignments = group_assignments.values
             self.index = data.columns
 
         else:  # get arrays from input values
@@ -726,8 +762,15 @@ class ExpressionTree:
                 raise ValueError('group_assignments must be convertible to a np.ndarray')
 
             idx = np.argsort(group_assignments)
-            self.data = data[idx, :]
-            self.group_assignments = group_assignments[idx]
+            if not np.array_equal(idx, np.arange(idx.shape[0])):
+                self.data = data[idx, :]
+                self.group_assignments = group_assignments[idx]
+            else:
+                self.data = data
+                self.group_assignments = group_assignments
+
+        # set nan values = 0
+        self.data[np.isnan(self.data) | np.isinf(self.data)] = 0
 
         self.post_hoc = None
         self.groups = np.unique(group_assignments)
@@ -740,13 +783,6 @@ class ExpressionTree:
         if not 0 < alpha <= 1:
             raise ValueError('Parameter alpha must fall within the interval (0, 1].')
         self.alpha = alpha
-
-        self._anova = None
-
-    # todo implement hierarchical differential expression
-    # todo implement parameter to do iterative downsampling to median cell size of
-    # todo  the smaller population size being compared.
-    # todo implement min_mean_expr
 
     class Node:
         __slots__ = ['node_id', 'left', 'right', 'distance', 'n_daughters']
@@ -782,17 +818,17 @@ class ExpressionTree:
 
             # construct tree
             for row in linkage[::-1, ]:
-                self.tree[current_id] = DifferentialExpression.Node(current_id, *row)
+                self.tree[current_id] = ExpressionTree.Node(current_id, *row)
                 current_id -= 1
 
             # add leaf nodes
             for i in np.arange(self.n_nodes + 1, dtype=float):
-                self.tree[i] = DifferentialExpression.Node(i)
+                self.tree[i] = ExpressionTree.Node(i)
 
             self.root = self.tree[root_id]
 
         def __getitem__(self, item):
-            if isinstance(item, DifferentialExpression.Node):
+            if isinstance(item, ExpressionTree.Node):
                 return self.tree[item.node_id]
             elif isinstance(item, (float, int)):
                 return self.tree[item]
@@ -825,7 +861,7 @@ class ExpressionTree:
                 node = self.root
             elif isinstance(node, (int, float)):
                 node = self[node]
-            elif not isinstance(node, DifferentialExpression.Node):
+            elif not isinstance(node, ExpressionTree.Node):
                 raise ValueError('node must be a node object, a node_id, or None.')
 
             visited, queue = [], [node]
@@ -840,105 +876,118 @@ class ExpressionTree:
         def agglomerate(self, node):
             return set(n.node_id for n in self.dfs(node))
 
+        def plot(self):
+            raise NotImplementedError
+
     @staticmethod
-    def welchs_t(a, b):
+    def resampled_welchs_t(a, b, n_iter=100, n_cells=1000, downsample_value_function='median'):
+        """
+        :param a: n cells x k genes np.ndarray
+        :param b: m cells x k genes np.ndarray
+        :param n_iter: number of times to resample a and b
+        :param downsample_value_function: options: 'mean', 'median' or float percentile in the interval (0, 1]. Function to
+          apply to find the value that a & b should be sampled to. Default: median. A and B are subjected to these
+          functions, and the minimum value between the two is selected.
+        """
+
+        # get downsample function
+        if isinstance(downsample_value_function, float):
+            if 0 < downsample_value_function <= 1:
+                downsample_value_function = partial(np.percentile, q=downsample_value_function * 100)
+            else:
+                raise ValueError('If using a float value for downsample_value_function, the value must fall in the '
+                                 'interval (0, 1].')
+        elif downsample_value_function is 'mean':
+            downsample_value_function = np.mean
+        elif downsample_value_function is 'median' or downsample_value_function is None:
+            downsample_value_function = np.median
+
+        # get sampling value
+        n = min(downsample_value_function(a.sum(axis=1)), downsample_value_function(b.sum(axis=1))).astype(int)
+
+        # normalize cells and obtain probability vectors
+        a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+        b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+
+        # determine iterations per process
+        n_cpu = multiprocessing.cpu_count() - 1
+        if n_iter > n_cpu:
+            size = np.array([n_iter // n_cpu] * n_cpu)
+            size[:n_iter % n_cpu] += 1
+        else:
+            size = np.ones((n_iter,))
+
+        # map to a process pool
+        a_sampler = partial(sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
+        b_sampler = partial(sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
+        pool = multiprocessing.Pool(n_cpu)
+
+        a_res = pool.map(a_sampler, size)
+        b_res = pool.map(b_sampler, size)
+        a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
+        b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
 
         # get mean and standard deviations of each
-        a_mu = np.mean(a, axis=0)
-        b_mu = np.mean(b, axis=0)
-        a_n = a.shape[0]
-        b_n = b.shape[0]
-        a_s = np.var(a, axis=0)
-        b_s = np.var(b, axis=0)
-        a_s_norm = a_s / a_n
-        b_s_norm = b_s / b_n
+        #         a_s_norm = a_var / n  # (samples, genes)
+        #         b_s_norm = b_var / n
 
         # calculate statistic
-        numerator = a_mu - b_mu
-        denominator = np.sqrt(a_s_norm + b_s_norm)
-        statistic = numerator / denominator
+        numerator = a_mu - b_mu  # (samples, genes)
+        denominator = np.sqrt(a_var + b_var)  # (samples, genes)
+        statistic = numerator / denominator  # (samples, genes)
 
         # calculate df
-        numerator = (a_s_norm + b_s_norm) ** 2
-        denominator = (a_s ** 2 / a_n * (a_n - 1)) + (b_s ** 2 / b_n * (b_n - 1))
-        df = np.floor(numerator / denominator)
+        numerator = (a_var + b_var) ** 2  # (samples, genes)
+        denominator = (a_var) ** 2 / (n_cells - 1) + (b_var) ** 2 / (n_cells - 1)
+        df = np.floor(numerator / denominator)  # (samples, genes)
 
-        # get significance & return
-        p = t.cdf(np.abs(statistic), df)  # note, two tailed test
-        return np.array(statistic, p)
+        # get significance values
+        p = np.zeros((n_iter, a.shape[1]), dtype=float)
+        for i in np.arange(statistic.shape[0]):
+            p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
 
-    @staticmethod
-    def equalize_sampling(func=None, n_iter=1000, *groups):
+        # can determine frequency with which p < 0.05; can do a proper FDR based on these distributions. Until then,
+        # can just look at the means themselves.
+        return statistic, p
+
+    def create_hierarchy(self):
         """
-        :param func: function to apply to groups to find the value that groups should be
-          downsampled to. e.g. partial(np.mean, axis=0), partial(np.median, axis=0),
-          partial(np.percentage, q=80, axis=0), ... etc. Downsampling will be carried out
-          to the minimum central value calculated across the groups
-        :param *groups: arrays to downsample
-        :return:
+        hierarchically cluster cluster centroids and store the results as self.tree
         """
-        if func is None:
-            func = partial(np.median, axis=0)
-        downsampling_value = min(map(func, groups))
+        fmean = partial(np.mean, axis=0)
 
-        # for each group, normalize library sizes and find mean value for multinomial sampling
-        # todo map to multiprocessing pool
+        cluster_array_views = np.array_split(self.data, self.split_indices, axis=0)
+        means = np.vstack(list(map(fmean, cluster_array_views)))
+        distance = pdist(means)
+        linkage = fastcluster.linkage(distance, method='single')
 
-        def sampling_func(x, n, size=1000):
-            x /= x.sum(axis=1)[:, np.newaxis]
-            mu = x.mean(axis=0)
-            s = n * mu * (1 - mu)  # (genes,)
-            res = np.random.multinomial(n, mu, size=size)  # (samples, genes)
-            return res, s
+        self._tree = self.Tree(linkage)
 
-        partial(sampling_func, n=downsampling_value, size=n_iter)
-        mu, s = map(sampling_func, groups)
-
-        def test_function(mu_a, mu_b, s_a, s_b, n_a, n_b):
-            s_a_norm = s_a / n_a
-            s_b_norm = s_b / n_b
-
-            # calculate statistic
-            numerator = mu_a - mu_b
-            denominator = np.sqrt(s_a_norm + s_b_norm)
-            statistic = numerator / denominator
-
-            # calculate df
-            numerator = (s_a_norm + s_b_norm) ** 2
-            denominator = (s_a ** 2 / n_a * (n_a - 1)) + (s_b ** 2 / n_b * (n_b - 1))
-            df = np.floor(numerator / denominator)
-
-            # get significance & return
-            p = t.cdf(np.abs(statistic), df)  # note, two tailed test
-            return np.array(statistic, p)
-
-    def compare_hierarchy(self, median_downsample=False):
+    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000):
         """
-        :param median_downsample: Indicates that clusters should be downsampled to the
-          median of all populations prior to comparison to control for sampling bias.
-          This can be done to check clustering stability and to get reliable gene
-          expression differences.
+        :param n_iter:
+        :param central_value_func:
+          Indicates that clusters should be downsampled to the median of all populations prior to comparison to
+          control for sampling bias. This can be done to check clustering stability and to get reliable gene expression
+           differences.
+        :param n_cells:
         :return:
         """
 
         # get expression means
-        fmean = partial(np.mean, axis=0)
+        if self._tree is None:
+            self.create_hierarchy()
 
-        cluster_array_views = np.array_split(self.data, self.split_indices, axis=0)
-        means = np.vstack(map(fmean, cluster_array_views))
-        distance = pdist(means)
-        linkage = fastcluster.linkage(distance, method='complete')
-
-        tree = self.Tree(linkage)
-
-        results = {}
-        for node in tree.dfs():
-            l_clusters = np.array(tree.agglomerate(node.left))
-            r_clusters = np.array(tree.agglomerate(node.right))
+        self.results = {}
+        for node in self._tree.bfs():
+            l_clusters = np.array(self._tree.agglomerate(node.left))
+            r_clusters = np.array(self._tree.agglomerate(node.right))
             l_cells = np.in1d(self.group_assignments, l_clusters)
             r_cells = np.in1d(self.group_assignments, r_clusters)
-            res = self.welchs_t(self.data[l_cells], self.data[r_cells])
-            results[(node.left.node_id, node.right.node_id)] = res
+            res = self.resampled_welchs_t(self.data[l_cells], self.data[r_cells], n_iter=n_iter,
+                                          downsample_value_function=central_value_func, n_cells=n_cells)
+            self.results[(node.left.node_id, node.right.node_id)] = res
+        return self.results
 
 
 class DifferentialExpression:
