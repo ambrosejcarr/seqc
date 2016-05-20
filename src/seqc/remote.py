@@ -148,6 +148,8 @@ class ClusterServer(object):
                 ids.append(item['InstanceId'])
             except KeyError:
                 continue
+        # todo: need to change this to look for security groups and not AMIs
+        # all_resp[0]['LaunchSpecification']['SecurityGroups'][0]['GroupId']
         idx = ids.index(self.inst_id.id)
         spot_resp = all_resp[idx]
         max_tries = 40
