@@ -9,9 +9,7 @@ import seqc
 import configparser
 import boto3
 from subprocess import Popen, check_output
-import threading
 import numpy as np
-import time
 
 
 class ConfigurationError(Exception):
@@ -653,11 +651,6 @@ def main(args: list = None):
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated count matrix.')
-
-        # todo: delete this after testing
-        output = check_output(['ll']).decode()
-        seqc.log.info('After count matrix creation, all total files:')
-        seqc.log.info(output)
 
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.

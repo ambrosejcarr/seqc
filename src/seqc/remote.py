@@ -44,6 +44,7 @@ class ClusterServer(object):
         self.serv = None
         self.aws_id = None
         self.aws_key = None
+        self.spot_bid = None
 
     def create_security_group(self):
         """Creates a new security group for the cluster
@@ -78,9 +79,42 @@ class ClusterServer(object):
         self.zone = config[template]['availability_zone']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
+        self.spot_bid = config['SpotBid']['spot_bid']
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
+
+        # check if user wants to start a spot bid
+        if self.spot_bid != 'None':
+            client = boto3.client('ec2')
+            # todo: need to check c3/c4 within spot instance
+            resp = client.request_spot_instances(
+                DryRun=False,
+                SpotPrice=self.spot_bid,
+                LaunchSpecification={
+                    'ImageId': self.image_id,
+                    'KeyName': self.keyname,
+                    'SecurityGroups': [self.sg],
+                    'InstanceType': self.inst_type,
+                    'Placement': {
+                        'AvailabilityZone': self.zone
+                    },
+                    'BlockDeviceMappings': [
+                        {
+                            'DeviceName': '/dev/xvdf',
+                            'Ebs': {
+                                'VolumeSize': 'TBD',
+                                'DeleteOnTermination': True,
+
+                            }
+                            # you must mount the device
+                        }
+                    ],
+                    'SubnetId': False # SUBNET ID GOES HERE
+                }
+            )
+            # check this resp['State'] == 'active'
+
         if 'c4' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
