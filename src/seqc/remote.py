@@ -89,6 +89,7 @@ class ClusterServer(object):
         """launches an instance using the specified spot bid"""
 
         client = boto3.client('ec2')
+        seqc.log.info('Launching cluster with spot bid $%s...' % self.spot_bid)
         if 'c4' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
