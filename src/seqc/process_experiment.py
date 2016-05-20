@@ -670,7 +670,7 @@ def main(args: list = None):
                 seqc.log.info('Waiting for all uploads to complete before termination...')
                 merge_upload.wait()
                 sam_upload.wait()
-                ra_upload.get_pipe.wait()
+                ra_upload.get_pipe().wait()
 
                 # todo: delete this after testing
                 output = check_output(['df', '-h']).decode()
