@@ -28,3 +28,6 @@ availability_zone = us-east-1c
 
 [BaseSpaceToken]
 base_space_token = None
+
+[SpotBid]
+spot_bid = None
