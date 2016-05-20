@@ -323,6 +323,7 @@ class correlation:
 
         return ((y * x).mean(axis=0) - mu_y * mu_x) / (sigma_y * sigma_x)
 
+
     @staticmethod
     def map(x, y):
         """Correlate each n with each m.
@@ -331,20 +332,15 @@ class correlation:
         :param y: np.array; shape M x T.
         :returns: np.array; shape N x M in which each element is a correlation
                             coefficient.
-
         """
-        mu_x = x.mean(1)
-        mu_y = y.mean(1)
-        n = x.shape[1]
-        if n != y.shape[1]:
-            raise ValueError('x and y must ' +
-                             'have the same number of timepoints.')
-        s_x = x.std(1, ddof=n - 1)
-        s_y = y.std(1, ddof=n - 1)
-        cov = np.dot(x,
-                     y.T) - n * np.dot(mu_x[:, np.newaxis],
-                                       mu_y[np.newaxis, :])
-        return cov / np.dot(s_x[:, np.newaxis], s_y[np.newaxis, :])
+        N = y.shape[1]
+        sum_x = x.sum(axis=1)
+        sum_y = y.sum(axis=1)
+        p1 = N * np.dot(y, x.T)
+        p2 = sum_x * sum_y[:, np.newaxis]
+        p3 = N * ((y ** 2).sum(axis=1)) - (sum_y ** 2)
+        p4 = N * ((x ** 2).sum(axis=1)) - (sum_x ** 2)
+        return (p1 - p2) / np.sqrt(p4 * p3[:, None])
 
     @staticmethod
     def eigv(evec, data, components=tuple(), knn=10):
