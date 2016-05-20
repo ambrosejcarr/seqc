@@ -152,6 +152,7 @@ class ClusterServer(object):
         spot_resp = all_resp[idx]
         max_tries = 40
         i = 0
+        seqc.log.info('Waiting for spot bid request to be fulfilled...')
         while spot_resp['State'] != 'active':
             status_code = spot_resp['Status']['Code']
             bad_status = ['price-too-low', 'capacity-oversubscribed',
