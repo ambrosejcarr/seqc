@@ -370,7 +370,7 @@ def main(args: list = None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            run_remote(args.output_stem)
+            run_remote(args.output_stem, args.instance_type)
             sys.exit()
 
         if args.aws:
