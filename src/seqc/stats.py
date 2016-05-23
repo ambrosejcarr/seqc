@@ -9,6 +9,7 @@ import time
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from scipy.spatial.distance import pdist
+from scipy.cluster.hierarchy import dendrogram
 from numpy.linalg import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.stats.mstats import kruskalwallis, rankdata
@@ -671,7 +672,7 @@ class GSEA:
         #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
 
 
-def sampling_function(n_iter, n_molecules, theta, n_cells):
+def _sampling_function(n_iter, n_molecules, theta, n_cells):
 
     def online_mean_var(nb, mu_b, var_b, na, mu_a, var_a):
         nx = na + nb
@@ -701,6 +702,7 @@ def sampling_function(n_iter, n_molecules, theta, n_cells):
 
 
 class ExpressionTree:
+
     def __init__(self, data, group_assignments, alpha=0.05):
         """
         :param data: n cells x k genes 2d array
@@ -709,17 +711,13 @@ class ExpressionTree:
         """
 
         self._tree = None
-        self.results = None
+        self._results = None
 
         # make sure group_assignments and data have the same length
         if not data.shape[0] == group_assignments.shape[0]:
             raise ValueError(
                 'Group assignments shape ({!s}) must equal the number of rows in data '
                 '({!s}).'.format(group_assignments.shape[0], data.shape[0]))
-
-        # todo
-        # may want to verify that each group has at least two observations
-        # (else variance won't work)
 
         # store index if both data and group_assignments are pandas objects
         if isinstance(data, pd.DataFrame) and isinstance(group_assignments, pd.Series):
@@ -736,21 +734,23 @@ class ExpressionTree:
             # sort data by cluster assignment
             idx = np.argsort(ordered_assignments.values)
             if not np.array_equal(idx, np.arange(idx.shape[0])):
-                self.data = data.iloc[idx, :].values
+                self._data = data.iloc[idx, :].values
                 ordered_assignments = ordered_assignments.iloc[idx]
-                self.group_assignments = ordered_assignments.values
+                self._group_assignments = ordered_assignments.values
             else:
-                self.data = data.values
-                self.group_assignments = group_assignments.values
-            self.index = data.columns
+                self._data = data.values
+                self._group_assignments = group_assignments.values
+            self._index = data.columns
 
         else:  # get arrays from input values
-            self.index = None  # inputs were not all indexed pandas objects
+            self._index = None  # inputs were not all indexed pandas objects
 
-            try:
-                data = np.array(data)
-            except:
-                raise ValueError('data must be convertible to a np.ndarray')
+            if isinstance(data, np.ndarray):
+                self._data = data
+            elif isinstance(data, pd.DataFrame):
+                self._data = data.values
+            else:
+                raise ValueError('data must be a pd.DataFrame or np.ndarray')
 
             try:
                 group_assignments = np.array(group_assignments)
@@ -759,26 +759,41 @@ class ExpressionTree:
 
             idx = np.argsort(group_assignments)
             if not np.array_equal(idx, np.arange(idx.shape[0])):
-                self.data = data[idx, :]
-                self.group_assignments = group_assignments[idx]
+                self._data = data[idx, :]
+                self._group_assignments = group_assignments[idx]
             else:
-                self.data = data
-                self.group_assignments = group_assignments
+                self._data = data
+                self._group_assignments = group_assignments
 
         # set nan values = 0
-        self.data[np.isnan(self.data) | np.isinf(self.data)] = 0
-
-        self.post_hoc = None
-        self.groups = np.unique(group_assignments)
+        self._data[np.isnan(self._data) | np.isinf(self._data)] = 0
 
         # get points to split the array, create slicers for each group
-        self.split_indices = np.where(np.diff(self.group_assignments))[0] + 1
-        # todo is this a faster way of calculating the below anova?
-        # self.array_views = np.array_split(self.data, self.split_indices, axis=0)
+        self._split_indices = np.where(np.diff(self._group_assignments))[0] + 1
 
         if not 0 < alpha <= 1:
             raise ValueError('Parameter alpha must fall within the interval (0, 1].')
-        self.alpha = alpha
+        self._alpha = alpha
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def group_assignments(self):
+        return self._group_assignments
+
+    @property
+    def alpha(self):
+        return self._alpha
+
+    @property
+    def tree(self):
+        return self._tree
+
+    @property
+    def results(self):
+        return self._results
 
     class Node:
         __slots__ = ['node_id', 'left', 'right', 'distance', 'n_daughters']
@@ -832,8 +847,8 @@ class ExpressionTree:
                 return None
             else:
                 raise TypeError(
-                    'Tree objects support indexing by Node, Node.node_id, or None, not {!s}'.format(
-                        type(item)))
+                    'Tree objects support indexing by Node, Node.node_id, or None, not '
+                    '{!s}'.format(type(item)))
 
         def __repr__(self):
             return 'Hierarchical Tree: {:.0f} nodes'.format(self.n_nodes)
@@ -872,18 +887,22 @@ class ExpressionTree:
         def agglomerate(self, node):
             return set(n.node_id for n in self.dfs(node))
 
-        def plot(self):
-            raise NotImplementedError
+        def plot(self, ax, **kwargs):
+            """plot a dendrogram on ax"""
+            dendrogram(self.linkage, ax=ax, **kwargs)
 
     @staticmethod
-    def resampled_welchs_t(a, b, n_iter=100, n_cells=1000, downsample_value_function='median'):
+    def resampled_welchs_t(
+            a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
+            alpha=0.01):
         """
         :param a: n cells x k genes np.ndarray
         :param b: m cells x k genes np.ndarray
         :param n_iter: number of times to resample a and b
-        :param downsample_value_function: options: 'mean', 'median' or float percentile in the interval (0, 1]. Function to
-          apply to find the value that a & b should be sampled to. Default: median. A and B are subjected to these
-          functions, and the minimum value between the two is selected.
+        :param downsample_value_function: options: 'mean', 'median' or float percentile
+          in the interval (0, 1]. Function to apply to find the value that a & b should
+          be sampled to. Default: median. A and B are subjected to these functions, and
+          the minimum value between the two is selected.
         """
 
         # get downsample function
@@ -914,8 +933,8 @@ class ExpressionTree:
             size = np.ones((n_iter,))
 
         # map to a process pool
-        a_sampler = partial(sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
-        b_sampler = partial(sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
+        a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
+        b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
         pool = multiprocessing.Pool(n_cpu)
 
         a_res = pool.map(a_sampler, size)
@@ -923,18 +942,25 @@ class ExpressionTree:
         a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
         b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
 
-        # get mean and standard deviations of each
-        #         a_s_norm = a_var / n  # (samples, genes)
-        #         b_s_norm = b_var / n
+        # no nans should be produced by the mean
+        assert np.sum(np.isnan(a_mu)) == 0
+        assert np.sum(np.isnan(b_mu)) == 0
 
-        # calculate statistic
+        # in cases where variance is np.nan, we can safely set the variance to zero since
+        # the mean will also be zero; this will reduce singularities caused by one tissue
+        # never expressing a protein.
+        a_var[np.isnan(a_var)] = 0
+        b_var[np.isnan(b_var)] = 0
+
         numerator = a_mu - b_mu  # (samples, genes)
         denominator = np.sqrt(a_var + b_var)  # (samples, genes)
         statistic = numerator / denominator  # (samples, genes)
 
-        # calculate df
+        # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
+        statistic[np.isnan(statistic)] = 0  # calculate df
+
         numerator = (a_var + b_var) ** 2  # (samples, genes)
-        denominator = (a_var) ** 2 / (n_cells - 1) + (b_var) ** 2 / (n_cells - 1)
+        denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
         df = np.floor(numerator / denominator)  # (samples, genes)
 
         # get significance values
@@ -944,7 +970,9 @@ class ExpressionTree:
 
         # can determine frequency with which p < 0.05; can do a proper FDR based on these distributions. Until then,
         # can just look at the means themselves.
-        return statistic, p
+        q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
+
+        return statistic, q
 
     def create_hierarchy(self):
         """
@@ -952,7 +980,7 @@ class ExpressionTree:
         """
         fmean = partial(np.mean, axis=0)
 
-        cluster_array_views = np.array_split(self.data, self.split_indices, axis=0)
+        cluster_array_views = np.array_split(self.data, self._split_indices, axis=0)
         means = np.vstack(list(map(fmean, cluster_array_views)))
         distance = pdist(means)
         linkage = fastcluster.linkage(distance, method='single')
@@ -971,19 +999,27 @@ class ExpressionTree:
         """
 
         # get expression means
-        if self._tree is None:
+        if self.tree is None:
             self.create_hierarchy()
 
-        self.results = {}
-        for node in self._tree.bfs():
-            l_clusters = np.array(self._tree.agglomerate(node.left))
-            r_clusters = np.array(self._tree.agglomerate(node.right))
+        self._results = {}
+        for node in self.tree.bfs():
+            l_clusters = np.array(self.tree.agglomerate(node.left))
+            r_clusters = np.array(self.tree.agglomerate(node.right))
             l_cells = np.in1d(self.group_assignments, l_clusters)
             r_cells = np.in1d(self.group_assignments, r_clusters)
-            res = self.resampled_welchs_t(self.data[l_cells], self.data[r_cells], n_iter=n_iter,
-                                          downsample_value_function=central_value_func, n_cells=n_cells)
-            self.results[(node.left.node_id, node.right.node_id)] = res
-        return self.results
+            alpha_adj = self.alpha / (len(set(self.group_assignments)) - 1)
+            res = self.resampled_welchs_t(
+                self.data[l_cells],
+                self.data[r_cells],
+                n_iter=n_iter,
+                downsample_value_function=central_value_func,
+                n_cells=n_cells,
+                alpha=alpha_adj)
+            if self._index is not None:
+                res = pd.Series(res, index=self._index).sort_values(inplace=False)
+            self._results[(node.left.node_id, node.right.node_id)] = res
+        return self._results
 
 
 class DifferentialExpression:
