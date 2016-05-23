@@ -109,6 +109,8 @@ def parse_args(args):
                    help='Do not terminate the EC2 instance after program completes.')
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
+    r.add_argument('--instance-type', default='c4',
+                   help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -119,7 +121,7 @@ def parse_args(args):
         raise
 
 
-def run_remote(stem: str) -> None:
+def run_remote(stem: str, aws_instance: str) -> None:
     """
     :param stem: output_prefix from main()
     """
@@ -130,7 +132,7 @@ def run_remote(stem: str) -> None:
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    cluster.cluster_setup()
+    cluster.cluster_setup(aws_instance)
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
@@ -252,6 +254,8 @@ def check_arguments(args, basespace_token: str):
     # check to make sure that --email-status is passed with remote run
     if args.remote and not args.email_status:
         raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
+    if args.instance_type not in ['c3', 'c4', 'r3']:
+        raise ValueError('All AWS instance types must be either c3, c4, or r3.')
 
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):

@@ -63,13 +63,13 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
-    def configure_cluster(self, config_file):
+    def configure_cluster(self, config_file, aws_instance):
         """configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
         """
         config = configparser.ConfigParser()
         config.read(config_file)
-        template = config['global']['default_template']
+        template = aws_instance
         self.keyname = config['key']['rsa_key_name']
         self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
         self.image_id = config[template]['node_image_id']
@@ -303,9 +303,9 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self):
+    def cluster_setup(self, aws_instance):
         config_file = os.path.expanduser('~/.seqc/config')
-        self.configure_cluster(config_file)
+        self.configure_cluster(config_file, aws_instance)
         self.create_security_group()
         self.create_cluster()
         self.connect_server()
