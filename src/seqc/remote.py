@@ -144,7 +144,7 @@ class ClusterServer(object):
 
     def create_volume(self):
         """creates a volume of size vol_size and returns the volume's id"""
-        vol_size = 50  # change back to 2014
+        vol_size = 1024
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='gp2')
         vol_id = vol.id
@@ -279,14 +279,10 @@ class ClusterServer(object):
 
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
-            # 'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            # 'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
-            # 'sudo tee {location} > /dev/null'.format(
-            #     location=location, version=seqc.__version__))
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='develop'))
+                location=location, version=seqc.__version__))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
