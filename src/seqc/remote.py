@@ -177,7 +177,7 @@ class ClusterServer(object):
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
 
-        if 'c4' in self.inst_type:
+        if 'c4' or 'r3' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
             else:
@@ -196,8 +196,9 @@ class ClusterServer(object):
                                               InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
+
         else:
-            raise ValueError('self.inst_type must be a c3 or c4 instance')
+            raise ValueError('self.inst_type must be a c3, c4, or r3 instance')
         instance = clust[0]
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
                         instance)
