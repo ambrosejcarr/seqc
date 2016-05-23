@@ -110,6 +110,8 @@ def parse_args(args):
                    help='Do not terminate the EC2 instance after program completes.')
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
+    r.add_argument('--instance-type', default='c4',
+                   help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -120,9 +122,11 @@ def parse_args(args):
         raise
 
 
-def run_remote(stem: str, volsize: int) -> None:
+def run_remote(stem: str, volsize: int, aws_instance:str) -> None:
     """
     :param stem: output_prefix from main()
+    :param volsize: estimated volume needed for run
+    :param aws_instance: instance type from user
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
@@ -132,7 +136,7 @@ def run_remote(stem: str, volsize: int) -> None:
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
     volsize = int(np.ceil(volsize/(1e9)))
-    cluster.cluster_setup(volsize)
+    cluster.cluster_setup(volsize, aws_instance)
     cluster.serv.connect()
 
     seqc.log.notify('Beginning remote run.')
@@ -257,6 +261,8 @@ def check_arguments(args, basespace_token: str):
     # check to make sure that --email-status is passed with remote run
     if args.remote and not args.email_status:
         raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
+    if args.instance_type not in ['c3', 'c4', 'r3']:
+        raise ValueError('All AWS instance types must be either c3, c4, or r3.')
 
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
@@ -409,7 +415,8 @@ def main(args: list = None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            run_remote(args.output_stem, total_size)
+            # todo: come back to run_remote()
+            run_remote(args.output_stem, total_size, args.instance_type)
             sys.exit()
 
         if args.aws:
