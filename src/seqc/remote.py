@@ -66,6 +66,7 @@ class ClusterServer(object):
     def configure_cluster(self, config_file, aws_instance):
         """configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
+        :param aws_instance: [c3, c4, r3] for config template
         """
         config = configparser.ConfigParser()
         config.read(config_file)
