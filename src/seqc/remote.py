@@ -203,6 +203,7 @@ class ClusterServer(object):
                                                      SpotInstanceRequestIds=[request_id])
                 raise SpotBidError('Timeout: spot bid could not be fulfilled.')
         # spot request was approved, instance launched
+        seqc.log.notify('Spot bid request was successfully fulfilled!')
         self.inst_id = self.ec2.Instance(spot_resp['InstanceId'])
 
     def create_cluster(self):
