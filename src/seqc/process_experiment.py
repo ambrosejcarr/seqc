@@ -8,6 +8,7 @@ import pickle
 import seqc
 import configparser
 import boto3
+import shlex
 from subprocess import Popen, check_output
 import numpy as np
 
@@ -584,14 +585,13 @@ def main(args: list = None):
             # gzipping file and upload in one Popen session, else remove merged.fastq
             if input_data == 'merged':
                 seqc.log.info('Removing merged.fastq file for memory management.')
-                delete_merged = ['rm'] + args.merged_fastq
-                Popen(delete_merged)
+                Popen(['rm', args.merged_fastq])
             else:
                 seqc.log.info('Gzipping merged fastq file and uploading to S3.')
                 cmd1 = 'pigz ' + args.merged_fastq
                 cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=args.merged_fastq+'.gz',
                                                            s3link=aws_upload_key)
-                merge_upload = Popen("{}; {}".format(cmd1, cmd2), shell=True)
+                manage_merged = Popen("{}; {}".format(cmd1, cmd2), shell=True)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -608,15 +608,18 @@ def main(args: list = None):
             seqc.log.info('After creating read array from samfile:')
             seqc.log.info(output)
 
-            # converting sam to bam and uploading to S3
-            # todo: need to make sure that it didn't start from later
-            seqc.log.info('Converting samfile to bamfile and uploading to S3.')
-            bamfile = output_dir + '/alignments/Aligned.out.bam'
-            convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
-                format(bamfile=bamfile, samfile=args.samfile)
-            cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
-                                                       s3link=aws_upload_key)
-            sam_upload = Popen("{}; {}".format(convert_sam, cmd2), shell=True)
+            # converting sam to bam and uploading to S3, else removing samfile
+            if input_data == 'samfile':
+                seqc.log.info('Removing samfile for memory management.')
+                Popen(['rm', args.samfile])
+            else:
+                seqc.log.info('Converting samfile to bamfile and uploading to S3.')
+                bamfile = output_dir + '/alignments/Aligned.out.bam'
+                convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
+                    format(bamfile=bamfile, samfile=args.samfile)
+                cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
+                                                           s3link=aws_upload_key)
+                manage_samfile = Popen("{}; {}".format(convert_sam, cmd2), shell=True)
 
         else:
             if args.read_array.startswith('s3://'):
@@ -663,9 +666,14 @@ def main(args: list = None):
         seqc.log.info('After error correction:')
         seqc.log.info(output)
 
-        # uploading Read Array to S3
-        seqc.log.info('Uploading Read Array to S3.')
-        ra_upload = seqc.io.FileManager(ra, aws_upload_key)
+        # uploading Read Array to S3, else removing read array
+        if input_data == 'readarray':
+            seqc.log.info('Removing .h5 file for memory management.')
+            Popen(['rm', args.read_array])
+        else:
+            seqc.log.info('Uploading Read Array to S3.')
+            cmd = 'aws s3 mv {fname} {s3link}'.format(fname=ra, s3link=aws_upload_key)
+            manage_ra = Popen(shlex.split(cmd))
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
@@ -680,16 +688,27 @@ def main(args: list = None):
 
             if args.email_status:
                 # make sure that all other files are uploaded before termination
-                seqc.log.info('Waiting for all uploads to complete before termination...')
-                merge_upload.wait()
-                sam_upload.wait()
-                ra_upload.get_pipe().wait()
+                if align and input_data != 'merged':
+                    manage_merged.wait()
+                    seqc.log.info('Successfully uploaded %s to the specified S3 '
+                                  'location "%s"' % (args.merged_fastq, aws_upload_key))
+                if process_samfile:
+                    if input_data != 'samfile':
+                        manage_samfile.wait()
+                        seqc.log.info('Successfully uploaded %s to the specified S3 '
+                                      'location "%s"' % (args.samfile, aws_upload_key))
+                else:
+                    if input_data != 'readarray':
+                        manage_ra.wait()
+                        seqc.log.info('Successfully uploaded %s to the specified S3 '
+                                      'location "%s"' % (args.read_array, aws_upload_key))
 
                 # todo: delete this after testing
                 output = check_output(['df', '-h']).decode()
                 seqc.log.info('About to terminate, total storage:')
                 seqc.log.info(output)
 
+                # upload count matrix and alignment summary at the very end
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data)
 
