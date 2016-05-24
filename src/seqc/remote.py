@@ -114,8 +114,8 @@ class ClusterServer(object):
         and cancels bid in case of error or timeout"""
 
         client = boto3.client('ec2')
-        seqc.log.info('Launching cluster with spot bid $%s...' % self.spot_bid)
-        if 'c4' in self.inst_type:
+        seqc.log.notify('Launching cluster with spot bid $%s...' % self.spot_bid)
+        if 'c4' in self.inst_type or 'r3' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
             resp = client.request_spot_instances(
@@ -142,7 +142,7 @@ class ClusterServer(object):
                 }
             )
 
-        elif 'c3' or 'r3' in self.inst_type:
+        elif 'c3' in self.inst_type:
             resp = client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
@@ -167,29 +167,20 @@ class ClusterServer(object):
             )
 
         # check status of spot bid request
-        max_tries = 40
-        seqc.log.info('Processing spot bid request...')
-        spot_success = False
-        for i in range(max_tries):
+        all_resp = client.describe_spot_instance_requests()['SpotInstanceRequests']
+        sec_groups = []
+        for i in range(len(all_resp)):
+            item = all_resp[i]
             try:
-                all_resp = client.describe_spot_instance_requests()[
-                    'SpotInstanceRequests']
-                sec_groups = [item['LaunchSpecification']['SecurityGroups'][0][
-                                  'GroupId'] for item in all_resp]
-                spot_success = True
-                break
+                sgid = item['LaunchSpecification']['SecurityGroups'][0]['GroupId']
+                sec_groups.append(sgid)
             except KeyError:
-                seqc.log.info('Waiting for spot bid request...')
-                time.sleep(3)
                 continue
-        if not spot_success:
-            raise SpotBidError('The spot bid request cannot be serviced. Please log '
-                               'onto the AWS EC2 dashboard and cancel the request.')
         idx = sec_groups.index(self.sg)
         spot_resp = all_resp[idx]
 
         i = 0
-        seqc.log.info('Waiting for spot bid request to be fulfilled...')
+        seqc.log.notify('Waiting for spot bid request to be fulfilled...')
         request_id = resp['SpotInstanceRequests'][0]['SpotInstanceRequestId']
         while spot_resp['State'] != 'active':
             status_code = spot_resp['Status']['Code']
