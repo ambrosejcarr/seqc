@@ -581,12 +581,17 @@ def main(args: list = None):
             seqc.log.info('After aligning with STAR:')
             seqc.log.info(output)
 
-            # gzipping file and upload in one Popen session
-            seqc.log.info('Gzipping merged fastq file and uploading to S3.')
-            cmd1 = 'pigz ' + args.merged_fastq
-            cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=args.merged_fastq+'.gz',
-                                                       s3link=aws_upload_key)
-            merge_upload = Popen("{}; {}".format(cmd1, cmd2), shell=True)
+            # gzipping file and upload in one Popen session, else remove merged.fastq
+            if input_data == 'merged':
+                seqc.log.info('Removing merged.fastq file for memory management.')
+                delete_merged = ['rm'] + args.merged_fastq
+                Popen(delete_merged)
+            else:
+                seqc.log.info('Gzipping merged fastq file and uploading to S3.')
+                cmd1 = 'pigz ' + args.merged_fastq
+                cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=args.merged_fastq+'.gz',
+                                                           s3link=aws_upload_key)
+                merge_upload = Popen("{}; {}".format(cmd1, cmd2), shell=True)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -604,6 +609,7 @@ def main(args: list = None):
             seqc.log.info(output)
 
             # converting sam to bam and uploading to S3
+            # todo: need to make sure that it didn't start from later
             seqc.log.info('Converting samfile to bamfile and uploading to S3.')
             bamfile = output_dir + '/alignments/Aligned.out.bam'
             convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
@@ -673,8 +679,6 @@ def main(args: list = None):
             seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
             if args.email_status:
-                seqc.remote.upload_results(
-                    args.output_stem, args.email_status, aws_upload_key, input_data)
                 # make sure that all other files are uploaded before termination
                 seqc.log.info('Waiting for all uploads to complete before termination...')
                 merge_upload.wait()
@@ -685,6 +689,9 @@ def main(args: list = None):
                 output = check_output(['df', '-h']).decode()
                 seqc.log.info('About to terminate, total storage:')
                 seqc.log.info(output)
+
+                seqc.remote.upload_results(
+                    args.output_stem, args.email_status, aws_upload_key, input_data)
 
     except:
         seqc.log.exception()

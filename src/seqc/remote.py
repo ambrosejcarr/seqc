@@ -64,6 +64,7 @@ class ClusterServer(object):
             else:
                 seqc.log.notify('Error during boto call, retrying...')
             time.sleep(5)
+            # todo: retrying happens here
 
     def handle_boto_errors(self, f):
         """decorator tries unexpected boto3 behavior"""
@@ -509,14 +510,6 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
                         '_alignment_summary.txt')
         files.append(alignment_summary)
-        # files.append(bamfile)
-
-        # if start_pos != 'merged':
-        #     merged_fastq = output_stem + '_merged.fastq'
-        #     # zipping merged_fastq file to upload
-        #     merged_fastq = gzip_file(merged_fastq)
-        #     seqc.log.info('Successfully gzipped merged fastq file to upload.')
-        #     files.append(merged_fastq)
 
     # if start_pos != 'readarray':
     #     h5_archive = output_stem + '.h5'
