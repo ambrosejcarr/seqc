@@ -489,10 +489,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     log = prefix + '/seqc.log'
     files = [counts, log]  # counts and seqc.log will always be uploaded
 
-    # start_pos can be: start, merged, samfile, readarray
     if start_pos == 'start' or start_pos == 'merged':
-        # samfile = prefix + '/alignments/Aligned.out.sam'
-        # bamfile = prefix + '/alignments/Aligned.out.bam'
         alignment_summary = output_stem + '_alignment_summary.txt'
 
         # todo: delete this after testing
@@ -500,20 +497,10 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         seqc.log.info('Just running df -h to try:')
         seqc.log.info(output)
 
-        # converting samfile to bamfile
-        # convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.format(bamfile=bamfile,
-        #                                                                 samfile=samfile)
-        # conv = Popen(convert_sam.split())
-        # conv.communicate()
-        # seqc.log.info('Successfully converted samfile to bamfile to upload.')
-
+        # copying over alignment summary for upload
         shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
                         '_alignment_summary.txt')
         files.append(alignment_summary)
-
-    # if start_pos != 'readarray':
-    #     h5_archive = output_stem + '.h5'
-    #     files.append(h5_archive)
 
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     for item in files:
