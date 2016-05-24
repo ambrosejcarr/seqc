@@ -300,7 +300,7 @@ def check_arguments(args, basespace_token: str):
 
         # checking size of input file
         total += obtain_size(samfile)
-        total += (total * 5.5) + cushion
+        total += (total * 6) + 1e10
     if merged:
         if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
