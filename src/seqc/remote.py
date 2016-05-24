@@ -167,11 +167,20 @@ class ClusterServer(object):
             )
 
         # check status of spot bid request
-        all_resp = client.describe_spot_instance_requests()['SpotInstanceRequests']
-        sec_groups = [item['LaunchSpecification']['SecurityGroups'][0]['GroupId'] for
-                      item in all_resp]
+        spot_success = False
+        while not spot_success:
+            try:
+                all_resp = client.describe_spot_instance_requests()[
+                    'SpotInstanceRequests']
+                sec_groups = [item['LaunchSpecification']['SecurityGroups'][0][
+                                  'GroupId'] for item in all_resp]
+                spot_success = True
+            except KeyError:
+                seqc.log.info('Spot bid request is still processing...')
+                time.sleep(5)
         idx = sec_groups.index(self.sg)
         spot_resp = all_resp[idx]
+
         max_tries = 40
         i = 0
         seqc.log.info('Waiting for spot bid request to be fulfilled...')
