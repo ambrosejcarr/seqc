@@ -168,6 +168,8 @@ class ClusterServer(object):
 
         # check status of spot bid request
         spot_success = False
+        max_tries = 40
+        i = 0
         while not spot_success:
             try:
                 all_resp = client.describe_spot_instance_requests()[
@@ -177,11 +179,14 @@ class ClusterServer(object):
                 spot_success = True
             except KeyError:
                 seqc.log.info('Spot bid request is still processing...')
-                time.sleep(5)
+                time.sleep(3)
+                i += 1
+            if i >= max_tries:
+                raise SpotBidError('The spot bid request cannot be serviced. Please log '
+                                   'onto the AWS EC2 dashboard and cancel the request.')
         idx = sec_groups.index(self.sg)
         spot_resp = all_resp[idx]
 
-        max_tries = 40
         i = 0
         seqc.log.info('Waiting for spot bid request to be fulfilled...')
         request_id = resp['SpotInstanceRequests'][0]['SpotInstanceRequestId']
