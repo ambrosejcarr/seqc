@@ -109,6 +109,12 @@ def parse_args(args):
                    help='Do not terminate the EC2 instance after program completes.')
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
+    r.add_argument('--star-args', default=None, nargs='*',
+                   help='additional arguments that should be passed to the STAR '
+                        'aligner. For example, to set the maximum allowable times for a '
+                        'read to align to 20, one would set '
+                        '--star-args outFilterMultimapNmax=20. Additional arguments can '
+                        'be provided as a white-space separated list.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -493,8 +499,12 @@ def main(args: list = None):
             *base_directory, stem = args.output_stem.split('/')
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
+            if args.star_kwargs is not None:
+                star_kwargs = dict(a.strip().split('=') for a in args.star_kwargs)
+            else:
+                star_kwargs = {}
             args.samfile = seqc.alignment.star.align(
-                args.merged_fastq, args.index, n_processes, alignment_directory)
+                args.merged_fastq, args.index, n_processes, alignment_directory, **star_kwargs)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
