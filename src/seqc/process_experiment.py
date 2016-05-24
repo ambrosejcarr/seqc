@@ -712,11 +712,9 @@ def main(args: list = None):
                         manage_samfile.wait()
                         seqc.log.info('Successfully uploaded %s to the specified S3 '
                                       'location "%s"' % (args.samfile, aws_upload_key))
-                else:
-                    if input_data != 'readarray':
-                        manage_ra.wait()
-                        seqc.log.info('Successfully uploaded %s to the specified S3 '
-                                      'location "%s"' % (args.read_array, aws_upload_key))
+                    manage_ra.wait()
+                    seqc.log.info('Successfully uploaded %s to the specified S3 '
+                                  'location "%s"' % (args.read_array, aws_upload_key))
 
                 # todo: delete this after testing
                 output = check_output(['df', '-h']).decode()
