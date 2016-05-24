@@ -180,6 +180,7 @@ class ClusterServer(object):
         spot_resp = all_resp[idx]
 
         i = 0
+        max_tries = 40
         seqc.log.notify('Waiting for spot bid request to be fulfilled...')
         request_id = resp['SpotInstanceRequests'][0]['SpotInstanceRequestId']
         while spot_resp['State'] != 'active':
