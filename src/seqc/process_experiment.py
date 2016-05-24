@@ -508,21 +508,33 @@ def main(args: list = None):
                 raise ValueError('Provided index: "%s" is neither an s3 link or a valid '
                                  'filepath' % args.index)
         else:
-            # don't need to download index if the read array is supplied
             if not args.read_array:
-                try:
-                    seqc.log.info('AWS s3 link provided for index. Downloading index.')
-                    bucket, prefix = seqc.io.S3.split_link(args.index)
-                    args.index = output_dir + '/index/'  # set index  based on s3 download
-                    cut_dirs = prefix.count('/')
-                    seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
-
-                    # todo: delete this after testing successfully
-                    output = check_output(['df', '-h']).decode()
-                    seqc.log.info('After downloading index files from S3:')
-                    seqc.log.info(output)
-                except FileExistsError:
-                    pass  # file is already present.
+                seqc.log.info('AWS s3 link provided for index. Downloading index.')
+                bucket, prefix = seqc.io.S3.split_link(args.index)
+                args.index = output_dir + '/index/'  # set index  based on s3 download
+                cut_dirs = prefix.count('/')
+                # install whole index
+                if not args.samfile:
+                    try:
+                        seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+                        # todo: delete this after testing successfully
+                        output = check_output(['df', '-h']).decode()
+                        seqc.log.info('After downloading index files from S3:')
+                        seqc.log.info(output)
+                    except FileNotFoundError:
+                        pass  # file is already present
+                # samfile provided, only install annotations file
+                else:
+                    try:
+                        annotations_file = args.index + 'annotations.gtf'
+                        seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
+                                                 annotations_file)
+                        # todo: delete this after testing successfully
+                        output = check_output(['df', '-h']).decode()
+                        seqc.log.info('After downloading index files from S3:')
+                        seqc.log.info(output)
+                    except FileNotFoundError:
+                        pass  # file is already present
 
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
