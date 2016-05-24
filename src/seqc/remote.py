@@ -63,13 +63,14 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
-    def configure_cluster(self, config_file):
+    def configure_cluster(self, config_file, aws_instance):
         """configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
+        :param aws_instance: [c3, c4, r3] for config template
         """
         config = configparser.ConfigParser()
         config.read(config_file)
-        template = config['global']['default_template']
+        template = aws_instance
         self.keyname = config['key']['rsa_key_name']
         self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
         self.image_id = config[template]['node_image_id']
@@ -82,7 +83,7 @@ class ClusterServer(object):
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
-        if 'c4' in self.inst_type:
+        if 'c4' in self.inst_type or 'r3' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for C4 instances!')
             else:
@@ -94,15 +95,13 @@ class ClusterServer(object):
                                                       'AvailabilityZone': self.zone},
                                                   SecurityGroupIds=[self.sg],
                                                   SubnetId=self.subnet)
-        elif 'c3' in self.inst_type:
+        else:  # c3 instance
             clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
                                               MaxCount=1,
                                               KeyName=self.keyname,
                                               InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
-        else:
-            raise ValueError('self.inst_type must be a c3 or c4 instance')
         instance = clust[0]
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
                         instance)
@@ -305,9 +304,9 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self):
+    def cluster_setup(self, aws_instance):
         config_file = os.path.expanduser('~/.seqc/config')
-        self.configure_cluster(config_file)
+        self.configure_cluster(config_file, aws_instance)
         self.create_security_group()
         self.create_cluster()
         self.connect_server()
