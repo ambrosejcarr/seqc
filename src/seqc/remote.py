@@ -4,6 +4,8 @@ import os
 import configparser
 import random
 from subprocess import Popen, PIPE
+from contextlib import contextmanager
+from functools import wraps
 import shutil
 import paramiko
 import boto3
@@ -49,6 +51,27 @@ class ClusterServer(object):
         self.aws_id = None
         self.aws_key = None
         self.spot_bid = None
+
+    @contextmanager
+    def boto_errors(self, ident=None):
+        """context manager that traps and retries boto3 functions
+        during random failures"""
+        try:
+            yield None
+        except Exception:
+            if ident:
+                seqc.log.notify('Error in ' + ident + ', retrying...')
+            else:
+                seqc.log.notify('Error during boto call, retrying...')
+            time.sleep(5)
+
+    def handle_boto_errors(self, f):
+        """decorator tries unexpected boto3 behavior"""
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            with self.boto_errors(f.__name__):
+                return f(*args, **kwargs)
+        return wrapper
 
     def create_security_group(self):
         """Creates a new security group for the cluster
@@ -200,8 +223,17 @@ class ClusterServer(object):
         instance = clust[0]
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
                         instance)
+        # todo: try-catch loop here in order to account for boto3 unreliability
+        # idk how this thing is supposed to work...
+        # max_retries = 40
+        # i = 0
+        # while i <= max_retries:
+        #     wrapped_exists = self.handle_boto_errors(instance.wait_until_exists)
+        #     wrapped_exists()
+        #     i += 1
         instance.wait_until_exists()
         instance.wait_until_running()
+
         seqc.log.notify('Instance %s now running.' % instance)
         self.inst_id = instance
 

@@ -275,7 +275,7 @@ def check_arguments(args, basespace_token: str):
     seqc_input = barcodes + [index_dir]
 
     # keep track of how much space is needed given input
-    cushion = 50000000000
+    cushion = 5e10
     total = 0
 
     if barcode_fastq or genomic_fastq:
@@ -290,7 +290,7 @@ def check_arguments(args, basespace_token: str):
         input_fastq = barcode_fastq + genomic_fastq
         for item in input_fastq:
             total += obtain_size(item)
-        total += (total * 6.5) + 3333694141 + cushion
+        total += (total * 7) + cushion
     if samfile:
         if any((merged, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
@@ -299,7 +299,7 @@ def check_arguments(args, basespace_token: str):
 
         # checking size of input file
         total += obtain_size(samfile)
-        total += (total * 5.2) + 5067134579 + cushion
+        total += (total * 5.5) + cushion
     if merged:
         if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
@@ -308,7 +308,7 @@ def check_arguments(args, basespace_token: str):
 
         # checking size of input file
         total += obtain_size(merged)
-        total += (total * 7.9) + 4639320330 + cushion
+        total += (total * 8) + cushion
     if basespace:
         if any((samfile, merged, barcode_fastq, genomic_fastq, read_array)):
             raise ValueError(multi_input_error_message)
@@ -332,7 +332,7 @@ def check_arguments(args, basespace_token: str):
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
         # checking size of input file
         total = seqc.io.BaseSpace.check_size(basespace, basespace_token)
-        total += (total * 6.5) + 3333694141 + cushion
+        total += (total * 7) + cushion
 
     # return total size needed for EBS volume
     return total
@@ -415,7 +415,6 @@ def main(args: list = None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            # todo: come back to run_remote()
             run_remote(args.output_stem, total_size, args.instance_type)
             sys.exit()
 
@@ -466,6 +465,7 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
+
                     # todo: delete this after testing successfully
                     output = check_output(['df', '-h']).decode()
                     seqc.log.info('After downloading genomic files from S3:')
@@ -502,6 +502,7 @@ def main(args: list = None):
 
         # check if the index must be downloaded
         if not args.index.startswith('s3://'):
+            # todo: don't need to download index if start from readarray
             if not os.path.isdir(args.index):
                 raise ValueError('provided index: "%s" is neither an s3 link or a valid '
                                  'filepath' % args.index)
