@@ -182,7 +182,7 @@ class ClusterServer(object):
 
         i = 0
         max_tries = 40
-        seqc.log.notify('Waiting for spot bid request to be fulfilled...')
+        seqc.log.notify('Waiting for spot bid request...')
         request_id = resp['SpotInstanceRequests'][0]['SpotInstanceRequestId']
         while spot_resp['State'] != 'active':
             status_code = spot_resp['Status']['Code']
@@ -195,6 +195,8 @@ class ClusterServer(object):
                 client.cancel_spot_instance_requests(DryRun=False,
                                                      SpotInstanceRequestIds=[request_id])
                 raise SpotBidError('Please adjust your spot bid request.')
+            seqc.log.notify('The current status of your request is: {status}'.format(
+                status=status_code))
             time.sleep(10)
             spot_resp = client.describe_spot_instance_requests()[
                 'SpotInstanceRequests'][idx]
