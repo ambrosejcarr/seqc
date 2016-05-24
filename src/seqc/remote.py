@@ -117,7 +117,7 @@ class ClusterServer(object):
         seqc.log.notify('Launching cluster with spot bid $%s...' % self.spot_bid)
         if 'c4' in self.inst_type or 'r3' in self.inst_type:
             if not self.subnet:
-                raise ValueError('A subnet-id must be specified for C4 instances!')
+                raise ValueError('A subnet-id must be specified for R3/C4 instances!')
             resp = client.request_spot_instances(
                 DryRun=False,
                 SpotPrice=self.spot_bid,
@@ -175,6 +175,7 @@ class ClusterServer(object):
                 sgid = item['LaunchSpecification']['SecurityGroups'][0]['GroupId']
                 sec_groups.append(sgid)
             except KeyError:
+                sec_groups.append('NA')
                 continue
         idx = sec_groups.index(self.sg)
         spot_resp = all_resp[idx]
@@ -189,7 +190,7 @@ class ClusterServer(object):
                           'capacity-not-available', 'launch-group-constraint',
                           'az-group-constraint', 'placement-group-constraint',
                           'constraint-not-fulfillable', 'schedule-expired',
-                          'bad-parameters', 'system-error']
+                          'bad-parameters', 'system-error', 'canceled-before-fulfillment']
             if status_code in bad_status:
                 client.cancel_spot_instance_requests(DryRun=False,
                                                      SpotInstanceRequestIds=[request_id])
