@@ -502,24 +502,25 @@ def main(args: list = None):
 
         # check if the index must be downloaded
         if not args.index.startswith('s3://'):
-            # todo: don't need to download index if start from readarray
             if not os.path.isdir(args.index):
-                raise ValueError('provided index: "%s" is neither an s3 link or a valid '
+                raise ValueError('Provided index: "%s" is neither an s3 link or a valid '
                                  'filepath' % args.index)
         else:
-            try:
-                seqc.log.info('AWS s3 link provided for index. Downloading index.')
-                bucket, prefix = seqc.io.S3.split_link(args.index)
-                args.index = output_dir + '/index/'  # set index  based on s3 download
-                cut_dirs = prefix.count('/')
-                seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+            # don't need to download index if the read array is supplied
+            if not args.read_array:
+                try:
+                    seqc.log.info('AWS s3 link provided for index. Downloading index.')
+                    bucket, prefix = seqc.io.S3.split_link(args.index)
+                    args.index = output_dir + '/index/'  # set index  based on s3 download
+                    cut_dirs = prefix.count('/')
+                    seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
 
-                # todo: delete this after testing successfully
-                output = check_output(['df', '-h']).decode()
-                seqc.log.info('After downloading index files from S3:')
-                seqc.log.info(output)
-            except FileExistsError:
-                pass  # file is already present.
+                    # todo: delete this after testing successfully
+                    output = check_output(['df', '-h']).decode()
+                    seqc.log.info('After downloading index files from S3:')
+                    seqc.log.info(output)
+                except FileExistsError:
+                    pass  # file is already present.
 
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
