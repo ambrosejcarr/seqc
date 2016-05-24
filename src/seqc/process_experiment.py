@@ -323,12 +323,13 @@ def check_arguments(args, basespace_token: str):
         if any((samfile, merged, barcode_fastq, genomic_fastq, basespace)):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
+        seqc_input.remove(index_dir)
         check_s3links(seqc_input)
 
         # checking size of input
         for item in seqc_input:
             total += obtain_size(item)
-        total += cushion
+        total += 1e10
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
         # checking size of input file
