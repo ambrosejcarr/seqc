@@ -602,7 +602,8 @@ def main(args: list = None):
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
             ra = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
-            ra.save(args.output_stem + '.h5')
+            args.read_array = args.output_stem + '.h5'
+            ra.save(args.read_array)
 
             # todo: delete this after testing
             output = check_output(['df', '-h']).decode()
@@ -672,8 +673,9 @@ def main(args: list = None):
             seqc.log.info('Removing .h5 file for memory management.')
             Popen(['rm', args.read_array])
         else:
-            seqc.log.info('Uploading Read Array to S3.')
-            cmd = 'aws s3 mv {fname} {s3link}'.format(fname=ra, s3link=aws_upload_key)
+            seqc.log.info('Uploading read array to S3.')
+            cmd = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+                                                      s3link=aws_upload_key)
             manage_ra = Popen(shlex.split(cmd))
 
         seqc.log.info('Creating count matrices')
