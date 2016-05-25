@@ -398,6 +398,14 @@ def main(args: list = None):
             raise ConfigurationError('Please run ./configure (found in the seqc '
                                      'directory) before attempting to run '
                                      'process_experiment.py.')
+        check_spot = config['SpotBid']['spot_bid']
+        if check_spot != 'None':
+            try:
+                float(check_spot)
+            except ValueError:
+                seqc.log.notify('"{spot}" is not a valid spot bid! Exiting.'.format(
+                    spot=check_spot))
+                sys.exit(2)
 
         # extract basespace token and make sure args.index is a directory
         basespace_token = config['BaseSpaceToken']['base_space_token']
