@@ -86,9 +86,8 @@ class ClusterServer(object):
         return wrapper
 
     def create_security_group(self):
-        """Creates a new security group for the cluster
-        :param name: cluster name if provided by user
-        """
+        """Creates a new security group for the cluster"""
+
         name = 'SEQC-%07d' % random.randint(1, int(1e7))
         seqc.log.notify('Assigned instance name %s.' % name)
         try:
@@ -106,8 +105,8 @@ class ClusterServer(object):
     def configure_cluster(self, config_file, aws_instance):
         """configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
-        :param aws_instance: [c3, c4, r3] for config template
-        """
+        :param aws_instance: [c3, c4, r3] for config template"""
+
         config = configparser.ConfigParser()
         config.read(config_file)
         template = aws_instance
@@ -123,7 +122,8 @@ class ClusterServer(object):
 
     def create_spot_cluster(self, volume_size):
         """launches an instance using the specified spot bid
-        and cancels bid in case of error or timeout"""
+        and cancels bid in case of error or timeout
+        :param volume_size: size of volume (GB) to be attached to instance"""
 
         client = boto3.client('ec2')
         seqc.log.notify('Launching cluster with spot bid $%s...' % self.spot_bid)
@@ -307,7 +307,8 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s is not running!' % self.inst_id)
 
     def create_volume(self, vol_size):
-        """creates a volume of size vol_size and returns the volume's id"""
+        """creates a volume of size vol_size and returns the volume's id
+        :param vol_size: size(GB) of volume to be created"""
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='gp2')
         vol_id = vol.id
@@ -377,7 +378,9 @@ class ClusterServer(object):
         self.serv = ssh_server
 
     def allocate_space(self, spot: bool, vol_size: int):
-        """dynamically allocates the specified amount of space on /data"""
+        """dynamically allocates the specified amount of space on /data
+        :param spot: True if spot bid, False otherwise
+        :param vol_size: size (GB) of volume to be attached to instance"""
 
         dev_id = "/dev/xvdf"
         if not spot:
@@ -435,6 +438,10 @@ class ClusterServer(object):
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, volsize, aws_instance):
+        """creates a new cluster, attaches the appropriate volume, configures
+        :param volsize: size (GB) of volume to be attached
+        :param aws_instance: instance type (c3, c4, r3)"""
+
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance)
         self.create_security_group()
@@ -455,8 +462,8 @@ class ClusterServer(object):
 
 def terminate_cluster(instance_id):
     """terminates a running cluster
-    :param instance_id:
-    """
+    :param instance_id: id of instance to terminate"""
+
     ec2 = boto3.resource('ec2')
     instance = ec2.Instance(instance_id)
 
@@ -472,6 +479,9 @@ def terminate_cluster(instance_id):
 
 
 def remove_sg(sg_id):
+    """removes security group to avoid accumulation
+    :param sg_id: security group id number to be deleted"""
+
     ec2 = boto3.resource('ec2')
     sg = ec2.SecurityGroup(sg_id)
     sg_name = sg.group_name
@@ -490,8 +500,9 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
     :param attachment: the file location of the attachment to append to the email
     :param email_body: text to send in the body of the email
-    :param email_address: the address to which the email should be sent.
-    """
+    :param email_address: the address to which the email should be sent."""
+
+
     if isinstance(email_body, str):
         email_body = email_body.encode()
     # Note: exceptions used to be logged here, but this is not the right place for it.
@@ -501,7 +512,9 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
 
 def gzip_file(filename):
-    """gzips a given file using pigz, returns name of gzipped file"""
+    """gzips a given file using pigz, returns name of gzipped file
+    :param filename: name of file to be gzipped"""
+
     cmd = 'pigz ' + filename
     pname = Popen(cmd.split())
     pname.communicate()
@@ -516,6 +529,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     :param start_pos: determines where in the script SEQC started
     """
+
     prefix, directory = os.path.split(output_stem)
     counts = output_stem + '_read_and_count_matrices.p'
     log = prefix + '/seqc.log'
@@ -559,6 +573,9 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
 
 def check_progress():
+    """flag that can be used with process_experiment.py --check-progress
+    to retrieve remote seqc.log and track the progress of the remote run"""
+
     # reading in configuration file
     config_file = os.path.expanduser('~/.seqc/config')
     config = configparser.ConfigParser()
