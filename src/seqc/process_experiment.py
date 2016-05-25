@@ -282,6 +282,7 @@ def check_arguments(args, basespace_token: str):
     seqc_input = barcodes + [index_dir]
 
     # keep track of how much space is needed given input
+    # using worst-case estimates to make sure we don't run out of space
     cushion = 5e10
     total = 0
 
@@ -297,7 +298,7 @@ def check_arguments(args, basespace_token: str):
         input_fastq = barcode_fastq + genomic_fastq
         for item in input_fastq:
             total += obtain_size(item)
-        total += (total * 7) + cushion
+        total += (total * 14) + cushion
     if samfile:
         if any((merged, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
@@ -306,7 +307,7 @@ def check_arguments(args, basespace_token: str):
 
         # checking size of input file
         total += obtain_size(samfile)
-        total += (total * 6) + 1e10
+        total += (total * 2) + 2e10
     if merged:
         if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
@@ -315,7 +316,7 @@ def check_arguments(args, basespace_token: str):
 
         # checking size of input file
         total += obtain_size(merged)
-        total += (total * 8) + cushion
+        total += (total * 13) + cushion
     if basespace:
         if any((samfile, merged, barcode_fastq, genomic_fastq, read_array)):
             raise ValueError(multi_input_error_message)
@@ -340,7 +341,7 @@ def check_arguments(args, basespace_token: str):
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)
         # checking size of input file
         total = seqc.io.BaseSpace.check_size(basespace, basespace_token)
-        total += (total * 7) + cushion
+        total += (total * 14) + cushion
 
     # return total size needed for EBS volume
     return total
