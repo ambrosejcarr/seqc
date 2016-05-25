@@ -346,19 +346,24 @@ class ClusterServer(object):
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
             EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
 
-        # wait until all volumes are attached
+        # wait until volume is attached
         device_info = self.inst_id.block_device_mappings
-        for i in range(1, len(device_info)):
-            status = device_info[i]['Ebs']['Status']
-            i = 0
-            while status != 'attached':
+        status = 'attempting'
+        i = 0
+        while status != 'attached':
+            try:
+                status = device_info[1]['Ebs']['Status']
+                # newly attached volume record will always be at index 1 because
+                # we're only attaching one volume; index 0 has root vol at /dev/sda1
                 time.sleep(.5)
                 self.inst_id.reload()
                 device_info = self.inst_id.block_device_mappings
-                status = device_info[i]['Ebs']['Status']
+                status = device_info[1]['Ebs']['Status']
                 i += 1
                 if i >= max_tries:
-                    raise VolumeCreationError('All Volumes could not be attached')
+                    raise VolumeCreationError('New volume could not be attached')
+            except IndexError:
+                i += 1
         seqc.log.notify('Volume %s attached to %s at %s.' %
                         (vol_id, self.inst_id.id, dev_id))
 
