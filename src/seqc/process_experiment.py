@@ -598,8 +598,8 @@ def main(args: list = None):
             *base_directory, stem = args.output_stem.split('/')
             alignment_directory = '/'.join(base_directory) + '/alignments/'
             os.makedirs(alignment_directory, exist_ok=True)
-            if args.star_kwargs is not None:
-                star_kwargs = dict(a.strip().split('=') for a in args.star_kwargs)
+            if args.star_args is not None:
+                star_kwargs = dict(a.strip().split('=') for a in args.star_args)
             else:
                 star_kwargs = {}
             args.samfile = seqc.alignment.star.align(
