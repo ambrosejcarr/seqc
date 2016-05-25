@@ -460,11 +460,6 @@ def main(args: list = None):
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, basespace_token)
 
-            # todo: delete this after testing successfully
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After downloading files from BaseSpace:')
-            seqc.log.info(output)
-
         # check for genomic fastq files
         if args.genomic_fastq:
             if not args.genomic_fastq[0].startswith('s3://'):
@@ -486,11 +481,6 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
-
-                    # todo: delete this after testing successfully
-                    output = check_output(['df', '-h']).decode()
-                    seqc.log.info('After downloading genomic files from S3:')
-                    seqc.log.info(output)
                 except FileExistsError:
                     pass  # file is already present.
 
@@ -513,11 +503,6 @@ def main(args: list = None):
                                                               output_dir)
                     seqc.log.info('Barcode fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_fastq)))
-
-                    # todo: delete this after testing successfully
-                    output = check_output(['df', '-h']).decode()
-                    seqc.log.info('After downloading barcode files from S3:')
-                    seqc.log.info(output)
                 except FileExistsError:
                     pass  # file is already present.
 
@@ -536,10 +521,6 @@ def main(args: list = None):
                 if not args.samfile:
                     try:
                         seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
-                        # todo: delete this after testing successfully
-                        output = check_output(['df', '-h']).decode()
-                        seqc.log.info('After downloading index files from S3:')
-                        seqc.log.info(output)
                     except FileExistsError:
                         pass  # file is already present
                 else:  # samfile provided, only download annotations file
@@ -547,10 +528,6 @@ def main(args: list = None):
                         annotations_file = args.index + 'annotations.gtf'
                         seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
                                                  annotations_file)
-                        # todo: delete this after testing successfully
-                        output = check_output(['df', '-h']).decode()
-                        seqc.log.info('After downloading index files from S3:')
-                        seqc.log.info(output)
                     except FileExistsError:
                         pass  # file is already present
 
@@ -608,11 +585,6 @@ def main(args: list = None):
                 args.merged_fastq, args.index, n_processes, alignment_directory,
                 **star_kwargs)
 
-            # todo: delete this after testing successfully
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After aligning with STAR:')
-            seqc.log.info(output)
-
             # gzipping file and upload in one Popen session, else remove merged.fastq
             if input_data == 'merged':
                 seqc.log.info('Removing merged.fastq file for memory management.')
@@ -635,11 +607,6 @@ def main(args: list = None):
             args.read_array = args.output_stem + '.h5'
             ra.save(args.read_array)
 
-            # todo: delete this after testing
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After creating read array from samfile:')
-            seqc.log.info(output)
-
             # converting sam to bam and uploading to S3, else removing samfile
             if input_data == 'samfile':
                 seqc.log.info('Removing samfile for memory management.')
@@ -660,11 +627,6 @@ def main(args: list = None):
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
-
-            # todo: delete this after testing
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After creating read array:')
-            seqc.log.info(output)
 
         # check if barcode files need to be downloaded
         if args.platform != 'drop_seq':
@@ -692,11 +654,6 @@ def main(args: list = None):
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
-
-        # todo: delete this after testing
-        output = check_output(['df', '-h']).decode()
-        seqc.log.info('After error correction:')
-        seqc.log.info(output)
 
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':

@@ -26,9 +26,6 @@ node_image_id = ami-75897e18
 node_instance_type = r3.8xlarge
 availability_zone = us-east-1c
 
-[raid]
-availability_zone = us-east-1c
-
 [BaseSpaceToken]
 base_space_token = None
 
