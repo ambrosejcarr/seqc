@@ -126,7 +126,9 @@ class ClusterServer(object):
         :param volume_size: size of volume (GB) to be attached to instance"""
 
         client = boto3.client('ec2')
-        seqc.log.notify('Launching cluster with spot bid $%s...' % self.spot_bid)
+        seqc.log.notify('Launching cluster with volume size {volume_size} GB at spot '
+                        'bid {spot_bid}.'.format(volume_size=volume_size,
+                                                 spot_bid=self.spot_bid))
         if 'c4' in self.inst_type or 'r3' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for R3/C4 instances!')
