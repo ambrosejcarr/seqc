@@ -12,8 +12,6 @@ import boto3
 from botocore.exceptions import ClientError
 import seqc
 import logging
-# todo: delete this after testing
-from subprocess import check_output
 
 # turn off paramiko non-error logging
 logging.getLogger('paramiko').setLevel(logging.CRITICAL)
@@ -482,7 +480,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
-    :param infile: determines where in the script SEQC started
+    :param start_pos: determines where in the script SEQC started
     """
     prefix, directory = os.path.split(output_stem)
     counts = output_stem + '_read_and_count_matrices.p'
@@ -491,12 +489,6 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
     if start_pos == 'start' or start_pos == 'merged':
         alignment_summary = output_stem + '_alignment_summary.txt'
-
-        # todo: delete this after testing
-        output = check_output(['df', '-h']).decode()
-        seqc.log.info('Just running df -h to try:')
-        seqc.log.info(output)
-
         # copying over alignment summary for upload
         shutil.copyfile(prefix + '/alignments/Log.final.out', output_stem +
                         '_alignment_summary.txt')
