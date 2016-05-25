@@ -592,7 +592,8 @@ def main(args: list = None):
             else:
                 star_kwargs = {}
             args.samfile = seqc.alignment.star.align(
-                args.merged_fastq, args.index, n_processes, alignment_directory, **star_kwargs)
+                args.merged_fastq, args.index, n_processes, alignment_directory,
+                **star_kwargs)
 
             # todo: delete this after testing successfully
             output = check_output(['df', '-h']).decode()
