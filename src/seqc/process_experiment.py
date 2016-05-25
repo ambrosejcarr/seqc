@@ -284,6 +284,8 @@ def check_arguments(args, basespace_token: str):
     # keep track of how much space is needed given input
     # using worst-case estimates to make sure we don't run out of space
     cushion = 5e10
+    if args.instance_type == 'r3':
+        cushion = 9e10
     total = 0
 
     if barcode_fastq or genomic_fastq:
