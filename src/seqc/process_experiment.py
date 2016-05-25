@@ -401,7 +401,9 @@ def main(args: list = None):
         check_spot = config['SpotBid']['spot_bid']
         if check_spot != 'None':
             try:
-                float(check_spot)
+                value = float(check_spot)
+                if value < 0:
+                    raise ValueError
             except ValueError:
                 seqc.log.notify('"{spot}" is not a valid spot bid! Exiting.'.format(
                     spot=check_spot))
