@@ -2,11 +2,14 @@ import numpy as np
 from numpy import ma
 import pandas as pd
 import multiprocessing
+import fastcluster
 from sklearn.neighbors import NearestNeighbors
 import warnings
 import time
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
+from scipy.spatial.distance import pdist
+from scipy.cluster.hierarchy import dendrogram
 from numpy.linalg import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.stats.mstats import kruskalwallis, rankdata
@@ -14,36 +17,6 @@ from scipy.stats import t
 from tinydb import TinyDB, Query
 from functools import partial
 from collections import namedtuple
-
-
-def keigs(T, k, P, take_diagonal=0):
-    """ return k largest magnitude eigenvalues for the matrix T.
-    :param T: Matrix to find eigen values/vectors of
-    :param k: number of eigen values/vectors to return
-    :param P: in the case of symmetric normalizations,
-              this is the NxN diagonal matrix which relates the nonsymmetric
-              version to the symmetric form via conjugation
-    :param take_diagonal: if 1, returns the eigenvalues as a vector rather than as a
-                          diagonal matrix.
-    """
-    D, V = eigs(T, k, tol=1e-4, maxiter=1000)
-    D = np.real(D)
-    V = np.real(V)
-    inds = np.argsort(D)[::-1]
-    D = D[inds]
-    V = V[:, inds]
-    if P is not None:
-        V = P.dot(V)
-
-    # Normalize
-    for i in range(V.shape[1]):
-        V[:, i] = V[:, i] / norm(V[:, i])
-    V = np.round(V, 10)
-
-    if take_diagonal == 0:
-        D = np.diag(D)
-
-    return V, D
 
 
 class GraphDiffusion:
@@ -82,6 +55,36 @@ class GraphDiffusion:
         self.eigenvalues = None
         self.diffusion_operator = None
         self.weights = None
+
+    @staticmethod
+    def keigs(T, k, P, take_diagonal=0):
+        """ return k largest magnitude eigenvalues for the matrix T.
+        :param T: Matrix to find eigen values/vectors of
+        :param k: number of eigen values/vectors to return
+        :param P: in the case of symmetric normalizations,
+                  this is the NxN diagonal matrix which relates the nonsymmetric
+                  version to the symmetric form via conjugation
+        :param take_diagonal: if 1, returns the eigenvalues as a vector rather than as a
+                              diagonal matrix.
+        """
+        D, V = eigs(T, k, tol=1e-4, maxiter=1000)
+        D = np.real(D)
+        V = np.real(V)
+        inds = np.argsort(D)[::-1]
+        D = D[inds]
+        V = V[:, inds]
+        if P is not None:
+            V = P.dot(V)
+
+        # Normalize
+        for i in range(V.shape[1]):
+            V[:, i] = V[:, i] / norm(V[:, i])
+        V = np.round(V, 10)
+
+        if take_diagonal == 0:
+            D = np.diag(D)
+
+        return V, D
 
     @staticmethod  # todo fix; what is S?
     def bimarkov(W, max_iters=100, abs_error=0.00001, verbose=False, **kwargs):
@@ -235,7 +238,7 @@ class GraphDiffusion:
             print('%.2f seconds' % (time.process_time() - start))
 
         # Eigen value decomposition
-        V, D = keigs(T, self.n_diffusion_components, P, take_diagonal=1)
+        V, D = GraphDiffusion.keigs(T, self.n_diffusion_components, P, take_diagonal=1)
         self.eigenvectors = V
         self.eigenvalues = D
         self.diffusion_operator = T
@@ -321,6 +324,7 @@ class correlation:
 
         return ((y * x).mean(axis=0) - mu_y * mu_x) / (sigma_y * sigma_x)
 
+
     @staticmethod
     def map(x, y):
         """Correlate each n with each m.
@@ -329,20 +333,15 @@ class correlation:
         :param y: np.array; shape M x T.
         :returns: np.array; shape N x M in which each element is a correlation
                             coefficient.
-
         """
-        mu_x = x.mean(1)
-        mu_y = y.mean(1)
-        n = x.shape[1]
-        if n != y.shape[1]:
-            raise ValueError('x and y must ' +
-                             'have the same number of timepoints.')
-        s_x = x.std(1, ddof=n - 1)
-        s_y = y.std(1, ddof=n - 1)
-        cov = np.dot(x,
-                     y.T) - n * np.dot(mu_x[:, np.newaxis],
-                                       mu_y[np.newaxis, :])
-        return cov / np.dot(s_x[:, np.newaxis], s_y[np.newaxis, :])
+        N = y.shape[1]
+        sum_x = x.sum(axis=1)
+        sum_y = y.sum(axis=1)
+        p1 = N * np.dot(y, x.T)
+        p2 = sum_x * sum_y[:, np.newaxis]
+        p3 = N * ((y ** 2).sum(axis=1)) - (sum_y ** 2)
+        p4 = N * ((x ** 2).sum(axis=1)) - (sum_x ** 2)
+        return (p1 - p2) / np.sqrt(p4 * p3[:, None])
 
     @staticmethod
     def eigv(evec, data, components=tuple(), knn=10):
@@ -673,6 +672,356 @@ class GSEA:
         #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
 
 
+def _sampling_function(n_iter, n_molecules, theta, n_cells):
+
+    def online_mean_var(nb, mu_b, var_b, na, mu_a, var_a):
+        nx = na + nb
+        delta = mu_b - mu_a
+        mu_x = mu_a + delta * nb / nx
+        var_x = (na * (var_a + mu_a ** 2) + nb * (var_b + mu_b ** 2)) / nx - mu_x ** 2
+        return nx, mu_x, var_x
+
+    res_mu = np.zeros((n_iter, theta.shape[0]), dtype=np.float32)
+    res_var = np.zeros((n_iter, theta.shape[0]), dtype=np.float32)
+    n_cells //= 10
+    for i in np.arange(n_iter):
+        # break sampling (n_cells) into 10 pieces
+        obs = np.random.multinomial(n_molecules, theta, n_cells)
+        mu_x = np.mean(obs, axis=0)
+        var_x = np.mean(obs, axis=0)
+        n_x = obs.shape[0]
+        for _ in np.arange(9):
+            obs = np.random.multinomial(n_molecules, theta, n_cells)
+            mu = np.mean(obs, axis=0)
+            var = np.mean(obs, axis=0)
+            n = obs.shape[0]
+            n_x, mu_x, var_x = online_mean_var(n, mu, var, n_x, mu_x, var_x)
+        res_mu[i, :] = mu_x
+        res_var[i, :] = var_x / n_x
+    return res_mu, res_var
+
+
+class ExpressionTree:
+
+    def __init__(self, data, group_assignments, alpha=0.05):
+        """
+        :param data: n cells x k genes 2d array
+        :param group_assignments: n cells 1d vector
+        :param alpha: float (0, 1], acceptable type I error
+        """
+
+        self._tree = None
+        self._results = None
+
+        # make sure group_assignments and data have the same length
+        if not data.shape[0] == group_assignments.shape[0]:
+            raise ValueError(
+                'Group assignments shape ({!s}) must equal the number of rows in data '
+                '({!s}).'.format(group_assignments.shape[0], data.shape[0]))
+
+        # store index if both data and group_assignments are pandas objects
+        if isinstance(data, pd.DataFrame) and isinstance(group_assignments, pd.Series):
+            # ensure assignments and data indices are aligned
+            try:
+                ordered_assignments = group_assignments[data.index]
+                if not len(ordered_assignments) == data.shape[0]:
+                    raise ValueError(
+                        'Index mismatch between data and group_assignments detected when '
+                        'aligning indices. check for duplicates.')
+            except:
+                raise ValueError('Index mismatch between data and group_assignments.')
+
+            # sort data by cluster assignment
+            idx = np.argsort(ordered_assignments.values)
+            if not np.array_equal(idx, np.arange(idx.shape[0])):
+                self._data = data.iloc[idx, :].values
+                ordered_assignments = ordered_assignments.iloc[idx]
+                self._group_assignments = ordered_assignments.values
+            else:
+                self._data = data.values
+                self._group_assignments = group_assignments.values
+            self._index = data.columns
+
+        else:  # get arrays from input values
+            self._index = None  # inputs were not all indexed pandas objects
+
+            if isinstance(data, np.ndarray):
+                self._data = data
+            elif isinstance(data, pd.DataFrame):
+                self._data = data.values
+            else:
+                raise ValueError('data must be a pd.DataFrame or np.ndarray')
+
+            try:
+                group_assignments = np.array(group_assignments)
+            except:
+                raise ValueError('group_assignments must be convertible to a np.ndarray')
+
+            idx = np.argsort(group_assignments)
+            if not np.array_equal(idx, np.arange(idx.shape[0])):
+                self._data = data[idx, :]
+                self._group_assignments = group_assignments[idx]
+            else:
+                self._data = data
+                self._group_assignments = group_assignments
+
+        # set nan values = 0
+        self._data[np.isnan(self._data) | np.isinf(self._data)] = 0
+
+        # get points to split the array, create slicers for each group
+        self._split_indices = np.where(np.diff(self._group_assignments))[0] + 1
+
+        if not 0 < alpha <= 1:
+            raise ValueError('Parameter alpha must fall within the interval (0, 1].')
+        self._alpha = alpha
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def group_assignments(self):
+        return self._group_assignments
+
+    @property
+    def alpha(self):
+        return self._alpha
+
+    @property
+    def tree(self):
+        return self._tree
+
+    @property
+    def results(self):
+        return self._results
+
+    class Node:
+        __slots__ = ['node_id', 'left', 'right', 'distance', 'n_daughters']
+
+        def __init__(self, node_id, left=None, right=None, distance=None,
+                     n_daughters=None):
+            self.node_id = node_id
+            self.left = left
+            self.right = right
+            self.distance = distance
+            self.n_daughters = n_daughters
+
+        def __repr__(self):
+            return 'Node id: {!s}, left: {!s}, right: {!s}, distance: {!s}'.format(
+                self.node_id, self.left, self.right, self.distance)
+
+        def __hash__(self):
+            return hash(self.node_id)
+
+    class Tree:
+
+        def __init__(self, linkage, data=None):
+
+            # store expression data
+            self.linkage = linkage
+            self.data = data
+
+            # set up tree
+            root_id = np.max(linkage[:, :2]) + 1  # node names
+            current_id = root_id
+            self.tree = {}
+            self.n_nodes = linkage.shape[0]
+
+            # construct tree
+            for row in linkage[::-1, ]:
+                self.tree[current_id] = ExpressionTree.Node(current_id, *row)
+                current_id -= 1
+
+            # add leaf nodes
+            for i in np.arange(self.n_nodes + 1, dtype=float):
+                self.tree[i] = ExpressionTree.Node(i)
+
+            self.root = self.tree[root_id]
+
+        def __getitem__(self, item):
+            if isinstance(item, ExpressionTree.Node):
+                return self.tree[item.node_id]
+            elif isinstance(item, (float, int)):
+                return self.tree[item]
+            elif item is None:
+                return None
+            else:
+                raise TypeError(
+                    'Tree objects support indexing by Node, Node.node_id, or None, not '
+                    '{!s}'.format(type(item)))
+
+        def __repr__(self):
+            return 'Hierarchical Tree: {:.0f} nodes'.format(self.n_nodes)
+
+        def dfs(self, node=None, visited=None):
+            if visited is None:
+                visited = []
+            if node is None:
+                node = self.root
+            if isinstance(node, (int, float)):
+                node = self[node]
+            visited.append(node)
+            for next_ in (self[node.left], self[node.right]):
+                if next_ is not None:
+                    self.dfs(next_, visited)
+            return visited
+
+        def bfs(self, node=None):
+
+            if node is None:
+                node = self.root
+            elif isinstance(node, (int, float)):
+                node = self[node]
+            elif not isinstance(node, ExpressionTree.Node):
+                raise ValueError('node must be a node object, a node_id, or None.')
+
+            visited, queue = [], [node]
+            while queue:
+                node = queue.pop(0)
+                visited.append(node)
+                for next_ in [self[node.left], self[node.right]]:
+                    if next_ is not None:
+                        queue.append(next_)
+            return visited
+
+        def agglomerate(self, node):
+            return set(n.node_id for n in self.dfs(node))
+
+        def plot(self, ax, **kwargs):
+            """plot a dendrogram on ax"""
+            dendrogram(self.linkage, ax=ax, **kwargs)
+
+    @staticmethod
+    def resampled_welchs_t(
+            a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
+            alpha=0.01):
+        """
+        :param a: n cells x k genes np.ndarray
+        :param b: m cells x k genes np.ndarray
+        :param n_iter: number of times to resample a and b
+        :param downsample_value_function: options: 'mean', 'median' or float percentile
+          in the interval (0, 1]. Function to apply to find the value that a & b should
+          be sampled to. Default: median. A and B are subjected to these functions, and
+          the minimum value between the two is selected.
+        """
+
+        # get downsample function
+        if isinstance(downsample_value_function, float):
+            if 0 < downsample_value_function <= 1:
+                downsample_value_function = partial(np.percentile, q=downsample_value_function * 100)
+            else:
+                raise ValueError('If using a float value for downsample_value_function, the value must fall in the '
+                                 'interval (0, 1].')
+        elif downsample_value_function is 'mean':
+            downsample_value_function = np.mean
+        elif downsample_value_function is 'median' or downsample_value_function is None:
+            downsample_value_function = np.median
+
+        # get sampling value
+        n = min(downsample_value_function(a.sum(axis=1)), downsample_value_function(b.sum(axis=1))).astype(int)
+
+        # normalize cells and obtain probability vectors
+        a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+        b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+
+        # determine iterations per process
+        n_cpu = multiprocessing.cpu_count() - 1
+        if n_iter > n_cpu:
+            size = np.array([n_iter // n_cpu] * n_cpu)
+            size[:n_iter % n_cpu] += 1
+        else:
+            size = np.ones((n_iter,))
+
+        # map to a process pool
+        a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
+        b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
+        pool = multiprocessing.Pool(n_cpu)
+
+        a_res = pool.map(a_sampler, size)
+        b_res = pool.map(b_sampler, size)
+        a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
+        b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
+
+        # no nans should be produced by the mean
+        assert np.sum(np.isnan(a_mu)) == 0
+        assert np.sum(np.isnan(b_mu)) == 0
+
+        # in cases where variance is np.nan, we can safely set the variance to zero since
+        # the mean will also be zero; this will reduce singularities caused by one tissue
+        # never expressing a protein.
+        a_var[np.isnan(a_var)] = 0
+        b_var[np.isnan(b_var)] = 0
+
+        numerator = a_mu - b_mu  # (samples, genes)
+        denominator = np.sqrt(a_var + b_var)  # (samples, genes)
+        statistic = numerator / denominator  # (samples, genes)
+
+        # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
+        statistic[np.isnan(statistic)] = 0  # calculate df
+
+        numerator = (a_var + b_var) ** 2  # (samples, genes)
+        denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
+        df = np.floor(numerator / denominator)  # (samples, genes)
+
+        # get significance values
+        p = np.zeros((n_iter, a.shape[1]), dtype=float)
+        for i in np.arange(statistic.shape[0]):
+            p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
+
+        # can determine frequency with which p < 0.05; can do a proper FDR based on these distributions. Until then,
+        # can just look at the means themselves.
+        q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
+
+        return statistic, q
+
+    def create_hierarchy(self):
+        """
+        hierarchically cluster cluster centroids and store the results as self.tree
+        """
+        fmean = partial(np.mean, axis=0)
+
+        cluster_array_views = np.array_split(self.data, self._split_indices, axis=0)
+        means = np.vstack(list(map(fmean, cluster_array_views)))
+        distance = pdist(means)
+        linkage = fastcluster.linkage(distance, method='single')
+
+        self._tree = self.Tree(linkage)
+
+    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000):
+        """
+        :param n_iter:
+        :param central_value_func:
+          Indicates that clusters should be downsampled to the median of all populations prior to comparison to
+          control for sampling bias. This can be done to check clustering stability and to get reliable gene expression
+           differences.
+        :param n_cells:
+        :return:
+        """
+
+        # get expression means
+        if self.tree is None:
+            self.create_hierarchy()
+
+        self._results = {}
+        for node in self.tree.bfs():
+            l_clusters = np.array(self.tree.agglomerate(node.left))
+            r_clusters = np.array(self.tree.agglomerate(node.right))
+            l_cells = np.in1d(self.group_assignments, l_clusters)
+            r_cells = np.in1d(self.group_assignments, r_clusters)
+            alpha_adj = self.alpha / (len(set(self.group_assignments)) - 1)
+            res = self.resampled_welchs_t(
+                self.data[l_cells],
+                self.data[r_cells],
+                n_iter=n_iter,
+                downsample_value_function=central_value_func,
+                n_cells=n_cells,
+                alpha=alpha_adj)
+            if self._index is not None:
+                res = pd.Series(res, index=self._index).sort_values(inplace=False)
+            self._results[(node.left.node_id, node.right.node_id)] = res
+        return self._results
+
+
 class DifferentialExpression:
 
     def __init__(self, data, group_assignments, alpha=0.05):
@@ -741,7 +1090,6 @@ class DifferentialExpression:
 
         self._anova = None
 
-    # todo implement min_mean_expr
     def anova(self, min_mean_expr=None):
         """
         :param min_mean_expr: minimum average gene expression value that must be reached

@@ -18,7 +18,7 @@ with open('src/seqc/version.py') as f:
     exec(f.read())
 
 setup(name='seqc',
-      version=__version__,  # read in from the exec of version.py
+      version=__version__,  # read in from the exec of version.py; ignore error
       description='Single Cell Sequencing Processing and QC Suite',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
@@ -38,6 +38,7 @@ setup(name='seqc',
           'matplotlib',
           'tinydb',
           'seaborn',
+          'fastcluster',
           'statsmodels',
           'ecdsa',
           'pycrypto',
