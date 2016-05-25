@@ -29,6 +29,10 @@ class SpotBidError(Exception):
     pass
 
 
+class BotoCallError(Exception):
+    pass
+
+
 class ClusterServer(object):
     """Connects to AWS instance using paramiko and a private RSA key,
     allows for the creation/manipulation of EC2 instances and executions
@@ -52,24 +56,33 @@ class ClusterServer(object):
 
     @contextmanager
     def boto_errors(self, ident=None):
-        """context manager that traps and retries boto3 functions
-        during random failures"""
+        """context manager that traps and retries boto functions
+        to prevent random failures -- usually during batch runs
+        :param ident: name of boto call"""
+
         try:
-            yield None
+            yield
         except Exception:
             if ident:
-                seqc.log.notify('Error in ' + ident + ', retrying...')
+                seqc.log.notify('Error in ' + ident + ', retrying in 5s...')
             else:
-                seqc.log.notify('Error during boto call, retrying...')
+                seqc.log.notify('Error during boto call, retrying in 5s...')
             time.sleep(5)
-            # todo: retrying happens here
 
-    def handle_boto_errors(self, f):
-        """decorator tries unexpected boto3 behavior"""
-        @wraps(f)
+    def retry_boto_call(self, func, retries=4):
+        """handles unexpected boto3 behavior, retries (default 3x)
+        :param func: boto call to be wrapped
+        :param retries: total # tries to re-call boto function"""
+
+        @wraps(func)
         def wrapper(*args, **kwargs):
-            with self.boto_errors(f.__name__):
-                return f(*args, **kwargs)
+            numtries = retries
+            while numtries > 1:
+                with self.boto_errors(func.__name__):
+                    return func(*args, **kwargs)
+                numtries -= 1
+                if numtries == 1:
+                    raise BotoCallError('Unresolvable error in boto call, exiting.')
         return wrapper
 
     def create_security_group(self):
@@ -206,7 +219,14 @@ class ClusterServer(object):
                 raise SpotBidError('Timeout: spot bid could not be fulfilled.')
         # spot request was approved, instance launched
         seqc.log.notify('Spot bid request was successfully fulfilled!')
-        self.inst_id = self.ec2.Instance(spot_resp['InstanceId'])
+
+        # sleep for 5s just in case boto call needs a bit more time
+        time.sleep(5)
+        instance_id = spot_resp['InstanceId']
+        self.retry_boto_call(self.wait_for_cluster)(instance_id)
+
+        # instance is ready
+        self.inst_id = self.ec2.Instance(instance_id)
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
@@ -233,22 +253,30 @@ class ClusterServer(object):
         instance = clust[0]
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
                         instance)
-        # todo: try-catch loop here in order to account for boto3 unreliability
-        # idk how this thing is supposed to work...
-        # max_retries = 40
-        # i = 0
-        # while i <= max_retries:
-        #     wrapped_exists = self.handle_boto_errors(instance.wait_until_exists)
-        #     wrapped_exists()
-        #     i += 1
-        instance.wait_until_exists()
-        instance.wait_until_running()
 
-        seqc.log.notify('Instance %s now running.' % instance)
+        # sleep for 5s just in case boto call needs a bit more time
+        time.sleep(5)
+        self.retry_boto_call(self.wait_for_cluster)(instance.id)
         self.inst_id = instance
+
+    def wait_for_cluster(self, inst_id: str):
+        """waits until newly created cluster exists and is running
+        changing default waiter settings to avoid waiting forever
+        :param inst_id: instance id of AWS cluster"""
+
+        client = boto3.client('ec2')
+        exist_waiter = client.get_waiter('instance_exists')
+        run_waiter = client.get_waiter('instance_running')
+        run_waiter.config.delay = 10
+        run_waiter.config.max_attempts = 20
+        exist_waiter.config.max_attempts = 30
+        exist_waiter.wait(InstanceIds=[inst_id])
+        run_waiter.wait(InstanceIds=[inst_id])
+        seqc.log.notify('Instance %s now running.' % inst_id)
 
     def cluster_is_running(self):
         """checks whether a cluster is running"""
+
         if self.inst_id is None:
             raise EC2RuntimeError('No inst_id assigned. Instance was not successfully '
                                   'created!')
@@ -260,6 +288,7 @@ class ClusterServer(object):
 
     def restart_cluster(self):
         """restarts a stopped cluster"""
+
         if self.inst_id.state['Name'] == 'stopped':
             self.inst_id.start()
             self.inst_id.wait_until_running()
