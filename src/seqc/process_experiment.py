@@ -527,10 +527,9 @@ def main(args: list = None):
                         output = check_output(['df', '-h']).decode()
                         seqc.log.info('After downloading index files from S3:')
                         seqc.log.info(output)
-                    except FileNotFoundError:
+                    except FileExistsError:
                         pass  # file is already present
-                # samfile provided, only install annotations file
-                else:
+                else:  # samfile provided, only download annotations file
                     try:
                         annotations_file = args.index + 'annotations.gtf'
                         seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
@@ -539,7 +538,7 @@ def main(args: list = None):
                         output = check_output(['df', '-h']).decode()
                         seqc.log.info('After downloading index files from S3:')
                         seqc.log.info(output)
-                    except FileNotFoundError:
+                    except FileExistsError:
                         pass  # file is already present
 
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
@@ -567,11 +566,6 @@ def main(args: list = None):
                 fout=args.output_stem + '_merged.fastq',
                 genomic=args.genomic_fastq,
                 barcode=args.barcode_fastq)
-
-            # todo: delete this after testing successfully
-            output = check_output(['df', '-h']).decode()
-            seqc.log.info('After running merge function:')
-            seqc.log.info(output)
 
             # deleting genomic/barcode fastq files after merged.fastq creation
             seqc.log.info('Removing original fastq file for memory management.')
@@ -690,7 +684,7 @@ def main(args: list = None):
         seqc.log.info('After error correction:')
         seqc.log.info(output)
 
-        # uploading Read Array to S3, else removing read array
+        # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
             seqc.log.info('Removing .h5 file for memory management.')
             Popen(['rm', args.read_array])
@@ -725,11 +719,6 @@ def main(args: list = None):
                     manage_ra.wait()
                     seqc.log.info('Successfully uploaded %s to the specified S3 '
                                   'location "%s"' % (args.read_array, aws_upload_key))
-
-                # todo: delete this after testing
-                output = check_output(['df', '-h']).decode()
-                seqc.log.info('About to terminate, total storage:')
-                seqc.log.info(output)
 
                 # upload count matrix and alignment summary at the very end
                 seqc.remote.upload_results(
