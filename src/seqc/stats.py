@@ -1043,14 +1043,19 @@ class ExpressionTree:
         # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
         statistic[np.isnan(statistic)] = 0  # calculate df
 
-        numerator = (a_var + b_var) ** 2  # (samples, genes)
-        denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
-        df = np.floor(numerator / denominator)  # (samples, genes)
+        # numerator = (a_var + b_var) ** 2  # (samples, genes)
+        # denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
+        # df = np.floor(numerator / denominator)  # (samples, genes)
 
-        # get significance values
-        p = np.zeros((n_iter, a.shape[1]), dtype=float)
-        for i in np.arange(statistic.shape[0]):
-            p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
+        # # get significance values
+        # p = np.zeros((n_iter, a.shape[1]), dtype=float)
+        # for i in np.arange(statistic.shape[0]):
+        #     p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
+
+        df = 2
+
+        statistic = statistic.mean(axis=0)
+        p = t.cdf(np.abs(statistic), df)
 
         # can determine frequency with which p < 0.05; can do a proper FDR based on these distributions. Until then,
         # can just look at the means themselves.
@@ -1105,13 +1110,17 @@ class ExpressionTree:
             self._results[(node.left.node_id, node.right.node_id)] = res
         return self._results
 
-    def plot_hierarchy(self, ax=None):
+    def plot_hierarchy(self, ax=None, alternate_labels=None):
         if ax is None:
             import matplotlib.pyplot as plt
             ax = plt.gca()
         if self.tree is None:
             self.create_hierarchy()
         dendrogram(self.tree.linkage, ax=ax)
+        if alternate_labels and isinstance(alternate_labels, dict):
+            xtl = ax.get_xticklabels()
+            xtl = list(map(lambda x: alternate_labels[x.get_text()], xtl))
+            ax.set_xticklabels(xtl, rotation='vertical')
 
 
 class DifferentialExpression:
