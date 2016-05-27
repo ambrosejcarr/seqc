@@ -4,6 +4,7 @@ import pandas as pd
 import multiprocessing
 import fastcluster
 from sklearn.neighbors import NearestNeighbors
+from sklearn.manifold import TSNE
 import warnings
 import time
 from scipy.sparse import csr_matrix, find
@@ -14,7 +15,7 @@ from numpy.linalg import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.stats.mstats import kruskalwallis, rankdata
 from scipy.stats import t
-from tinydb import TinyDB, Query
+from tinydb import TinyDB
 from functools import partial
 from collections import namedtuple
 
@@ -245,7 +246,89 @@ class GraphDiffusion:
         self.weights = W
 
 
+class ScaleFeatures:
+
+    @staticmethod
+    def unit_size(data: np.ndarray, copy=True):
+        """
+        scales data so that each entry is between 0 and 1
+
+        :param data: n x k matrix of n observations of k features
+        :return:
+        """
+        if copy:
+            data = data.copy()
+        d_min, d_max = np.min(data), np.max(data)
+        data -= d_min
+        data /= d_max - d_min
+        return data
+
+    @staticmethod
+    def standardize(data: np.ndarray, copy=True):
+        if copy:
+            data = data.copy()
+        data -= data.mean(axis=0)
+        data /= data.std(axis=0)
+
+    @staticmethod
+    def unit_length(data: np.ndarray, copy=True):
+        """
+        scales each feature so that its euclidean length is 1
+
+        :param data: n x k matrix of n observations of k features
+        :return:
+        """
+        if copy:
+            data = data.copy()
+        data /= np.sqrt(np.sum(data ** 2, axis=0))[:, np.newaxis]
+        return data
+
+
+class tSNE:
+
+    def __init__(self, n_components=2, scale=True, run_pca=True, n_pca_components=10,
+                 **kwargs):
+        """
+        :param n_components:
+        :param normalize:
+        :param run_pca:
+        :param n_pca_components:
+        :param kwargs:
+        """
+        self.scale = scale
+        self.run_pca = run_pca
+        self.n_components = n_components
+        self.n_pca_components = n_pca_components
+        self.kwargs = kwargs
+        self.tsne = None
+        self.pca = None
+
+    def fit_transform(self, data):
+            """
+            :param data:
+            :return:
+            """
+            if self.scale:
+                data = ScaleFeatures.unit_size(data, copy=True)
+            if self.run_pca:
+                self.pca = PCA(n_components=self.n_pca_components)
+                data = self.pca.fit_transform(data)
+
+            if not self.kwargs:
+                self.kwargs = dict(angle=0.4, init='pca', random_state=0, n_iter=500,
+                                   perplexity=30)
+
+            tsne = TSNE(n_components=self.n_components, method='barnes_hut',
+                        **self.kwargs)
+            res = tsne.fit_transform(data.values)
+            if isinstance(data, pd.DataFrame):
+                self.tsne = pd.DataFrame(res, index=data.index)
+            else:
+                self.tsne = res
+
+
 class PCA:
+
     def __init__(self, n_components=100):
         self.n_components = n_components
         self.loadings = None
@@ -261,8 +344,9 @@ class PCA:
             raise TypeError('data must be a pd.DataFrame or np.ndarray')
 
         # Make sure data is zero mean
-        X = np.subtract(X, np.amin(X))
-        X = np.divide(X, np.amax(X))
+        X = ScaleFeatures.unit_size(X)
+        # X = np.subtract(X, np.amin(X))
+        # X = np.divide(X, np.amax(X))
 
         # Compute covariance matrix
         if X.shape[1] < X.shape[0]:
@@ -395,7 +479,7 @@ class correlation:
         return eigv_corr
 
 
-class smoothing:
+class Smooth:
 
     @staticmethod
     def kneighbors(data, n_neighbors=50):
@@ -1206,31 +1290,3 @@ class DifferentialExpression:
             pass  # todo fix this
 
         return marker_genes
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
