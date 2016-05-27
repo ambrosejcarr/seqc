@@ -1105,6 +1105,14 @@ class ExpressionTree:
             self._results[(node.left.node_id, node.right.node_id)] = res
         return self._results
 
+    def plot_hierarchy(self, ax=None):
+        if ax is None:
+            import matplotlib.pyplot as plt
+            ax = plt.gca()
+        if self.tree is None:
+            self.create_hierarchy()
+        dendrogram(self.tree.linkage, ax=ax)
+
 
 class DifferentialExpression:
 
