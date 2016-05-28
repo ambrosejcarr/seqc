@@ -559,8 +559,9 @@ def main(args: list = None):
 
             # deleting genomic/barcode fastq files after merged.fastq creation
             seqc.log.info('Removing original fastq file for memory management.')
-            delete_fastq = ['rm'] + args.genomic_fastq + args.barcode_fastq
-            Popen(delete_fastq)
+            # todo # used processes: 1
+            delete_fastq = ' '.join(['rm'] + args.genomic_fastq + args.barcode_fastq)
+            seqc.io.FileManager(delete_fastq)
 
         if align:
             seqc.log.info('Aligning merged fastq records.')
@@ -568,9 +569,9 @@ def main(args: list = None):
                 input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
                 if args.merged_fastq.endswith('.gz'):
-                    gunzip_cmd = 'gunzip ' + args.merged_fastq
-                    full_file = Popen(gunzip_cmd.split())
-                    full_file.communicate()
+                    cmd = 'gunzip {fname}'.format(fname=args.merged_fastq)
+                    gunzip_proc = seqc.io.FileManager(cmd).get_pipe()
+                    gunzip_proc.communicate()
                     args.merged_fastq = args.merged_fastq.strip('.gz')
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
@@ -588,7 +589,9 @@ def main(args: list = None):
             # gzipping file and upload in one Popen session, else remove merged.fastq
             if input_data == 'merged':
                 seqc.log.info('Removing merged.fastq file for memory management.')
-                Popen(['rm', args.merged_fastq])
+                # Popen(['rm', args.merged_fastq])
+                # rm_cmd = 'rm {merged_file}'.format(merged_file=args.merged_fastq)
+                # todo: seqc.io.FileManager(rm_cmd)
             else:
                 seqc.log.info('Gzipping merged fastq file and uploading to S3.')
                 cmd1 = 'pigz ' + args.merged_fastq

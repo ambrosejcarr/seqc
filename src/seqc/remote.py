@@ -633,6 +633,7 @@ class SSHServer(object):
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
+        # todo: better error handling here!! take care of exceptions
         max_attempts = 25
         attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())

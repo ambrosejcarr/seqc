@@ -576,12 +576,12 @@ class BaseSpace:
 
 
 class FileManager:
-    """moves files from remote aws instance to s3"""
+    """manages files by asynchronously spawning subprocesses with asyncio"""
 
-    def __init__(self, fname, s3link):
-        cmdstring = 'aws s3 mv {fname} {s3link}'.format(fname=fname, s3link=s3link)
-        cmd = shlex.split(cmdstring)
-        self._pipe = Popen(cmd)
+    def __init__(self, *args):
+        for cmdstring in args:
+            cmd = shlex.split(cmdstring)
+            self._pipe = Popen(cmd)
 
     def get_pipe(self):
         return self._pipe
