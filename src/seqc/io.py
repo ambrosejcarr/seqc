@@ -8,6 +8,7 @@ from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
 import boto3
+import asyncio
 import logging
 import requests
 import seqc
@@ -578,13 +579,31 @@ class BaseSpace:
 class FileManager:
     """manages files by asynchronously spawning subprocesses with asyncio"""
 
-    def __init__(self, *args):
-        for cmdstring in args:
-            cmd = shlex.split(cmdstring)
+    def __init__(self, *args, chain: bool):
+        """
+        :param args: each arg is one command to be executed
+        :param chain: True if multiple subprocesses need to be chained
+        """
+        if not chain:
+            cmd = shlex.split(args[0])
             self._pipe = Popen(cmd)
+        else:
+            for cmdstring in args:
+                cmd = shlex.split(cmdstring)
+                # todo: make into some sort of list of asyncio pipes or something
+                self._pipe = Popen(cmd)
+        self._chain = chain
 
     def get_pipe(self):
         return self._pipe
+
+    @asyncio.coroutine
+    def do_work(self):
+        pass
+
+    def run_asynchronous(self):
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.do_work())
 
     def check_running(self):
         msg = self._pipe.poll()
