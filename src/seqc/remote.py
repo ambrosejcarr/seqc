@@ -111,7 +111,7 @@ class ClusterServer(object):
         config.read(config_file)
         template = aws_instance
         self.keypath = str(os.path.expanduser(config['key']['path_to_rsa_key']))
-        self.keyname = self.keypath.split('/')[-1].strip('.rsa')
+        self.keyname = self.keypath.split('/')[-1].split('.')[0]
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
         self.subnet = config['c4']['subnet_id']
@@ -585,7 +585,7 @@ def check_progress():
                          'attempting to run process_experiment.py.')
 
     # obtaining rsa key from configuration file
-    rsa_key = os.path.expanduser(config['key']['rsa_key_location'])
+    rsa_key = os.path.expanduser(config['key']['path_to_rsa_key'])
 
     # checking for instance status
     inst_file = os.path.expanduser('~/.seqc/instance.txt')
