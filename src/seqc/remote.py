@@ -102,7 +102,7 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s already exists! Exiting.' % name)
             sys.exit(2)
 
-    def configure_cluster(self, config_file, aws_instance):
+    def configure_cluster(self, config_file, aws_instance, spot_bid=None):
         """configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
         :param aws_instance: [c3, c4, r3] for config template"""
@@ -118,12 +118,15 @@ class ClusterServer(object):
         self.zone = config[template]['availability_zone']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
-        self.spot_bid = config['SpotBid']['spot_bid']
+        self.spot_bid = str(spot_bid)
 
     def create_spot_cluster(self, volume_size):
         """launches an instance using the specified spot bid
         and cancels bid in case of error or timeout
         :param volume_size: size of volume (GB) to be attached to instance"""
+
+        if self.spot_bid is None:
+            raise RuntimeError('Cannot create a spot instance without a spot_bid value')
 
         client = boto3.client('ec2')
         seqc.log.notify('Launching cluster with volume size {volume_size} GB at spot '
@@ -211,7 +214,7 @@ class ClusterServer(object):
                 raise SpotBidError('Please adjust your spot bid request.')
             seqc.log.notify('The current status of your request is: {status}'.format(
                 status=status_code))
-            time.sleep(10)
+            time.sleep(15)
             spot_resp = client.describe_spot_instance_requests()[
                 'SpotInstanceRequests'][idx]
             i += 1
@@ -435,17 +438,17 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self, volsize, aws_instance):
+    def cluster_setup(self, volsize, aws_instance, spot_bid=None):
         """creates a new cluster, attaches the appropriate volume, configures
         :param volsize: size (GB) of volume to be attached
         :param aws_instance: instance type (c3, c4, r3)"""
 
         config_file = os.path.expanduser('~/.seqc/config')
-        self.configure_cluster(config_file, aws_instance)
+        self.configure_cluster(config_file, aws_instance, spot_bid)
         self.create_security_group()
 
         # modified cluster creation for spot bid
-        if self.spot_bid != 'None':
+        if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
             self.connect_server()
             self.allocate_space(True, volsize)
