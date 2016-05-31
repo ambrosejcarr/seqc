@@ -105,14 +105,14 @@ class GraphDiffusion:
         # iterative
         for i in range(max_iters):
 
-            S = np.ravel(S.sum(axis=1)).toarray()
+            S = np.ravel(W.sum(axis=1))
             err = np.max(np.absolute(1.0 - np.max(S)), np.absolute(1.0 - np.min(S)))
 
             if err < abs_error:
                 break
 
             D = csr_matrix((np.divide(1, np.sqrt(S)), (range(N), range(N))), shape=[N, N])
-            p = S.dot(p)
+            p *= S
             W = D.dot(W).dot(D)
 
         # iron out numerical errors
