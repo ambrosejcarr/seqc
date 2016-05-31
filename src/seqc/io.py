@@ -576,7 +576,7 @@ class BaseSpace:
         return barcode_fastq, genomic_fastq
 
 
-class FileManager:
+class ProcessManager:
     """manages files by asynchronously spawning subprocesses with asyncio"""
 
     def __init__(self, *args, chain: bool):
@@ -584,35 +584,58 @@ class FileManager:
         :param args: each arg is one command to be executed
         :param chain: True if multiple subprocesses need to be chained
         """
-        if not chain:
+        self.args = [tuple(shlex.split(x)) for x in args]
+        self.chain = chain
+        if not self.chain:
             cmd = shlex.split(args[0])
-            self._pipe = Popen(cmd)
+            self._process = Popen(cmd, stderr=PIPE)
+            # todo: read pipe at the very end
+            # re-implement communicate() in pieces so that we can check for stderr
         else:
-            for cmdstring in args:
-                cmd = shlex.split(cmdstring)
-                # todo: make into some sort of list of asyncio pipes or something
-                self._pipe = Popen(cmd)
-        self._chain = chain
+            self._process = self.call_in_background()
+            # fix this to return something we can check
 
-    def get_pipe(self):
-        return self._pipe
+    @property
+    def process(self):
+        return self._process
+        # todo: implement a pipe or something that we can return
 
     @asyncio.coroutine
-    def do_work(self):
-        pass
+    def run_asynchronous_chain(self):
+        # todo: make sure this is non-blocking in process_experiment.py
+        cmd1, cmd2 = self.args
+        proc1 = yield from asyncio.create_subprocess_exec(*cmd1,
+                                                          stderr=asyncio.subprocess.PIPE)
+        out, err = yield from proc1.communicate()
+        if err:
+            raise ChildProcessError(err)
 
-    def run_asynchronous(self):
+        proc2 = yield from asyncio.create_subprocess_exec(*cmd2,
+                                                          stderr=asyncio.subprocess.PIPE)
+        out2, err2 = yield from proc2.communicate()
+        if err2:
+            raise ChildProcessError(err)
+        print('finished running!')
+
+    def run_loop(self):
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.do_work())
+        loop.run_until_complete(self.run_asynchronous_chain())
+        return loop
 
-    def check_running(self):
-        msg = self._pipe.poll()
-        if msg is None:
-            return True
-        return False
+    # copied code from online
+    def schedule_coroutine(self, target, loop=None):
+        if asyncio.iscoroutine(target):
+            return asyncio.ensure_future(target, loop=loop)
+
+    # ticker1 = schedule_coroutine(ticker())
+    @asyncio.coroutine
+    def call_in_background(self, executor=None):
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(executor, self.run_asynchronous_chain())
+        return loop
 
     def kill_process(self):
         try:
-            self._pipe.terminate()
+            self._process.terminate()
         except ProcessLookupError:
             seqc.log.notify('Process not found, unsuccessful attempt to terminate.')

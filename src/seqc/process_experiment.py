@@ -558,17 +558,16 @@ def main(args: list = None):
 
             # deleting genomic/barcode fastq files after merged.fastq creation
             seqc.log.info('Removing original fastq file for memory management.')
-            n_processes -= 1  # todo: is this worth adding?
+            n_processes -= 1
             delete_fastq = ' '.join(['rm'] + args.genomic_fastq + args.barcode_fastq)
-            seqc.io.FileManager(delete_fastq, chain=False)
+            seqc.io.ProcessManager(delete_fastq, chain=False)
 
-            # todo: could pigz here if you can duplicate the merged.fastq.gz file
-            # todo: start asynchronous chaining here with aws s3 mv
-            # todo: # used processes: 2
-            cmd1 = "pigz --best -k {fname}".format(fname=args.merged_fastq)
-            pigz_proc = seqc.io.FileManager(cmd1).get_pipe()
-            pigz_proc.communicate()
-            # todo: wait() until this is done
+            # wait until merged fastq file is zipped before alignment
+            pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
+            pigz_proc = seqc.io.ProcessManager(pigz_zip, chain=False).process
+            out, err = pigz_proc.communicate()
+            if err:
+                raise ChildProcessError(err)
 
         if align:
             seqc.log.info('Aligning merged fastq records.')
@@ -576,9 +575,11 @@ def main(args: list = None):
                 input_data = 'merged'
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
                 if args.merged_fastq.endswith('.gz'):
-                    cmd = 'gunzip {fname}'.format(fname=args.merged_fastq)
-                    gunzip_proc = seqc.io.FileManager(cmd).get_pipe()
-                    gunzip_proc.communicate()
+                    cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
+                    gunzip_proc = seqc.io.ProcessManager(cmd, chain=False).process
+                    out, err = gunzip_proc.communicate()
+                    if err:
+                        raise ChildProcessError(err)
                     args.merged_fastq = args.merged_fastq.strip('.gz')
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
@@ -593,20 +594,16 @@ def main(args: list = None):
                 args.merged_fastq, args.index, n_processes, alignment_directory,
                 **star_kwargs)
 
-            # gzipping file and upload in one Popen session, else remove merged.fastq
+            # Removing or uploading the merged fastq file depending on start point
             if input_data == 'merged':
                 seqc.log.info('Removing merged.fastq file for memory management.')
-                # Popen(['rm', args.merged_fastq])
-                # rm_cmd = 'rm {merged_file}'.format(merged_file=args.merged_fastq)
-                # todo: seqc.io.FileManager(rm_cmd, chain=False)
+                rm_cmd = 'rm {merged_file}'.format(merged_file=args.merged_fastq)
+                seqc.io.ProcessManager(rm_cmd, chain=False)
             else:
                 seqc.log.info('Gzipping merged fastq file and uploading to S3.')
-                # cmd1 = 'pigz ' + args.merged_fastq
-                # todo: immediately wait() here until pigz finishes compressing
-                cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=args.merged_fastq+'.gz',
-                                                           s3link=aws_upload_key)
-                manage_merged = seqc.io.FileManager(cmd1, cmd2, chain=True)
-                # manage_merged = Popen("{}; {}".format(cmd1, cmd2), shell=True)
+                merge_upload = 'aws s3 mv {fname} {s3link}'.format(
+                    fname=args.merged_fastq+'.gz', s3link=aws_upload_key)
+                manage_merged = seqc.io.ProcessManager(merge_upload, chain=False).process
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -622,19 +619,19 @@ def main(args: list = None):
             # converting sam to bam and uploading to S3, else removing samfile
             if input_data == 'samfile':
                 seqc.log.info('Removing samfile for memory management.')
-                Popen(['rm', args.samfile])
+                rm_samfile = 'rm {fname}'.format(fname=args.samfile)
+                seqc.io.ProcessManager(rm_samfile, chain=False)
             else:
-                # todo asyncio chain these two processes as well
-                # todo: may need to wrap these commands into functions
                 seqc.log.info('Converting samfile to bamfile and uploading to S3.')
                 bamfile = output_dir + '/alignments/Aligned.out.bam'
-                cmd1 = 'samtools view -bS -o {bamfile} {samfile}'.\
+                convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
                     format(bamfile=bamfile, samfile=args.samfile)
-                cmd2 = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
-                                                           s3link=aws_upload_key)
-                manage_samfile = seqc.io.FileManager(cmd1, cmd2, chain=True)
+                upload_bam = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
+                                                                 s3link=aws_upload_key)
+                manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam,
+                                                        chain=True)
+                # todo: should be manage_samfile.process or something for wait()
                 # todo: chained function needs to return a pipe that we can check
-                # manage_samfile = Popen("{}; {}".format(cmd1, cmd2), shell=True)
 
         else:
             if args.read_array.startswith('s3://'):
@@ -674,14 +671,13 @@ def main(args: list = None):
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
             seqc.log.info('Removing .h5 file for memory management.')
-            Popen(['rm', args.read_array])
+            rm_ra = 'rm {fname}'.format(fname=args.read_array)
+            seqc.io.ProcessManager(rm_ra, chain=False)
         else:
             seqc.log.info('Uploading read array to S3.')
-            # todo: may need to wrap this upload function as well
-            cmd = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
-                                                      s3link=aws_upload_key)
-            manage_ra = seqc.io.FileManager(cmd, chain=False).get_pipe()
-            # manage_ra = Popen(shlex.split(cmd))
+            upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+                                                            s3link=aws_upload_key)
+            manage_ra = seqc.io.ProcessManager(upload_ra, chain=False).process
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
