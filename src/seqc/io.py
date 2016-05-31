@@ -1,9 +1,9 @@
 from glob import glob
 import os
 import ftplib
+import shlex
 from functools import partial
 from multiprocessing import Process, Pool
-import configparser
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
@@ -507,6 +507,25 @@ class BaseSpace:
                              % response.status_code)
 
     @classmethod
+    def check_size(cls, sample_id, access_token):
+        """checks size of basespace files to be downloaded.
+         this function will be executed after check_sample(), so
+         the API request will already have returned status code 200"""
+
+        # send request to obtain json metadata
+        response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
+                                sample_id +
+                                '/files?Extensions=gz&access_token=' +
+                                access_token)
+
+        # obtain sizes
+        total_size = 0
+        resp = response.json()['Response']['Items']
+        for item in resp:
+            total_size += item['Size']
+        return total_size
+
+    @classmethod
     def download(
             cls, platform, sample_id: str, dest_path: str, access_token: str=None
     ) -> (list, list):
@@ -554,3 +573,27 @@ class BaseSpace:
             barcode_fastq = [dest_path + f for f in filenames if '_R2_' in f]
 
         return barcode_fastq, genomic_fastq
+
+
+class FileManager:
+    """moves files from remote aws instance to s3"""
+
+    def __init__(self, fname, s3link):
+        cmdstring = 'aws s3 mv {fname} {s3link}'.format(fname=fname, s3link=s3link)
+        cmd = shlex.split(cmdstring)
+        self._pipe = Popen(cmd)
+
+    def get_pipe(self):
+        return self._pipe
+
+    def check_running(self):
+        msg = self._pipe.poll()
+        if msg is None:
+            return True
+        return False
+
+    def kill_process(self):
+        try:
+            self._pipe.terminate()
+        except ProcessLookupError:
+            seqc.log.notify('Process not found, unsuccessful attempt to terminate.')

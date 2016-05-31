@@ -4,8 +4,7 @@ aws_secret_access_key = None
 aws_region_name = us-east-1c
 
 [key]
-rsa_key_location = None
-rsa_key_name = None
+path_to_rsa_key = None
 
 [c3]
 cluster_size = 1
@@ -24,10 +23,6 @@ availability_zone = us-east-1c
 cluster_size = 1
 node_image_id = ami-75897e18
 node_instance_type = r3.8xlarge
-availability_zone = us-east-1c
-
-[raid]
-n_tb = 2
 availability_zone = us-east-1c
 
 [BaseSpaceToken]
