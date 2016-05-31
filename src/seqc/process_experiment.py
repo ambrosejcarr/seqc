@@ -575,7 +575,7 @@ def main(args: list = None):
                     gunzip_cmd = 'gunzip ' + args.merged_fastq
                     full_file = Popen(gunzip_cmd.split())
                     full_file.communicate()
-                    args.merged_fastq = args.merged_fastq.strip('.gz')
+                    args.merged_fastq = args.merged_fastq.split('.gz')[0]
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
             *base_directory, stem = args.output_stem.split('/')
