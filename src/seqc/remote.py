@@ -110,8 +110,8 @@ class ClusterServer(object):
         config = configparser.ConfigParser()
         config.read(config_file)
         template = aws_instance
-        self.keyname = config['key']['rsa_key_name']
-        self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
+        self.keypath = str(os.path.expanduser(config['key']['path_to_rsa_key']))
+        self.keyname = self.keypath.split('/')[-1].strip('.rsa')
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
         self.subnet = config['c4']['subnet_id']
