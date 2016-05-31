@@ -118,7 +118,7 @@ class ClusterServer(object):
         self.zone = config[template]['availability_zone']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
-        self.spot_bid = str(spot_bid)
+        self.spot_bid = spot_bid
 
     def create_spot_cluster(self, volume_size):
         """launches an instance using the specified spot bid
@@ -137,7 +137,7 @@ class ClusterServer(object):
                 raise ValueError('A subnet-id must be specified for R3/C4 instances!')
             resp = client.request_spot_instances(
                 DryRun=False,
-                SpotPrice=self.spot_bid,
+                SpotPrice=str(self.spot_bid),
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
@@ -162,7 +162,7 @@ class ClusterServer(object):
         elif 'c3' in self.inst_type:
             resp = client.request_spot_instances(
                 DryRun=False,
-                SpotPrice=self.spot_bid,
+                SpotPrice=str(self.spot_bid),
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
@@ -440,6 +440,7 @@ class ClusterServer(object):
 
     def cluster_setup(self, volsize, aws_instance, spot_bid=None):
         """creates a new cluster, attaches the appropriate volume, configures
+        :param spot_bid:
         :param volsize: size (GB) of volume to be attached
         :param aws_instance: instance type (c3, c4, r3)"""
 
