@@ -445,6 +445,8 @@ def main(args: list = None):
                 aws_upload_key += '/'
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
+        else:
+            pass # todo watch for aws_upload_key UnboundLocalError
 
         # download data if necessary
         if args.basespace:
