@@ -4,8 +4,7 @@ aws_secret_access_key = None
 aws_region_name = us-east-1c
 
 [key]
-rsa_key_location = None
-rsa_key_name = None
+path_to_rsa_key = None
 
 [c3]
 cluster_size = 1
