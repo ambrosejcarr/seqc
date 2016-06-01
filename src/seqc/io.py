@@ -619,6 +619,10 @@ class ProcessManager:
         for proc in self.processes:
             out, err = proc.communicate()
             if err:
-                raise ChildProcessError(err)
+                # samtools has non-error message when converting sam to bam
+                if 'SAM header is present' in err.decode():
+                    pass
+                else:
+                    raise ChildProcessError(err)
 
 

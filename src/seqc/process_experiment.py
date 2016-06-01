@@ -562,6 +562,7 @@ def main(args: list = None):
             seqc.io.ProcessManager(delete_fastq).run_all()
 
             # wait until merged fastq file is zipped before alignment
+            seqc.log.info('Gzipping merged fastq file.')
             pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
             pigz_proc = seqc.io.ProcessManager(pigz_zip)
             pigz_proc.run_all()
@@ -597,7 +598,7 @@ def main(args: list = None):
                 rm_cmd = 'rm {merged_file}'.format(merged_file=args.merged_fastq)
                 seqc.io.ProcessManager(rm_cmd).run_all()
             else:
-                seqc.log.info('Gzipping merged fastq file and uploading to S3.')
+                seqc.log.info('Uploading gzipped merged fastq file to S3.')
                 merge_upload = 'aws s3 mv {fname} {s3link}'.format(
                     fname=args.merged_fastq+'.gz', s3link=aws_upload_key)
                 manage_merged = seqc.io.ProcessManager(merge_upload)
