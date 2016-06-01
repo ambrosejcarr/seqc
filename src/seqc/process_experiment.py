@@ -558,16 +558,14 @@ def main(args: list = None):
 
             # deleting genomic/barcode fastq files after merged.fastq creation
             seqc.log.info('Removing original fastq file for memory management.')
-            n_processes -= 1
             delete_fastq = ' '.join(['rm'] + args.genomic_fastq + args.barcode_fastq)
-            seqc.io.ProcessManager(delete_fastq, chain=False)
+            seqc.io.ProcessManager(delete_fastq).run_all()
 
             # wait until merged fastq file is zipped before alignment
             pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
-            pigz_proc = seqc.io.ProcessManager(pigz_zip, chain=False).process
-            out, err = pigz_proc.communicate()
-            if err:
-                raise ChildProcessError(err)
+            pigz_proc = seqc.io.ProcessManager(pigz_zip)
+            pigz_proc.run_all()
+            pigz_proc.wait_until_complete()  # prevents slowing down STAR alignment
 
         if align:
             seqc.log.info('Aligning merged fastq records.')
@@ -576,10 +574,9 @@ def main(args: list = None):
                 args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
                 if args.merged_fastq.endswith('.gz'):
                     cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
-                    gunzip_proc = seqc.io.ProcessManager(cmd, chain=False).process
-                    out, err = gunzip_proc.communicate()
-                    if err:
-                        raise ChildProcessError(err)
+                    gunzip_proc = seqc.io.ProcessManager(cmd)
+                    gunzip_proc.run_all()
+                    gunzip_proc.wait_until_complete()  # finish before STAR alignment
                     args.merged_fastq = args.merged_fastq.strip('.gz')
                 seqc.log.info('Merged fastq file %s successfully installed from S3.' %
                               args.merged_fastq)
@@ -598,12 +595,13 @@ def main(args: list = None):
             if input_data == 'merged':
                 seqc.log.info('Removing merged.fastq file for memory management.')
                 rm_cmd = 'rm {merged_file}'.format(merged_file=args.merged_fastq)
-                seqc.io.ProcessManager(rm_cmd, chain=False)
+                seqc.io.ProcessManager(rm_cmd).run_all()
             else:
                 seqc.log.info('Gzipping merged fastq file and uploading to S3.')
                 merge_upload = 'aws s3 mv {fname} {s3link}'.format(
                     fname=args.merged_fastq+'.gz', s3link=aws_upload_key)
-                manage_merged = seqc.io.ProcessManager(merge_upload, chain=False)
+                manage_merged = seqc.io.ProcessManager(merge_upload)
+                manage_merged.run_all()
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -620,7 +618,7 @@ def main(args: list = None):
             if input_data == 'samfile':
                 seqc.log.info('Removing samfile for memory management.')
                 rm_samfile = 'rm {fname}'.format(fname=args.samfile)
-                seqc.io.ProcessManager(rm_samfile, chain=False)
+                seqc.io.ProcessManager(rm_samfile).run_all()
             else:
                 seqc.log.info('Converting samfile to bamfile and uploading to S3.')
                 bamfile = output_dir + '/alignments/Aligned.out.bam'
@@ -628,8 +626,8 @@ def main(args: list = None):
                     format(bamfile=bamfile, samfile=args.samfile)
                 upload_bam = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
                                                                  s3link=aws_upload_key)
-                manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam,
-                                                        chain=True)
+                manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam)
+                manage_samfile.run_all()
         else:
             if args.read_array.startswith('s3://'):
                 input_data = 'readarray'
@@ -669,12 +667,13 @@ def main(args: list = None):
         if input_data == 'readarray':
             seqc.log.info('Removing .h5 file for memory management.')
             rm_ra = 'rm {fname}'.format(fname=args.read_array)
-            seqc.io.ProcessManager(rm_ra, chain=False)
+            seqc.io.ProcessManager(rm_ra).run_all()
         else:
             seqc.log.info('Uploading read array to S3.')
             upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
                                                             s3link=aws_upload_key)
-            manage_ra = seqc.io.ProcessManager(upload_ra, chain=False)
+            manage_ra = seqc.io.ProcessManager(upload_ra)
+            manage_ra.run_all()
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
@@ -690,15 +689,15 @@ def main(args: list = None):
             if args.email_status:
                 # make sure that all other files are uploaded before termination
                 if align and input_data != 'merged':
-                    manage_merged.wait()
+                    manage_merged.wait_until_complete()
                     seqc.log.info('Successfully uploaded %s to the specified S3 '
                                   'location "%s"' % (args.merged_fastq, aws_upload_key))
                 if process_samfile:
                     if input_data != 'samfile':
-                        manage_samfile.wait()
+                        manage_samfile.wait_until_complete()
                         seqc.log.info('Successfully uploaded %s to the specified S3 '
                                       'location "%s"' % (args.samfile, aws_upload_key))
-                    manage_ra.wait()
+                    manage_ra.wait_until_complete()
                     seqc.log.info('Successfully uploaded %s to the specified S3 '
                                   'location "%s"' % (args.read_array, aws_upload_key))
 

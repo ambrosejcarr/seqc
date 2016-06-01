@@ -577,68 +577,48 @@ class BaseSpace:
 
 
 class ProcessManager:
-    """manages files by asynchronously spawning subprocesses with asyncio"""
+    """manages processes in the background to prevent blocking main loop"""
 
-    def __init__(self, *args, chain: bool):
+    def __init__(self, *args):
         """
-        :param args: each arg is one command to be executed
-        :param chain: True if multiple subprocesses need to be chained
+        for sequential processes, pass individual args
+        piped processes, pass as one
+
+        (ex) seqc.io.ProcessManager('df -h')
+        seqc.io.ProcessManager('df -h', 'sleep 10')
+        seqc.io.ProcessManager('echo hello world | grep hello')
+
         """
-        self.args = [tuple(shlex.split(x)) for x in args]
-        self.chain = chain
-        if not self.chain:
-            self._async = None
-            cmd = shlex.split(args[0])
-            try:
-                self._process = Popen(cmd, stderr=PIPE)
-            except:
-                raise ChildProcessError('Error while executing "{cmd}"'.format(cmd=cmd))
+        self.args = args
+        self.nproc = len(args)
+        self.processes = []
+
+    @staticmethod
+    def format_processes(proc):
+        if '|' in proc:
+            cmd = [shlex.split(item) for item in proc.split('|')]
         else:
-            self._process = None
-            try:
-                self._async = Process(target=self.run_loop)
-                self._async.start()
-            except:
-                raise ChildProcessError('Error while executing "{cmd}"'.format(
-                    cmd=' '.join(args)))
+            cmd = [shlex.split(proc)]
+        return cmd
 
-    @property
-    def process(self):
-        if not self.chain:
-            return self._process
-        else:
-            return self._async
+    def run_background_processes(self, proc_list):
+        for i, cmd in enumerate(proc_list):
+            if i != 0:
+                proc = Popen(cmd, stdin=self.processes[i-1].stdout, stdout=PIPE,
+                             stderr=PIPE)
+            else:
+                proc = Popen(cmd, stdout=PIPE, stderr=PIPE)
+            self.processes.append(proc)
 
-    @asyncio.coroutine
-    def run_asynchronous_chain(self):
-        cmd1, cmd2 = self.args
-        proc1 = yield from asyncio.create_subprocess_exec(*cmd1,
-                                                          stderr=asyncio.subprocess.PIPE)
-        out, err = yield from proc1.communicate()
-        if err:
-            raise ChildProcessError(err)
+    def run_all(self):
+        for arg in self.args:
+            proc_list = self.format_processes(arg)
+            self.run_background_processes(proc_list)
 
-        proc2 = yield from asyncio.create_subprocess_exec(*cmd2,
-                                                          stderr=asyncio.subprocess.PIPE)
-        out2, err2 = yield from proc2.communicate()
-        if err2:
-            raise ChildProcessError(err)
-
-    def run_loop(self):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.run_asynchronous_chain())
-        loop.close()
-
-    def wait(self):
-        if not self.chain:
-            self._process.wait()
-        else:
-            self._async.join()
-
-    # def call_in_background(self, executor=None):
-    #     loop = asyncio.get_event_loop()
-    #     # run_in_executor returns a future, and if an exception is raised
-    #     # my code is not stopped and i need to check the future
-    #     loop.run_in_executor(executor, self.run_asynchronous_chain)
+    def wait_until_complete(self):
+        for proc in self.processes:
+            out, err = proc.communicate()
+            if err:
+                raise ChildProcessError(err)
 
 
