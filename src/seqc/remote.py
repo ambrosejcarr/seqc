@@ -408,14 +408,10 @@ class ClusterServer(object):
 
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
-            # 'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            # 'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
-            # 'sudo tee {location} > /dev/null'.format(
-            #     location=location, version=seqc.__version__))
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='vol_update'))
+                location=location, version=seqc.__version__))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
@@ -646,26 +642,14 @@ class SSHServer(object):
             try:
                 self.ssh.connect(dns, username='ubuntu', key_filename=self.key)
                 break
-            # except paramiko.AuthenticationException:
-            #     print('autherror')
-            #     print('instance not ready for connection, sleeping...')
-            #     self.instance.reload()
-            #     time.sleep(30)
-            # except paramiko.SSHException:
-            #     print('ssherror')
-            #     print('instance not ready for connection, sleeping...')
-            #     self.instance.reload()
-            #     time.sleep(30)
             except FileNotFoundError:
                 seqc.log.notify('The key %s was not found!' % self.key)
                 sys.exit(2)
-            # except paramiko.BadHostKeyException:
-            #     print('the host key %s could not be verified!' %self.key)
-            #     sys.exit(2)
-            except:
+            except Exception as e:
+                seqc.log.info('Waiting to connect, caught error {e}'.format(e=e))
                 seqc.log.notify('Not yet connected, sleeping (try %d of %d)' % (
                     attempt, max_attempts))
-                time.sleep(4)
+                time.sleep(5)
                 attempt += 1
                 if attempt > max_attempts:
                     raise
