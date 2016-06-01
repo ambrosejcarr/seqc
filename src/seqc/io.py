@@ -587,22 +587,30 @@ class ProcessManager:
         self.args = [tuple(shlex.split(x)) for x in args]
         self.chain = chain
         if not self.chain:
+            self._async = None
             cmd = shlex.split(args[0])
-            self._process = Popen(cmd, stderr=PIPE)
-            # todo: read pipe at the very end
-            # re-implement communicate() in pieces so that we can check for stderr
+            try:
+                self._process = Popen(cmd, stderr=PIPE)
+            except:
+                raise ChildProcessError('Error while executing "{cmd}"'.format(cmd=cmd))
         else:
-            self._process = self.call_in_background()
-            # fix this to return something we can check
+            self._process = None
+            try:
+                self._async = Process(target=self.run_loop)
+                self._async.start()
+            except:
+                raise ChildProcessError('Error while executing "{cmd}"'.format(
+                    cmd=' '.join(args)))
 
     @property
     def process(self):
-        return self._process
-        # todo: implement a pipe or something that we can return
+        if not self.chain:
+            return self._process
+        else:
+            return self._async
 
     @asyncio.coroutine
     def run_asynchronous_chain(self):
-        # todo: make sure this is non-blocking in process_experiment.py
         cmd1, cmd2 = self.args
         proc1 = yield from asyncio.create_subprocess_exec(*cmd1,
                                                           stderr=asyncio.subprocess.PIPE)
@@ -615,27 +623,22 @@ class ProcessManager:
         out2, err2 = yield from proc2.communicate()
         if err2:
             raise ChildProcessError(err)
-        print('finished running!')
 
     def run_loop(self):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.run_asynchronous_chain())
-        return loop
+        loop.close()
 
-    # copied code from online
-    def schedule_coroutine(self, target, loop=None):
-        if asyncio.iscoroutine(target):
-            return asyncio.ensure_future(target, loop=loop)
+    def wait(self):
+        if not self.chain:
+            self._process.wait()
+        else:
+            self._async.join()
 
-    # ticker1 = schedule_coroutine(ticker())
-    @asyncio.coroutine
-    def call_in_background(self, executor=None):
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(executor, self.run_asynchronous_chain())
-        return loop
+    # def call_in_background(self, executor=None):
+    #     loop = asyncio.get_event_loop()
+    #     # run_in_executor returns a future, and if an exception is raised
+    #     # my code is not stopped and i need to check the future
+    #     loop.run_in_executor(executor, self.run_asynchronous_chain)
 
-    def kill_process(self):
-        try:
-            self._process.terminate()
-        except ProcessLookupError:
-            seqc.log.notify('Process not found, unsuccessful attempt to terminate.')
+

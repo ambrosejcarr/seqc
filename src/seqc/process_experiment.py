@@ -603,7 +603,7 @@ def main(args: list = None):
                 seqc.log.info('Gzipping merged fastq file and uploading to S3.')
                 merge_upload = 'aws s3 mv {fname} {s3link}'.format(
                     fname=args.merged_fastq+'.gz', s3link=aws_upload_key)
-                manage_merged = seqc.io.ProcessManager(merge_upload, chain=False).process
+                manage_merged = seqc.io.ProcessManager(merge_upload, chain=False)
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database')
@@ -630,9 +630,6 @@ def main(args: list = None):
                                                                  s3link=aws_upload_key)
                 manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam,
                                                         chain=True)
-                # todo: should be manage_samfile.process or something for wait()
-                # todo: chained function needs to return a pipe that we can check
-
         else:
             if args.read_array.startswith('s3://'):
                 input_data = 'readarray'
@@ -677,7 +674,7 @@ def main(args: list = None):
             seqc.log.info('Uploading read array to S3.')
             upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
                                                             s3link=aws_upload_key)
-            manage_ra = seqc.io.ProcessManager(upload_ra, chain=False).process
+            manage_ra = seqc.io.ProcessManager(upload_ra, chain=False)
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
