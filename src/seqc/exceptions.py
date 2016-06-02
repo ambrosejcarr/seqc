@@ -36,7 +36,7 @@ def boto_errors(ident=None):
         time.sleep(5)
 
 
-def retry_boto_call(func, retries=4):
+def retry_boto_call(func, retries=3):
     """handles unexpected boto3 behavior, retries (default 3x)
     :param func: boto call to be wrapped
     :param retries: total # tries to re-call boto function"""
@@ -44,10 +44,10 @@ def retry_boto_call(func, retries=4):
     @wraps(func)
     def wrapper(*args, **kwargs):
         numtries = retries
-        while numtries > 1:
+        while numtries > 0:
             with boto_errors(func.__name__):
                 return func(*args, **kwargs)
             numtries -= 1
-            if numtries == 1:
+            if numtries == 0:
                 raise BotoCallError('Unresolvable error in boto call, exiting.')
     return wrapper
