@@ -59,7 +59,7 @@ class ClusterServer(object):
                     sys.exit(2)
                 i += 1
 
-    def configure_cluster(self, config_file, aws_instance):
+    def configure_cluster(self, config_file, aws_instance, spot_bid=None):
         """configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
         :param aws_instance: [c3, c4, r3] for config template"""
@@ -67,20 +67,23 @@ class ClusterServer(object):
         config = configparser.ConfigParser()
         config.read(config_file)
         template = aws_instance
-        self.keyname = config['key']['rsa_key_name']
-        self.keypath = os.path.expanduser(config['key']['rsa_key_location'])
+        self.keypath = str(os.path.expanduser(config['key']['path_to_rsa_key']))
+        self.keyname = self.keypath.split('/')[-1].split('.')[0]
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
         self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
-        self.spot_bid = config['SpotBid']['spot_bid']
+        self.spot_bid = spot_bid
 
     def create_spot_cluster(self, volume_size):
         """launches an instance using the specified spot bid
         and cancels bid in case of error or timeout
         :param volume_size: size of volume (GB) to be attached to instance"""
+
+        if self.spot_bid is None:
+            raise RuntimeError('Cannot create a spot instance without a spot_bid value')
 
         client = boto3.client('ec2')
         seqc.log.notify('Launching cluster with volume size {volume_size} GB at spot '
@@ -91,7 +94,7 @@ class ClusterServer(object):
                 raise ValueError('A subnet-id must be specified for R3/C4 instances!')
             resp = client.request_spot_instances(
                 DryRun=False,
-                SpotPrice=self.spot_bid,
+                SpotPrice=str(self.spot_bid),
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
@@ -116,7 +119,7 @@ class ClusterServer(object):
         elif 'c3' in self.inst_type:
             resp = client.request_spot_instances(
                 DryRun=False,
-                SpotPrice=self.spot_bid,
+                SpotPrice=str(self.spot_bid),
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
@@ -168,7 +171,7 @@ class ClusterServer(object):
                 raise seqc.exceptions.SpotBidError('Please adjust your spot bid request.')
             seqc.log.notify('The current status of your request is: {status}'.format(
                 status=status_code))
-            time.sleep(10)
+            time.sleep(15)
             spot_resp = client.describe_spot_instance_requests()[
                 'SpotInstanceRequests'][idx]
             i += 1
@@ -396,17 +399,18 @@ class ClusterServer(object):
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
-    def cluster_setup(self, volsize, aws_instance):
+    def cluster_setup(self, volsize, aws_instance, spot_bid=None):
         """creates a new cluster, attaches the appropriate volume, configures
+        :param spot_bid:
         :param volsize: size (GB) of volume to be attached
         :param aws_instance: instance type (c3, c4, r3)"""
 
         config_file = os.path.expanduser('~/.seqc/config')
-        self.configure_cluster(config_file, aws_instance)
+        self.configure_cluster(config_file, aws_instance, spot_bid)
         self.create_security_group()
 
         # modified cluster creation for spot bid
-        if self.spot_bid != 'None':
+        if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
             self.connect_server()
             self.allocate_space(True, volsize)
@@ -543,7 +547,7 @@ def check_progress():
                          'attempting to run process_experiment.py.')
 
     # obtaining rsa key from configuration file
-    rsa_key = os.path.expanduser(config['key']['rsa_key_location'])
+    rsa_key = os.path.expanduser(config['key']['path_to_rsa_key'])
 
     # checking for instance status
     inst_file = os.path.expanduser('~/.seqc/instance.txt')

@@ -118,6 +118,11 @@ def parse_args(args):
                         'be provided as a white-space separated list.')
     r.add_argument('--instance-type', default='c4',
                    help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
+    r.add_argument('--spot-bid', type=float, default=None,
+                   help='Amount to bid for a spot instance. Default=None (will reserve a '
+                        'non-spot instance). WARNING: using spot instances will cause '
+                        'your instance to terminate if instance prices exceed your spot '
+                        'bid during runtime.')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -128,7 +133,7 @@ def parse_args(args):
         raise
 
 
-def run_remote(stem: str, volsize: int, aws_instance:str) -> None:
+def run_remote(stem: str, volsize: int, aws_instance:str, spot_bid=None) -> None:
     """
     :param stem: output_prefix from main()
     :param volsize: estimated volume needed for run
@@ -409,15 +414,11 @@ def main(args: list = None):
             raise ConfigurationError('Please run ./configure (found in the seqc '
                                      'directory) before attempting to run '
                                      'process_experiment.py.')
-        check_spot = config['SpotBid']['spot_bid']
-        if check_spot != 'None':
-            try:
-                value = float(check_spot)
-                if value < 0:
-                    raise ValueError
-            except ValueError:
-                seqc.log.notify('"{spot}" is not a valid spot bid! Exiting.'.format(
-                    spot=check_spot))
+
+        if args.spot_bid is not None:
+            if args.spot_bid < 0:
+                seqc.log.notify('"{bid}" must be a non-negative float! Exiting.'.format(
+                    spot=args.spot_bid))
                 sys.exit(2)
 
         # extract basespace token and make sure args.index is a directory
@@ -445,7 +446,8 @@ def main(args: list = None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            run_remote(args.output_stem, total_size, args.instance_type)
+            run_remote(args.output_stem, total_size, args.instance_type,
+                       spot_bid=args.spot_bid)
             sys.exit()
 
         if args.aws:
@@ -454,6 +456,8 @@ def main(args: list = None):
                 aws_upload_key += '/'
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
+        else:
+            pass # todo watch for aws_upload_key UnboundLocalError
 
         # download data if necessary
         if args.basespace:
