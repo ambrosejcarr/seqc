@@ -629,7 +629,11 @@ class ProcessManager:
         fcntl.fcntl(proc.stderr.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
         error_msg = proc.stderr.read()
         if error_msg:
-            raise ChildProcessError(error_msg)
+            # catch "error" from samtools in order to prevent premature exiting
+            if 'SAM header is present' in error_msg.decode():
+                pass
+            else:
+                raise ChildProcessError(error_msg)
 
     def run_background_processes(self, proc_list: list):
         """
@@ -669,8 +673,4 @@ class ProcessManager:
         for proc in self.processes:
             out, err = proc.communicate()
             if err:
-                # catch "error" from samtools in order to prevent premature exiting
-                if 'SAM header is present' in err.decode():
-                    pass
-                else:
-                    raise ChildProcessError(err)
+                raise ChildProcessError(err)
