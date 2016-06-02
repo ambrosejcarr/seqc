@@ -37,6 +37,7 @@ setup(name='seqc',
           'intervaltree',
           'matplotlib',
           'tinydb',
+          'tables',
           'seaborn',
           'fastcluster',
           'statsmodels',
@@ -46,7 +47,6 @@ setup(name='seqc',
       scripts=['src/seqc/process_experiment.py'],
       extras_require={
           'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
-          'HDF5': ['tables'],
           'TEST': ['nose2']
       }
       )
