@@ -428,6 +428,8 @@ def main(args: list = None):
 
         if not args.aws:  # if args.aws, arguments would already have passed checks.
             total_size = check_arguments(args, basespace_token)
+        else:
+            total_size = None
 
         # check whether output is an s3 or local directory, split output_stem
         if args.output_stem.endswith('/'):
@@ -457,7 +459,8 @@ def main(args: list = None):
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
         else:
-            pass # todo watch for aws_upload_key UnboundLocalError
+            # todo: need to fix usage of aws_upload_key for local runs
+            aws_upload_key = None
 
         # download data if necessary
         if args.basespace:
