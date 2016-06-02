@@ -275,24 +275,15 @@ def create_phix_annotation(phix_fasta):
         for i, (s, e) in enumerate(zip(transcript_starts, transcript_ends)):
             # add forward strand gene
             gene = [chromosome, source, 'gene', str(s), str(e), score, '+', frame,
-                    gene_meta.format(NUM=str(i) * 9, NAME=i)]
+                    gene_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
             f.write('\t'.join(gene) + '\n')
             exon = [chromosome, source, 'exon', str(s), str(e), score, '+', frame,
-                    exon_meta.format(NUM=str(i) * 9, NAME=i)]
+                    exon_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
             f.write('\t'.join(exon) + '\n')
             # add reverse strand gene
-            gene = [chromosome, source, 'gene', str(s), str(e), score, '+', frame,
-                    gene_meta.format(NUM=str(i) * 9, NAME=i)]
+            gene = [chromosome, source, 'gene', str(s), str(e), score, '-', frame,
+                    gene_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
             f.write('\t'.join(gene) + '\n')
-            exon = [chromosome, source, 'exon', str(s), str(e), score, '+', frame,
-                    exon_meta.format(NUM=str(i) * 9, NAME=i)]
+            exon = [chromosome, source, 'exon', str(s), str(e), score, '-', frame,
+                    exon_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
             f.write('\t'.join(exon) + '\n')
-
-
-
-
-
-
-
-
-
