@@ -142,36 +142,46 @@ def run_remote(stem: str, volsize: int, aws_instance:str) -> None:
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
     volsize = int(np.ceil(volsize/(1e9)))
-    cluster.cluster_setup(volsize, aws_instance)
-    cluster.serv.connect()
 
-    seqc.log.notify('Beginning remote run.')
-    if stem.endswith('/'):
-        stem = stem[:-1]
-    # writing name of instance in local machine to keep track of instance
-    with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
-        _, run_name = os.path.split(stem)
-        f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
+    # if anything goes wrong during cluster setup, clean up the instance
+    try:
+        cluster.cluster_setup(volsize, aws_instance)
+        cluster.serv.connect()
 
-    # writing name of instance in /data/instance.txt for clean up
-    inst_path = '/data/instance.txt'
-    cluster.serv.exec_command(
-        'echo {instance_id} > {inst_path}'.format(inst_path=inst_path, instance_id=str(
-            cluster.inst_id.instance_id)))
-    cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
-    cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
-                          '/home/ubuntu/.seqc/config')
-    cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
-                              ''.format(cmd=cmd))
+        seqc.log.notify('Beginning remote run.')
+        if stem.endswith('/'):
+            stem = stem[:-1]
+        # writing name of instance in local machine to keep track of instance
+        with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
+            _, run_name = os.path.split(stem)
+            f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
 
-    # check that process_experiment.py is actually running on the cluster
-    out, err = cluster.serv.exec_command('ps aux | grep process_experiment.py')
-    res = ' '.join(out)
-    if '/usr/local/bin/process_experiment.py' not in res:
-        raise ConfigurationError('Error executing SEQC on the cluster!')
-    seqc.log.notify('Terminating local client. Email will be sent when remote run '
-                    'completes. Please use "process_experiment.py --check-progress" to '
-                    'monitor the status of the remote run.')
+        # writing name of instance in /data/instance.txt for clean up
+        inst_path = '/data/instance.txt'
+        cluster.serv.exec_command(
+            'echo {instance_id} > {inst_path}'.format(
+                inst_path=inst_path, instance_id=str(cluster.inst_id.instance_id)))
+        cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
+        cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
+                              '/home/ubuntu/.seqc/config')
+        cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
+                                  ''.format(cmd=cmd))
+
+        # check that process_experiment.py is actually running on the cluster
+        out, err = cluster.serv.exec_command('ps aux | grep process_experiment.py')
+        res = ' '.join(out)
+        if '/usr/local/bin/process_experiment.py' not in res:
+            raise ConfigurationError('Error executing SEQC on the cluster!')
+        seqc.log.notify('Terminating local client. Email will be sent when remote run '
+                        'completes. Please use "process_experiment.py --check-progress" '
+                        'to monitor the status of the remote run.')
+    except Exception as e:
+        seqc.log.notify('Error {e} occurred during cluster setup!'.format(e=e))
+        if cluster.cluster_is_running():
+            seqc.log.notify('Cleaning up instance {id} before exiting...'.format(
+                id=cluster.inst_id.instance_id))
+            seqc.remote.terminate_cluster(cluster.inst_id.instance_id)
+        sys.exit(2)
 
 
 def cluster_cleanup():
@@ -605,7 +615,7 @@ def main(args: list = None):
                 manage_merged.run_all()
 
         if process_samfile:
-            seqc.log.info('Filtering aligned records and constructing record database')
+            seqc.log.info('Filtering aligned records and constructing record database.')
             if args.samfile.startswith('s3://'):
                 input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
