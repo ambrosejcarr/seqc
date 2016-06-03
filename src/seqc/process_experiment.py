@@ -676,6 +676,7 @@ def main(args: list = None):
         if args.min_poly_t is None:
             args.min_poly_t = seqc.filter.estimate_min_poly_t(
                 args.barcode_fastq, args.platform)
+            seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
