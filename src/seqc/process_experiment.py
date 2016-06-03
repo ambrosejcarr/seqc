@@ -567,6 +567,12 @@ def main(args: list = None):
             merge = False
 
         if merge:
+            # estimate min_poly_t if it was not provided
+            if args.min_poly_t is None:
+                args.min_poly_t = seqc.filter.estimate_min_poly_t(
+                    args.barcode_fastq, args.platform)
+                seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
+
             seqc.log.info('Merging genomic reads and barcode annotations.')
             merge_function = getattr(seqc.sequence.merge_functions, args.platform)
             # todo: incorporate fastq_records into loss calculation
@@ -679,11 +685,9 @@ def main(args: list = None):
                 except FileExistsError:
                     pass  # file is already present.
 
-        # estimate min_poly_t if it was not provided
+        # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
-            args.min_poly_t = seqc.filter.estimate_min_poly_t(
-                args.barcode_fastq, args.platform)
-            seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
+            args.min_poly_t = 0
 
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
