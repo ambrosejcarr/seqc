@@ -468,7 +468,8 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     if isinstance(email_body, str):
         email_body = email_body.encode()
 
-    email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
+    email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment, '-s',
+                  'Remote Process', '--', email_address]
     email_process = Popen(email_args, stdin=PIPE)
     email_process.communicate(email_body)
 
@@ -524,11 +525,13 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
                   'run_summary}'.format(run_summary=run_summary))
 
     # email results to user
-    body = ('SEQC RUN COMPLETE.\n\n'
+    body = ('<font face="Courier New, Courier, monospace">'
+            'SEQC RUN COMPLETE.\n\n'
             'The run log has been attached to this email and '
             'results are now available in the S3 location you specified: '
             '"%s"\n\n'
-            'RUN SUMMARY:\n\n%s' % (aws_upload_key, run_summary))
+            'RUN SUMMARY:\n\n%s'
+            '</font>' % (aws_upload_key, run_summary))
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')
