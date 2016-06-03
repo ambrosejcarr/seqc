@@ -57,6 +57,7 @@ class ClusterServer(object):
                 if i > num_retries:
                     seqc.log.notify('Failed to create unique security group! Exiting.')
                     sys.exit(2)
+                time.sleep(2)
                 i += 1
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):

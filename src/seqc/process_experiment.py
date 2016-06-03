@@ -107,8 +107,10 @@ def parse_args(args):
     r.add_argument('--email-status', metavar='E', default=None,
                    help='Email address to receive run summary or errors when running '
                         'remotely.')
-    r.add_argument('--no-terminate', default=False, action='store_true',
-                   help='Do not terminate the EC2 instance after program completes.')
+    r.add_argument('--no-terminate', default='False',
+                   help='Do not terminate the EC2 instance after program completes. If '
+                        '"on-success" is specified, the EC2 instance does not terminate '
+                        'in case the SEQC run throws an error.')
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
     r.add_argument('--star-args', default=None, nargs='*',
@@ -286,6 +288,9 @@ def check_arguments(args, basespace_token: str):
         raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
     if args.instance_type not in ['c3', 'c4', 'r3']:
         raise ValueError('All AWS instance types must be either c3, c4, or r3.')
+    if args.no_terminate not in ['True', 'true', 'False', 'false', 'on-success']:
+        raise ValueError('the --no-terminate flag must be either True, False, '
+                         'or on-success.')
 
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
@@ -407,6 +412,7 @@ def main(args: list = None):
     seqc.log.setup_logger()
     args = parse_args(args)
     try:
+        err_status = False
         seqc.log.args(args)
 
         # read in config file, make sure it exists
@@ -461,7 +467,6 @@ def main(args: list = None):
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
         else:
-            # todo: need to fix usage of aws_upload_key for local runs
             aws_upload_key = None
 
         # download data if necessary
@@ -625,11 +630,12 @@ def main(args: list = None):
                 rm_cmd = 'rm {merged_file}'.format(merged_file=args.merged_fastq)
                 seqc.io.ProcessManager(rm_cmd).run_all()
             else:
-                seqc.log.info('Uploading gzipped merged fastq file to S3.')
-                merge_upload = 'aws s3 mv {fname} {s3link}'.format(
-                    fname=args.merged_fastq+'.gz', s3link=aws_upload_key)
-                manage_merged = seqc.io.ProcessManager(merge_upload)
-                manage_merged.run_all()
+                if aws_upload_key:
+                    seqc.log.info('Uploading gzipped merged fastq file to S3.')
+                    merge_upload = 'aws s3 mv {fname} {s3link}'.format(
+                        fname=args.merged_fastq+'.gz', s3link=aws_upload_key)
+                    manage_merged = seqc.io.ProcessManager(merge_upload)
+                    manage_merged.run_all()
 
         if process_samfile:
             seqc.log.info('Filtering aligned records and constructing record database.')
@@ -648,14 +654,15 @@ def main(args: list = None):
                 rm_samfile = 'rm {fname}'.format(fname=args.samfile)
                 seqc.io.ProcessManager(rm_samfile).run_all()
             else:
-                seqc.log.info('Converting samfile to bamfile and uploading to S3.')
-                bamfile = output_dir + '/alignments/Aligned.out.bam'
-                convert_sam = 'samtools view -bS -o {bamfile} {samfile}'.\
-                    format(bamfile=bamfile, samfile=args.samfile)
-                upload_bam = 'aws s3 mv {fname} {s3link}'.format(fname=bamfile,
-                                                                 s3link=aws_upload_key)
-                manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam)
-                manage_samfile.run_all()
+                if aws_upload_key:
+                    seqc.log.info('Converting samfile to bamfile and uploading to S3.')
+                    bamfile = output_dir + '/alignments/Aligned.out.bam'
+                    convert_sam = 'samtools view -bS -o {bamfile} {samfile}'\
+                        .format(bamfile=bamfile, samfile=args.samfile)
+                    upload_bam = 'aws s3 mv {fname} {s3link}'.format(
+                        fname=bamfile,s3link=aws_upload_key)
+                    manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam)
+                    manage_samfile.run_all()
         else:
             if args.read_array.startswith('s3://'):
                 input_data = 'readarray'
@@ -702,11 +709,12 @@ def main(args: list = None):
             rm_ra = 'rm {fname}'.format(fname=args.read_array)
             seqc.io.ProcessManager(rm_ra).run_all()
         else:
-            seqc.log.info('Uploading read array to S3.')
-            upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
-                                                            s3link=aws_upload_key)
-            manage_ra = seqc.io.ProcessManager(upload_ra)
-            manage_ra.run_all()
+            if aws_upload_key:
+                seqc.log.info('Uploading read array to S3.')
+                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+                                                                s3link=aws_upload_key)
+                manage_ra = seqc.io.ProcessManager(upload_ra)
+                manage_ra.run_all()
 
         seqc.log.info('Creating count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
@@ -719,7 +727,7 @@ def main(args: list = None):
         if args.aws:
             seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
 
-            if args.email_status:
+            if args.email_status and aws_upload_key is not None:
                 # make sure that all other files are uploaded before termination
                 if align and input_data != 'merged':
                     manage_merged.wait_until_complete()
@@ -751,6 +759,7 @@ def main(args: list = None):
 
     except:
         seqc.log.exception()
+        err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
             seqc.remote.email_user(attachment='seqc.log', email_body=email_body,
@@ -760,7 +769,12 @@ def main(args: list = None):
 
     finally:
         if not args.remote:  # Is local
-            if not args.no_terminate:  # terminate = True
+            if args.no_terminate == 'on-success':
+                if err_status:
+                    args.no_terminate = 'True'
+                else:
+                    args.no_terminate = 'False'
+            if args.no_terminate in ['False', 'false']:  # terminate = True
                 fpath = '/data/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
