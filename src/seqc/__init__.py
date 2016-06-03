@@ -8,5 +8,6 @@ from . import stats
 from . import exceptions
 from . import remote
 from . import correct_errors
+from . import filter
 
 from .version import __version__
