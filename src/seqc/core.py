@@ -161,9 +161,11 @@ class ReadArray:
         """
         reader = seqc.alignment.sam.Reader(samfile)
         translator = seqc.sequence.gtf.GeneIntervals(gtf)
+        num_records = 0
 
         data = np.recarray((len(reader),), cls._dtype)
         for i, alignment in enumerate(reader):
+            num_records += 1
             gene = translator.translate(
                     alignment.rname, alignment.strand, alignment.pos)
             if gene is None:
@@ -175,7 +177,7 @@ class ReadArray:
             dust_score = alignment.dust_low_complexity_score
             data[i] = (pool, cell, rmt, n_poly_t, dust_score, gene, alignment.pos)
 
-        return cls(data)
+        return cls(data), num_records
 
     def reads_passing_filters(self, min_poly_t: int, max_dust_score: int):
         """

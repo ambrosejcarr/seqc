@@ -430,6 +430,8 @@ def main(args: list = None):
 
         if not args.aws:  # if args.aws, arguments would already have passed checks.
             total_size = check_arguments(args, basespace_token)
+        else:
+            total_size = None
 
         # check whether output is an s3 or local directory, split output_stem
         if args.output_stem.endswith('/'):
@@ -459,7 +461,8 @@ def main(args: list = None):
             args.output_stem = '/data/' + output_prefix
             output_dir, output_prefix = os.path.split(args.output_stem)
         else:
-            pass # todo watch for aws_upload_key UnboundLocalError
+            # todo: need to fix usage of aws_upload_key for local runs
+            aws_upload_key = None
 
         # download data if necessary
         if args.basespace:
@@ -550,6 +553,8 @@ def main(args: list = None):
 
         # determine where the script should start:
         input_data = 'start'
+        fastq_records = None
+        sam_records = None
         merge = True
         align = True
         process_samfile = True
@@ -564,9 +569,15 @@ def main(args: list = None):
             merge = False
 
         if merge:
+            # estimate min_poly_t if it was not provided
+            if args.min_poly_t is None:
+                args.min_poly_t = seqc.filter.estimate_min_poly_t(
+                    args.barcode_fastq, args.platform)
+                seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
+
             seqc.log.info('Merging genomic reads and barcode annotations.')
             merge_function = getattr(seqc.sequence.merge_functions, args.platform)
-            args.merged_fastq = seqc.sequence.fastq.merge_paired(
+            args.merged_fastq, fastq_records = seqc.sequence.fastq.merge_paired(
                 merge_function=merge_function,
                 fout=args.output_stem + '_merged.fastq',
                 genomic=args.genomic_fastq,
@@ -626,7 +637,7 @@ def main(args: list = None):
                 input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-            ra = seqc.core.ReadArray.from_samfile(
+            ra, sam_records = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             args.read_array = args.output_stem + '.h5'
             ra.save(args.read_array)
@@ -672,16 +683,15 @@ def main(args: list = None):
                 except FileExistsError:
                     pass  # file is already present.
 
-        # estimate min_poly_t if it was not provided
+        # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
-            args.min_poly_t = seqc.filter.estimate_min_poly_t(
-                args.barcode_fastq, args.platform)
-            seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
+            args.min_poly_t = 0
 
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
-        cell_counts, _ = correct_errors(
+        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
+        cell_counts, _, summary = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
@@ -725,8 +735,19 @@ def main(args: list = None):
                                   'location "%s"' % (args.read_array, aws_upload_key))
 
                 # upload count matrix and alignment summary at the very end
+                if summary:
+                    if fastq_records:
+                        summary['n_fastq'] = fastq_records
+                    else:
+                        summary['n_fastq'] = 'NA'
+                    if sam_records:
+                        summary['n_sam'] = sam_records
+                    else:
+                        summary['n_sam'] = 'NA'
+                # todo: run summary will not be reported if n_fastq or n_sam = NA
                 seqc.remote.upload_results(
-                    args.output_stem, args.email_status, aws_upload_key, input_data)
+                    args.output_stem, args.email_status, aws_upload_key, input_data,
+                    summary)
 
     except:
         seqc.log.exception()

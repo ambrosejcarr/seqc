@@ -156,16 +156,19 @@ def merge_paired(merge_function, fout, genomic, barcode=None):
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
     genomic = Reader(genomic)
+    num_records = 0
     if barcode:
         barcode = Reader(barcode)
         with open(fout, 'wb') as f:
             for g, b in zip(genomic, barcode):
+                num_records += 1
                 r = merge_function(g, b)
                 f.write(bytes(r))
     else:
         with open(fout, 'wb') as f:
             for g in genomic:
+                num_records += 1
                 r = merge_function(g)
                 f.write(bytes(r))
 
-    return fout
+    return fout, num_records
