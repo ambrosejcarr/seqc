@@ -4,8 +4,6 @@ import os
 import configparser
 import random
 from subprocess import Popen, PIPE
-from contextlib import contextmanager
-from functools import wraps
 import shutil
 import paramiko
 import boto3
@@ -15,22 +13,6 @@ import logging
 
 # turn off paramiko non-error logging
 logging.getLogger('paramiko').setLevel(logging.CRITICAL)
-
-
-class EC2RuntimeError(Exception):
-    pass
-
-
-class VolumeCreationError(Exception):
-    pass
-
-
-class SpotBidError(Exception):
-    pass
-
-
-class BotoCallError(Exception):
-    pass
 
 
 class ClusterServer(object):
@@ -54,53 +36,28 @@ class ClusterServer(object):
         self.aws_key = None
         self.spot_bid = None
 
-    @contextmanager
-    def boto_errors(self, ident=None):
-        """context manager that traps and retries boto functions
-        to prevent random failures -- usually during batch runs
-        :param ident: name of boto call"""
-
-        try:
-            yield
-        except Exception:
-            if ident:
-                seqc.log.notify('Error in ' + ident + ', retrying in 5s...')
-            else:
-                seqc.log.notify('Error during boto call, retrying in 5s...')
-            time.sleep(5)
-
-    def retry_boto_call(self, func, retries=4):
-        """handles unexpected boto3 behavior, retries (default 3x)
-        :param func: boto call to be wrapped
-        :param retries: total # tries to re-call boto function"""
-
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            numtries = retries
-            while numtries > 1:
-                with self.boto_errors(func.__name__):
-                    return func(*args, **kwargs)
-                numtries -= 1
-                if numtries == 1:
-                    raise BotoCallError('Unresolvable error in boto call, exiting.')
-        return wrapper
-
     def create_security_group(self):
         """Creates a new security group for the cluster"""
 
-        name = 'SEQC-%07d' % random.randint(1, int(1e7))
-        seqc.log.notify('Assigned instance name %s.' % name)
-        try:
-            sg = self.ec2.create_security_group(GroupName=name, Description=name)
-            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
-                                 ToPort=22)
-            sg.authorize_ingress(SourceSecurityGroupName=name)
-            self.sg = sg.id
-
-            seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
-        except ClientError:
-            seqc.log.notify('Instance %s already exists! Exiting.' % name)
-            sys.exit(2)
+        success = False
+        num_retries = 20
+        i = 0
+        while not success:
+            name = 'SEQC-%07d' % random.randint(1, int(1e7))
+            try:
+                sg = self.ec2.create_security_group(GroupName=name, Description=name)
+                seqc.log.notify('Assigned instance name %s.' % name)
+                sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
+                                     ToPort=22)
+                sg.authorize_ingress(SourceSecurityGroupName=name)
+                self.sg = sg.id
+                seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
+                success = True
+            except ClientError:
+                if i > num_retries:
+                    seqc.log.notify('Failed to create unique security group! Exiting.')
+                    sys.exit(2)
+                i += 1
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):
         """configures the newly created cluster according to config
@@ -111,14 +68,14 @@ class ClusterServer(object):
         config.read(config_file)
         template = aws_instance
         self.keypath = str(os.path.expanduser(config['key']['path_to_rsa_key']))
-        self.keyname = self.keypath.split('/')[-1].strip('.rsa')
+        self.keyname = self.keypath.split('/')[-1].split('.')[0]
         self.image_id = config[template]['node_image_id']
         self.inst_type = config[template]['node_instance_type']
         self.subnet = config['c4']['subnet_id']
         self.zone = config[template]['availability_zone']
         self.aws_id = config['aws_info']['aws_access_key_id']
         self.aws_key = config['aws_info']['aws_secret_access_key']
-        self.spot_bid = str(spot_bid)
+        self.spot_bid = spot_bid
 
     def create_spot_cluster(self, volume_size):
         """launches an instance using the specified spot bid
@@ -137,7 +94,7 @@ class ClusterServer(object):
                 raise ValueError('A subnet-id must be specified for R3/C4 instances!')
             resp = client.request_spot_instances(
                 DryRun=False,
-                SpotPrice=self.spot_bid,
+                SpotPrice=str(self.spot_bid),
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
@@ -162,7 +119,7 @@ class ClusterServer(object):
         elif 'c3' in self.inst_type:
             resp = client.request_spot_instances(
                 DryRun=False,
-                SpotPrice=self.spot_bid,
+                SpotPrice=str(self.spot_bid),
                 LaunchSpecification={
                     'ImageId': self.image_id,
                     'KeyName': self.keyname,
@@ -211,7 +168,7 @@ class ClusterServer(object):
             if status_code in bad_status:
                 client.cancel_spot_instance_requests(DryRun=False,
                                                      SpotInstanceRequestIds=[request_id])
-                raise SpotBidError('Please adjust your spot bid request.')
+                raise seqc.exceptions.SpotBidError('Please adjust your spot bid request.')
             seqc.log.notify('The current status of your request is: {status}'.format(
                 status=status_code))
             time.sleep(15)
@@ -221,17 +178,16 @@ class ClusterServer(object):
             if i >= max_tries:
                 client.cancel_spot_instance_requests(DryRun=False,
                                                      SpotInstanceRequestIds=[request_id])
-                raise SpotBidError('Timeout: spot bid could not be fulfilled.')
+                raise seqc.exceptions.SpotBidError('Timeout: spot bid could not be '
+                                                   'fulfilled.')
         # spot request was approved, instance launched
         seqc.log.notify('Spot bid request was successfully fulfilled!')
+        instance_id = spot_resp['InstanceId']
+        self.inst_id = self.ec2.Instance(instance_id)
 
         # sleep for 5s just in case boto call needs a bit more time
         time.sleep(5)
-        instance_id = spot_resp['InstanceId']
-        self.retry_boto_call(self.wait_for_cluster)(instance_id)
-
-        # instance is ready
-        self.inst_id = self.ec2.Instance(instance_id)
+        seqc.exceptions.retry_boto_call(self.wait_for_cluster)(instance_id)
 
     def create_cluster(self):
         """creates a new AWS cluster with specifications from config"""
@@ -256,15 +212,16 @@ class ClusterServer(object):
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
         instance = clust[0]
+        self.inst_id = instance
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
                         instance)
 
         # sleep for 5s just in case boto call needs a bit more time
         time.sleep(5)
-        self.retry_boto_call(self.wait_for_cluster)(instance.id)
-        self.inst_id = instance
+        seqc.exceptions.retry_boto_call(self.wait_for_cluster)(instance.id)
 
-    def wait_for_cluster(self, inst_id: str):
+    @staticmethod
+    def wait_for_cluster(inst_id: str):
         """waits until newly created cluster exists and is running
         changing default waiter settings to avoid waiting forever
         :param inst_id: instance id of AWS cluster"""
@@ -283,10 +240,11 @@ class ClusterServer(object):
         """checks whether a cluster is running"""
 
         if self.inst_id is None:
-            raise EC2RuntimeError('No inst_id assigned. Instance was not successfully '
-                                  'created!')
+            raise seqc.exceptions.EC2RuntimeError('No inst_id assigned. Instance was not '
+                                                  'successfully created!')
         self.inst_id.reload()
-        if self.inst_id.state['Name'] == 'running':
+        if self.inst_id.state['Name'] == 'running' or self.inst_id.state['Name'] == \
+                'pending':
             return True
         else:
             return False
@@ -325,7 +283,7 @@ class ClusterServer(object):
             vol.reload()
             i += 1
             if i >= max_tries:
-                raise VolumeCreationError('Volume could not be created.')
+                raise seqc.exceptions.VolumeCreationError('Volume could not be created.')
             vol_state = vol.state
         seqc.log.notify('Volume %s created successfully.' % vol_id)
         return vol_id
@@ -344,13 +302,14 @@ class ClusterServer(object):
             vol.reload()
             i += 1
             if i >= max_tries:
-                raise VolumeCreationError('Volume could not be attached.')
+                raise seqc.exceptions.VolumeCreationError('Volume could not be attached.')
         resp = self.inst_id.modify_attribute(
             BlockDeviceMappings=[
                 {'DeviceName': dev_id, 'Ebs': {'VolumeId': vol.id,
                                                'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
-            EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
+            seqc.exceptions.EC2RuntimeError('Something went wrong modifying the '
+                                            'attribute of the Volume!')
 
         # wait until volume is attached
         device_info = self.inst_id.block_device_mappings
@@ -367,7 +326,8 @@ class ClusterServer(object):
                 status = device_info[1]['Ebs']['Status']
                 i += 1
                 if i >= max_tries:
-                    raise VolumeCreationError('New volume could not be attached')
+                    raise seqc.exceptions.VolumeCreationError('New volume could not be '
+                                                              'attached')
             except IndexError:
                 i += 1
         seqc.log.notify('Volume %s attached to %s at %s.' %
@@ -381,6 +341,7 @@ class ClusterServer(object):
         if ssh_server.is_connected():
             seqc.log.notify('Connection successful!')
         self.serv = ssh_server
+        return self.inst_id.id
 
     def allocate_space(self, spot: bool, vol_size: int):
         """dynamically allocates the specified amount of space on /data
@@ -430,7 +391,7 @@ class ClusterServer(object):
         if not install_fail:
             seqc.log.notify('SEQC successfully installed in %s.' % folder)
         else:
-            raise EC2RuntimeError('Error installing SEQC on the cluster.')
+            raise seqc.exceptions.EC2RuntimeError('Error installing SEQC on the cluster.')
 
     def set_credentials(self):
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
@@ -440,6 +401,7 @@ class ClusterServer(object):
 
     def cluster_setup(self, volsize, aws_instance, spot_bid=None):
         """creates a new cluster, attaches the appropriate volume, configures
+        :param spot_bid:
         :param volsize: size (GB) of volume to be attached
         :param aws_instance: instance type (c3, c4, r3)"""
 
@@ -460,23 +422,23 @@ class ClusterServer(object):
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
 
-
 def terminate_cluster(instance_id):
     """terminates a running cluster
     :param instance_id: id of instance to terminate"""
 
     ec2 = boto3.resource('ec2')
     instance = ec2.Instance(instance_id)
-
     try:
-        if instance.state['Name'] == 'running':
+        if instance.state['Name'] != 'terminated' and instance.state['Name'] != \
+                'shutting-down':
             instance.terminate()
             instance.wait_until_terminated()
-            seqc.log.notify('termination complete!')
+            seqc.log.notify('Termination of instance {id} complete!'.format(
+                id=instance_id))
         else:
-            seqc.log.notify('instance %s is not running!' % instance_id)
+            seqc.log.notify('Instance {id} is not running!'.format(id=instance_id))
     except ClientError:
-        seqc.log.notify('instance %s does not exist!' % instance_id)
+        seqc.log.notify('Instance {id} does not exist!'.format(id=instance_id))
 
 
 def remove_sg(sg_id):
@@ -546,7 +508,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     bucket, key = seqc.io.S3.split_link(aws_upload_key)
     for item in files:
         try:
-            seqc.io.S3.upload_file(item, bucket, key)
+            seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(item, bucket, key)
             item_name = item.split('/')[-1]
             seqc.log.info('Successfully uploaded %s to the specified S3 location '
                           '"%s%s".' % (item, aws_upload_key, item_name))
@@ -585,7 +547,7 @@ def check_progress():
                          'attempting to run process_experiment.py.')
 
     # obtaining rsa key from configuration file
-    rsa_key = os.path.expanduser(config['key']['rsa_key_location'])
+    rsa_key = os.path.expanduser(config['key']['path_to_rsa_key'])
 
     # checking for instance status
     inst_file = os.path.expanduser('~/.seqc/instance.txt')
@@ -636,6 +598,7 @@ class SSHServer(object):
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
+        # todo: better error handling here!! take care of exceptions
         max_attempts = 25
         attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -644,26 +607,14 @@ class SSHServer(object):
             try:
                 self.ssh.connect(dns, username='ubuntu', key_filename=self.key)
                 break
-            # except paramiko.AuthenticationException:
-            #     print('autherror')
-            #     print('instance not ready for connection, sleeping...')
-            #     self.instance.reload()
-            #     time.sleep(30)
-            # except paramiko.SSHException:
-            #     print('ssherror')
-            #     print('instance not ready for connection, sleeping...')
-            #     self.instance.reload()
-            #     time.sleep(30)
             except FileNotFoundError:
                 seqc.log.notify('The key %s was not found!' % self.key)
                 sys.exit(2)
-            # except paramiko.BadHostKeyException:
-            #     print('the host key %s could not be verified!' %self.key)
-            #     sys.exit(2)
-            except:
+            except Exception as e:
+                seqc.log.info('Waiting to connect, caught error {e}'.format(e=e))
                 seqc.log.notify('Not yet connected, sleeping (try %d of %d)' % (
                     attempt, max_attempts))
-                time.sleep(4)
+                time.sleep(5)
                 attempt += 1
                 if attempt > max_attempts:
                     raise

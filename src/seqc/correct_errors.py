@@ -501,8 +501,6 @@ def mars1_seq(*args, **kwargs):
     :param kwargs:
     :return:
     """
-
-    # todo: replace with actual mars1_seq error correction method
     return in_drop(*args, **kwargs)
 
 
@@ -514,8 +512,6 @@ def mars2_seq(*args, **kwargs):
     :param kwargs:
     :return:
     """
-
-    # todo: replace with actual mars1_seq error correction method
     return in_drop(*args, **kwargs)
 
 
