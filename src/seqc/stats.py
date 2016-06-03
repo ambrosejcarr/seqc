@@ -18,6 +18,11 @@ from tinydb import TinyDB, Query
 from functools import partial
 from collections import namedtuple
 
+# for yields class --> see if necessary
+import seqc
+from subprocess import Popen, PIPE
+import shlex
+
 
 class GraphDiffusion:
     def __init__(self, knn=10, normalization='smarkov', epsilon=1,
@@ -393,6 +398,55 @@ class correlation:
         if df:
             eigv_corr = pd.DataFrame(eigv_corr, index=data.columns, columns=components)
         return eigv_corr
+
+
+class yields:
+
+    @staticmethod
+    def count_lines(infile, fastq: bool):
+        # todo: check if read array row numbers correspond to entries
+        """
+        :param infile: either single file name (string) or list of files
+        :param fastq: True if fastq files are input
+        :return: total number of lines in input
+        """
+        if type(infile) is list and len(infile) > 1:
+            lines = 'wc -l {fnames} | grep total'.format(fnames=' '.join(infile))
+        elif type(infile) is str:
+            lines = 'wc -l {fnames}'.format(fnames=infile)
+        else:
+            raise ValueError('Please provide either one string for a single file'
+                             'or a list of file names as the input!')
+        entries = seqc.io.ProcessManager(lines)
+        entries.run_all()
+        out = entries.wait_until_complete()[-1]
+        num_lines = int(out.split()[0])
+        if fastq:
+            return num_lines/4
+        return num_lines
+
+    # @staticmethod
+    # def calculate_loss(fastq, sam, ra):
+    #     # total number of reads in read array calculated in correct_errors
+    #     # returns total reads in RA, did not pass filters, barcodes are wrong
+    #
+    #     # alignment
+    #     # filtering
+    #     # error correction
+    #
+    #     # obtained the total number of input reads in fastq_records in proc_exp.py
+    #     # obtained the total number of aligned reads in sam_records in proc_exp.py
+    #     # --> todo: need to parse out alignments once we get phiX working
+    #
+    #     # initial starting count
+    #     read_counts = seqc.stats.yields.count_lines(fastq, fastq=True)
+    #     sam_counts = seqc.stats.yields.count_lines(sam, fastq=False)
+    #     # proportion of reads lost during alignment --> junk reads
+    #     align_lost = (read_counts-sam_counts)/read_counts
+    #
+    #     # filtering
+    #
+    #     # error correction
 
 
 class smoothing:

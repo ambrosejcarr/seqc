@@ -371,11 +371,16 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
+        # self.serv.exec_command(
+        #     'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
+        #     'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
+        #     'sudo tee {location} > /dev/null'.format(
+        #         location=location, version=seqc.__version__))
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version=seqc.__version__))
+                location=location, version='yield_stats'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
@@ -485,12 +490,13 @@ def gzip_file(filename):
 
 
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str) -> None:
+                   start_pos: str, readcounts: list) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     :param start_pos: determines where in the script SEQC started
+    :param readcounts: list of read counts calculated during SEQC run
     """
 
     prefix, directory = os.path.split(output_stem)
@@ -519,7 +525,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     # generate a run summary and append to the email
     # exp = seqc.Experiment.from_npz(counts)
     # run_summary = exp.summary(alignment_summary)
-    run_summary = ''
+    run_summary = 'total input fastq reads: {fastq}, total reads aligned in samfile: {' \
+                  'samfile}'.format(fastq=readcounts[0], samfile=readcounts[1])
 
     # get the name of the output file
     seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)

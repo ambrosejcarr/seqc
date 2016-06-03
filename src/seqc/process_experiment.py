@@ -567,7 +567,9 @@ def main(args: list = None):
         if merge:
             seqc.log.info('Merging genomic reads and barcode annotations.')
             merge_function = getattr(seqc.sequence.merge_functions, args.platform)
-            args.merged_fastq = seqc.sequence.fastq.merge_paired(
+            # todo: incorporate fastq_records into loss calculation
+            # fastq_records is the total number of input reads
+            args.merged_fastq, fastq_records = seqc.sequence.fastq.merge_paired(
                 merge_function=merge_function,
                 fout=args.output_stem + '_merged.fastq',
                 genomic=args.genomic_fastq,
@@ -627,7 +629,9 @@ def main(args: list = None):
                 input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-            ra = seqc.core.ReadArray.from_samfile(
+            # todo: incorporate sam_records into loss calculation
+            # sam_records is the total number of entries in sam file
+            ra, sam_records = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             args.read_array = args.output_stem + '.h5'
             ra.save(args.read_array)
@@ -720,8 +724,10 @@ def main(args: list = None):
                                   'location "%s"' % (args.read_array, aws_upload_key))
 
                 # upload count matrix and alignment summary at the very end
+                readcounts = [fastq_records, sam_records]
                 seqc.remote.upload_results(
-                    args.output_stem, args.email_status, aws_upload_key, input_data)
+                    args.output_stem, args.email_status, aws_upload_key, input_data,
+                    readcounts)
 
     except:
         seqc.log.exception()
