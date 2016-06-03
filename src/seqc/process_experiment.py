@@ -71,9 +71,9 @@ def parse_args(args):
                         'processed sam records.')
     i.add_argument('--basespace', metavar='BS',
                    help='BaseSpace sample ID. The string of numbers indicating the id '
-                        'of the BaseSpace sample. (e.g. if the link to the sample is'
+                        'of the BaseSpace sample. (e.g. if the link to the sample is '
                         'https://basespace.illumina.com/sample/34000253/0309, '
-                        '--basespace=34000253.')
+                        'then --basespace would be 34000253.')
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F',
@@ -82,8 +82,9 @@ def parse_args(args):
                    default=1000)
     f.add_argument('--min-poly-t', metavar='T',
                    help='minimum size of poly-T tail that is required for a barcode to '
-                        'be considered a valid record (default=3)',
-                   default=3, type=int)
+                        'be considered a valid record (default=None, automatically '
+                        'estimates the parameter from the sequence length)',
+                   default=None, type=int)
     f.add_argument('--max-dust-score', metavar='D',
                    help='maximum complexity score for a read to be considered valid. '
                         '(default=10, higher scores indicate lower complexity.)')
@@ -133,11 +134,12 @@ def parse_args(args):
         raise
 
 
-def run_remote(stem: str, volsize: int, aws_instance:str, spot_bid=None) -> None:
+def run_remote(stem: str, volsize: int, aws_instance: str, spot_bid=None) -> None:
     """
     :param stem: output_prefix from main()
     :param volsize: estimated volume needed for run
     :param aws_instance: instance type from user
+    :param spot_bid:
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
@@ -146,11 +148,11 @@ def run_remote(stem: str, volsize: int, aws_instance:str, spot_bid=None) -> None
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
-    volsize = int(np.ceil(volsize/(1e9)))
+    volsize = int(np.ceil(volsize/1e9))
 
     # if anything goes wrong during cluster setup, clean up the instance
     try:
-        cluster.cluster_setup(volsize, aws_instance)
+        cluster.cluster_setup(volsize, aws_instance, spot_bid=spot_bid)
         cluster.serv.connect()
 
         seqc.log.notify('Beginning remote run.')
@@ -363,7 +365,7 @@ def check_arguments(args, basespace_token: str):
     return total
 
 
-def s3bucket_download(s3link: str, outdir: str):
+def s3bucket_download(s3link: str, outdir: str) -> list:
     """
     recursively downloads files from given S3 link
     :param s3link: link to s3 bucket that holds files to download
@@ -418,7 +420,7 @@ def main(args: list = None):
         if args.spot_bid is not None:
             if args.spot_bid < 0:
                 seqc.log.notify('"{bid}" must be a non-negative float! Exiting.'.format(
-                    spot=args.spot_bid))
+                    bid=args.spot_bid))
                 sys.exit(2)
 
         # extract basespace token and make sure args.index is a directory
@@ -486,8 +488,8 @@ def main(args: list = None):
                     seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
                     if args.genomic_fastq[0].endswith('/'):
                         # s3 directory specified, download all files recursively
-                        args.genomic_fastq = s3bucket_download(args.genomic_fastq[0],
-                                                           output_dir)
+                        args.genomic_fastq = s3bucket_download(
+                            args.genomic_fastq[0], output_dir)
                     else:
                         # individual s3 links provided, download each fastq file
                         args.genomic_fastq = s3files_download(args.genomic_fastq,
@@ -669,6 +671,11 @@ def main(args: list = None):
                                   ', '.join(map(str, args.barcode_files)))
                 except FileExistsError:
                     pass  # file is already present.
+
+        # estimate min_poly_t if it was not provided
+        if args.min_poly_t is None:
+            args.min_poly_t = seqc.filter.estimate_min_poly_t(
+                args.barcode_fastq, args.platform)
 
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')

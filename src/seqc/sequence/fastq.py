@@ -107,7 +107,6 @@ class Reader(seqc.reader.Reader):
         return zip(*args)
 
     def __iter__(self):
-        iterable = super()
         for record in self.record_grouper(super().__iter__()):
             yield FastqRecord(record)
 
@@ -118,6 +117,27 @@ class Reader(seqc.reader.Reader):
         lines.
         """
         return sum(1 for _ in self) / 4
+
+    def estimate_sequence_length(self):
+        """
+        estimate the sequence length of a fastq file from the first 10000 records of
+        the file.
+
+        :return: int mean, float standard deviation, (np.ndarray: observed lengths,
+          np.ndarray: counts per length)
+        """
+        i = 0
+        records = iter(self)
+        data = np.empty(10000, dtype=int)
+        while i < 10000:
+            try:
+                seq = next(records).sequence
+            except StopIteration:  # for fastq files shorter than 10000 records
+                data = data[:i]
+                break
+            data[i] = len(seq) - 1  # last character is a newline
+            i += 1
+        return np.mean(data), np.std(data), np.unique(data, return_counts=True)
 
 
 def merge_paired(merge_function, fout, genomic, barcode=None):
