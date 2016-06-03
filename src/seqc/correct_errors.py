@@ -5,8 +5,6 @@ import time
 from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import ThreeBit as BinRep
 import numpy as np
-from collections import defaultdict
-import sys
 import seqc
 import random
 
@@ -38,10 +36,8 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     """
     res = {}
     tot = 0
-    filtered = 0
     bc_filter = 0
-
-    N = BinRep._str2bindict['N']
+    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0, 'rmt_N': 0}
 
     dynamic_codes_table_c1 = {}
     dynamic_codes_table_c2 = {}
@@ -49,10 +45,10 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     errors = list(BinRep.ints2int([p[0], p[1]]) for p in permutations(BinRep.bin_nums,
                                                                       r=2))
     error_table = dict(zip(errors, [0] * len(errors)))
-    cor_instance_table = {BinRep._str2bindict['A']:0,
-                          BinRep._str2bindict['C']:0,
-                          BinRep._str2bindict['G']:0,
-                          BinRep._str2bindict['T']:0}
+    cor_instance_table = {BinRep._str2bindict['A']: 0,
+                          BinRep._str2bindict['C']: 0,
+                          BinRep._str2bindict['G']: 0,
+                          BinRep._str2bindict['T']: 0}
 
     # Read the barcodes into lists
     correct_barcodes = []
@@ -69,24 +65,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
 
     for i, v in enumerate(ra.data):
         tot += 1
-        # Apply various pereliminary filters on the data
-        if v['gene'] == 0:
-            filtered += 1
-            continue
-        if v['cell'] == 0:
-            filtered += 1
-            continue
-        if v['rmt'] == 0:
-            filtered += 1
-            continue
-        if v['n_poly_t'] < required_poly_t:
-            filtered += 1
-            continue
-        # if BinRep.contains(int(v['cell']), N):
-        #     filtered += 1
-        #     continue
-        if BinRep.contains(int(v['rmt']), N):
-            filtered += 1
+        if not pass_filter(v, filtered, required_poly_t):
             continue
 
         gene = v['gene']
@@ -97,7 +76,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c1, ed_1, err_l_1, seq_err_1 = dynamic_codes_table_c1[c1]
         except KeyError:
             cor_c1, ed_1 = find_correct_barcode(c1, correct_barcodes[0])
-            seq_err_1 = count_seqeuncer_errors(c1)
+            seq_err_1 = count_sequencer_errors(c1)
             # No point calculating errors on codes with more errors than allowed
             if ed_1 > max_ed:
                 err_l_1 = None
@@ -110,7 +89,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c2, ed_2, err_l_2, seq_err_2 = dynamic_codes_table_c2[c2]
         except KeyError:
             cor_c2, ed_2 = find_correct_barcode(c2, correct_barcodes[1])
-            seq_err_2 = count_seqeuncer_errors(c2)
+            seq_err_2 = count_sequencer_errors(c2)
             # No point calculating errors on codes with more errors than allowed
             if ed_2 > max_ed:
                 err_l_2 = None
@@ -173,10 +152,13 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                           'setting default rate of %f' % (k, default_error_rate))
             err_rate[k] = default_error_rate
 
-    seqc.log.info('Error correction filtering results: total reads: {}; did not pass preliminary filters: {}; cell barcodes are wrong: '
-                  '{}'.format(tot, filtered, bc_filter))
+    filtered['cb_wrong'] = bc_filter
+    seqc.log.info('Error correction filtering results: total reads: {}; '
+                  'did not pass preliminary filters: {}; cell barcodes are wrong: '
+                  '{}'.format(tot, sum(filtered.values()), bc_filter))
     # print('error_table: ', error_table, ' cor_instance_table: ', cor_instance_table)
-    return res, err_rate
+
+    return res, err_rate, filtered
 
 
 # Return the hamming distance between two numbers representing a sequence (3 bits / base)
@@ -196,13 +178,15 @@ def hamming_dist_bin(c1, c2):
         c2 >>= 3
     return d
 
-def count_seqeuncer_errors(c):
-    err=0
-    while c>0:
-        if BinRep._bin2strdict[c&0b111] == 'N':
-            err+=1
-        c>>=3
+
+def count_sequencer_errors(c):
+    err = 0
+    while c > 0:
+        if BinRep._bin2strdict[c & 0b111] == 'N':
+            err += 1
+        c >>= 3
     return err
+
 
 def generate_close_seq(seq):
     """ Return a list of all sequences that are up to 2 hamm distance from seq
@@ -323,11 +307,16 @@ def pass_filter(read, filters_counter, required_poly_t):
     """
     return true if a read pass the filters.
     """
-    #TODO: we need to use this for InDrop as well
+    phix_genes = np.array(range(1, 7)) * 111111111
+    N = BinRep._str2bindict['N']
 
     if read['gene'] == 0:
         filters_counter['gene_0'] += 1
         return False
+    if read['gene'] in phix_genes:
+        filters_counter['phi_x'] += 1
+        return False
+    # todo: collapse cell_0 and rmt_0 into one dictionary key
     if read['cell'] == 0:
         filters_counter['cell_0'] += 1
         return False
@@ -337,10 +326,11 @@ def pass_filter(read, filters_counter, required_poly_t):
     if read['n_poly_t'] < required_poly_t:
         filters_counter['poly_t'] += 1
         return False
-    if BinRep.contains(int(read['rmt']), 'N'):
+    if BinRep.contains(int(read['rmt']), N):
         filters_counter['rmt_N'] += 1
         return False
     return True
+
 
 def group_for_dropseq(ra, required_poly_t=4):
     """
@@ -354,18 +344,17 @@ def group_for_dropseq(ra, required_poly_t=4):
     """
     res = {}
     tot = 0
-    filtered = {'gene_0':0, 'cell_0':0, 'rmt_0':0, 'poly_t':0, 'rmt_N':0}
-
-    N = BinRep._str2bindict['N']
+    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0, 'rmt_N': 0}
 
     for i, v in enumerate(ra.data):
         tot += 1
         if not pass_filter(v, filtered, required_poly_t):
             continue
         
-        # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads, gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
+        # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
+        # gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
         cell = v['cell']
-        cell_header = cell>>3   #we only look at the first 11 bases
+        cell_header = cell >> 3   # we only look at the first 11 bases
         rmt = v['rmt']
         gene = v['gene']
         try:
@@ -379,8 +368,10 @@ def group_for_dropseq(ra, required_poly_t=4):
                 except KeyError:
                     res[cell_header] = {rmt:{(gene,cell):1}}
 
-    seqc.log.info('Error correction filtering results: total reads: {}; did not pass preliminary filters: {}'.format(tot, sum(filtered.values())))
-    return res
+    seqc.log.info('Error correction filtering results: total reads: {}; did not pass '
+                  'preliminary filters: {}'.format(tot, sum(filtered.values())))
+    return res, filtered
+
 
 def drop_seq(alignments_ra, *args, **kwargs):
     """pass-through function that groups the read_array for count matrix construction but
@@ -404,8 +395,9 @@ def drop_seq(alignments_ra, *args, **kwargs):
     
     if 'grouped_ra' in kwargs:
         grouped_ra = kwargs['grouped_ra']
+        summary = None
     else:
-        grouped_ra = group_for_dropseq(alignments_ra)
+        grouped_ra, summary = group_for_dropseq(alignments_ra)
     if 'min_umi_cutoff' in kwargs:
         min_umi_cutoff = kwargs['min_umi_cutoff']
         
@@ -426,7 +418,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
         #Check minimum size of cell group
         if size < min_umi_cutoff:   #if the number of UMI's for this cell don't meet the threshold, we have to retain them
             retain = True
-            small_cell_groups+=1
+            small_cell_groups += 1
             
         else:
             # Check for bias in any single base of the UMI (1-7)
@@ -469,27 +461,30 @@ def drop_seq(alignments_ra, *args, **kwargs):
     #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
     tot_time=time.process_time()-start
     #print('tot time: {}'.format(tot_time))
-    return res_dic, grouped_ra
+    return res_dic, grouped_ra, summary
+
 
 def base_count(seq_dic, umi_len=8):
-    count_mat = {'A':np.zeros(umi_len), 'C':np.zeros(umi_len), 'G':np.zeros(umi_len), 'T':np.zeros(umi_len)}
+    count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
+                 'T': np.zeros(umi_len)}
     for seq in seq_dic:
         for i, base in enumerate(BinRep.bin2str(seq)):
-            if base=='N':
-              continue
+            if base == 'N':
+                continue
             count_mat[base][i] += 1
     tot = len(seq_dic)
     for base in count_mat:
         count_mat[base] = count_mat[base]/tot
     return count_mat
 
+
 #Used for research only
 def count_close_umi(seq_dic):
-    count=0
+    count = 0
     for seq1 in seq_dic:
         for seq2 in seq_dic:
             if hamming_dist_bin(seq1, seq2) <= 1:
-                count+=1
+                count += 1
     return (count-len(seq_dic))/2
 
 
@@ -547,14 +542,14 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
 
     res_time_cnt = {}
     err_correction_res = ''#np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
-    ra_grouped, error_rate = prepare_for_ec(
+    ra_grouped, error_rate, summary = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
             err_correction_mat='')
     grouped_res_dic, error_count = correct_errors(
             alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha,
             singleton_weight=singleton_weight)
 
-    return grouped_res_dic, err_correction_res
+    return grouped_res_dic, err_correction_res, summary
 
 
 def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,
@@ -693,18 +688,18 @@ def convert_to_matrix(counts_dictionary):
 
 
 # For research use only.
-def plot_ed_dist(ra, iter):
-    dist_dic = {'umi':{},'cell':{}}
-    for i in range(iter):
-        read1 = ra.data[random.randint(0,len(ra)-1)]
-        read2 = ra.data[random.randint(0,len(ra)-1)]
-        ed = hamming_dist_bin(read1['rmt'],read2['rmt'])
+def plot_ed_dist(ra, itr):
+    dist_dic = {'umi': {}, 'cell': {}}
+    for i in range(itr):
+        read1 = ra.data[random.randint(0, len(ra)-1)]
+        read2 = ra.data[random.randint(0, len(ra)-1)]
+        ed = hamming_dist_bin(read1['rmt'], read2['rmt'])
         try:
             dist_dic['umi'][ed] += 1
         except KeyError:
             dist_dic['umi'][ed] = 1
             
-        ed = hamming_dist_bin(read1['cell'],read2['cell'])
+        ed = hamming_dist_bin(read1['cell'], read2['cell'])
         try:
             dist_dic['cell'][ed] += 1
         except KeyError:

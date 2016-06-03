@@ -668,9 +668,13 @@ class ProcessManager:
         """
         This function blocks until all processes in self.processes are complete.
         Any error calls are raised to notify the user.
-        :return:
+        :return: list of outputs from each executed process
         """
+        output = []
         for proc in self.processes:
             out, err = proc.communicate()
             if err:
                 raise ChildProcessError(err)
+            out = out.decode().strip()
+            output.append(out)
+        return output
