@@ -680,7 +680,9 @@ def main(args: list = None):
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
-        cell_counts, _ = correct_errors(
+        # todo: for in_drop, obtained summary for correct_errors here
+        # need to go back and look at other error correction methods for summary list
+        cell_counts, _, summary = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
