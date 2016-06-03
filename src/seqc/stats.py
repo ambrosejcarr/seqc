@@ -475,7 +475,7 @@ class yields:
         bad_rmtN = round((rmt_N/n_bad) * 100, 1)
         bad_polyt = round((poly_t/n_bad) * 100, 1)
         prop_bad = round((n_bad/n_fastq) * 100, 1)
-        prop_good = round(100 - prop_bad, 1)
+        prop_good = round((n_good/n_fastq) * 100, 1)
 
         # format output
         output = ('{divide}\nINPUT\n{divide}\n'

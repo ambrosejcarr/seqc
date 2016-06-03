@@ -371,16 +371,11 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
-        # self.serv.exec_command(
-        #     'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-        #     'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
-        #     'sudo tee {location} > /dev/null'.format(
-        #         location=location, version=seqc.__version__))
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='yield_stats'))
+                location=location, version=seqc.__version__))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
@@ -427,6 +422,7 @@ class ClusterServer(object):
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
 
+
 def terminate_cluster(instance_id):
     """terminates a running cluster
     :param instance_id: id of instance to terminate"""
@@ -469,11 +465,9 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     :param attachment: the file location of the attachment to append to the email
     :param email_body: text to send in the body of the email
     :param email_address: the address to which the email should be sent."""
-
-
     if isinstance(email_body, str):
         email_body = email_body.encode()
-    # Note: exceptions used to be logged here, but this is not the right place for it.
+
     email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
     email_process = Popen(email_args, stdin=PIPE)
     email_process.communicate(email_body)
@@ -526,7 +520,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
     # get the name of the output file
     seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
-    seqc.log.info('\nRUN SUMMARY: {run_summary}'.format(run_summary=run_summary))
+    seqc.log.info('A copy of the SEQC run summary can be found below.\nRUN SUMMARY:\n{'
+                  'run_summary}'.format(run_summary=run_summary))
 
     # email results to user
     body = ('SEQC RUN COMPLETE.\n\n'
@@ -602,7 +597,6 @@ class SSHServer(object):
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
-        # todo: better error handling here!! take care of exceptions
         max_attempts = 25
         attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())

@@ -553,6 +553,8 @@ def main(args: list = None):
 
         # determine where the script should start:
         input_data = 'start'
+        fastq_records = None
+        sam_records = None
         merge = True
         align = True
         process_samfile = True
@@ -575,8 +577,6 @@ def main(args: list = None):
 
             seqc.log.info('Merging genomic reads and barcode annotations.')
             merge_function = getattr(seqc.sequence.merge_functions, args.platform)
-            # todo: incorporate fastq_records into loss calculation
-            # fastq_records is the total number of input reads
             args.merged_fastq, fastq_records = seqc.sequence.fastq.merge_paired(
                 merge_function=merge_function,
                 fout=args.output_stem + '_merged.fastq',
@@ -637,8 +637,6 @@ def main(args: list = None):
                 input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-            # todo: may be able to get sam_records from summary
-            # sam_records is the total number of entries in sam file
             ra, sam_records = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
             args.read_array = args.output_stem + '.h5'
