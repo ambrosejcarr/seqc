@@ -152,6 +152,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                           'setting default rate of %f' % (k, default_error_rate))
             err_rate[k] = default_error_rate
 
+    filtered['cb_wrong'] = bc_filter
     seqc.log.info('Error correction filtering results: total reads: {}; '
                   'did not pass preliminary filters: {}; cell barcodes are wrong: '
                   '{}'.format(tot, sum(filtered.values()), bc_filter))

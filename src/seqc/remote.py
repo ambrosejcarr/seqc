@@ -490,13 +490,13 @@ def gzip_file(filename):
 
 
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str, readcounts: list) -> None:
+                   start_pos: str, summary: dict) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     :param start_pos: determines where in the script SEQC started
-    :param readcounts: list of read counts calculated during SEQC run
+    :param summary: dictionary of summary statistics from SEQC run
     """
 
     prefix, directory = os.path.split(output_stem)
@@ -521,22 +521,19 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         except FileNotFoundError:
             seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
 
-    # todo @AJC put this back in
-    # generate a run summary and append to the email
-    # exp = seqc.Experiment.from_npz(counts)
-    # run_summary = exp.summary(alignment_summary)
-    run_summary = 'total input fastq reads: {fastq}, total reads aligned in samfile: {' \
-                  'samfile}'.format(fastq=readcounts[0], samfile=readcounts[1])
+    # generate a run summary and append to seqc.log + email
+    run_summary = seqc.stats.yields.construct_run_summary(summary)
 
     # get the name of the output file
     seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
+    seqc.log.info('\nRUN SUMMARY: {run_summary}'.format(run_summary=run_summary))
 
     # email results to user
     body = ('SEQC RUN COMPLETE.\n\n'
             'The run log has been attached to this email and '
             'results are now available in the S3 location you specified: '
             '"%s"\n\n'
-            'RUN SUMMARY:\n\n%s' % (aws_upload_key, repr(run_summary)))
+            'RUN SUMMARY:\n\n%s' % (aws_upload_key, run_summary))
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')

@@ -425,28 +425,88 @@ class yields:
             return num_lines/4
         return num_lines
 
-    # @staticmethod
-    # def calculate_loss(fastq, sam, ra):
-    #     # total number of reads in read array calculated in correct_errors
-    #     # returns total reads in RA, did not pass filters, barcodes are wrong
-    #
-    #     # alignment
-    #     # filtering
-    #     # error correction
-    #
-    #     # obtained the total number of input reads in fastq_records in proc_exp.py
-    #     # obtained the total number of aligned reads in sam_records in proc_exp.py
-    #     # --> todo: need to parse out alignments once we get phiX working
-    #
-    #     # initial starting count
-    #     read_counts = seqc.stats.yields.count_lines(fastq, fastq=True)
-    #     sam_counts = seqc.stats.yields.count_lines(sam, fastq=False)
-    #     # proportion of reads lost during alignment --> junk reads
-    #     align_lost = (read_counts-sam_counts)/read_counts
-    #
-    #     # filtering
-    #
-    #     # error correction
+    @staticmethod
+    def construct_run_summary(summary: dict):
+        """
+        calculates basic loss statistics and constructs a summary
+        that will be sent to the user after the SEQC run has completed.
+        :param summary: dictionary constructed during error correction
+        :return: output of basic summary statistics
+        """
+        if not summary:
+            return
+
+        # obtain values from summary
+        n_fastq = summary['n_fastq']
+        n_sam = summary['n_sam']
+        genomic = summary['gene_0']
+        phix = summary['phi_x']
+        no_cell = summary['cell_0']
+        no_rmt = summary['rmt_0']
+        rmt_N = summary['rmt_N']
+        poly_t = summary['poly_t']
+        divide = '-' * 40
+
+        # run summary will not be calculated if user started SEQC midway
+        if n_fastq == 'NA' or n_sam == 'NA':
+            return
+
+        # calculate summary statistics
+        prop_al = round((n_sam/n_fastq) * 100, 1)
+        prop_gen = round((genomic/n_sam) * 100, 1)
+        prop_phix = round((phix/n_sam) * 100, 1)
+        lost_al = n_fastq - n_sam
+        prop_un = round(100 - prop_al, 1)
+        n_bad = genomic + phix + no_cell + no_rmt + rmt_N + poly_t
+        # wrong_cb does not apply to drop-seq
+        try:
+            wrong_cb = summary['cb_wrong']
+            n_bad += wrong_cb
+            bad_cb = round((wrong_cb/n_bad) * 100, 1)
+        except KeyError:
+            wrong_cb = 'NA'
+            bad_cb = 'NA'
+        # continue with calculations
+        n_good = n_sam - n_bad
+        bad_gen = round((genomic/n_bad) * 100, 1)
+        bad_phi = round((phix/n_bad) * 100, 1)
+        bad_cell = round((no_cell/n_bad) * 100, 1)
+        bad_rmt = round((no_rmt/n_bad) * 100, 1)
+        bad_rmtN = round((rmt_N/n_bad) * 100, 1)
+        bad_polyt = round((poly_t/n_bad) * 100, 1)
+        prop_bad = round((n_bad/n_fastq) * 100, 1)
+        prop_good = round(100 - prop_bad, 1)
+
+        # format output
+        output = ('{divide}\nINPUT\n{divide}\n'
+                  'Total input reads:\t{n_fastq}\n'
+                  '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
+                  'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
+                  ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
+                  ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+                  '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
+                  'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
+                  'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
+                  'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
+                  'Missing cell barcodes:\t{no_cell} ({bad_cell}%)\n'
+                  'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
+                  'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+                  'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+                  '{divide}\nSUMMARY\n{divide}\n'
+                  'Total retained reads:\t{n_good} ({prop_good}%)\n'
+                  'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
+                  'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
+                  '{divide}\n'
+                  .format(n_fastq=n_fastq, n_sam=n_sam, genomic=genomic,
+                          phi_x=phix, no_cell=no_cell, wrong_cb=wrong_cb,
+                          no_rmt=no_rmt, rmt_N=rmt_N, poly_t=poly_t, divide=divide,
+                          prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix,
+                          lost_al=lost_al, n_bad=n_bad, n_good=n_good,
+                          prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
+                          bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
+                          bad_cell=bad_cell, bad_rmt=bad_rmt, bad_rmtN=bad_rmtN,
+                          bad_polyt=bad_polyt))
+        return output
 
 
 class smoothing:

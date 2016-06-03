@@ -629,7 +629,7 @@ def main(args: list = None):
                 input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-            # todo: incorporate sam_records into loss calculation
+            # todo: may be able to get sam_records from summary
             # sam_records is the total number of entries in sam file
             ra, sam_records = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
@@ -680,8 +680,7 @@ def main(args: list = None):
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
-        # todo: for in_drop, obtained summary for correct_errors here
-        # need to go back and look at other error correction methods for summary list
+        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
         cell_counts, _, summary = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
@@ -726,10 +725,19 @@ def main(args: list = None):
                                   'location "%s"' % (args.read_array, aws_upload_key))
 
                 # upload count matrix and alignment summary at the very end
-                readcounts = [fastq_records, sam_records]
+                if summary:
+                    if fastq_records:
+                        summary['n_fastq'] = fastq_records
+                    else:
+                        summary['n_fastq'] = 'NA'
+                    if sam_records:
+                        summary['n_sam'] = sam_records
+                    else:
+                        summary['n_sam'] = 'NA'
+                # todo: run summary will not be reported if n_fastq or n_sam = NA
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data,
-                    readcounts)
+                    summary)
 
     except:
         seqc.log.exception()
