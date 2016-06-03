@@ -229,3 +229,61 @@ class Reader(seqc.reader.Reader):
 
         # yield the final gene record
         yield gene
+
+
+def create_phix_annotation(phix_fasta):
+    """
+    Several tools in this package require ENSEMBL formatting for .gtf files. However,
+    the PhiX genome provided by NCBI does not come with a .gtf file. This tool creates
+    a companion gtf file for the phiX fasta file
+
+    :param phix_fasta: str, name of the phix fasta file.
+    """
+    import numpy as np
+
+    with open(phix_fasta, 'r') as f:
+        header = f.readline()  # phiX has only one chromosome
+        data = f.readlines()
+
+    # concatenate data
+    contig = ''
+    for line in data:
+        contig += line.strip()
+
+    # get chromosome
+    chromosome = header.split()[0].strip('>')
+    source = 'seqc'
+    score = '.'
+    strand = '+'
+    frame = '.'
+    gene_meta = 'gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}";'
+    exon_meta = ('gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}"; '
+                 'exon_id "PHIX{NAME!s}";')
+
+    # SEQC truncates genes at 1000b from the end of each transcript. However, phiX DNA
+    # that is spiked into an experiment is not subject to library construction. Thus,
+    # we will create artificial transcripts for phiX that ensure that all of the DNA is
+    # correctly identified.
+
+    length = len(contig)
+    transcript_starts = np.arange(length // 1000 + 1) * 1000
+    transcript_ends = np.array([min(s + 1000, length) for s in transcript_starts])
+
+    phix_gtf = phix_fasta.replace('.fa', '.gtf')
+
+    with open(phix_gtf, 'w') as f:
+        for i, (s, e) in enumerate(zip(transcript_starts, transcript_ends)):
+            # add forward strand gene
+            gene = [chromosome, source, 'gene', str(s), str(e), score, '+', frame,
+                    gene_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
+            f.write('\t'.join(gene) + '\n')
+            exon = [chromosome, source, 'exon', str(s), str(e), score, '+', frame,
+                    exon_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
+            f.write('\t'.join(exon) + '\n')
+            # add reverse strand gene
+            gene = [chromosome, source, 'gene', str(s), str(e), score, '-', frame,
+                    gene_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
+            f.write('\t'.join(gene) + '\n')
+            exon = [chromosome, source, 'exon', str(s), str(e), score, '-', frame,
+                    exon_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
+            f.write('\t'.join(exon) + '\n')
