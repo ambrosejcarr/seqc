@@ -107,8 +107,10 @@ def parse_args(args):
     r.add_argument('--email-status', metavar='E', default=None,
                    help='Email address to receive run summary or errors when running '
                         'remotely.')
-    r.add_argument('--no-terminate', default=False, action='store_true',
-                   help='Do not terminate the EC2 instance after program completes.')
+    r.add_argument('--no-terminate', default='False',
+                   help='Do not terminate the EC2 instance after program completes. If '
+                        '"on-success" is specified, the EC2 instance does not terminate '
+                        'in case the SEQC run throws an error.')
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
     r.add_argument('--star-args', default=None, nargs='*',
@@ -286,6 +288,9 @@ def check_arguments(args, basespace_token: str):
         raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
     if args.instance_type not in ['c3', 'c4', 'r3']:
         raise ValueError('All AWS instance types must be either c3, c4, or r3.')
+    if args.no_terminate not in ['True', 'true', 'False', 'false', 'on-success']:
+        raise ValueError('the --no-terminate flag must be either True, False, '
+                         'or on-success.')
 
     # make sure at least one input has been passed
     if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
@@ -407,6 +412,7 @@ def main(args: list = None):
     seqc.log.setup_logger()
     args = parse_args(args)
     try:
+        err_status = False
         seqc.log.args(args)
 
         # read in config file, make sure it exists
@@ -751,6 +757,7 @@ def main(args: list = None):
 
     except:
         seqc.log.exception()
+        err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
             seqc.remote.email_user(attachment='seqc.log', email_body=email_body,
@@ -760,7 +767,12 @@ def main(args: list = None):
 
     finally:
         if not args.remote:  # Is local
-            if not args.no_terminate:  # terminate = True
+            if args.no_terminate == 'on-success':
+                if err_status:
+                    args.no_terminate = 'True'
+                else:
+                    args.no_terminate = 'False'
+            if args.no_terminate in ['False', 'false']:  # terminate = True
                 fpath = '/data/instance.txt'
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
