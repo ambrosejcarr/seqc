@@ -76,7 +76,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c1, ed_1, err_l_1, seq_err_1 = dynamic_codes_table_c1[c1]
         except KeyError:
             cor_c1, ed_1 = find_correct_barcode(c1, correct_barcodes[0])
-            seq_err_1 = count_seqeuncer_errors(c1)
+            seq_err_1 = count_sequencer_errors(c1)
             # No point calculating errors on codes with more errors than allowed
             if ed_1 > max_ed:
                 err_l_1 = None
@@ -89,7 +89,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c2, ed_2, err_l_2, seq_err_2 = dynamic_codes_table_c2[c2]
         except KeyError:
             cor_c2, ed_2 = find_correct_barcode(c2, correct_barcodes[1])
-            seq_err_2 = count_seqeuncer_errors(c2)
+            seq_err_2 = count_sequencer_errors(c2)
             # No point calculating errors on codes with more errors than allowed
             if ed_2 > max_ed:
                 err_l_2 = None
@@ -178,13 +178,15 @@ def hamming_dist_bin(c1, c2):
         c2 >>= 3
     return d
 
-def count_seqeuncer_errors(c):
-    err=0
-    while c>0:
-        if BinRep._bin2strdict[c&0b111] == 'N':
-            err+=1
-        c>>=3
+
+def count_sequencer_errors(c):
+    err = 0
+    while c > 0:
+        if BinRep._bin2strdict[c & 0b111] == 'N':
+            err += 1
+        c >>= 3
     return err
+
 
 def generate_close_seq(seq):
     """ Return a list of all sequences that are up to 2 hamm distance from seq
@@ -461,25 +463,28 @@ def drop_seq(alignments_ra, *args, **kwargs):
     #print('tot time: {}'.format(tot_time))
     return res_dic, grouped_ra, summary
 
+
 def base_count(seq_dic, umi_len=8):
-    count_mat = {'A':np.zeros(umi_len), 'C':np.zeros(umi_len), 'G':np.zeros(umi_len), 'T':np.zeros(umi_len)}
+    count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
+                 'T': np.zeros(umi_len)}
     for seq in seq_dic:
         for i, base in enumerate(BinRep.bin2str(seq)):
-            if base=='N':
-              continue
+            if base == 'N':
+                continue
             count_mat[base][i] += 1
     tot = len(seq_dic)
     for base in count_mat:
         count_mat[base] = count_mat[base]/tot
     return count_mat
 
+
 #Used for research only
 def count_close_umi(seq_dic):
-    count=0
+    count = 0
     for seq1 in seq_dic:
         for seq2 in seq_dic:
             if hamming_dist_bin(seq1, seq2) <= 1:
-                count+=1
+                count += 1
     return (count-len(seq_dic))/2
 
 
@@ -683,18 +688,18 @@ def convert_to_matrix(counts_dictionary):
 
 
 # For research use only.
-def plot_ed_dist(ra, iter):
-    dist_dic = {'umi':{},'cell':{}}
-    for i in range(iter):
-        read1 = ra.data[random.randint(0,len(ra)-1)]
-        read2 = ra.data[random.randint(0,len(ra)-1)]
-        ed = hamming_dist_bin(read1['rmt'],read2['rmt'])
+def plot_ed_dist(ra, itr):
+    dist_dic = {'umi': {}, 'cell': {}}
+    for i in range(itr):
+        read1 = ra.data[random.randint(0, len(ra)-1)]
+        read2 = ra.data[random.randint(0, len(ra)-1)]
+        ed = hamming_dist_bin(read1['rmt'], read2['rmt'])
         try:
             dist_dic['umi'][ed] += 1
         except KeyError:
             dist_dic['umi'][ed] = 1
             
-        ed = hamming_dist_bin(read1['cell'],read2['cell'])
+        ed = hamming_dist_bin(read1['cell'], read2['cell'])
         try:
             dist_dic['cell'][ed] += 1
         except KeyError:
