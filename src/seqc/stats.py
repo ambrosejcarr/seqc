@@ -21,8 +21,6 @@ from collections import namedtuple
 
 # for yields class --> see if necessary
 import seqc
-from subprocess import Popen, PIPE
-import shlex
 
 
 class GraphDiffusion:
@@ -841,11 +839,9 @@ class GSEA:
         masks = GSEA.SetMasks.from_db(sets, correlations)
         pos, neg = GSEA.construct_normalized_correlation_matrices(
             correlations, masks)
-        p, p_adj, es = GSEA.calculate_enrichment_significance(
+        p, es = GSEA.calculate_enrichment_significance(
             pos, neg, n_perm=n_perm, alpha=alpha)
-        return pd.DataFrame(
-                {'p': p, 'p_adj': p_adj, 'es': es},
-                index=set_names)
+        return pd.DataFrame({'p': p, 'es': es}, index=set_names)
 
     def test(self, sets, n_perm=500, alpha=0.05):
         """
@@ -867,25 +863,53 @@ class GSEA:
           Rate correction.
         :return: dict
         """
-        partial_gsea_process = partial(
-            self._gsea_process,
-            sets=sets,
-            n_perm=n_perm,
-            alpha=alpha)
+        # # no longer used
+        # partial_gsea_process = partial(
+        #     self._gsea_process,
+        #     sets=sets,
+        #     n_perm=n_perm,
+        #     alpha=alpha)
 
         # optimize n_sets vs n_series
-        # if n_series = 1, n_sets = n_sets / n_proc
-        # if n_series = 2, n_sets = n_sets * 2 / n_proc
-        # todo
-        # can split sets in cases where the number of samples is smaller than the number
-        # of processes; this will ensure parallelization is maximized in all circumstances
+        # (1) first, factor out fdr to occur in this method; if parallelizing across sets,
+        # it can't occur earlier.
+        # (2) break up sets into smaller chunks (but never mix sets!)
+        # (3) when returning, instead of setting dictionary to values, create lists and
+        # np.vstack them.
+
+        def split(a, n):
+            k, m = len(a) // n, len(a) % n
+            return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
+
+        def group(a, n):
+            args = [iter(a)] * n
+            return zip(*args)
+
+        def join(a, n):
+            [pd.concat(s, axis=0) for s in group(a, n)]
 
         n = len(self.correlations)
-        args = list(zip(self.correlations, [sets] * n, [n_perm] * n, [alpha] * n))
+        if n < self.nproc:
+            p = min(self.nproc // n, len(sets))
+            correlations = self.correlations * p
+            sets = list(split(sets, p))
+        else:
+            correlations = self.correlations
+            p = 1
+
+        args = list(zip(correlations, [sets] * n * p, [n_perm] * n * p,
+                        [alpha] * n * p))
         pool = multiprocessing.Pool(self.nproc)
         res = pool.starmap(
             GSEA._gsea_process, args)
         pool.close()
+
+        # merge sets
+        res = join(res, p)
+
+        # do fdr
+        # calculate adjusted p-vals
+        # adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
 
         return {c.name: df for (c, df) in zip(self.correlations, res)}
 
@@ -936,21 +960,14 @@ class GSEA:
         # todo here's the slow part. Any way to parallelize?
         # calculate permutations
         perms = np.zeros((n_perm, pos.shape[0]), dtype=np.float)  # n_perm x num sets
-        i = 0
-        while True:
+        for i in np.arange(n_perm):
             GSEA.permute_correlation_ranks(pos, neg)
             perms[i, :] = GSEA.calculate_enrichment_score(pos, neg)
-            i += 1
-            if i >= n_perm:
-                break
 
         # calculate p-vals
         pvals = 1 - np.sum(perms < np.abs(es[np.newaxis, :]), axis=0) / perms.shape[0]
 
-        # calculate adjusted p-vals
-        adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
-
-        return pvals, adj_p, es
+        return pvals, es
 
 
 def _sampling_function(n_iter, n_molecules, theta, n_cells):
