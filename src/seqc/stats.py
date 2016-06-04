@@ -728,10 +728,9 @@ class GSEA:
         """
         if isinstance(correlations, pd.Series):
             self.correlations = [correlations,]
-            self.nproc = 1
         elif all(isinstance(obj, pd.Series) for obj in correlations):
             self.correlations = list(correlations)
-            self.nproc = min((multiprocessing.cpu_count() - 1, len(correlations)))
+            # self.nproc = min((multiprocessing.cpu_count() - 1, len(correlations)))
         else:
             raise ValueError('correlations must be passed as pd.Series objects.')
 
@@ -886,22 +885,35 @@ class GSEA:
             return zip(*args)
 
         def join(a, n):
-            [pd.concat(s, axis=0) for s in group(a, n)]
+            return [pd.concat(s, axis=0) for s in group(a, n)]
 
-        n = len(self.correlations)
-        if n < self.nproc:
-            p = min(self.nproc // n, len(sets))
+        nproc = multiprocessing.cpu_count()
+        ncorr = len(self.correlations)
+        nsets = len(sets)
+
+        assert(nsets != 0)
+        assert(ncorr != 0)
+        assert(nproc != 0)
+
+        if ncorr < nproc:
+            p = min(nproc // ncorr, nsets)
             correlations = self.correlations * p
             sets = list(split(sets, p))
         else:
             correlations = self.correlations
+            sets = [sets]
             p = 1
+        args = list(zip(correlations, sets * ncorr * p, [n_perm] * ncorr * p,
+                        [alpha] * ncorr * p))
 
-        args = list(zip(correlations, [sets] * n * p, [n_perm] * n * p,
-                        [alpha] * n * p))
-        pool = multiprocessing.Pool(self.nproc)
-        res = pool.starmap(
-            GSEA._gsea_process, args)
+        # adjust nproc in case n * p != nproc
+        nproc = min(ncorr * p, nproc)
+        pool = multiprocessing.Pool(nproc)
+        try:
+            res = pool.starmap(GSEA._gsea_process, args)
+        except:
+            pool.close()
+            raise
         pool.close()
 
         # merge sets
@@ -911,7 +923,13 @@ class GSEA:
         # calculate adjusted p-vals
         # adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
 
-        return {c.name: df for (c, df) in zip(self.correlations, res)}
+        res_df = {c.name: df for (c, df) in zip(self.correlations, res)}
+
+        for df in res_df.values():
+            df['adj_p'] = multipletests(df['p'], alpha=alpha / len(res_df),
+                                        method='fdr_tsbh')[1]
+
+        return res_df
 
     @staticmethod
     def construct_normalized_correlation_matrices(correlations, set_masks):
