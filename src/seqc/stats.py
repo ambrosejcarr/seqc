@@ -34,7 +34,6 @@ class GraphDiffusion:
         https://services.math.duke.edu/~mauro/code.html#DiffusionGeom and was implemented
         by Pooja Kathail
 
-        :param data: Data matrix of samples X features
         :param knn: Number of neighbors for graph construction to determine distances between cells
         :param normalization: method for normalizing the matrix of weights
              'bimarkov'            force row and column sums to be 1
@@ -194,6 +193,9 @@ class GraphDiffusion:
 
     def fit(self, data, verbose=True):
         """
+        :param data: Data matrix of samples X features
+        :param verbose: print progress report
+
         :return: Dictionary containing diffusion operator, weight matrix,
                  diffusion eigen vectors, and diffusion eigen values
         """
@@ -251,18 +253,45 @@ class GraphDiffusion:
         self.weights = W
 
 
+class NormalizeCells:
+
+    @staticmethod
+    def size(data: np.ndarray, percentile=None):
+        """
+        Normalize data such that each cell has an identical library size
+
+        :param data: n observation x k feature array
+        :param log: if True, log transform the data
+        :param percentile: if None, multiply each library by the total number
+         of nonzero genes observed across the experiment. If float in [0, 1),
+         multiply by the cell size observed at
+         np.percentile(cellsums, percentile)
+        :return: normalized n observation x k feature array
+        """
+        if percentile is None:
+            data = data.div(data.sum(axis=1), axis=0) * data.shape[1]
+        else:
+            cell_sums = data.sum(axis=1)
+            data = data.div(cell_sums, axis=0).mul(np.percentile(cell_sums, percentile), axis=0)
+        return data
+
+
 class ScaleFeatures:
 
     @staticmethod
     def unit_size(data: np.ndarray, copy=True):
         """
-        scales data so that each entry is between 0 and 1
+        scales features in data between 0 and 1
 
-        :param data: n x k matrix of n observations of k features
-        :return:
+        :param data: n observation x k feature array
+        :param copy: bool, if True, creates a copy of data. Otherwise carries out
+          standardization in-place
+        :return: n x k scaled array
         """
         if copy:
-            data = data.copy()
+            data = data.copy().astype(np.float32)
+        else:
+            data = data.astype(np.float32)
         d_min, d_max = np.min(data), np.max(data)
         data -= d_min
         data /= d_max - d_min
@@ -270,8 +299,18 @@ class ScaleFeatures:
 
     @staticmethod
     def standardize(data: np.ndarray, copy=True):
+        """
+        scales data such that each feature (column) has mean=0 and standard deviation=1
+
+        :param data: n observation x k feature array
+        :param copy: bool, if True, creates a copy of data. Otherwise carries out
+          standardization in-place
+        :return: n x k scaled array
+        """
         if copy:
-            data = data.copy()
+            data = data.copy().astype(np.float32)
+        else:
+            data = data.astype(np.float32)
         data -= data.mean(axis=0)
         data /= data.std(axis=0)
 
@@ -280,25 +319,32 @@ class ScaleFeatures:
         """
         scales each feature so that its euclidean length is 1
 
-        :param data: n x k matrix of n observations of k features
-        :return:
+        :param data: n observation x k feature array
+        :param copy: bool, if True, creates a copy of data. Otherwise carries out
+          standardization in-place
+        :return: n x k scaled array
         """
         if copy:
-            data = data.copy()
-        data /= np.sqrt(np.sum(data ** 2, axis=0))[:, np.newaxis]
+            data = data.copy().astype(np.float32)
+        else:
+            data = data.astype(np.float32)
+        data /= np.sqrt(np.sum(data ** 2, axis=0))
         return data
 
 
 class tSNE:
 
-    def __init__(self, n_components=2, scale=True, run_pca=True, n_pca_components=10,
-                 **kwargs):
+    def __init__(self, n_components: int=2, scale: bool=True, run_pca: bool=True,
+                 n_pca_components: int=10, **kwargs):
         """
-        :param n_components:
-        :param normalize:
-        :param run_pca:
-        :param n_pca_components:
-        :param kwargs:
+        Carry out t-stochastic neighbor embedding
+
+        :param n_components: number of components to which data should be projected
+        :param normalize: if True, scales features to unit size
+        :param run_pca: if True, runs PCA on the input data and runs tSNE on the
+          components retained by PCA.
+        :param n_pca_components:  Number of components retained by PCA
+        :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
         """
         self.scale = scale
         self.run_pca = run_pca
@@ -308,10 +354,13 @@ class tSNE:
         self.tsne = None
         self.pca = None
 
-    def fit_transform(self, data):
+    def fit_transform(self, data: np.ndarray or pd.DataFrame) -> None:
             """
-            :param data:
-            :return:
+            fit the tSNE model to data given the parameters provided during
+             initialization
+
+            :param data: n observation x k feature data array
+            :return: None
             """
             if self.scale:
                 data = ScaleFeatures.unit_size(data, copy=True)
@@ -335,11 +384,22 @@ class tSNE:
 class PCA:
 
     def __init__(self, n_components=100):
+        """
+        construct a model for Principle Component Analysis
+
+        :param n_components: number of principle components to retain
+        """
         self.n_components = n_components
         self.loadings = None
         self.eigenvalues = None
 
     def fit(self, data):
+        """
+        Fit the model to data
+
+        :param data: n observation x k feature data array
+        :return: None
+        """
 
         if isinstance(data, pd.DataFrame):
             X = data.values
@@ -387,18 +447,36 @@ class PCA:
         self.loadings = M
         self.eigenvalues = l
 
-    def transform(self, data, n_components=None):
-        if n_components is None:
-            n_components = self.n_components
-        projected = np.dot(data, self.loadings[:, :n_components])
+    def transform(self, data, components=None) -> np.ndarray or pd.DataFrame:
+        """
+        Transform data using the fit PCA model.
+
+        :param data:  n observation x k feature data array
+        :param components:  components to retain when transforming
+          data, if None, uses all components
+        :return: np.ndarray containing transformed data
+        """
+
+        if components is None:
+            components = np.arange(self.n_components)
+        projected = np.dot(data, self.loadings[:, components])
         if isinstance(data, pd.DataFrame):
             return pd.DataFrame(projected, index=data.index)
         else:
             return projected
 
-    def fit_transform(self, data):
+    def fit_transform(self, data, n_components=None) -> np.ndarray or pd.DataFrame:
+        """
+        Fit the model to data and transform the data using the fit model
+
+        :param data:  n observation x k feature data array
+        :param n_components:  number of components to retain when transforming
+          data
+        :return: np.ndarray containing transformed data
+        """
+
         self.fit(data)
-        return self.transform(data)
+        return self.transform(data, components=n_components)
 
 
 class correlation:
@@ -729,6 +807,10 @@ class GSEA:
             """
             return list(map(lambda x: x[field], data))
 
+        @staticmethod
+        def keys(db):
+            return db.table('_default').all()[0].keys()
+
     class SetMasks:
 
         @staticmethod
@@ -765,13 +847,25 @@ class GSEA:
                 {'p': p, 'p_adj': p_adj, 'es': es},
                 index=set_names)
 
-    def test(self, sets, n_perm=1000, alpha=0.05):
+    def test(self, sets, n_perm=500, alpha=0.05):
         """
-        :param sets: gene sets to test against ordered correlations # todo type?
+        :param sets: gene sets to test against ordered correlations; these can be extracted
+          from a Database using Query() syntax. e.g.:
+            # retrieve a database
+            db = seqc.stats.GSEA.Database.load('MSigDB.json')
+            # search for sets of type 'HALLMARK' that have > 50 genes
+            sets = db.search(
+                (Query().type == 'HALLMARK') &
+                (Query().genes.test(lambda x: len(x) > 50))
+            )
+            # search for sets with 'IMMUNE' in name:
+            sets = db.search(Query().name.matches('.*?IMMUNE.*'))
         :param n_perm: int; number of permutations to use in constructing the null
-          distribution for significance testing
-        :alpha: float; percentage of type I error to use when computing False Discovery
+          distribution for significance testing; note that n_perm sets the granularity of
+          significance values; if n_perm=500, significance bins are of size 1/500.
+        :param alpha: float; percentage of type I error to use when computing False Discovery
           Rate correction.
+        :return: dict
         """
         partial_gsea_process = partial(
             self._gsea_process,
@@ -779,13 +873,18 @@ class GSEA:
             n_perm=n_perm,
             alpha=alpha)
 
+        # optimize n_sets vs n_series
+        # if n_series = 1, n_sets = n_sets / n_proc
+        # if n_series = 2, n_sets = n_sets * 2 / n_proc
         # todo
         # can split sets in cases where the number of samples is smaller than the number
         # of processes; this will ensure parallelization is maximized in all circumstances
 
+        n = len(self.correlations)
+        args = list(zip(self.correlations, [sets] * n, [n_perm] * n, [alpha] * n))
         pool = multiprocessing.Pool(self.nproc)
-        res = pool.map(
-            partial_gsea_process, self.correlations)
+        res = pool.starmap(
+            GSEA._gsea_process, args)
         pool.close()
 
         return {c.name: df for (c, df) in zip(self.correlations, res)}
@@ -834,6 +933,7 @@ class GSEA:
     def calculate_enrichment_significance(pos, neg, n_perm=1000, alpha=0.05):
         es = GSEA.calculate_enrichment_score(pos, neg)  # score
 
+        # todo here's the slow part. Any way to parallelize?
         # calculate permutations
         perms = np.zeros((n_perm, pos.shape[0]), dtype=np.float)  # n_perm x num sets
         i = 0
@@ -851,23 +951,6 @@ class GSEA:
         adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
 
         return pvals, adj_p, es
-
-        # def plot_enrichment_scores(pos, neg, ax=None, fig=None):
-        #     cumpos = pos.filled(0).cumsum(axis=1)
-        #     cumneg = neg.filled(0).cumsum(axis=1)
-        #     edges = cumpos - cumneg
-        #     es_loc = np.argmax(np.abs(edges), axis=1)
-        #     es = edges[np.arange(edges.shape[0]), es_loc]
-        #     if not fig:
-        #         fig = plt.gcf()
-        #     if not ax:
-        #         ax = plt.gca()
-        #     ax.plot((cumpos - cumneg).T, linewidth=1, color='royalblue')
-        #     xlim = ax.get_xlim()
-        #     ax.hlines(0, *xlim, linewidth=1)
-        #     sns.despine(top=True, bottom=True, right=True)
-        #     seqc.plot.detick(ax, x=True, y=False)
-        #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
 
 
 def _sampling_function(n_iter, n_molecules, theta, n_cells):
