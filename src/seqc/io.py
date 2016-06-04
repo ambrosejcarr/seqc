@@ -7,10 +7,12 @@ from multiprocessing import Process, Pool
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
+import fcntl
 import boto3
 import logging
 import requests
 import seqc
+import time
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
@@ -575,25 +577,104 @@ class BaseSpace:
         return barcode_fastq, genomic_fastq
 
 
-class FileManager:
-    """moves files from remote aws instance to s3"""
+class ProcessManager:
+    """
+    Manages processes in the background to prevent blocking main loop.
+    Processes can either be left running in the background with run_all(),
+    or blocked until completion with wait_until_complete().
+    """
 
-    def __init__(self, fname, s3link):
-        cmdstring = 'aws s3 mv {fname} {s3link}'.format(fname=fname, s3link=s3link)
-        cmd = shlex.split(cmdstring)
-        self._pipe = Popen(cmd)
+    def __init__(self, *args):
+        """
+        For sequential processes, pass individual args
+        For piped processes, pass as one
 
-    def get_pipe(self):
-        return self._pipe
+        (ex)
+        seqc.io.ProcessManager('df -h')
+        seqc.io.ProcessManager('df -h', 'sleep 10')
+        seqc.io.ProcessManager('echo hello world | grep hello')
 
-    def check_running(self):
-        msg = self._pipe.poll()
-        if msg is None:
-            return True
-        return False
+        sample use:
+        test = seqc.io.ProcessManager('df -h', 'sleep 10')
+        test.run_all()
+        test.wait_until_complete()  # optional, this blocks the process
 
-    def kill_process(self):
-        try:
-            self._pipe.terminate()
-        except ProcessLookupError:
-            seqc.log.notify('Process not found, unsuccessful attempt to terminate.')
+        """
+        self.args = args
+        self.nproc = len(args)
+        self.processes = []
+
+    @staticmethod
+    def format_processes(proc: str):
+        """
+        :param proc: string argument to be executed
+        :return cmd: Properly formatted command (list) for Popen
+        """
+
+        if '|' in proc:
+            cmd = [shlex.split(item) for item in proc.split('|')]
+        else:
+            cmd = [shlex.split(proc)]
+        return cmd
+
+    @staticmethod
+    def check_launch(proc):
+        """
+        checks whether a newly launched background process has any errors;
+        otherwise error goes undetected unless wait_until_complete() is called.
+        -> stderr is modified such that it can be read without blocking process.
+        :param proc: an instance of subprocess.Popen
+        :return:
+        """
+        fcntl.fcntl(proc.stderr.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
+        error_msg = proc.stderr.read()
+        if error_msg:
+            # catch "error" from samtools in order to prevent premature exiting
+            if 'SAM header is present' in error_msg.decode():
+                pass
+            else:
+                raise ChildProcessError(error_msg)
+
+    def run_background_processes(self, proc_list: list):
+        """
+        Executes processes in proc_list and saves them in self.processes.
+        All processes executed in this function are non-blocking.
+
+        :param proc_list: Command to be executed (obtained from format_proces).
+        :return:
+        """
+        for i, cmd in enumerate(proc_list):
+            if i != 0:
+                proc = Popen(cmd, stdin=self.processes[i-1].stdout, stdout=PIPE,
+                             stderr=PIPE)
+            else:
+                proc = Popen(cmd, stdout=PIPE, stderr=PIPE)
+            # wait a few seconds, otherwise stderr may still return None
+            time.sleep(2)
+            self.check_launch(proc)
+            self.processes.append(proc)
+
+    def run_all(self):
+        """
+        This function must be called in order for the processes to be executed.
+        All processes are non-blocking and executed in the background.
+        :return:
+        """
+        for arg in self.args:
+            proc_list = self.format_processes(arg)
+            self.run_background_processes(proc_list)
+
+    def wait_until_complete(self):
+        """
+        This function blocks until all processes in self.processes are complete.
+        Any error calls are raised to notify the user.
+        :return: list of outputs from each executed process
+        """
+        output = []
+        for proc in self.processes:
+            out, err = proc.communicate()
+            if err:
+                raise ChildProcessError(err)
+            out = out.decode().strip()
+            output.append(out)
+        return output
