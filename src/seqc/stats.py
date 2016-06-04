@@ -19,6 +19,11 @@ from tinydb import TinyDB
 from functools import partial
 from collections import namedtuple
 
+# for yields class --> see if necessary
+import seqc
+from subprocess import Popen, PIPE
+import shlex
+
 
 class GraphDiffusion:
     def __init__(self, knn=10, normalization='smarkov', epsilon=1,
@@ -479,7 +484,116 @@ class correlation:
         return eigv_corr
 
 
-class Smooth:
+class ExperimentalYield:
+
+    @staticmethod
+    def count_lines(infile, fastq: bool):
+        # todo: check if read array row numbers correspond to entries
+        """
+        :param infile: either single file name (string) or list of files
+        :param fastq: True if fastq files are input
+        :return: total number of lines in input
+        """
+        if type(infile) is list and len(infile) > 1:
+            lines = 'wc -l {fnames} | grep total'.format(fnames=' '.join(infile))
+        elif type(infile) is str:
+            lines = 'wc -l {fnames}'.format(fnames=infile)
+        else:
+            raise ValueError('Please provide either one string for a single file'
+                             'or a list of file names as the input!')
+        entries = seqc.io.ProcessManager(lines)
+        entries.run_all()
+        out = entries.wait_until_complete()[-1]
+        num_lines = int(out.split()[0])
+        if fastq:
+            return num_lines/4
+        return num_lines
+
+    @staticmethod
+    def construct_run_summary(summary: dict):
+        """
+        calculates basic loss statistics and constructs a summary
+        that will be sent to the user after the SEQC run has completed.
+        :param summary: dictionary constructed during error correction
+        :return: output of basic summary statistics
+        """
+        if not summary:
+            return
+
+        # obtain values from summary
+        n_fastq = summary['n_fastq']
+        n_sam = summary['n_sam']
+        genomic = summary['gene_0']
+        phix = summary['phi_x']
+        no_cell = summary['cell_0']
+        no_rmt = summary['rmt_0']
+        rmt_N = summary['rmt_N']
+        poly_t = summary['poly_t']
+        divide = '-' * 40
+
+        # run summary will not be calculated if user started SEQC midway
+        if n_fastq == 'NA' or n_sam == 'NA':
+            return
+
+        # calculate summary statistics
+        prop_al = round((n_sam/n_fastq) * 100, 1)
+        prop_gen = round((genomic/n_sam) * 100, 1)
+        prop_phix = round((phix/n_sam) * 100, 1)
+        lost_al = n_fastq - n_sam
+        prop_un = round(100 - prop_al, 1)
+        n_bad = genomic + phix + no_cell + no_rmt + rmt_N + poly_t
+        # wrong_cb does not apply to drop-seq
+        try:
+            wrong_cb = summary['cb_wrong']
+            n_bad += wrong_cb
+            bad_cb = round((wrong_cb/n_bad) * 100, 1)
+        except KeyError:
+            wrong_cb = 'NA'
+            bad_cb = 'NA'
+        # continue with calculations
+        n_good = n_sam - n_bad
+        bad_gen = round((genomic/n_bad) * 100, 1)
+        bad_phi = round((phix/n_bad) * 100, 1)
+        bad_cell = round((no_cell/n_bad) * 100, 1)
+        bad_rmt = round((no_rmt/n_bad) * 100, 1)
+        bad_rmtN = round((rmt_N/n_bad) * 100, 1)
+        bad_polyt = round((poly_t/n_bad) * 100, 1)
+        prop_bad = round((n_bad/n_fastq) * 100, 1)
+        prop_good = round((n_good/n_fastq) * 100, 1)
+
+        # format output
+        output = ('{divide}\nINPUT\n{divide}\n'
+                  'Total input reads:\t{n_fastq}\n'
+                  '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
+                  'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
+                  ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
+                  ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+                  '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
+                  'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
+                  'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
+                  'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
+                  'Missing cell barcodes:\t{no_cell} ({bad_cell}%)\n'
+                  'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
+                  'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+                  'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+                  '{divide}\nSUMMARY\n{divide}\n'
+                  'Total retained reads:\t{n_good} ({prop_good}%)\n'
+                  'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
+                  'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
+                  '{divide}\n'
+                  .format(n_fastq=n_fastq, n_sam=n_sam, genomic=genomic,
+                          phi_x=phix, no_cell=no_cell, wrong_cb=wrong_cb,
+                          no_rmt=no_rmt, rmt_N=rmt_N, poly_t=poly_t, divide=divide,
+                          prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix,
+                          lost_al=lost_al, n_bad=n_bad, n_good=n_good,
+                          prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
+                          bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
+                          bad_cell=bad_cell, bad_rmt=bad_rmt, bad_rmtN=bad_rmtN,
+                          bad_polyt=bad_polyt))
+        return output
+
+
+class smoothing:
 
     @staticmethod
     def kneighbors(data, n_neighbors=50):

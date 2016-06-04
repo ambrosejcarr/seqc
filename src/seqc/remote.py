@@ -57,6 +57,7 @@ class ClusterServer(object):
                 if i > num_retries:
                     seqc.log.notify('Failed to create unique security group! Exiting.')
                     sys.exit(2)
+                time.sleep(2)
                 i += 1
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):
@@ -422,6 +423,7 @@ class ClusterServer(object):
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
 
+
 def terminate_cluster(instance_id):
     """terminates a running cluster
     :param instance_id: id of instance to terminate"""
@@ -464,12 +466,11 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     :param attachment: the file location of the attachment to append to the email
     :param email_body: text to send in the body of the email
     :param email_address: the address to which the email should be sent."""
-
-
     if isinstance(email_body, str):
         email_body = email_body.encode()
-    # Note: exceptions used to be logged here, but this is not the right place for it.
-    email_args = ['mutt', '-a', attachment, '-s', 'Remote Process', '--', email_address]
+
+    email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment, '-s',
+                  'Remote Process', '--', email_address]
     email_process = Popen(email_args, stdin=PIPE)
     email_process.communicate(email_body)
 
@@ -485,12 +486,13 @@ def gzip_file(filename):
 
 
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str) -> None:
+                   start_pos: str, summary: dict) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     :param start_pos: determines where in the script SEQC started
+    :param summary: dictionary of summary statistics from SEQC run
     """
 
     prefix, directory = os.path.split(output_stem)
@@ -515,21 +517,22 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         except FileNotFoundError:
             seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
 
-    # todo @AJC put this back in
-    # generate a run summary and append to the email
-    # exp = seqc.Experiment.from_npz(counts)
-    # run_summary = exp.summary(alignment_summary)
-    run_summary = ''
+    # generate a run summary and append to seqc.log + email
+    run_summary = seqc.stats.ExperimentalYield.construct_run_summary(summary)
 
     # get the name of the output file
     seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
+    seqc.log.info('A copy of the SEQC run summary can be found below.\nRUN SUMMARY:\n{'
+                  'run_summary}'.format(run_summary=run_summary))
 
     # email results to user
-    body = ('SEQC RUN COMPLETE.\n\n'
+    body = ('<font face="Courier New, Courier, monospace">'
+            'SEQC RUN COMPLETE.\n\n'
             'The run log has been attached to this email and '
             'results are now available in the S3 location you specified: '
             '"%s"\n\n'
-            'RUN SUMMARY:\n\n%s' % (aws_upload_key, repr(run_summary)))
+            'RUN SUMMARY:\n\n%s'
+            '</font>' % (aws_upload_key, run_summary))
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')
@@ -598,7 +601,6 @@ class SSHServer(object):
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
-        # todo: better error handling here!! take care of exceptions
         max_attempts = 25
         attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
