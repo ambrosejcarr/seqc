@@ -486,7 +486,7 @@ def gzip_file(filename):
 
 
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str, summary: dict) -> None:
+                   start_pos: str, summary: dict, log_name: str) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
@@ -497,7 +497,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
     prefix, directory = os.path.split(output_stem)
     counts = output_stem + '_read_and_count_matrices.p'
-    log = prefix + '/seqc.log'
+    log = prefix + '/' + log_name
     files = [counts, log]  # counts and seqc.log will always be uploaded
 
     if start_pos == 'start' or start_pos == 'merged':

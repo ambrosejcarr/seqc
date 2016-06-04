@@ -126,6 +126,8 @@ def parse_args(args):
                         'non-spot instance). WARNING: using spot instances will cause '
                         'your instance to terminate if instance prices exceed your spot '
                         'bid during runtime.')
+    r.add_argument('--log-name', type=str, default='seqc.log',
+                   help='Output log name (default=seqc.log)')
 
     p.add_argument('-v', '--version', action='version',
                    version='{} {}'.format(p.prog, seqc.__version__))
@@ -408,9 +410,9 @@ def obtain_size(item):
     return obj_size
 
 
-def main(args: list = None):
-    seqc.log.setup_logger()
+def main(args: list=None):
     args = parse_args(args)
+    seqc.log.setup_logger(args.log_name)
     try:
         err_status = False
         seqc.log.args(args)
@@ -755,7 +757,7 @@ def main(args: list = None):
                 # todo: run summary will not be reported if n_fastq or n_sam = NA
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data,
-                    summary)
+                    summary, args.log_name)
 
     except:
         seqc.log.exception()
