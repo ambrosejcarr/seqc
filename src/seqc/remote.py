@@ -518,7 +518,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
 
     # generate a run summary and append to seqc.log + email
-    run_summary = seqc.stats.yields.construct_run_summary(summary)
+    run_summary = seqc.stats.ExperimentalYield.construct_run_summary(summary)
 
     # get the name of the output file
     seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)

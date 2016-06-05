@@ -51,3 +51,17 @@ def retry_boto_call(func, retries=3):
             if numtries == 0:
                 raise BotoCallError('Unresolvable error in boto call, exiting.')
     return wrapper
+
+
+class ConfigurationError(Exception):
+    pass
+
+
+class ArgumentParserError(Exception):
+    pass
+
+
+class SparseMatrixError(Exception):
+    pass
+
+

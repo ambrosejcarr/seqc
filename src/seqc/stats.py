@@ -4,6 +4,7 @@ import pandas as pd
 import multiprocessing
 import fastcluster
 from sklearn.neighbors import NearestNeighbors
+from sklearn.manifold import TSNE
 import warnings
 import time
 from scipy.sparse import csr_matrix, find
@@ -14,14 +15,12 @@ from numpy.linalg import norm
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.stats.mstats import kruskalwallis, rankdata
 from scipy.stats import t
-from tinydb import TinyDB, Query
+from tinydb import TinyDB
 from functools import partial
 from collections import namedtuple
 
 # for yields class --> see if necessary
 import seqc
-from subprocess import Popen, PIPE
-import shlex
 
 
 class GraphDiffusion:
@@ -33,7 +32,6 @@ class GraphDiffusion:
         https://services.math.duke.edu/~mauro/code.html#DiffusionGeom and was implemented
         by Pooja Kathail
 
-        :param data: Data matrix of samples X features
         :param knn: Number of neighbors for graph construction to determine distances between cells
         :param normalization: method for normalizing the matrix of weights
              'bimarkov'            force row and column sums to be 1
@@ -109,14 +107,14 @@ class GraphDiffusion:
         # iterative
         for i in range(max_iters):
 
-            S = np.ravel(S.sum(axis=1)).toarray()
+            S = np.ravel(W.sum(axis=1))
             err = np.max(np.absolute(1.0 - np.max(S)), np.absolute(1.0 - np.min(S)))
 
             if err < abs_error:
                 break
 
             D = csr_matrix((np.divide(1, np.sqrt(S)), (range(N), range(N))), shape=[N, N])
-            p = S.dot(p)
+            p *= S
             W = D.dot(W).dot(D)
 
         # iron out numerical errors
@@ -193,6 +191,9 @@ class GraphDiffusion:
 
     def fit(self, data, verbose=True):
         """
+        :param data: Data matrix of samples X features
+        :param verbose: print progress report
+
         :return: Dictionary containing diffusion operator, weight matrix,
                  diffusion eigen vectors, and diffusion eigen values
         """
@@ -250,13 +251,153 @@ class GraphDiffusion:
         self.weights = W
 
 
+class NormalizeCells:
+
+    @staticmethod
+    def size(data: np.ndarray, percentile=None):
+        """
+        Normalize data such that each cell has an identical library size
+
+        :param data: n observation x k feature array
+        :param log: if True, log transform the data
+        :param percentile: if None, multiply each library by the total number
+         of nonzero genes observed across the experiment. If float in [0, 1),
+         multiply by the cell size observed at
+         np.percentile(cellsums, percentile)
+        :return: normalized n observation x k feature array
+        """
+        if percentile is None:
+            data = data.div(data.sum(axis=1), axis=0) * data.shape[1]
+        else:
+            cell_sums = data.sum(axis=1)
+            data = data.div(cell_sums, axis=0).mul(np.percentile(cell_sums, percentile), axis=0)
+        return data
+
+
+class ScaleFeatures:
+
+    @staticmethod
+    def unit_size(data: np.ndarray, copy=True):
+        """
+        scales features in data between 0 and 1
+
+        :param data: n observation x k feature array
+        :param copy: bool, if True, creates a copy of data. Otherwise carries out
+          standardization in-place
+        :return: n x k scaled array
+        """
+        if copy:
+            data = data.copy().astype(np.float32)
+        else:
+            data = data.astype(np.float32)
+        d_min, d_max = np.min(data), np.max(data)
+        data -= d_min
+        data /= d_max - d_min
+        return data
+
+    @staticmethod
+    def standardize(data: np.ndarray, copy=True):
+        """
+        scales data such that each feature (column) has mean=0 and standard deviation=1
+
+        :param data: n observation x k feature array
+        :param copy: bool, if True, creates a copy of data. Otherwise carries out
+          standardization in-place
+        :return: n x k scaled array
+        """
+        if copy:
+            data = data.copy().astype(np.float32)
+        else:
+            data = data.astype(np.float32)
+        data -= data.mean(axis=0)
+        data /= data.std(axis=0)
+
+    @staticmethod
+    def unit_length(data: np.ndarray, copy=True):
+        """
+        scales each feature so that its euclidean length is 1
+
+        :param data: n observation x k feature array
+        :param copy: bool, if True, creates a copy of data. Otherwise carries out
+          standardization in-place
+        :return: n x k scaled array
+        """
+        if copy:
+            data = data.copy().astype(np.float32)
+        else:
+            data = data.astype(np.float32)
+        data /= np.sqrt(np.sum(data ** 2, axis=0))
+        return data
+
+
+class tSNE:
+
+    def __init__(self, n_components: int=2, scale: bool=True, run_pca: bool=True,
+                 n_pca_components: int=10, **kwargs):
+        """
+        Carry out t-stochastic neighbor embedding
+
+        :param n_components: number of components to which data should be projected
+        :param normalize: if True, scales features to unit size
+        :param run_pca: if True, runs PCA on the input data and runs tSNE on the
+          components retained by PCA.
+        :param n_pca_components:  Number of components retained by PCA
+        :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
+        """
+        self.scale = scale
+        self.run_pca = run_pca
+        self.n_components = n_components
+        self.n_pca_components = n_pca_components
+        self.kwargs = kwargs
+        self.tsne = None
+        self.pca = None
+
+    def fit_transform(self, data: np.ndarray or pd.DataFrame) -> None:
+            """
+            fit the tSNE model to data given the parameters provided during
+             initialization
+
+            :param data: n observation x k feature data array
+            :return: None
+            """
+            if self.scale:
+                data = ScaleFeatures.unit_size(data, copy=True)
+            if self.run_pca:
+                self.pca = PCA(n_components=self.n_pca_components)
+                data = self.pca.fit_transform(data)
+
+            if not self.kwargs:
+                self.kwargs = dict(angle=0.4, init='pca', random_state=0, n_iter=500,
+                                   perplexity=30)
+
+            tsne = TSNE(n_components=self.n_components, method='barnes_hut',
+                        **self.kwargs)
+            res = tsne.fit_transform(data.values)
+            if isinstance(data, pd.DataFrame):
+                self.tsne = pd.DataFrame(res, index=data.index)
+            else:
+                self.tsne = res
+
+
 class PCA:
+
     def __init__(self, n_components=100):
+        """
+        construct a model for Principle Component Analysis
+
+        :param n_components: number of principle components to retain
+        """
         self.n_components = n_components
         self.loadings = None
         self.eigenvalues = None
 
     def fit(self, data):
+        """
+        Fit the model to data
+
+        :param data: n observation x k feature data array
+        :return: None
+        """
 
         if isinstance(data, pd.DataFrame):
             X = data.values
@@ -266,8 +407,9 @@ class PCA:
             raise TypeError('data must be a pd.DataFrame or np.ndarray')
 
         # Make sure data is zero mean
-        X = np.subtract(X, np.amin(X))
-        X = np.divide(X, np.amax(X))
+        X = ScaleFeatures.unit_size(X)
+        # X = np.subtract(X, np.amin(X))
+        # X = np.divide(X, np.amax(X))
 
         # Compute covariance matrix
         if X.shape[1] < X.shape[0]:
@@ -303,18 +445,36 @@ class PCA:
         self.loadings = M
         self.eigenvalues = l
 
-    def transform(self, data, n_components=None):
-        if n_components is None:
-            n_components = self.n_components
-        projected = np.dot(data, self.loadings[:, :n_components])
+    def transform(self, data, components=None) -> np.ndarray or pd.DataFrame:
+        """
+        Transform data using the fit PCA model.
+
+        :param data:  n observation x k feature data array
+        :param components:  components to retain when transforming
+          data, if None, uses all components
+        :return: np.ndarray containing transformed data
+        """
+
+        if components is None:
+            components = np.arange(self.n_components)
+        projected = np.dot(data, self.loadings[:, components])
         if isinstance(data, pd.DataFrame):
             return pd.DataFrame(projected, index=data.index)
         else:
             return projected
 
-    def fit_transform(self, data):
+    def fit_transform(self, data, n_components=None) -> np.ndarray or pd.DataFrame:
+        """
+        Fit the model to data and transform the data using the fit model
+
+        :param data:  n observation x k feature data array
+        :param n_components:  number of components to retain when transforming
+          data
+        :return: np.ndarray containing transformed data
+        """
+
         self.fit(data)
-        return self.transform(data)
+        return self.transform(data, components=n_components)
 
 
 class correlation:
@@ -400,7 +560,7 @@ class correlation:
         return eigv_corr
 
 
-class yields:
+class ExperimentalYield:
 
     @staticmethod
     def count_lines(infile, fastq: bool):
@@ -568,10 +728,9 @@ class GSEA:
         """
         if isinstance(correlations, pd.Series):
             self.correlations = [correlations,]
-            self.nproc = 1
         elif all(isinstance(obj, pd.Series) for obj in correlations):
             self.correlations = list(correlations)
-            self.nproc = min((multiprocessing.cpu_count() - 1, len(correlations)))
+            # self.nproc = min((multiprocessing.cpu_count() - 1, len(correlations)))
         else:
             raise ValueError('correlations must be passed as pd.Series objects.')
 
@@ -645,6 +804,10 @@ class GSEA:
             """
             return list(map(lambda x: x[field], data))
 
+        @staticmethod
+        def keys(db):
+            return db.table('_default').all()[0].keys()
+
     class SetMasks:
 
         @staticmethod
@@ -675,36 +838,98 @@ class GSEA:
         masks = GSEA.SetMasks.from_db(sets, correlations)
         pos, neg = GSEA.construct_normalized_correlation_matrices(
             correlations, masks)
-        p, p_adj, es = GSEA.calculate_enrichment_significance(
+        p, es = GSEA.calculate_enrichment_significance(
             pos, neg, n_perm=n_perm, alpha=alpha)
-        return pd.DataFrame(
-                {'p': p, 'p_adj': p_adj, 'es': es},
-                index=set_names)
+        return pd.DataFrame({'p': p, 'es': es}, index=set_names)
 
-    def test(self, sets, n_perm=1000, alpha=0.05):
+    def test(self, sets, n_perm=500, alpha=0.05):
         """
-        :param sets: gene sets to test against ordered correlations # todo type?
+        :param sets: gene sets to test against ordered correlations; these can be extracted
+          from a Database using Query() syntax. e.g.:
+            # retrieve a database
+            db = seqc.stats.GSEA.Database.load('MSigDB.json')
+            # search for sets of type 'HALLMARK' that have > 50 genes
+            sets = db.search(
+                (Query().type == 'HALLMARK') &
+                (Query().genes.test(lambda x: len(x) > 50))
+            )
+            # search for sets with 'IMMUNE' in name:
+            sets = db.search(Query().name.matches('.*?IMMUNE.*'))
         :param n_perm: int; number of permutations to use in constructing the null
-          distribution for significance testing
-        :alpha: float; percentage of type I error to use when computing False Discovery
+          distribution for significance testing; note that n_perm sets the granularity of
+          significance values; if n_perm=500, significance bins are of size 1/500.
+        :param alpha: float; percentage of type I error to use when computing False Discovery
           Rate correction.
+        :return: dict
         """
-        partial_gsea_process = partial(
-            self._gsea_process,
-            sets=sets,
-            n_perm=n_perm,
-            alpha=alpha)
+        # # no longer used
+        # partial_gsea_process = partial(
+        #     self._gsea_process,
+        #     sets=sets,
+        #     n_perm=n_perm,
+        #     alpha=alpha)
 
-        # todo
-        # can split sets in cases where the number of samples is smaller than the number
-        # of processes; this will ensure parallelization is maximized in all circumstances
+        # optimize n_sets vs n_series
+        # (1) first, factor out fdr to occur in this method; if parallelizing across sets,
+        # it can't occur earlier.
+        # (2) break up sets into smaller chunks (but never mix sets!)
+        # (3) when returning, instead of setting dictionary to values, create lists and
+        # np.vstack them.
 
-        pool = multiprocessing.Pool(self.nproc)
-        res = pool.map(
-            partial_gsea_process, self.correlations)
+        def split(a, n):
+            k, m = len(a) // n, len(a) % n
+            return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
+
+        def group(a, n):
+            args = [iter(a)] * n
+            return zip(*args)
+
+        def join(a, n):
+            return [pd.concat(s, axis=0) for s in group(a, n)]
+
+        nproc = multiprocessing.cpu_count()
+        ncorr = len(self.correlations)
+        nsets = len(sets)
+
+        assert(nsets != 0)
+        assert(ncorr != 0)
+        assert(nproc != 0)
+
+        if ncorr < nproc:
+            p = min(nproc // ncorr, nsets)
+            correlations = self.correlations * p
+            sets = list(split(sets, p))
+        else:
+            correlations = self.correlations
+            sets = [sets]
+            p = 1
+        args = list(zip(correlations, sets * ncorr * p, [n_perm] * ncorr * p,
+                        [alpha] * ncorr * p))
+
+        # adjust nproc in case n * p != nproc
+        nproc = min(ncorr * p, nproc)
+        pool = multiprocessing.Pool(nproc)
+        try:
+            res = pool.starmap(GSEA._gsea_process, args)
+        except:
+            pool.close()
+            raise
         pool.close()
 
-        return {c.name: df for (c, df) in zip(self.correlations, res)}
+        # merge sets
+        res = join(res, p)
+
+        # do fdr
+        # calculate adjusted p-vals
+        # adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
+
+        res_df = {c.name: df for (c, df) in zip(self.correlations, res)}
+
+        for df in res_df.values():
+            df['adj_p'] = multipletests(df['p'], alpha=alpha / len(res_df),
+                                        method='fdr_tsbh')[1]
+
+        return res_df
 
     @staticmethod
     def construct_normalized_correlation_matrices(correlations, set_masks):
@@ -750,40 +975,17 @@ class GSEA:
     def calculate_enrichment_significance(pos, neg, n_perm=1000, alpha=0.05):
         es = GSEA.calculate_enrichment_score(pos, neg)  # score
 
+        # todo here's the slow part. Any way to parallelize?
         # calculate permutations
         perms = np.zeros((n_perm, pos.shape[0]), dtype=np.float)  # n_perm x num sets
-        i = 0
-        while True:
+        for i in np.arange(n_perm):
             GSEA.permute_correlation_ranks(pos, neg)
             perms[i, :] = GSEA.calculate_enrichment_score(pos, neg)
-            i += 1
-            if i >= n_perm:
-                break
 
         # calculate p-vals
         pvals = 1 - np.sum(perms < np.abs(es[np.newaxis, :]), axis=0) / perms.shape[0]
 
-        # calculate adjusted p-vals
-        adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
-
-        return pvals, adj_p, es
-
-        # def plot_enrichment_scores(pos, neg, ax=None, fig=None):
-        #     cumpos = pos.filled(0).cumsum(axis=1)
-        #     cumneg = neg.filled(0).cumsum(axis=1)
-        #     edges = cumpos - cumneg
-        #     es_loc = np.argmax(np.abs(edges), axis=1)
-        #     es = edges[np.arange(edges.shape[0]), es_loc]
-        #     if not fig:
-        #         fig = plt.gcf()
-        #     if not ax:
-        #         ax = plt.gca()
-        #     ax.plot((cumpos - cumneg).T, linewidth=1, color='royalblue')
-        #     xlim = ax.get_xlim()
-        #     ax.hlines(0, *xlim, linewidth=1)
-        #     sns.despine(top=True, bottom=True, right=True)
-        #     seqc.plot.detick(ax, x=True, y=False)
-        #     plt.scatter(es_loc, es, marker='o', facecolors='none', edgecolors='indianred', s=20, linewidth=1)
+        return pvals, es
 
 
 def _sampling_function(n_iter, n_molecules, theta, n_cells):
@@ -1073,14 +1275,19 @@ class ExpressionTree:
         # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
         statistic[np.isnan(statistic)] = 0  # calculate df
 
-        numerator = (a_var + b_var) ** 2  # (samples, genes)
-        denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
-        df = np.floor(numerator / denominator)  # (samples, genes)
+        # numerator = (a_var + b_var) ** 2  # (samples, genes)
+        # denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
+        # df = np.floor(numerator / denominator)  # (samples, genes)
 
-        # get significance values
-        p = np.zeros((n_iter, a.shape[1]), dtype=float)
-        for i in np.arange(statistic.shape[0]):
-            p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
+        # # get significance values
+        # p = np.zeros((n_iter, a.shape[1]), dtype=float)
+        # for i in np.arange(statistic.shape[0]):
+        #     p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
+
+        df = 2
+
+        statistic = statistic.mean(axis=0)
+        p = t.cdf(np.abs(statistic), df)
 
         # can determine frequency with which p < 0.05; can do a proper FDR based on these distributions. Until then,
         # can just look at the means themselves.
@@ -1134,6 +1341,18 @@ class ExpressionTree:
                 res = pd.Series(res, index=self._index).sort_values(inplace=False)
             self._results[(node.left.node_id, node.right.node_id)] = res
         return self._results
+
+    def plot_hierarchy(self, ax=None, alternate_labels=None):
+        if ax is None:
+            import matplotlib.pyplot as plt
+            ax = plt.gca()
+        if self.tree is None:
+            self.create_hierarchy()
+        dendrogram(self.tree.linkage, ax=ax)
+        if alternate_labels and isinstance(alternate_labels, dict):
+            xtl = ax.get_xticklabels()
+            xtl = list(map(lambda x: alternate_labels[x.get_text()], xtl))
+            ax.set_xticklabels(xtl, rotation='vertical')
 
 
 class DifferentialExpression:
@@ -1320,31 +1539,3 @@ class DifferentialExpression:
             pass  # todo fix this
 
         return marker_genes
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
