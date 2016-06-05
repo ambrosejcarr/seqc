@@ -1,30 +1,32 @@
-import re
-import os
-import random
-import pickle
-import warnings
 import multiprocessing
+import os
+import pickle
+import random
+import re
 import shlex
 import shutil
-from itertools import combinations
-from functools import partial
-from copy import deepcopy
+import warnings
 from collections import defaultdict
+from copy import deepcopy
+from functools import partial
+from itertools import combinations
 from subprocess import call, Popen, PIPE
+
+import matplotlib
 import numpy as np
 import pandas as pd
 import tables as tb
-from scipy.stats.mstats import kruskalwallis
-from statsmodels.sandbox.stats.multicomp import multipletests
+from numpy.linalg import norm
 from scipy.sparse import coo_matrix
-from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
-from sklearn.neighbors import NearestNeighbors
-from sklearn.manifold import TSNE
-from sklearn import linear_model
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
-from numpy.linalg import norm
-import matplotlib
+from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
+from scipy.stats.mstats import kruskalwallis
+from sklearn import linear_model
+from sklearn.manifold import TSNE
+from sklearn.neighbors import NearestNeighbors
+from statsmodels.sandbox.stats.multicomp import multipletests
+
 try:
     os.environ['DISPLAY']
 except KeyError:
@@ -35,11 +37,7 @@ with warnings.catch_warnings():
     import seaborn as sns
 import phenograph
 import seqc
-
-
-class SparseMatrixError(Exception):
-    pass
-
+from seqc.exceptions import SparseMatrixError
 
 # set plotting defaults
 sns.set_style('ticks')

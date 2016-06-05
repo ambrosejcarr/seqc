@@ -59,3 +59,9 @@ class ConfigurationError(Exception):
 
 class ArgumentParserError(Exception):
     pass
+
+
+class SparseMatrixError(Exception):
+    pass
+
+
