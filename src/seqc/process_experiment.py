@@ -1,23 +1,19 @@
 #!/usr/local/bin/python3
 
 import argparse
+import configparser
 import multiprocessing
 import os
-import sys
 import pickle
-import seqc
-import configparser
-import boto3
+import sys
 from subprocess import Popen, check_output
+
+import boto3
 import numpy as np
 
-
-class ConfigurationError(Exception):
-    pass
-
-
-class ArgumentParserError(Exception):
-    pass
+import seqc
+from seqc.exceptions import ConfigurationError, ArgumentParserError
+from seqc.io import check_s3links, s3bucket_download, s3files_download, obtain_size
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -234,30 +230,6 @@ def cluster_cleanup():
         pass  # instances.txt file has not yet been created
 
 
-def check_s3links(input_args: list):
-    """determine if valid arguments were passed before initiating run,
-    specifically whether s3 links exist
-    :param input_args: list of files that should be checked
-    """
-
-    s3 = boto3.resource('s3')
-    for infile in input_args:
-        try:
-            if infile.startswith('s3://'):
-                if not infile.endswith('/'):  # check that s3 link for file exists
-                    bucket, key = seqc.io.S3.split_link(infile)
-                    s3.meta.client.head_object(Bucket=bucket, Key=key)
-                else:
-                    cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
-                    res = check_output(cmd.split())
-                    if b'PRE ' in res:  # subdirectories present
-                        raise ValueError
-        except:
-            seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
-                            'input files to SEQC.' % infile)
-            sys.exit(2)
-
-
 def check_arguments(args, basespace_token: str):
     """
     checks data input through the command line arguments and throws
@@ -368,44 +340,6 @@ def check_arguments(args, basespace_token: str):
 
     # return total size needed for EBS volume
     return total
-
-
-def s3bucket_download(s3link: str, outdir: str) -> list:
-    """
-    recursively downloads files from given S3 link
-    :param s3link: link to s3 bucket that holds files to download
-    :param outdir: output directory where files will be downloaded
-    returns sorted list of downloaded files
-    """
-
-    bucket, prefix = seqc.io.S3.split_link(s3link)
-    cut_dirs = prefix.count('/')
-    downloaded_files = seqc.io.S3.download_files(bucket, prefix, outdir, cut_dirs)
-    return sorted(downloaded_files)
-
-
-def s3files_download(s3links: list, outdir: str):
-    """
-    downloads each file in list of s3 links
-    :param s3links: list of s3 links to be downloaded
-    :param outdir: output directory where files will be downloaded
-    returns sorted list of downloaded files
-    """
-
-    fnames = []
-    for s3link in s3links:
-        bucket, prefix = seqc.io.S3.split_link(s3link)
-        _, fname = os.path.split(prefix)
-        fname = outdir + '/' + fname
-        seqc.io.S3.download_file(bucket, prefix, fname)
-        fnames.append(fname)
-    return sorted(fnames)
-
-
-def obtain_size(item):
-    cmd = 'aws s3 ls --summarize --recursive ' + item + ' | grep "Total Size"'
-    obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
-    return obj_size
 
 
 def main(args: list = None):
@@ -693,6 +627,9 @@ def main(args: list = None):
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
             args.min_poly_t = 0
+            seqc.log.notify('Warning: SEQC started from step other than unmerged fastq '
+                            'with empty --min-poly-t parameter. Continuing with '
+                            '--min-poly-t=0.')
 
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
