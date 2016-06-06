@@ -9,7 +9,6 @@ import paramiko
 import boto3
 from botocore.exceptions import ClientError
 import seqc
-import glob
 import logging
 
 # turn off paramiko non-error logging
@@ -62,9 +61,12 @@ class ClusterServer(object):
                 i += 1
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):
-        """configures the newly created cluster according to config
+        """
+        configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
-        :param aws_instance: [c3, c4, r3] for config template"""
+        :param aws_instance: [c3, c4, r3] for config template
+        :param spot_bid: Desired amount to bid for spot instance
+        """
 
         config = configparser.ConfigParser()
         config.read(config_file)
@@ -374,14 +376,10 @@ class ClusterServer(object):
 
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
-            # 'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            # 'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
-            # 'sudo tee {location} > /dev/null'.format(
-            #     location=location, version=seqc.__version__))
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='rename_log'))
+                location=location, version=seqc.__version__))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
