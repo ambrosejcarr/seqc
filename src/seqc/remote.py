@@ -9,6 +9,7 @@ import paramiko
 import boto3
 from botocore.exceptions import ClientError
 import seqc
+import glob
 import logging
 
 # turn off paramiko non-error logging
@@ -574,11 +575,13 @@ def check_progress():
                     continue
 
                 s.connect()
-                out, err = s.exec_command('less /data/seqc.log')
+                out, err = s.exec_command('cd /data; ls *.log')
                 if not out:
                     print('ERROR: SEQC log file not found in cluster (%s) for run "%s." '
                           'Something went wrong during remote run.' % (inst_id, run_name))
                     continue
+                logfile = out[0]
+                out, err = s.exec_command('less {fname}'.format(fname='/data/'+logfile))
                 print('-'*80)
                 print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
                 print('-'*80)
