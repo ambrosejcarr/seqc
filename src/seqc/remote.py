@@ -376,10 +376,14 @@ class ClusterServer(object):
 
         location = folder + 'seqc.tar.gz'
         self.serv.exec_command(
+            # 'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
+            # 'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
+            # 'sudo tee {location} > /dev/null'.format(
+            #     location=location, version=seqc.__version__))
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version=seqc.__version__))
+                location=location, version='yield_stats'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
@@ -536,6 +540,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
             '</font>' % (aws_upload_key, run_summary))
+    body = body.replace('\n', '<br>')
+    body = body.replace('\t', '&emsp;')
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')
