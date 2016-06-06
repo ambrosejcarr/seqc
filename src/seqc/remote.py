@@ -496,6 +496,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
     :param start_pos: determines where in the script SEQC started
     :param summary: dictionary of summary statistics from SEQC run
+    :param log_name: log name of SEQC run provided by user
     """
 
     prefix, directory = os.path.split(output_stem)
@@ -585,7 +586,7 @@ def check_progress():
                           'Something went wrong during remote run.' % (inst_id, run_name))
                     continue
                 logfile = out[0]
-                out, err = s.exec_command('less {fname}'.format(fname='/data/'+logfile))
+                out, err = s.exec_command('cat {fname}'.format(fname='/data/'+logfile))
                 print('-'*80)
                 print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
                 print('-'*80)

@@ -347,7 +347,8 @@ def check_arguments(args, basespace_token: str):
 def main(args: list=None):
 
     args = parse_args(args)
-    seqc.log.setup_logger(args.log_name)
+    if args.aws:
+        seqc.log.setup_logger('/data/' + args.log_name)
     try:
         err_status = False
         seqc.log.args(args)
