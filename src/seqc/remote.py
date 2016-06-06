@@ -61,9 +61,12 @@ class ClusterServer(object):
                 i += 1
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):
-        """configures the newly created cluster according to config
+        """
+        configures the newly created cluster according to config
         :param config_file: /path/to/seqc/config
-        :param aws_instance: [c3, c4, r3] for config template"""
+        :param aws_instance: [c3, c4, r3] for config template
+        :param spot_bid: Desired amount to bid for spot instance
+        """
 
         config = configparser.ConfigParser()
         config.read(config_file)
@@ -486,7 +489,7 @@ def gzip_file(filename):
 
 
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str, summary: dict) -> None:
+                   start_pos: str, summary: dict, log_name: str) -> None:
     """
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
@@ -497,7 +500,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
     prefix, directory = os.path.split(output_stem)
     counts = output_stem + '_read_and_count_matrices.p'
-    log = prefix + '/seqc.log'
+    log = prefix + '/' + log_name
     files = [counts, log]  # counts and seqc.log will always be uploaded
 
     if start_pos == 'start' or start_pos == 'merged':
@@ -574,11 +577,13 @@ def check_progress():
                     continue
 
                 s.connect()
-                out, err = s.exec_command('less /data/seqc.log')
+                out, err = s.exec_command('cd /data; ls *.log')
                 if not out:
                     print('ERROR: SEQC log file not found in cluster (%s) for run "%s." '
                           'Something went wrong during remote run.' % (inst_id, run_name))
                     continue
+                logfile = out[0]
+                out, err = s.exec_command('less {fname}'.format(fname='/data/'+logfile))
                 print('-'*80)
                 print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
                 print('-'*80)
