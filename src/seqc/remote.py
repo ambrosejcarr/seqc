@@ -536,6 +536,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
             '</font>' % (aws_upload_key, run_summary))
+    body = body.replace('\n', '<br>')
+    body = body.replace('\t', '&emsp;')
     email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')
