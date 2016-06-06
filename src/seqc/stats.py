@@ -612,9 +612,11 @@ class ExperimentalYield:
             return
 
         # calculate summary statistics
+        trans = n_sam - genomic - phix
         prop_al = round((n_sam/n_fastq) * 100, 1)
         prop_gen = round((genomic/n_sam) * 100, 1)
         prop_phix = round((phix/n_sam) * 100, 1)
+        prop_trans = round((trans/n_sam) * 100, 1)
         lost_al = n_fastq - n_sam
         prop_un = round(100 - prop_al, 1)
         n_bad = genomic + phix + no_cell + no_rmt + rmt_N + poly_t
@@ -644,6 +646,7 @@ class ExperimentalYield:
                   'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
                   ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
                   ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+                  ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
                   '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
                   'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
                   'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
@@ -665,7 +668,7 @@ class ExperimentalYield:
                           prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
                           bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
                           bad_cell=bad_cell, bad_rmt=bad_rmt, bad_rmtN=bad_rmtN,
-                          bad_polyt=bad_polyt))
+                          bad_polyt=bad_polyt, trans=trans, prop_trans=prop_trans))
         return output
 
 
