@@ -64,11 +64,9 @@ class S3:
 
         return fout
 
-    # todo
-    # implement glob-based filtering, return all downloaded filenames
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
-                       overwrite=False):
+                       overwrite=False, filters=None):
         """
         recursively download objects from amazon s3
         recursively downloads objects from bucket starting with key_prefix.
@@ -80,11 +78,19 @@ class S3:
         :param output_prefix:
         :param key_prefix:
         :param bucket:
+        :param filters: a list of file extensions to download without the period
+        (ex) [h5, log] for .h5 and .log files
         """
 
         # get bucket and filenames
         client = boto3.client('s3')
         keys = cls.listdir(bucket, key_prefix)
+
+        if filters:
+            to_download = []
+            for f_ext in filters:
+                to_download += [item for item in keys if f_ext in item]
+            keys = to_download
 
         # output prefix needs to end in '/'
         if not output_prefix.endswith('/'):
