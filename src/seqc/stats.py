@@ -579,7 +579,7 @@ class ExperimentalYield:
         genomic = summary['gene_0']
         phix = summary['phi_x']
         no_cell = summary['cell_0']
-        no_rmt = summary['rmt_0']
+        # no_rmt = summary['rmt_0']
         rmt_N = summary['rmt_N']
         poly_t = summary['poly_t']
         divide = '-' * 40
@@ -596,7 +596,8 @@ class ExperimentalYield:
         prop_trans = round((trans/n_sam) * 100, 1)
         lost_al = n_fastq - n_sam
         prop_un = round(100 - prop_al, 1)
-        n_bad = genomic + phix + no_cell + no_rmt + rmt_N + poly_t
+        n_bad = genomic + phix + no_cell + rmt_N + poly_t
+        # n_bad = genomic + phix + no_cell + no_rmt + rmt_N + poly_t
         # wrong_cb does not apply to drop-seq
         try:
             wrong_cb = summary['cb_wrong']
@@ -610,7 +611,7 @@ class ExperimentalYield:
         bad_gen = round((genomic/n_bad) * 100, 1)
         bad_phi = round((phix/n_bad) * 100, 1)
         bad_cell = round((no_cell/n_bad) * 100, 1)
-        bad_rmt = round((no_rmt/n_bad) * 100, 1)
+        # bad_rmt = round((no_rmt/n_bad) * 100, 1)
         bad_rmtN = round((rmt_N/n_bad) * 100, 1)
         bad_polyt = round((poly_t/n_bad) * 100, 1)
         prop_bad = round((n_bad/n_fastq) * 100, 1)
@@ -629,7 +630,8 @@ class ExperimentalYield:
                   'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
                   'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
                   'Missing cell barcodes:\t{no_cell} ({bad_cell}%)\n'
-                  'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
+                  'Missing RMTs (same as above):\t{no_cell} ({bad_cell}%)\n'
+                  # 'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
                   'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
                   'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
                   '{divide}\nSUMMARY\n{divide}\n'
@@ -639,12 +641,12 @@ class ExperimentalYield:
                   '{divide}\n'
                   .format(n_fastq=n_fastq, n_sam=n_sam, genomic=genomic,
                           phi_x=phix, no_cell=no_cell, wrong_cb=wrong_cb,
-                          no_rmt=no_rmt, rmt_N=rmt_N, poly_t=poly_t, divide=divide,
+                          rmt_N=rmt_N, poly_t=poly_t, divide=divide,
                           prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix,
                           lost_al=lost_al, n_bad=n_bad, n_good=n_good,
                           prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
                           bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
-                          bad_cell=bad_cell, bad_rmt=bad_rmt, bad_rmtN=bad_rmtN,
+                          bad_cell=bad_cell, bad_rmtN=bad_rmtN,
                           bad_polyt=bad_polyt, trans=trans, prop_trans=prop_trans))
         return output
 
