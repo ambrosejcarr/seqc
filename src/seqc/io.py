@@ -79,7 +79,7 @@ class S3:
         :param key_prefix:
         :param bucket:
         :param filters: a list of file extensions to download without the period
-        (ex) [h5, log] for .h5 and .log files
+        (ex) ['h5', 'log'] for .h5 and .log files
         """
 
         # get bucket and filenames

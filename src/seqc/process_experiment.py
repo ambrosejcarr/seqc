@@ -430,7 +430,8 @@ def main(args: list=None):
                         bucket, prefix = seqc.io.S3.split_link(args.genomic_fastq[0])
                         cut_dirs = prefix.count('/')
                         args.genomic_fastq = seqc.io.S3.download_files(
-                            bucket, prefix, output_dir, cut_dirs)
+                            bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                            cut_dirs=cut_dirs)
                     else:
                         # individual s3 links provided, download each fastq file
                         downloaded_files = []
@@ -461,7 +462,8 @@ def main(args: list=None):
                         bucket, prefix = seqc.io.S3.split_link(args.barcode_fastq[0])
                         cut_dirs = prefix.count('/')
                         args.barcode_fastq = seqc.io.S3.download_files(
-                            bucket, prefix, output_dir, cut_dirs)
+                            bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                            cut_dirs=cut_dirs)
                     else:
                         downloaded_files = []
                         for s3link in args.barcode_fastq:
@@ -490,7 +492,9 @@ def main(args: list=None):
                 # install whole index
                 if not args.samfile:
                     try:
-                        seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+                        seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
+                                                  output_prefix=args.index,
+                                                  cut_dirs=cut_dirs)
                     except FileExistsError:
                         pass  # file is already present
                 else:  # samfile provided, only download annotations file
@@ -643,7 +647,8 @@ def main(args: list=None):
                     bucket, prefix = seqc.io.S3.split_link(args.barcode_files[0])
                     cut_dirs = prefix.count('/')
                     args.barcode_files = seqc.io.S3.download_files(
-                            bucket, prefix, output_dir, cut_dirs)
+                        bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                        cut_dirs=cut_dirs)
                     seqc.log.info('Barcode files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_files)))
                 except FileExistsError:
