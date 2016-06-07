@@ -563,29 +563,6 @@ class correlation:
 class ExperimentalYield:
 
     @staticmethod
-    def count_lines(infile, fastq: bool):
-        # todo: check if read array row numbers correspond to entries
-        """
-        :param infile: either single file name (string) or list of files
-        :param fastq: True if fastq files are input
-        :return: total number of lines in input
-        """
-        if type(infile) is list and len(infile) > 1:
-            lines = 'wc -l {fnames} | grep total'.format(fnames=' '.join(infile))
-        elif type(infile) is str:
-            lines = 'wc -l {fnames}'.format(fnames=infile)
-        else:
-            raise ValueError('Please provide either one string for a single file'
-                             'or a list of file names as the input!')
-        entries = seqc.io.ProcessManager(lines)
-        entries.run_all()
-        out = entries.wait_until_complete()[-1]
-        num_lines = int(out.split()[0])
-        if fastq:
-            return num_lines/4
-        return num_lines
-
-    @staticmethod
     def construct_run_summary(summary: dict):
         """
         calculates basic loss statistics and constructs a summary
