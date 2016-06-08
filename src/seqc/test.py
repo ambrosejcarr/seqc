@@ -14,8 +14,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.makedirs(seqc_dir + 'test/test_remote', exist_ok=True)  # make sure test directory exists
-        cls.human = 's3://dplab-data/genomes/hg38_phiX'
-        cls.mouse = 's3://dplab-data/genomes/mm38_phiX'
+        cls.human = 's3://dplab-data/genomes/hg38_phiX/'
+        cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
         cls.email = input('provide an email address to receive test results: ')
         cls.output = 's3://dplab-data/seqc/test/{}/'
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
