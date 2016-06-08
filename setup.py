@@ -32,6 +32,7 @@ setup(name='seqc',
           'paramiko',
           'regex',
           'requests',
+          'nose2',
           'scipy>=0.14.0',
           'boto3',
           'intervaltree',
@@ -47,7 +48,6 @@ setup(name='seqc',
       scripts=['src/seqc/process_experiment.py'],
       extras_require={
           'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
-          'TEST': ['nose2']
       }
       )
 

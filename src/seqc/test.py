@@ -1,39 +1,196 @@
 import random
+import os
 import nose2
 import unittest
 import seqc
-
+from seqc import process_experiment
 
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
 
-# todo this function is defunct
-class TestMergeFunctionsRegex(unittest.TestCase):
+class TestRemoteProcessExperiment(unittest.TestCase):
 
-    def test_merge_functions_specific_spacer(self):
-        name = b'@something\n'
-        sequence = b'GTATGTTGACGGCCATAAGGCTGCTTCTGACGTTCGTGATGAGTTTGTAT\n'
-        name2 = b'+\n'
-        quality = b'GTATGTTGACGGCCATAAGGCTGCTTCTGACGGTCGTGATGAGTTTGTAT\n'
-        record = seqc.sequence.fastq.FastqRecord([name, sequence, name2, quality])
-        merged = seqc.sequence.merge_functions.in_drop(record, record)
-        print(merged)
-        print(record.sequence[28:32])
+    @classmethod
+    def setUpClass(cls):
+        os.makedirs(seqc_dir + 'test/test_remote', exist_ok=True)  # make sure test directory exists
+        cls.human = 's3://dplab-data/genomes/hg38_phiX'
+        cls.mouse = 's3://dplab-data/genomes/mm38_phiX'
+        cls.email = input('provide an email address to receive test results: ')
+        cls.output = 's3://dplab-data/seqc/test/{}/'
+        cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/{}/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/{}/genomic/'
+        cls.log_name = seqc_dir + 'test/test_remote/seqc_{}.log'
 
-    def test_merge_functions_regex_spacer(self):
-        name = b'@something\n'
-        sequence = b'GTATGTTGACGGCCATAAGGCTGCTTCTGACNTTCGTGATGAGTTTGTAT\n'
-        name2 = b'+\n'
-        quality = b'GTATGTTGACGGCCATAAGGCTGCTTCTGACNTTCGTGATGAGTTTGTAT\n'
-        record = seqc.sequence.fastq.FastqRecord([name, sequence, name2, quality])
-        merged = seqc.sequence.merge_functions.in_drop(record, record)
-        print(merged)
-        print(record.sequence[28:32])
-        b'AAAAAAAAGAGTGATTGCTTGTGACGCCAACCCCCCCCNNNNNNTTTTT'
-        b'AAAAAAAAAGAGTGATTGCTTGTGACGCCAACCCCCCCCNNNNNNTTTTT'
-        b'AAAAAAAAAAGAGTGATTGCTTGTGACGCCAACCCCCCCCNNNNNNTTTTT'
-        b'AAAAAAAAAAAGAGTGATTGCTTGTGACGCCAACCCCCCCCNNNNNNTTTTT'
+    def test_in_drop(self):
+        platform = 'in_drop'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--log-name', self.log_name.format(platform)
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+
+    def test_in_drop_v2(self):
+        platform = 'in_drop_v2'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_drop_seq(self):
+        platform = 'drop_seq'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_mars1_seq(self):
+        platform = 'mars1_seq'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform)
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_mars2_seq(self):
+        platform = 'mars2_seq'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform)
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+
+class TestLocalProcessExperiment(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.human = 's3://dplab-data/genomes/hg38_phiX'
+        cls.mouse = 's3://dplab-data/genomes/mm38_phiX'
+        cls.email = input('provide an email address to receive test results: ')
+        cls.output = 's3://dplab-data/seqc/test/{platform}/'
+        cls.barcode_files = 's3://dplab-data/barcodes/{platform}/flat/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/{platform}/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/{platform}/genomic/'
+
+    def test_in_drop(self):
+        platform = 'in_drop'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform)
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_in_drop_v2(self):
+        platform = 'in_drop_v2'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform)
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_drop_seq(self):
+        platform = 'drop_seq'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_mars1_seq(self):
+        platform = 'mars1_seq'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform)
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_mars2_seq(self):
+        platform = 'mars2_seq'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform)
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
 
 
 class TestThreeBitEquivalence(unittest.TestCase):

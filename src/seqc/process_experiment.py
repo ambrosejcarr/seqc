@@ -34,10 +34,6 @@ def parse_args(args):
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')
-    a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
-                   help='Either (a) an s3 link to a folder containing only barcode '
-                        'files, or (b) the full file path of each file on the local '
-                        'machine.')
     a.add_argument('-o', '--output-stem', metavar='O', required=True,
                    help='If remote=True (default), an s3 link to the directory where all '
                         'output data should be uploaded when the run completes (e.g. '
@@ -48,6 +44,10 @@ def parse_args(args):
     a.add_argument('-i', '--index', metavar='I', required=True,
                    help='Local folder or s3 link to a directory containing the STAR '
                         'index used for alignment.')
+    a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
+                   help='Either (a) an s3 link to a folder containing only barcode '
+                        'files, or (b) the full file path of each file on the local '
+                        'machine.')
     a.add_argument('--email-status', metavar='E', default=None,
                    help='Email address to receive run summary or errors when running '
                         'remotely. Optional if running locally.')
