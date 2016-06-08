@@ -6,7 +6,7 @@ import multiprocessing
 import os
 import pickle
 import sys
-from subprocess import check_output
+from subprocess import Popen, check_output
 
 import boto3
 import numpy as np
@@ -413,6 +413,13 @@ def main(args: list=None):
         if args.basespace:
             seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
                           'input data.')
+            # making extra directories for BaseSpace download, changing permissions
+            bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
+            bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
+            bf.communicate()
+            if args.aws:  # changing permissions is unnecessary if local run
+                bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
+                bf2.communicate()
             args.barcode_fastq, args.genomic_fastq = seqc.io.BaseSpace.download(
                 args.platform, args.basespace, output_dir, basespace_token)
 

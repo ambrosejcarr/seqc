@@ -573,8 +573,8 @@ class BaseSpace:
         filenames = [f['Name'] for f in data['Response']['Items']]
 
         # fixed location for how BaseSpace installs files
-        if not dest_path.endswith('/'):
-            dest_path += '/'
+        dest_path += '/Data/Intensities/BaseCalls/'
+
         if 'mars' not in platform:
             barcode_fastq = [dest_path + f for f in filenames if '_R1_' in f]
             genomic_fastq = [dest_path + f for f in filenames if '_R2_' in f]

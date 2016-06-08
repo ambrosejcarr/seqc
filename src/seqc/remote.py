@@ -43,13 +43,17 @@ class ClusterServer(object):
         num_retries = 20
         i = 0
         while not success:
-            name = 'SEQC-%07d' % random.randint(1, int(1e7))
             try:
+                name = 'SEQC-%07d' % random.randint(1, int(1e7))
                 sg = self.ec2.create_security_group(GroupName=name, Description=name)
                 seqc.log.notify('Assigned instance name %s.' % name)
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
                 sg.authorize_ingress(SourceSecurityGroupName=name)
+                # check to make sure that security group exists
+                time.sleep(2)
+                client = boto3.client('ec2')
+                client.describe_security_groups(GroupIds=[sg.id])
                 self.sg = sg.id
                 seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
                 success = True
@@ -375,11 +379,14 @@ class ClusterServer(object):
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
         location = folder + 'seqc.tar.gz'
+        # todo: this currently pulls from the develop branch of SEQC.
+        # to install a specific version, change version='develop' to the tag (ex: 0.1.6)
+        # or seqc.__version__
         self.serv.exec_command(
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version=seqc.__version__))
+                location=location, version='develop'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
