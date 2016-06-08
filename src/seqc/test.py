@@ -41,7 +41,6 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
-
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
         args = [
@@ -190,7 +189,6 @@ class TestLocalProcessExperiment(unittest.TestCase):
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
-
 
 
 class TestThreeBitEquivalence(unittest.TestCase):
