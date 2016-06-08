@@ -350,8 +350,8 @@ def main(args: list=None):
 
     args = parse_args(args)
     if args.aws:
-        args.log_suffix = args.log_name.split('/')[-1]
-        seqc.log.setup_logger('/data/' + args.log_suffix)
+        args.log_name = args.log_name.split('/')[-1]
+        seqc.log.setup_logger('/data/' + args.log_name)
     else:
         seqc.log.setup_logger(args.log_name)
     try:
