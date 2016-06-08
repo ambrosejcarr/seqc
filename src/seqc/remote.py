@@ -43,13 +43,17 @@ class ClusterServer(object):
         num_retries = 20
         i = 0
         while not success:
-            name = 'SEQC-%07d' % random.randint(1, int(1e7))
             try:
+                name = 'SEQC-%07d' % random.randint(1, int(1e7))
                 sg = self.ec2.create_security_group(GroupName=name, Description=name)
                 seqc.log.notify('Assigned instance name %s.' % name)
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
                 sg.authorize_ingress(SourceSecurityGroupName=name)
+                # check to make sure that security group exists
+                time.sleep(2)
+                client = boto3.client('ec2')
+                client.describe_security_groups(GroupIds=[sg.id])
                 self.sg = sg.id
                 seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
                 success = True
