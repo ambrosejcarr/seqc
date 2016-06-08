@@ -6,14 +6,14 @@ import multiprocessing
 import os
 import pickle
 import sys
-from subprocess import Popen, check_output
+from subprocess import check_output
 
 import boto3
 import numpy as np
 
 import seqc
 from seqc.exceptions import ConfigurationError, ArgumentParserError
-from seqc.io import check_s3links, s3bucket_download, s3files_download, obtain_size
+from seqc.io import check_s3links, obtain_size
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -427,18 +427,27 @@ def main(args: list=None):
                     seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
                     if args.genomic_fastq[0].endswith('/'):
                         # s3 directory specified, download all files recursively
-                        args.genomic_fastq = s3bucket_download(
-                            args.genomic_fastq[0], output_dir)
+                        bucket, prefix = seqc.io.S3.split_link(args.genomic_fastq[0])
+                        cut_dirs = prefix.count('/')
+                        args.genomic_fastq = seqc.io.S3.download_files(
+                            bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                            cut_dirs=cut_dirs)
                     else:
                         # individual s3 links provided, download each fastq file
-                        args.genomic_fastq = s3files_download(args.genomic_fastq,
-                                                              output_dir)
+                        downloaded_files = []
+                        for s3link in args.genomic_fastq:
+                            bucket, prefix = seqc.io.S3.split_link(s3link)
+                            _, fname = os.path.split(prefix)
+                            fname = output_dir + '/' + fname
+                            seqc.io.S3.download_file(bucket, prefix, fname)
+                            downloaded_files.append(fname)
+                        args.genomic_fastq = sorted(downloaded_files)
                     seqc.log.info('Genomic fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.genomic_fastq)))
                 except FileExistsError:
                     pass  # file is already present.
 
-        # todo: could make this less redundant. same code block but for barcode fastq
+        # check for barcode fastq files
         if args.barcode_fastq:
             if not args.barcode_fastq[0].startswith('s3://'):
                 for bf in args.barcode_fastq:
@@ -450,11 +459,20 @@ def main(args: list=None):
                 try:
                     seqc.log.info('Downloading barcode fastq files from Amazon s3 link.')
                     if args.barcode_fastq[0].endswith('/'):
-                        args.barcode_fastq = s3bucket_download(args.barcode_fastq[0],
-                                                               output_dir)
+                        bucket, prefix = seqc.io.S3.split_link(args.barcode_fastq[0])
+                        cut_dirs = prefix.count('/')
+                        args.barcode_fastq = seqc.io.S3.download_files(
+                            bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                            cut_dirs=cut_dirs)
                     else:
-                        args.barcode_fastq = s3files_download(args.barcode_fastq,
-                                                              output_dir)
+                        downloaded_files = []
+                        for s3link in args.barcode_fastq:
+                            bucket, prefix = seqc.io.S3.split_link(s3link)
+                            _, fname = os.path.split(prefix)
+                            fname = output_dir + '/' + fname
+                            seqc.io.S3.download_file(bucket, prefix, fname)
+                            downloaded_files.append(fname)
+                        args.barcode_fastq = sorted(downloaded_files)
                     seqc.log.info('Barcode fastq files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_fastq)))
                 except FileExistsError:
@@ -474,7 +492,9 @@ def main(args: list=None):
                 # install whole index
                 if not args.samfile:
                     try:
-                        seqc.io.S3.download_files(bucket, prefix, args.index, cut_dirs)
+                        seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
+                                                  output_prefix=args.index,
+                                                  cut_dirs=cut_dirs)
                     except FileExistsError:
                         pass  # file is already present
                 else:  # samfile provided, only download annotations file
@@ -535,7 +555,10 @@ def main(args: list=None):
             seqc.log.info('Aligning merged fastq records.')
             if args.merged_fastq.startswith('s3://'):
                 input_data = 'merged'
-                args.merged_fastq = s3files_download([args.merged_fastq], output_dir)[0]
+                bucket, prefix = seqc.io.S3.split_link(args.merged_fastq)
+                _, fname = os.path.split(prefix)
+                args.merged_fastq = seqc.io.S3.download_file(bucket, prefix,
+                                                             output_dir+'/'+fname)
                 if args.merged_fastq.endswith('.gz'):
                     cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
                     gunzip_proc = seqc.io.ProcessManager(cmd)
@@ -572,7 +595,10 @@ def main(args: list=None):
             seqc.log.info('Filtering aligned records and constructing record database.')
             if args.samfile.startswith('s3://'):
                 input_data = 'samfile'
-                args.samfile = s3files_download([args.samfile], output_dir)[0]
+                bucket, prefix = seqc.io.S3.split_link(args.samfile)
+                _, fname = os.path.split(prefix)
+                args.samfile = seqc.io.S3.download_file(bucket, prefix,
+                                                        output_dir+'/'+fname)
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
             ra, sam_records = seqc.core.ReadArray.from_samfile(
                 args.samfile, args.index + 'annotations.gtf')
@@ -597,7 +623,10 @@ def main(args: list=None):
         else:
             if args.read_array.startswith('s3://'):
                 input_data = 'readarray'
-                args.read_array = s3files_download([args.read_array], output_dir)[0]
+                bucket, prefix = seqc.io.S3.split_link(args.read_array)
+                _, fname = os.path.split(prefix)
+                args.read_array = seqc.io.S3.download_file(bucket, prefix,
+                                                           output_dir+'/'+fname)
                 seqc.log.info('Read array %s successfully installed from S3.' %
                               args.read_array)
             ra = seqc.core.ReadArray.load(args.read_array)
@@ -615,7 +644,11 @@ def main(args: list=None):
                     seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
                     if not args.barcode_files[0].endswith('/'):
                         args.barcode_files[0] += '/'
-                    args.barcode_files = s3bucket_download(args.barcode_files[0], output_dir)
+                    bucket, prefix = seqc.io.S3.split_link(args.barcode_files[0])
+                    cut_dirs = prefix.count('/')
+                    args.barcode_files = seqc.io.S3.download_files(
+                        bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                        cut_dirs=cut_dirs)
                     seqc.log.info('Barcode files [%s] successfully installed.' %
                                   ', '.join(map(str, args.barcode_files)))
                 except FileExistsError:

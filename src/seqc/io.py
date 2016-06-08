@@ -64,11 +64,9 @@ class S3:
 
         return fout
 
-    # todo
-    # implement glob-based filtering, return all downloaded filenames
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
-                       overwrite=False):
+                       overwrite=False, filters=None):
         """
         recursively download objects from amazon s3
         recursively downloads objects from bucket starting with key_prefix.
@@ -80,11 +78,19 @@ class S3:
         :param output_prefix:
         :param key_prefix:
         :param bucket:
+        :param filters: a list of file extensions to download without the period
+        (ex) ['h5', 'log'] for .h5 and .log files
         """
 
         # get bucket and filenames
         client = boto3.client('s3')
         keys = cls.listdir(bucket, key_prefix)
+
+        if filters:
+            to_download = []
+            for f_ext in filters:
+                to_download += [item for item in keys if f_ext in item]
+            keys = to_download
 
         # output prefix needs to end in '/'
         if not output_prefix.endswith('/'):
@@ -109,7 +115,7 @@ class S3:
 
             client.download_file(bucket, k, fout)
             output_files.append(fout)
-        return output_files
+        return sorted(output_files)
 
     @staticmethod
     def upload_file(filename, bucket, key):
@@ -704,38 +710,6 @@ def check_s3links(input_args: list):
             seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
                             'input files to SEQC.' % infile)
             sys.exit(2)
-
-
-def s3bucket_download(s3link: str, outdir: str) -> list:
-    """
-    recursively downloads files from given S3 link
-    :param s3link: link to s3 bucket that holds files to download
-    :param outdir: output directory where files will be downloaded
-    returns sorted list of downloaded files
-    """
-
-    bucket, prefix = seqc.io.S3.split_link(s3link)
-    cut_dirs = prefix.count('/')
-    downloaded_files = seqc.io.S3.download_files(bucket, prefix, outdir, cut_dirs)
-    return sorted(downloaded_files)
-
-
-def s3files_download(s3links: list, outdir: str):
-    """
-    downloads each file in list of s3 links
-    :param s3links: list of s3 links to be downloaded
-    :param outdir: output directory where files will be downloaded
-    returns sorted list of downloaded files
-    """
-
-    fnames = []
-    for s3link in s3links:
-        bucket, prefix = seqc.io.S3.split_link(s3link)
-        _, fname = os.path.split(prefix)
-        fname = outdir + '/' + fname
-        seqc.io.S3.download_file(bucket, prefix, fname)
-        fnames.append(fname)
-    return sorted(fnames)
 
 
 def obtain_size(item):
