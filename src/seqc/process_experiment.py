@@ -48,6 +48,9 @@ def parse_args(args):
     a.add_argument('-i', '--index', metavar='I', required=True,
                    help='Local folder or s3 link to a directory containing the STAR '
                         'index used for alignment.')
+    a.add_argument('--email-status', metavar='E', default=None,
+                   help='Email address to receive run summary or errors when running '
+                        'remotely. Optional if running locally.')
 
     i = p.add_argument_group('input arguments')
     i.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
@@ -56,11 +59,6 @@ def parse_args(args):
     i.add_argument('-b', '--barcode-fastq', nargs='*', metavar='B', default=[],
                    help='List of fastq file(s) containing barcode information, or an s3 '
                         'link to a directory containing only barcode fastq file(s).')
-    i.add_argument('--indexing-primer', nargs='*', default=[],
-                   help='list of fastq file(s) containing indexing primers for '
-                        'in_drop_v3, or an s3 link to a directory containing only '
-                        'indexing fastq file(s). Contains second cell barcode for '
-                        'in_drop_v3')
     i.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
                    help='Filename or s3 link to a fastq file containing genomic '
                         'information annotated with barcode data.')
@@ -98,28 +96,27 @@ def parse_args(args):
                         'between 0 and 1, default=1 (all molecules get full weight)',
                    default=1.0, type=float)
 
-    r = p.add_argument_group('run options')
+    s = p.add_argument_group('alignment arguments')
+    s.add_argument('--star-args', default=None, nargs='*',
+                   help='additional arguments that should be passed to the STAR '
+                        'aligner. For example, to set the maximum allowable times for a '
+                        'read to align to 20, one would set '
+                        '--star-args outFilterMultimapNmax=20. Additional arguments can '
+                        'be provided as a white-space separated list.')
+
+    r = p.add_argument_group('remote run arguments')
     r.set_defaults(remote=True)
     r.set_defaults(check=False)
     r.add_argument('--local', dest="remote", action="store_false",
                    help='Run SEQC locally instead of initiating on AWS EC2 servers.')
     r.add_argument('--aws', default=False, action='store_true',
                    help='Automatic flag; no need for user specification.')
-    r.add_argument('--email-status', metavar='E', default=None,
-                   help='Email address to receive run summary or errors when running '
-                        'remotely.')
     r.add_argument('--no-terminate', default='False',
                    help='Do not terminate the EC2 instance after program completes. If '
                         '"on-success" is specified, the EC2 instance does not terminate '
                         'in case the SEQC run throws an error.')
     r.add_argument('--check-progress', dest="check", action="store_true",
                    help='Check progress of all currently running remote SEQC runs.')
-    r.add_argument('--star-args', default=None, nargs='*',
-                   help='additional arguments that should be passed to the STAR '
-                        'aligner. For example, to set the maximum allowable times for a '
-                        'read to align to 20, one would set '
-                        '--star-args outFilterMultimapNmax=20. Additional arguments can '
-                        'be provided as a white-space separated list.')
     r.add_argument('--instance-type', default='c4',
                    help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
     r.add_argument('--spot-bid', type=float, default=None,
