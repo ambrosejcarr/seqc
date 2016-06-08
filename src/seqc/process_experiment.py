@@ -56,6 +56,11 @@ def parse_args(args):
     i.add_argument('-b', '--barcode-fastq', nargs='*', metavar='B', default=[],
                    help='List of fastq file(s) containing barcode information, or an s3 '
                         'link to a directory containing only barcode fastq file(s).')
+    i.add_argument('--indexing-primer', nargs='*', default=[],
+                   help='list of fastq file(s) containing indexing primers for '
+                        'in_drop_v3, or an s3 link to a directory containing only '
+                        'indexing fastq file(s). Contains second cell barcode for '
+                        'in_drop_v3')
     i.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
                    help='Filename or s3 link to a fastq file containing genomic '
                         'information annotated with barcode data.')
