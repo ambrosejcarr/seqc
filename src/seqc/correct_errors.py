@@ -583,7 +583,7 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
         if feature == 0:
             continue
 
-        retained_rmts = 0
+        retained_rmts = 0.0
         retained_reads = 0
 
         for r_seq in d[feature, cell].keys():
@@ -676,13 +676,13 @@ def convert_to_matrix(counts_dictionary):
     col_ind = np.array([col_map[i] for i in cols])
 
     # change dtype, set shape
-    molecules = molecules.astype(np.uint32)
+    molecules = molecules.astype(np.float32)
     reads = reads.astype(np.uint32)
     shape = (unq_row.shape[0], unq_col.shape[0])
 
     # return a sparse array
+    mol_coo = coo_matrix((molecules, (row_ind, col_ind)), shape=shape, dtype=np.float32)
     read_coo = coo_matrix((reads, (row_ind, col_ind)), shape=shape, dtype=np.uint32)
-    mol_coo = coo_matrix((molecules, (row_ind, col_ind)), shape=shape, dtype=np.uint32)
     return {'molecules': {'matrix': mol_coo, 'row_ids': unq_row, 'col_ids': unq_col},
             'reads': {'matrix': read_coo, 'row_ids': unq_row, 'col_ids': unq_col}}
 
