@@ -447,7 +447,7 @@ def main(args: list=None):
                 except FileExistsError:
                     pass  # file is already present.
 
-        # todo: could make this less redundant. same code block but for barcode fastq
+        # check for barcode fastq files
         if args.barcode_fastq:
             if not args.barcode_fastq[0].startswith('s3://'):
                 for bf in args.barcode_fastq:
