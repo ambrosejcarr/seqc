@@ -7,6 +7,7 @@ import os
 import pickle
 import sys
 from subprocess import Popen, check_output
+from copy import copy
 
 import boto3
 import numpy as np
@@ -44,7 +45,7 @@ def parse_args(args):
     a.add_argument('-i', '--index', metavar='I', required=True,
                    help='Local folder or s3 link to a directory containing the STAR '
                         'index used for alignment.')
-    a.add_argument('--barcode-files', nargs='*', metavar='BF', default=list(),
+    a.add_argument('--barcode-files', nargs='*', metavar='BF', default=[],
                    help='Either (a) an s3 link to a folder containing only barcode '
                         'files, or (b) the full file path of each file on the local '
                         'machine.')
@@ -136,33 +137,46 @@ def parse_args(args):
         raise
 
 
-def run_remote(stem: str, volsize: int, aws_instance: str, spot_bid=None) -> None:
+def recreate_command_line_arguments(args):
+    args = copy(args)  # don't break original object
+    platform = args.platform
+    del args.platform  # we explicitly create a positional parameter
+    del args.remote  # this is set by --local (or default)
+    cmd = 'process_experiment.py {} '.format(platform)
+    for key, value in vars(args).items():
+        if value:
+            if isinstance(value, list):
+                value = ' '.join(value)
+            key = key.replace('_', '-')
+            cmd += '--{} {} '.format(key, value)
+    cmd += '--local --aws'
+    return cmd
+
+
+def run_remote(args, volsize):
     """
-    :param stem: output_prefix from main()
+    :param args: simple namespace object; output of parse_args()
     :param volsize: estimated volume needed for run
-    :param aws_instance: instance type from user
-    :param spot_bid:
     """
     seqc.log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = 'process_experiment.py ' + ' '.join(sys.argv[1:]) + ' --local --aws'
+    cmd = recreate_command_line_arguments(args)
 
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
     volsize = int(np.ceil(volsize/1e9))
 
-    # if anything goes wrong during cluster setup, clean up the instance
-    try:
-        cluster.cluster_setup(volsize, aws_instance, spot_bid=spot_bid)
+    try:  # if anything goes wrong during cluster setup, clean up the instance
+        cluster.cluster_setup(volsize, args.instance_type, spot_bid=args.spot_bid)
         cluster.serv.connect()
 
         seqc.log.notify('Beginning remote run.')
-        if stem.endswith('/'):
-            stem = stem[:-1]
+        if args.output_stem.endswith('/'):
+            args.output_stem = args.output_stem[:-1]
         # writing name of instance in local machine to keep track of instance
         with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
-            _, run_name = os.path.split(stem)
+            _, run_name = os.path.split(args.output_stem)
             f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
 
         # writing name of instance in /data/instance.txt for clean up
@@ -228,7 +242,7 @@ def cluster_cleanup():
                         instance = ec2.Instance(inst_id)
                         if instance.state['Name'] == 'running':
                             f.write('%s\n' % entry)
-                    except:
+                    except:  # todo @kristychoi still needed after boto exception wrap?
                         continue
     else:
         pass  # instances.txt file has not yet been created
@@ -399,8 +413,7 @@ def main(args: list=None):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             cluster_cleanup()
-            run_remote(args.output_stem, total_size, args.instance_type,
-                       spot_bid=args.spot_bid)
+            run_remote(args, total_size)
             sys.exit()
 
         if args.aws:
@@ -629,7 +642,7 @@ def main(args: list=None):
                     convert_sam = 'samtools view -bS -o {bamfile} {samfile}'\
                         .format(bamfile=bamfile, samfile=args.samfile)
                     upload_bam = 'aws s3 mv {fname} {s3link}'.format(
-                        fname=bamfile,s3link=aws_upload_key)
+                        fname=bamfile, s3link=aws_upload_key)
                     manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam)
                     manage_samfile.run_all()
         else:

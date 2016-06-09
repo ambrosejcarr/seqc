@@ -9,6 +9,35 @@ from seqc import process_experiment
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
 
+class TestProcessExperimentGeneral(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.human = 's3://dplab-data/genomes/hg38_phiX/'
+        cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
+        cls.email = 'testemail@nowhere.com'
+        cls.output = 's3://dplab-data/seqc/test/{}/'
+        cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/{}/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/{}/genomic/'
+        cls.log_name = seqc_dir + 'test/test_remote/seqc_{}.log'
+
+    def test_recreate_command(self):
+        platform = 'in_drop'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--log-name', self.log_name.format(platform),
+        ]
+        parsed_args = process_experiment.parse_args(args)
+        print(process_experiment.recreate_command_line_arguments(parsed_args))
+
+
 class TestRemoteProcessExperiment(unittest.TestCase):
 
     @classmethod
