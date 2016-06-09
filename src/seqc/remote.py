@@ -386,7 +386,7 @@ class ClusterServer(object):
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='speedup'))
+                location=location, version='develop'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
