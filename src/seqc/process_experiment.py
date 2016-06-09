@@ -242,7 +242,7 @@ def cluster_cleanup():
                         instance = ec2.Instance(inst_id)
                         if instance.state['Name'] == 'running':
                             f.write('%s\n' % entry)
-                    except:  # todo @kristychoi still needed after boto exception wrap?
+                    except:
                         continue
     else:
         pass  # instances.txt file has not yet been created
