@@ -26,6 +26,7 @@ setup(name='seqc',
       packages=['seqc', 'seqc.sequence', 'seqc.alignment'],
       install_requires=[
           'numpy>=1.10.0',
+          'awscli',
           'cython>0.14',
           'numexpr>=2.4',
           'pandas>=0.17.0',

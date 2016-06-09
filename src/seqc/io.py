@@ -26,13 +26,15 @@ class S3:
     """A series of methods to upload and download files from amazon s3"""
 
     @staticmethod
-    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False):
+    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False,
+                      boto: bool=False):
         """download the file key located in bucket, sending output to filename fout
 
         :param overwrite:
         :param fout:
         :param key:
         :param bucket:
+        :param boto:
         """
 
         if not overwrite:
@@ -55,18 +57,20 @@ class S3:
             os.makedirs(dirs)
 
         # download the file
-        try:
+        if not boto:
+            s3link = 's3://' + bucket + '/' + key
+            cmd = 'aws s3 cp {s3link} {fout}'.format(s3link=s3link, fout=fout)
+            download_cmd = shlex.split(cmd)
+            Popen(download_cmd).wait()
+        else:
             client = boto3.client('s3')
             client.download_file(bucket, key, fout)
-        except FileNotFoundError:
-            raise FileNotFoundError('No file was found at the specified s3 location: '
-                                    '"%s".' % bucket + '/' + key)
 
         return fout
 
     @classmethod
     def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
-                       overwrite=False, filters=None):
+                       overwrite=False, boto=False, filters=None):
         """
         recursively download objects from amazon s3
         recursively downloads objects from bucket starting with key_prefix.
@@ -78,11 +82,12 @@ class S3:
         :param output_prefix:
         :param key_prefix:
         :param bucket:
+        :param boto: use boto3 to download files from S3 (takes longer than awscli)
         :param filters: a list of file extensions to download without the period
         (ex) ['h5', 'log'] for .h5 and .log files
         """
 
-        # get bucket and filenames
+        # get bucket and file names
         client = boto3.client('s3')
         keys = cls.listdir(bucket, key_prefix)
 
@@ -113,16 +118,25 @@ class S3:
                 if overwrite is False:
                     continue
 
-            client.download_file(bucket, k, fout)
+            # download file
+            if not boto:
+                s3link = 's3://' + bucket + '/' + k
+                cmd = 'aws s3 cp {s3link} {fout}'.format(s3link=s3link, fout=fout)
+                download_cmd = shlex.split(cmd)
+                Popen(download_cmd).wait()
+            else:
+                client.download_file(bucket, k, fout)
+
             output_files.append(fout)
         return sorted(output_files)
 
     @staticmethod
-    def upload_file(filename, bucket, key):
+    def upload_file(filename, bucket, key, boto=False):
         """upload filename to aws at s3://bucket/key/filename
         :param key:
         :param bucket:
         :param filename:
+        :param boto:
         """
 
         if key.startswith('/'):
@@ -135,11 +149,17 @@ class S3:
         if not os.path.isfile(filename):
             raise FileNotFoundError('file "%s" is not a valid file identifier' % filename)
 
-        client = boto3.client('s3')
-        client.upload_file(filename, bucket, key)
+        if not boto:
+            s3link = 's3://' + bucket + '/' + key
+            cmd = 'aws s3 mv {fname} {s3link}'.format(fname=filename, s3link=s3link)
+            download_cmd = shlex.split(cmd)
+            Popen(download_cmd).wait()
+        else:
+            client = boto3.client('s3')
+            client.upload_file(filename, bucket, key)
 
     @staticmethod
-    def upload_files(file_prefix, bucket, key_prefix, cut_dirs=True):
+    def upload_files(file_prefix, bucket, key_prefix, cut_dirs=True, boto=False):
         """
         upload all files f found at file_prefix to s3://bucket/key_prefix/f
         This function eliminates any uninformative directories. For example, if uploading
@@ -198,7 +218,13 @@ class S3:
 
         client = boto3.client('s3')
         for file_, key in zip(all_files, upload_keys):
-            client.upload_file(file_, bucket, key)
+            if not boto:
+                s3link = 's3://' + bucket + '/' + key
+                cmd = 'aws s3 mv {fname} {s3link}'.format(fname=file_, s3link=s3link)
+                download_cmd = shlex.split(cmd)
+                Popen(download_cmd).wait()
+            else:
+                client.upload_file(file_, bucket, key)
 
     @staticmethod
     def listdir(bucket, key_prefix):
@@ -209,9 +235,9 @@ class S3:
         :param key_prefix:
         :param bucket:
         """
-        s3 = boto3.resource('s3')
-        bucket = s3.Bucket(bucket)
-        keys = [k.key for k in bucket.objects.all() if k.key.startswith(key_prefix)]
+        client = boto3.client('s3')
+        objs = client.list_objects(Bucket=bucket, Prefix=key_prefix)['Contents']
+        keys = [x['Key'] for x in objs]
         return keys
 
     @staticmethod
