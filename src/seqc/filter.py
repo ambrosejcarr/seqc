@@ -120,8 +120,8 @@ def high_mitochondrial_rna(molecules, is_invalid, max_mt_content=0.2):
     """
     # identify % genes that are mitochondrial
     mt_genes = np.fromiter(map(lambda x: x.startswith('MT-'), molecules.columns), dtype=np.bool)
-    mt_molecules = np.ravel(molecules.data.tocsr()[~is_invalid, :].tocsc()[:, mt_genes].sum(axis=1))
-    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
+    mt_molecules = np.ravel(molecules.tocsr()[~is_invalid, :].tocsc()[:, mt_genes].sum(axis=1))
+    ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     ratios = mt_molecules / ms
 
     failing = ratios > max_mt_content
@@ -142,8 +142,8 @@ def low_gene_abundance(molecules, is_invalid):
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
 
-    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
-    genes = np.ravel(molecules.data.tocsr()[~is_invalid, :].getnnz(axis=1))
+    ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
+    genes = np.ravel(molecules.tocsr()[~is_invalid, :].getnnz(axis=1))
     x = np.log10(ms)[:, np.newaxis]
     y = np.log10(genes)
 
