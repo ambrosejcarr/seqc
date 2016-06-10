@@ -42,7 +42,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        os.makedirs(seqc_dir + 'test/test_remote', exist_ok=True)  # make sure test directory exists
+        os.makedirs(seqc_dir + 'test/TestRemoteProcessExperiment', exist_ok=True)
         cls.human = 's3://dplab-data/genomes/hg38_phiX/'
         cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
         cls.email = input('provide an email address to receive test results: ')
@@ -50,7 +50,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
         cls.barcode_fastq = 's3://dplab-data/seqc/test/{}/barcode/'
         cls.genomic_fastq = 's3://dplab-data/seqc/test/{}/genomic/'
-        cls.log_name = seqc_dir + 'test/test_remote/seqc_{}.log'
+        cls.log_name = seqc_dir + 'test/TestRemoteProcessExperiment/seqc_{}.log'
 
     def test_in_drop(self):
         platform = 'in_drop'
@@ -322,6 +322,25 @@ class TestThreeBitEquivalence(unittest.TestCase):
             self.assertEqual(case1, case1_decoded)
             self.assertEqual(case2, case2_decoded)
 
+
+class TestCreateMergedProcessedExperiment(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        testdir = seqc_dir + 'test/TestCreateMergedProcessedExperiment/'
+        os.makedirs(testdir, exist_ok=True)
+        try:
+            cls.data = seqc.io.S3.download_file(
+                'ajc-data',
+                'PA5394_miseq_test/PA5394_miseq_test_read_and_count_matrices.p',
+                seqc_dir + testdir + 'test.p')
+        except FileExistsError:
+            cls.data = seqc_dir + testdir + 'test.p'
+
+    def test_create_merged_processed_experiment(self):
+        experiments = (self.data,)
+        labels = ('test_experiment',)
+        seqc.core.Experiment.create_merged_processed_experiment(experiments, labels)
 
 if __name__ == "__main__":
     nose2.main()

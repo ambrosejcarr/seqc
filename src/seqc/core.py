@@ -24,6 +24,7 @@ from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 from scipy.stats.mstats import kruskalwallis
 from sklearn import linear_model
 from sklearn.manifold import TSNE
+from sklearn.mixture import GMM
 from sklearn.neighbors import NearestNeighbors
 from statsmodels.sandbox.stats.multicomp import multipletests
 
@@ -299,6 +300,82 @@ class Experiment:
         self._diffusion_eigenvalues = None
         self._diffusion_map_correlations = None
         self._cluster_assignments = None
+
+    @classmethod
+    def create_merged_processed_experiment(
+            cls, experiment_files, labels=None, max_mt_content=.2):
+        """
+        :param experiments: a set of .p files to merge
+        :param labels: a set of (optional) labels for each experiment, will be added as
+          metadata. If not provided, experiments are numbered numerically in the order
+          provided
+        :param max_mt_content: the maximum percentage of mitochondrial RNA that is
+          considered to constitute a viable cell
+        :return: Experiment (merged, dense)
+        """
+        if labels is None:
+            labels = np.arange(len(experiment_files))
+        if len(labels) != len(experiment_files):
+            raise ValueError('If labels are provided, there must be an equal number of '
+                             'experiment_files')
+
+        # need to refactor in terms of masked arrays; where mask gets updated
+        experiments = []
+        for e in experiment_files:
+            exp = Experiment.from_count_matrices(e)
+
+            # calculate cell sums
+            ms = np.ravel(exp.molecules.sum(axis=1))
+            rs = np.ravel(exp.reads.sum(axis=1))
+            cindex = np.ma.masked_array(exp.molecules.index, ms == 0)
+
+            # sort from largest to smallest, mask zero-value cells (if any)
+            idx = np.argsort(ms)[::-1]
+
+            sorted_molecule_sums = ms[idx]
+            sorted_read_sums = read_sums[idx]
+
+            # normalize values
+            norm_cell_sums = sorted_molecule_sums / sorted_molecule_sums.sum()
+            norm_read_sums = sorted_read_sums / sorted_read_sums.sum()
+
+            # take cum sum, interpolate, get 2nd derivative and find zero to identify
+            # inflection point
+            cum_cell_sum = np.cumsum(norm_cell_sums)
+            d1 = np.diff(pd.Series(cum_cell_sum).rolling(10).mean()[10:])
+            d2 = np.diff(pd.Series(d1).rolling(10).mean()[10:])
+            inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
+
+            # mask low count molecules
+            idx.mask[inflection_pt:] = True
+            hicount_cells = cell_sums[idx]
+            hicount_reads = read_sums[idx]
+
+            # get read / cell ratio, filter out low coverage cells
+            ratio = hicount_cells, hicount_reads
+
+            col_ratio = ratio[:, np.newaxis]
+            gmm1 = GMM(n_components=1)
+            gmm2 = GMM(n_components=2)
+            gmm1.fit(col_ratio)
+            gmm2.fit(col_ratio)
+
+            # check if adding a second component is necessary
+            if gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.85:
+                res = gmm2.fit_predict(col_ratio)
+                passing = np.where(res == np.argmax(gmm2.means_))
+                cell_sums = cell_sums[passing]
+                read_sums = read_sums[passing]
+
+            # check if mt content is too high
+            mt_genes = e.molecules.columns[e.molecules.columns.str.contains('MT-')]
+            mt_counts = e.molecules[mt_genes].sum(axis=1)
+            library_size = e.molecules.sum(axis=1)
+            ratios = mt_counts / library_size
+            pass_filter = ratios.index[ratios <= max_mt_content]
+
+            # now, finally deal with low-complexity cells.
+
 
     def save(self, fout: str) -> None:
         """
