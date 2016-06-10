@@ -7,7 +7,7 @@ import shlex
 import shutil
 import warnings
 from collections import defaultdict
-from copy import deepcopy
+from copy import deepcopy, copy
 from functools import partial
 from itertools import combinations
 from subprocess import call, Popen, PIPE
@@ -304,10 +304,15 @@ class Experiment:
     @classmethod
     def create_filtered_dense_count_matrix(cls, experiment, max_mt_content=0.2):
         """
+        filter cells with low molecule counts, low read coverage, high mitochondrial content,
+        and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
+        original number of molecules (int), the number of molecules lost with each filter
+        (dict), and the number of cells lost with each filter (dict).
+
         :param experiment: a .p file or Experiment object to be filtered
         :param max_mt_content: the maximum percentage of mitochondrial RNA that is
           considered to constitute a viable cell
-        :return: Experiment (merged, dense)
+        :return: (pd.DataFrame, int, dict, dict)
         """
 
         cells_lost = {}
@@ -321,7 +326,7 @@ class Experiment:
                 raise ValueError('File {} could not be found. Please pass either a '
                                  'loaded Experiment object or the filename of a binary '
                                  'experiment.'.format(experiment))
-        if not isinstance(experiment, Experiment):
+        if not isinstance(experiment, seqc.core.Experiment):
             raise TypeError('Invalid experiment parameter. Please pass either a '
                              'loaded Experiment object or the filename of a binary '
                              'experiment.')
@@ -331,8 +336,10 @@ class Experiment:
             raise ValueError('Parameter max_mt_content must be in the interval [0, 1]')
 
         # set data structures and original molecule counts
+        experiment = copy(experiment)  # type is mutated; copy the container (not sure why)
         M = experiment.molecules.data
         R = experiment.reads.data
+        G = experiment.molecules.columns
         is_invalid = np.zeros(M.shape[0], np.bool)
         total_molecules = np.sum(M.sum(axis=1))
 
@@ -349,7 +356,7 @@ class Experiment:
         )
 
         # filter high_mt_content
-        mt_invalid = seqc.filter.high_mitochondrial_rna(M, cov_invalid, max_mt_content)
+        mt_invalid = seqc.filter.high_mitochondrial_rna(M, G, cov_invalid, max_mt_content)
         cells_lost['high_mt'] = np.sum(mt_invalid) - np.sum(cov_invalid)
         molecules_lost['high_mt'] = (
             M.tocsr()[mt_invalid, :].sum().sum() - molecules_lost['low_coverage']
@@ -364,7 +371,7 @@ class Experiment:
 
         # construct dense matrix
         dense = M.tocsr()[~gene_invalid, :].todense()
-        nonzero_gene_count = dense.sum(axis=0) != 0
+        nonzero_gene_count = np.ravel(dense.sum(axis=0) != 0)
         dense = dense[:, nonzero_gene_count]
         dense = pd.DataFrame(
             dense,
@@ -374,7 +381,7 @@ class Experiment:
         return dense, total_molecules, molecules_lost, cells_lost
 
 
-def save(self, fout: str) -> None:
+    def save(self, fout: str) -> None:
         """
         :param fout: str, name of archive to store pickled Experiment data in. Should end
           in '.p'.

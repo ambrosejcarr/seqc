@@ -107,19 +107,20 @@ def low_coverage(molecules, reads, is_invalid):
     return is_invalid
 
 
-def high_mitochondrial_rna(molecules, is_invalid, max_mt_content=0.2):
+def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2):
     """
     Sets any cell with a fraction of mitochondrial mRNA greater than max_mt_content to
     invalid.
 
     :param molecules: scipy.stats.coo_matrix, molecule count matrix
+    :param gene_ids: np.ndarray(dtype=str) containing string gene identifiers
     :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
     :param max_mt_content: float, maximum percentage of reads that can come from
       mitochondria in a valid cell
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     # identify % genes that are mitochondrial
-    mt_genes = np.fromiter(map(lambda x: x.startswith('MT-'), molecules.columns), dtype=np.bool)
+    mt_genes = np.fromiter(map(lambda x: x.startswith('MT-'), gene_ids), dtype=np.bool)
     mt_molecules = np.ravel(molecules.tocsr()[~is_invalid, :].tocsc()[:, mt_genes].sum(axis=1))
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     ratios = mt_molecules / ms
