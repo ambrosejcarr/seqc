@@ -323,24 +323,5 @@ class TestThreeBitEquivalence(unittest.TestCase):
             self.assertEqual(case2, case2_decoded)
 
 
-class TestCreateMergedProcessedExperiment(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        testdir = seqc_dir + 'test/TestCreateMergedProcessedExperiment/'
-        os.makedirs(testdir, exist_ok=True)
-        try:
-            cls.data = seqc.io.S3.download_file(
-                'ajc-data',
-                'PA5394_miseq_test/PA5394_miseq_test_read_and_count_matrices.p',
-                seqc_dir + testdir + 'test.p')
-        except FileExistsError:
-            cls.data = seqc_dir + testdir + 'test.p'
-
-    def test_create_merged_processed_experiment(self):
-        experiments = (self.data,)
-        labels = ('test_experiment',)
-        seqc.core.Experiment.create_merged_processed_experiment(experiments, labels)
-
 if __name__ == "__main__":
     nose2.main()
