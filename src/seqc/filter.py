@@ -42,15 +42,17 @@ def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
 
 def low_count(molecules, is_invalid):
     """
-    Note: may want to return vcrit
+    updates is_invalid to reflect cells whose molecule counts are below the inflection
+    point of an ecdf constructed from cell molecule counts. Typically this reflects cells
+    whose molecule counts are approximately <= 100.
 
-    :param molecules:
-    :param is_invalid:
-    :return: np.array(dtype=bool), listing whether each cell is valid
+    :param molecules: scipy.stats.coo_matrix, molecule count matrix
+    :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
 
     # copy, sort, and normalize molecule sums
-    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
+    ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     idx = np.argsort(ms)[::-1]  # largest cells first
     norm_ms = ms[idx] / ms[idx].sum()  # sorted, normalized array
 
@@ -69,15 +71,19 @@ def low_count(molecules, is_invalid):
 
 def low_coverage(molecules, reads, is_invalid):
     """
+    Fits a two-component gaussian mixture model to the data. If a component is found
+    to fit a low-coverage fraction of the data, this fraction is set as invalid. Not
+    all datasets contain this fraction.
+
     For best results, should be run after filter.low_count()
 
-    :param molecules:
-    :param reads:
-    :param is_valid:
-    :return:
+    :param molecules: scipy.stats.coo_matrix, molecule count matrix
+    :param reads: scipy.stats.coo_matrix, read count matrix
+    :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
-    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
-    rs = np.ravel(reads.data.tocsr()[~is_invalid, :].sum(axis=1))
+    ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
+    rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
 
     # get read / cell ratio, filter out low coverage cells
     ratio = rs / ms
@@ -103,10 +109,14 @@ def low_coverage(molecules, reads, is_invalid):
 
 def high_mitochondrial_rna(molecules, is_invalid, max_mt_content=0.2):
     """
-    :param molecules:
-    :param is_invalid:
-    :param max_mt_content:
-    :return:
+    Sets any cell with a fraction of mitochondrial mRNA greater than max_mt_content to
+    invalid.
+
+    :param molecules: scipy.stats.coo_matrix, molecule count matrix
+    :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :param max_mt_content: float, maximum percentage of reads that can come from
+      mitochondria in a valid cell
+    :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     # identify % genes that are mitochondrial
     mt_genes = np.fromiter(map(lambda x: x.startswith('MT-'), molecules.columns), dtype=np.bool)
@@ -123,9 +133,13 @@ def high_mitochondrial_rna(molecules, is_invalid, max_mt_content=0.2):
 
 def low_gene_abundance(molecules, is_invalid):
     """
-    :param molecules:
-    :param is_invalid:
-    :return:
+    Fits a linear model to the relationship between number of genes detected and number
+    of molecules detected. Cells with a lower than expected number of detected genes
+    are set as invalid.
+
+    :param molecules: scipy.stats.coo_matrix, molecule count matrix
+    :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
 
     ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
