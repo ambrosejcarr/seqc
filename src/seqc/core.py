@@ -380,7 +380,6 @@ class Experiment:
 
         return dense, total_molecules, molecules_lost, cells_lost
 
-
     def save(self, fout: str) -> None:
         """
         :param fout: str, name of archive to store pickled Experiment data in. Should end
