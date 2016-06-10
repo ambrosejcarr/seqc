@@ -708,7 +708,7 @@ def main(args: list=None):
                 manage_ra = seqc.io.ProcessManager(upload_ra)
                 manage_ra.run_all()
 
-        seqc.log.info('Creating count matrices')
+        seqc.log.info('Creating sparse count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)

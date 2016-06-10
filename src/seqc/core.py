@@ -369,7 +369,10 @@ class Experiment:
             index=self.molecules.index[~gene_invalid],
             columns=self.molecules.columns[nonzero_gene_count]))
 
-        return dense, total_molecules, molecules_lost, cells_lost
+        # describe cells
+        cell_description = dense.molecules.sum(axis=1).describe()
+
+        return dense, total_molecules, molecules_lost, cells_lost, cell_description
 
     def save(self, fout: str) -> None:
         """
