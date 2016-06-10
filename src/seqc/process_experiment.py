@@ -719,13 +719,19 @@ def main(args: list=None):
                       'generating dense count matrix')
         e = seqc.core.Experiment.from_count_matrices(
             args.output_stem + '_read_and_count_matrices.p')
-        # todo @kristychoi use these data for the run summary
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
             e.create_filtered_dense_count_matrix())
         df = dense.molecules
         df[df == 0] = np.nan  # for sparse_csv saving
-        df.to_csv(args.output_stem + '_counts.csv')  # todo @kristychoi gzip this
+        sparse_csv = args.output_stem + '_counts.csv'
+        df.to_csv(sparse_csv)
 
+        # gzipping sparse_csv annd uploading to S3
+        sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
+        sparse_upload = 'aws s3 mv {fname} {s3link}'.format(fname=sparse_csv+'.gz',
+                                                            s3link=aws_upload_key)
+        sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
+        sparse_proc.run_all()
 
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
@@ -746,6 +752,9 @@ def main(args: list=None):
                     manage_ra.wait_until_complete()
                     seqc.log.info('Successfully uploaded %s to the specified S3 '
                                   'location "%s"' % (args.read_array, aws_upload_key))
+                    sparse_proc.wait_until_complete()
+                    seqc.log.info('Successfully uploaded %s to the specified S3 '
+                                  'location "%s"' % (sparse_csv+'.gz', aws_upload_key))
 
                 # upload count matrix and alignment summary at the very end
                 if summary:
@@ -757,6 +766,11 @@ def main(args: list=None):
                         summary['n_sam'] = sam_records
                     else:
                         summary['n_sam'] = 'NA'
+                    summary['total_mc'] = total_molecules
+                    summary['mols_lost'] = mols_lost
+                    summary['cells_lost'] = cells_lost
+                    summary['cell_desc'] = cell_description
+
                 # todo: run summary will not be reported if n_fastq or n_sam = NA
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data,
