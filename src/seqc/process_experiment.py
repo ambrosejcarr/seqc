@@ -719,11 +719,13 @@ def main(args: list=None):
                       'generating dense count matrix')
         e = seqc.core.Experiment.from_count_matrices(
             args.output_stem + '_read_and_count_matrices.p')
+        # todo @kristychoi use these data for the run summary
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
             e.create_filtered_dense_count_matrix())
         df = dense.molecules
         df[df == 0] = np.nan  # for sparse_csv saving
-        df.to_csv(args.output_stem + '_counts.csv')
+        df.to_csv(args.output_stem + '_counts.csv')  # todo @kristychoi gzip this
+
 
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
