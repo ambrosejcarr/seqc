@@ -373,10 +373,10 @@ class Experiment:
         dense = M.tocsr()[~gene_invalid, :].todense()
         nonzero_gene_count = np.ravel(dense.sum(axis=0) != 0)
         dense = dense[:, nonzero_gene_count]
-        dense = pd.DataFrame(
+        dense = cls(molecules=pd.DataFrame(
             dense,
             index=experiment.molecules.index[~gene_invalid],
-            columns=experiment.molecules.columns[nonzero_gene_count])
+            columns=experiment.molecules.columns[nonzero_gene_count]))
 
         return dense, total_molecules, molecules_lost, cells_lost
 
@@ -414,7 +414,12 @@ class Experiment:
                 s=self.is_sparse(), g=g, c=c))
         for k, v in sorted(vars(self).items()):
             if not (k == '_reads' or k == '_molecules}'):
-                _repr += '\n{}={}'.format(k[1:], 'None' if v is None else 'True')
+                if v is None:
+                    _repr += '\n{}={}'.format(k[1:], 'None')
+                elif v is False:
+                    _repr += '\n{}={}'.format(k[1:], 'False')
+                else:
+                    _repr += '\n{}={}'.format(k[1:], 'True')
         return _repr
 
     @property
