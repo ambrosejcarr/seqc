@@ -42,15 +42,16 @@ def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
 
 def low_count(molecules, is_invalid):
     """
+    Note: may want to return vcrit
+
     :param molecules:
     :param is_invalid:
     :return: np.array(dtype=bool), listing whether each cell is valid
     """
 
     # copy, sort, and normalize molecule sums
-    ms = np.ravel(molecules[~is_invalid, :].sum(axis=1))
-    ms = ms[ms > 0]  # throw out zero values
-    idx = np.argsort(ms)
+    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
+    idx = np.argsort(ms)[::-1]  # largest cells first
     norm_ms = ms[idx] / ms[idx].sum()  # sorted, normalized array
 
     # identify inflection point form second derivative
@@ -59,8 +60,8 @@ def low_count(molecules, is_invalid):
     d2 = np.diff(pd.Series(d1).rolling(10).mean()[10:])
     inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
     vcrit = ms[idx][inflection_pt]
-    print(vcrit)
 
+    is_invalid = is_invalid.copy()
     is_invalid[ms < vcrit] = True
 
     return is_invalid
@@ -75,8 +76,8 @@ def low_coverage(molecules, reads, is_invalid):
     :param is_valid:
     :return:
     """
-    ms = molecules[~is_invalid, :].sum(axis=1)
-    rs = reads[~is_invalid, :].sum(axis=1)
+    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
+    rs = np.ravel(reads.data.tocsr()[~is_invalid, :].sum(axis=1))
 
     # get read / cell ratio, filter out low coverage cells
     ratio = rs / ms
@@ -94,6 +95,7 @@ def low_coverage(molecules, reads, is_invalid):
         failing = np.where(res == np.argmin(gmm2.means_))[0]
 
         # set smaller mean as invalid
+        is_invalid = is_invalid.copy()
         is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     return is_invalid
@@ -107,12 +109,13 @@ def high_mitochondrial_rna(molecules, is_invalid, max_mt_content=0.2):
     :return:
     """
     # identify % genes that are mitochondrial
-    mt_genes = molecules.columns[molecules.columns.str.contains('MT-')]
-    mt_molecules = molecules[~is_invalid, mt_genes].sum(axis=1)
-    ms = molecules[~is_invalid, :].sum(axis=1)
+    mt_genes = np.fromiter(map(lambda x: x.startswith('MT-'), molecules.columns), dtype=np.bool)
+    mt_molecules = np.ravel(molecules.data.tocsr()[~is_invalid, :].tocsc()[:, mt_genes].sum(axis=1))
+    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
     ratios = mt_molecules / ms
 
-    failing = ratios.index[ratios > max_mt_content]
+    failing = ratios > max_mt_content
+    is_invalid = is_invalid.copy()
     is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     return is_invalid
@@ -125,8 +128,8 @@ def low_gene_abundance(molecules, is_invalid):
     :return:
     """
 
-    ms = molecules[~is_invalid, :].sum(axis=1)
-    genes = np.array(molecules[~is_invalid, :] > 0).sum(axis=1)
+    ms = np.ravel(molecules.data.tocsr()[~is_invalid, :].sum(axis=1))
+    genes = np.ravel(molecules.data.tocsr()[~is_invalid, :].getnnz(axis=1))
     x = np.log10(ms)[:, np.newaxis]
     y = np.log10(genes)
 
@@ -139,6 +142,7 @@ def low_gene_abundance(molecules, is_invalid):
     residuals = yhat - y
     failing = residuals > .15
 
+    is_invalid = is_invalid.copy()
     is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     return is_invalid
