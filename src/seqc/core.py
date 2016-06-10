@@ -6,7 +6,7 @@ import re
 import shlex
 import shutil
 import warnings
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from copy import deepcopy, copy
 from functools import partial
 from itertools import combinations
@@ -82,7 +82,7 @@ def get_fig(fig=None, ax=None):
 
 def density_2d(x, y):
     """return x and y and their density z, sorted by their density (smallest to largest)
-
+ 
     :param x:
     :param y:
     :return:
@@ -315,8 +315,8 @@ class Experiment:
         :return: (pd.DataFrame, int, dict, dict)
         """
 
-        cells_lost = {}
-        molecules_lost = {}
+        cells_lost = OrderedDict()
+        molecules_lost = OrderedDict()
 
         # check input types
         if isinstance(experiment, str):
@@ -326,6 +326,7 @@ class Experiment:
                 raise ValueError('File {} could not be found. Please pass either a '
                                  'loaded Experiment object or the filename of a binary '
                                  'experiment.'.format(experiment))
+        # todo this is super weird; triggering, shouldn't. classmethod issues?
         if not isinstance(experiment, seqc.core.Experiment):
             raise TypeError('Invalid experiment parameter. Please pass either a '
                              'loaded Experiment object or the filename of a binary '
@@ -343,7 +344,7 @@ class Experiment:
         is_invalid = np.zeros(M.shape[0], np.bool)
         total_molecules = np.sum(M.sum(axis=1))
 
-        def additional_loss(old_filter, new_filter, D):
+        def additional_loss(new_filter, old_filter, D):
             new_cell_loss = np.sum(new_filter) - np.sum(old_filter)
             D = D.tocsr()
             total_molecule_loss = D[new_filter].sum().sum()
@@ -369,33 +370,7 @@ class Experiment:
         # filter low gene abundance
         gene_invalid = seqc.filter.low_gene_abundance(M, mt_invalid)
         cells_lost['low_gene_detection'], molecules_lost['low_gene_detection'] = additional_loss(
-            mt_invalid, cov_invalid, M)
-
-        # # filter low counts
-        # count_invalid = seqc.filter.low_count(M, is_invalid)
-        # cells_lost['low_count'] = np.sum(count_invalid)
-        # molecules_lost['low_count'] = M.tocsr()[count_invalid, :].sum().sum()
-        #
-        # # filter low coverage
-        # cov_invalid = seqc.filter.low_coverage(M, R, count_invalid)
-        # cells_lost['low_coverage'] = np.sum(cov_invalid) - np.sum(count_invalid)
-        # molecules_lost['low_coverage'] = (
-        #     M.tocsr()[cov_invalid, :].sum().sum() - molecules_lost['low_count']
-        # )
-        #
-        # # filter high_mt_content
-        # mt_invalid = seqc.filter.high_mitochondrial_rna(M, G, cov_invalid, max_mt_content)
-        # cells_lost['high_mt'] = np.sum(mt_invalid) - np.sum(cov_invalid)
-        # molecules_lost['high_mt'] = (
-        #     M.tocsr()[mt_invalid, :].sum().sum() - molecules_lost['low_coverage']
-        # )
-        #
-        # # filter low gene abundance
-        # gene_invalid = seqc.filter.low_gene_abundance(M, mt_invalid)
-        # cells_lost['low_gene_detection'] = np.sum(gene_invalid) - np.sum(mt_invalid)
-        # molecules_lost['low_gene_detection'] = (
-        #     M.tocsr()[gene_invalid, :].sum().sum() - molecules_lost['high_mt']
-        # )
+            gene_invalid, mt_invalid, M)
 
         # construct dense matrix
         dense = M.tocsr()[~gene_invalid, :].todense()
