@@ -304,17 +304,77 @@ class Experiment:
     @classmethod
     def create_filtered_dense_count_matrix(cls, experiment, max_mt_content=0.2):
         """
-        :param experiments: a .p file or Experiment object to be filtered
-        :param labels: a set of (optional) labels for each experiment, will be added as
-          metadata. If not provided, experiments are numbered numerically in the order
-          provided
+        :param experiment: a .p file or Experiment object to be filtered
         :param max_mt_content: the maximum percentage of mitochondrial RNA that is
           considered to constitute a viable cell
         :return: Experiment (merged, dense)
         """
 
+        cells_lost = {}
+        molecules_lost = {}
 
-    def save(self, fout: str) -> None:
+        # check input types
+        if isinstance(experiment, str):
+            try:
+                experiment = cls.from_count_matrices(experiment)
+            except FileNotFoundError:
+                raise ValueError('File {} could not be found. Please pass either a '
+                                 'loaded Experiment object or the filename of a binary '
+                                 'experiment.'.format(experiment))
+        if not isinstance(experiment, Experiment):
+            raise TypeError('Invalid experiment parameter. Please pass either a '
+                             'loaded Experiment object or the filename of a binary '
+                             'experiment.')
+        if not isinstance(max_mt_content, float):
+            raise TypeError('Parameter max_mt_content must be of type float.')
+        if not 0 <= max_mt_content <= 1:
+            raise ValueError('Parameter max_mt_content must be in the interval [0, 1]')
+
+        # set data structures and original molecule counts
+        M = experiment.molecules.data
+        R = experiment.reads.data
+        is_invalid = np.zeros(M.shape[0], np.bool)
+        total_molecules = np.sum(M.sum(axis=1))
+
+        # filter low counts
+        count_invalid = seqc.filter.low_count(M, is_invalid)
+        cells_lost['low_count'] = np.sum(count_invalid)
+        molecules_lost['low_count'] = M.tocsr()[count_invalid, :].sum().sum()
+
+        # filter low coverage
+        cov_invalid = seqc.filter.low_coverage(M, R, count_invalid)
+        cells_lost['low_coverage'] = np.sum(cov_invalid) - np.sum(count_invalid)
+        molecules_lost['low_coverage'] = (
+            M.tocsr()[cov_invalid, :].sum().sum() - molecules_lost['low_count']
+        )
+
+        # filter high_mt_content
+        mt_invalid = seqc.filter.high_mitochondrial_rna(M, cov_invalid, max_mt_content)
+        cells_lost['high_mt'] = np.sum(mt_invalid) - np.sum(cov_invalid)
+        molecules_lost['high_mt'] = (
+            M.tocsr()[mt_invalid, :].sum().sum() - molecules_lost['low_coverage']
+        )
+
+        # filter low gene abundance
+        gene_invalid = seqc.filter.low_gene_abundance(M, mt_invalid)
+        cells_lost['low_gene_detection'] = np.sum(gene_invalid) - np.sum(mt_invalid)
+        molecules_lost['low_gene_detection'] = (
+            M.tocsr()[gene_invalid, :].sum().sum() - molecules_lost['high_mt']
+        )
+
+        # construct dense matrix
+        dense = M.tocsr()[~gene_invalid, :].todense()
+        nonzero_gene_count = dense.sum(axis=0) != 0
+        dense = dense[:, nonzero_gene_count]
+        dense = pd.DataFrame(
+            dense,
+            index=experiment.molecules.index[~gene_invalid],
+            columns=experiment.molecules.columns[nonzero_gene_count])
+
+        return dense, total_molecules, molecules_lost, cells_lost
+
+
+def save(self, fout: str) -> None:
         """
         :param fout: str, name of archive to store pickled Experiment data in. Should end
           in '.p'.
