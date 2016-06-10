@@ -343,31 +343,59 @@ class Experiment:
         is_invalid = np.zeros(M.shape[0], np.bool)
         total_molecules = np.sum(M.sum(axis=1))
 
+        def additional_loss(old_filter, new_filter, D):
+            new_cell_loss = np.sum(new_filter) - np.sum(old_filter)
+            D = D.tocsr()
+            total_molecule_loss = D[new_filter].sum().sum()
+            old_molecule_loss = D[old_filter].sum().sum()
+            new_molecule_loss = total_molecule_loss - old_molecule_loss
+            return new_cell_loss, new_molecule_loss
+
         # filter low counts
         count_invalid = seqc.filter.low_count(M, is_invalid)
-        cells_lost['low_count'] = np.sum(count_invalid)
-        molecules_lost['low_count'] = M.tocsr()[count_invalid, :].sum().sum()
+        cells_lost['low_count'], molecules_lost['low_count'] = additional_loss(
+            count_invalid, is_invalid, M)
 
         # filter low coverage
         cov_invalid = seqc.filter.low_coverage(M, R, count_invalid)
-        cells_lost['low_coverage'] = np.sum(cov_invalid) - np.sum(count_invalid)
-        molecules_lost['low_coverage'] = (
-            M.tocsr()[cov_invalid, :].sum().sum() - molecules_lost['low_count']
-        )
+        cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
+            cov_invalid, count_invalid, M)
 
         # filter high_mt_content
         mt_invalid = seqc.filter.high_mitochondrial_rna(M, G, cov_invalid, max_mt_content)
-        cells_lost['high_mt'] = np.sum(mt_invalid) - np.sum(cov_invalid)
-        molecules_lost['high_mt'] = (
-            M.tocsr()[mt_invalid, :].sum().sum() - molecules_lost['low_coverage']
-        )
+        cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
+            mt_invalid, cov_invalid, M)
 
         # filter low gene abundance
         gene_invalid = seqc.filter.low_gene_abundance(M, mt_invalid)
-        cells_lost['low_gene_detection'] = np.sum(gene_invalid) - np.sum(mt_invalid)
-        molecules_lost['low_gene_detection'] = (
-            M.tocsr()[gene_invalid, :].sum().sum() - molecules_lost['high_mt']
-        )
+        cells_lost['low_gene_detection'], molecules_lost['low_gene_detection'] = additional_loss(
+            mt_invalid, cov_invalid, M)
+
+        # # filter low counts
+        # count_invalid = seqc.filter.low_count(M, is_invalid)
+        # cells_lost['low_count'] = np.sum(count_invalid)
+        # molecules_lost['low_count'] = M.tocsr()[count_invalid, :].sum().sum()
+        #
+        # # filter low coverage
+        # cov_invalid = seqc.filter.low_coverage(M, R, count_invalid)
+        # cells_lost['low_coverage'] = np.sum(cov_invalid) - np.sum(count_invalid)
+        # molecules_lost['low_coverage'] = (
+        #     M.tocsr()[cov_invalid, :].sum().sum() - molecules_lost['low_count']
+        # )
+        #
+        # # filter high_mt_content
+        # mt_invalid = seqc.filter.high_mitochondrial_rna(M, G, cov_invalid, max_mt_content)
+        # cells_lost['high_mt'] = np.sum(mt_invalid) - np.sum(cov_invalid)
+        # molecules_lost['high_mt'] = (
+        #     M.tocsr()[mt_invalid, :].sum().sum() - molecules_lost['low_coverage']
+        # )
+        #
+        # # filter low gene abundance
+        # gene_invalid = seqc.filter.low_gene_abundance(M, mt_invalid)
+        # cells_lost['low_gene_detection'] = np.sum(gene_invalid) - np.sum(mt_invalid)
+        # molecules_lost['low_gene_detection'] = (
+        #     M.tocsr()[gene_invalid, :].sum().sum() - molecules_lost['high_mt']
+        # )
 
         # construct dense matrix
         dense = M.tocsr()[~gene_invalid, :].todense()
