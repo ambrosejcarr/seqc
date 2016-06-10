@@ -301,15 +301,13 @@ class Experiment:
         self._diffusion_map_correlations = None
         self._cluster_assignments = None
 
-    @classmethod
-    def create_filtered_dense_count_matrix(cls, experiment, max_mt_content=0.2):
+    def create_filtered_dense_count_matrix(self, max_mt_content=0.2):
         """
         filter cells with low molecule counts, low read coverage, high mitochondrial content,
         and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
         original number of molecules (int), the number of molecules lost with each filter
         (dict), and the number of cells lost with each filter (dict).
 
-        :param experiment: a .p file or Experiment object to be filtered
         :param max_mt_content: the maximum percentage of mitochondrial RNA that is
           considered to constitute a viable cell
         :return: (pd.DataFrame, int, dict, dict)
@@ -318,29 +316,19 @@ class Experiment:
         cells_lost = OrderedDict()
         molecules_lost = OrderedDict()
 
-        # check input types
-        if isinstance(experiment, str):
-            try:
-                experiment = cls.from_count_matrices(experiment)
-            except FileNotFoundError:
-                raise ValueError('File {} could not be found. Please pass either a '
-                                 'loaded Experiment object or the filename of a binary '
-                                 'experiment.'.format(experiment))
-        # todo this is super weird; triggering, shouldn't. classmethod issues?
-        if not isinstance(experiment, seqc.core.Experiment):
-            raise TypeError('Invalid experiment parameter. Please pass either a '
-                             'loaded Experiment object or the filename of a binary '
-                             'experiment.')
+        if not self.molecules.columns.dtype.char == 'U':
+            raise RuntimeError('non-string column names detected. Please convert '
+                               'column names into string gene symbols before calling '
+                               'this function.')
         if not isinstance(max_mt_content, float):
             raise TypeError('Parameter max_mt_content must be of type float.')
         if not 0 <= max_mt_content <= 1:
             raise ValueError('Parameter max_mt_content must be in the interval [0, 1]')
 
         # set data structures and original molecule counts
-        experiment = copy(experiment)  # type is mutated; copy the container (not sure why)
-        M = experiment.molecules.data
-        R = experiment.reads.data
-        G = experiment.molecules.columns
+        M = self.molecules.data
+        R = self.reads.data
+        G = self.molecules.columns
         is_invalid = np.zeros(M.shape[0], np.bool)
         total_molecules = np.sum(M.sum(axis=1))
 
@@ -376,10 +364,10 @@ class Experiment:
         dense = M.tocsr()[~gene_invalid, :].todense()
         nonzero_gene_count = np.ravel(dense.sum(axis=0) != 0)
         dense = dense[:, nonzero_gene_count]
-        dense = cls(molecules=pd.DataFrame(
+        dense = Experiment(molecules=pd.DataFrame(
             dense,
-            index=experiment.molecules.index[~gene_invalid],
-            columns=experiment.molecules.columns[nonzero_gene_count]))
+            index=self.molecules.index[~gene_invalid],
+            columns=self.molecules.columns[nonzero_gene_count]))
 
         return dense, total_molecules, molecules_lost, cells_lost
 
