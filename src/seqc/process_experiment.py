@@ -719,6 +719,11 @@ def main(args: list=None):
                       'generating dense count matrix')
         e = seqc.core.Experiment.from_count_matrices(
             args.output_stem + '_read_and_count_matrices.p')
+
+        # todo @ajc speed up this function; is slow
+        gene_id_map = seqc.core.Experiment.create_gene_id_to_official_gene_symbol_map(
+            args.index + 'annotations.gtf')
+        e = e.ensembl_gene_id_to_official_gene_symbol(gene_id_map=gene_id_map)
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
             e.create_filtered_dense_count_matrix())
         df = dense.molecules
