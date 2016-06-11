@@ -582,6 +582,10 @@ class ExperimentalYield:
         # no_rmt = summary['rmt_0']
         rmt_N = summary['rmt_N']
         poly_t = summary['poly_t']
+        tot_mc = summary['total_mc']
+        mols_lost = list(summary['mols_lost'].items())
+        cells_lost = list(summary['cells_lost'].items())
+        cell_desc = summary['cell_desc'].to_string()
         divide = '-' * 40
 
         # run summary will not be calculated if user started SEQC midway
@@ -634,6 +638,11 @@ class ExperimentalYield:
                   # 'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
                   'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
                   'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+                  '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
+                  'Total molecules:\t\t{tot_mc}\n'
+                  'Molecules lost:\t{mols_lost}\n'
+                  'Cells lost:\t{cells_lost}\n'
+                  'Cell description:\n{cell_desc}\n'
                   '{divide}\nSUMMARY\n{divide}\n'
                   'Total retained reads:\t{n_good} ({prop_good}%)\n'
                   'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
@@ -647,7 +656,9 @@ class ExperimentalYield:
                           prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
                           bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
                           bad_cell=bad_cell, bad_rmtN=bad_rmtN,
-                          bad_polyt=bad_polyt, trans=trans, prop_trans=prop_trans))
+                          bad_polyt=bad_polyt, trans=trans, prop_trans=prop_trans,
+                          tot_mc=tot_mc, mols_lost=mols_lost, cells_lost=cells_lost,
+                          cell_desc=cell_desc))
         return output
 
 
