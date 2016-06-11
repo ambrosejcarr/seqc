@@ -11,7 +11,6 @@ from copy import deepcopy, copy
 from functools import partial
 from itertools import combinations
 from subprocess import call, Popen, PIPE
-
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -24,7 +23,6 @@ from scipy.stats import gaussian_kde, pearsonr, mannwhitneyu, rankdata
 from scipy.stats.mstats import kruskalwallis
 from sklearn import linear_model
 from sklearn.manifold import TSNE
-from sklearn.mixture import GMM
 from sklearn.neighbors import NearestNeighbors
 from statsmodels.sandbox.stats.multicomp import multipletests
 
@@ -142,6 +140,21 @@ class ReadArray:
         ('position', np.uint64)]
 
     def __init__(self, data):
+        """
+        Enhanced np.ndarray (structured array) with several companion functions to hold
+        filter, sort, and access compressed fastq read information.
+
+        :param data: np.ndarray with dtype of self._dtype
+
+        :property data: stored np.ndarray
+        :method save: saves the ReadArray in compressed .h5 format
+        :method load: load a saved compressed .h5 representation of a ReadArray
+        :method from_samfile: constructs a ReadArray object from a samfile (uniquely
+          aligned records only)
+        :method reads_passing_filters: Return a ReadArray containing only reads
+          that pass all filters (n_poly_t, dust_complexity_score, presence of cell and
+          rmt)
+        """
         self._data = data
 
     @property
@@ -180,8 +193,13 @@ class ReadArray:
 
     def reads_passing_filters(self, min_poly_t: int, max_dust_score: int):
         """
-        :param min_poly_t:
-        :param max_dust_score:
+        Subset the ReadArray returning a new ReadArray containing eads that passed all
+        filters
+
+        :param min_poly_t: int, minimum number of T nucleotides that defined a valid
+          capture primer
+        :param max_dust_score: int, higher scores indicate increasingly degenerate
+          sequences. Typically sequences with dust_score > 10 may be discarded.
         :return: ReadArray
         """
         data = self.data[((self.data['n_poly_t'] >= min_poly_t) &
@@ -190,11 +208,11 @@ class ReadArray:
                           (self.data['cell'] != 0))]
         return ReadArray(data)
 
-    def save(self, archive_name):
+    def save(self, archive_name: str) -> None:
         """save a ReadArray in .h5 format
 
-        :param archive_name:
-        :return:
+        :param archive_name: filename of a new .h5 archive in which to save the ReadArray
+        :return: None
         """
 
         # create table
@@ -207,7 +225,13 @@ class ReadArray:
         f.close()
 
     @classmethod
-    def load(cls, archive_name):
+    def load(cls, archive_name: str):
+        """load a ReadArray from a .h5 archive
+
+        :param archive_name: name of a .h5 archive containing a saved ReadArray object
+        :return: ReadArray
+        """
+
         f = tb.open_file(archive_name, mode='r')
         data = f.root.data.read()
         f.close()
@@ -220,6 +244,20 @@ class ReadArray:
 class SparseFrame:
 
     def __init__(self, data, index, columns):
+        """
+        lightweight wrapper of scipy.stats.coo_matrix to provide pd.DataFrame-like access
+        to index, column, and shape properties.
+
+        :param data: scipy.stats.coo_matrix
+        :param index: np.ndarray: row index
+        :param columns: np.ndarray: column index
+
+        :property data: scipy.stats.coo_matrix
+        :property index: np.ndarray row index
+        :property columns: np.ndarray column index
+        :property shape: (int, int), number of rows and columns
+        :method sum: wrapper of np.sum()
+        """
 
         if not isinstance(data, coo_matrix):
             raise TypeError('data must be type coo_matrix')
@@ -269,13 +307,97 @@ class SparseFrame:
         return len(self.index), len(self.columns)
 
     def sum(self, axis=0):
+        """
+        sum over provided axis
+
+        :param axis: options: 0 (rows) or 1 (columns)
+        :return: np.ndarray vector of column or row sums
+        """
         return self.data.sum(axis=axis)
 
 
 class Experiment:
+    """
+    Object to hold and process read and molecule information from a SEQC experiment.
+
+    :property reads: a SparseFrame or DataFrame containing a cells x genes matrix of
+      read counts.
+    :property molecules: a SparseFrame or DataFrame containing a cells x genes matrix of
+      molecule counts.
+    :property metadata: a pd.DataFrame of cells x metadata; each column represents a
+      categorical variable containing metadata pertaining to the cells of Experiment.
+    :property pca: pd.DataFrame or None, a stored PCA decomposition of Experiment.
+      Produced by calling #todo
+    :property tsne: pd.DataFrame or None, a stored tSNE projection of Experiment.
+      Produced by calling #todo
+    :property diffusion_map_eigenvectors: pd.DataFrame or None, eigenvectors of a stored
+      diffusion map decompsition of Experiment
+    :property diffusion_map_eigenvalues: pd.DataFrame or None, eigenvalues of a stored
+      diffusion map decompsition of Experiment
+    :property diffusion_map_correlations: pd.DataFrame or None, stored correlations of
+      each gene with each diffusion component
+    :property cluster_assignments: pd.Series or None, stored phenograph cluster
+      assignments.
+
+    -- IO methods --
+    :method from_count_matrices: Constructs an Experiment object from a pickled SEQC run
+      output "*_read_and_count_matrices.p" file.
+    :method save: save a serialized python pickle representation of the Experiment that
+      can quickly be loaded at a later time.
+    :method load: load a serialized python pickle representation of the Experiment.
+    :method convert_ensemble: convert self.index containing scids into an index of gene
+      names
+    :method remove_non_cell_barcodes: removes low abundance cell barcodes
+    :staticmethod merge: Merge multiple experiment objects together, merging duplicate
+      cell values.
+    :staticmethod concatenate: Merge multiple experiment objects together, treating
+      duplicate cell ids as unique molecules and distinguishing them with numeric
+      suffixes.
+    :staticmethod ensembl_gene_id_to_official_gene_symbol: map integer ENSEMBL ids to
+      official gene symbols, optionally using a pre-created map.
+
+    -- Filtering methods --
+    :method create_filtered_dense_count_matrix:  Applies several filters to an Experiment
+      object to carry out an unsupervised conversion of a SparseFrame representation to a
+      reduced dense pd.DataFrame representation. This is the final step of seqc and is
+      carried out automatically.
+    :method exclude_dead_cells_with_high_mt_fraction: remove cells with mitochondrial
+      content suggestive of a dead or apoptotic cell
+    :method remove_low_complexity_cells: Remove any cells for which the residual of the
+      linear fit between molecules and genes detected is greater than .15.
+    :method remove_clusters_based_on_library_size_distribution: # todo STOPPED HERE
+
+    -- Statistical methods --
+    :method run_pca: runs Van Der Maaten PCA on Experiment and stores the decomposition
+      in self.pca
+    :method run_tsne: runs tsne on a PCA-reduced projection of experiment
+    :method run_phenograph: runs phenograph on a PCA-reduced projection of experiment
+
+    -- Plotting methods --
+    :method plot_mitochondrial_molecule_fraction: plot the fraction of mRNA that are of
+      mitochondrial origin for each cell.
+    :method plot_molecules_vs_genes: display the relationship between molecules captured
+      and number of genes captured.
+    :method plot_pca_variance_explained: Plot the variance explained by each PCA
+      component.
+    :method plot_tsne: plot the tsne projection, coloring according to c. If c is not
+      provided, default coloration is based on cell density.
+    :method plot_tsne_by_metadata: plot tsne, coloring the projection by metadata
+    :method plot_tsne_by_cell_sizes: plot tsne, coloring the projection by cell size
+    :method plot_clusters: plot phenograph clusters
+
+    -- Miscellaneous methods --
+    :method is_sparse: True if any data is in sparse format.
+    :method is_dense: True if no data is in sparse format.
+    :method normalize_data: Divide by cell size and multiply by median values. Sets
+      self.normalized=True.
+
+
+    """
 
     def __init__(self, molecules, reads=None, metadata=None):
         """
+        Object to hold and process read and molecule information from a SEQC experiment.
 
         :param reads:  DataFrame or SparseFrame
         :param molecules: DataFrame or SparseFrame
@@ -376,6 +498,9 @@ class Experiment:
 
     def save(self, fout: str) -> None:
         """
+        save a serialized python pickle representation of the Experiment that
+          can quickly be loaded at a later time.
+
         :param fout: str, name of archive to store pickled Experiment data in. Should end
           in '.p'.
         :return: None
@@ -386,6 +511,7 @@ class Experiment:
     @classmethod
     def load(cls, fin):
         """
+        load a serialized python pickle representation of the Experiment.
 
         :param fin: str, name of pickled archive containing Experiment data
         :return: Experiment
@@ -514,18 +640,14 @@ class Experiment:
         return self._normalized
 
     @classmethod
-    def from_v012(cls, read_and_count_matrix: str):
-        warnings.warn('DeprecationWarning: please use Experiment.from_count_matrices()')
-        with open(read_and_count_matrix, 'rb') as f:
-            d = pickle.load(f)
-        reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
-                            columns=d['reads']['col_ids'])
-        molecules = SparseFrame(d['molecules']['matrix'], index=d['molecules']['row_ids'],
-                                columns=d['molecules']['col_ids'])
-        return cls(reads=reads, molecules=molecules)
-
-    @classmethod
     def from_count_matrices(cls, read_and_count_matrix: str):
+        """
+        Construct an Experiment object from a SEQC reads_and_counts_matrix.p file
+
+        :param read_and_count_matrix: str, filename of the pickled SEQC output
+        :return:
+        """
+
         with open(read_and_count_matrix, 'rb') as f:
             d = pickle.load(f)
         reads = SparseFrame(d['reads']['matrix'], index=d['reads']['row_ids'],
@@ -535,12 +657,14 @@ class Experiment:
         return cls(reads=reads, molecules=molecules)
 
     def is_sparse(self):
+        """Return True if any of the Experiment's data is in sparse format"""
         if all(isinstance(o, SparseFrame) for o in (self.reads, self.molecules)):
             return True
         else:
             return False
 
     def is_dense(self):
+        """Return True if none of the Experiment's data is in sparse format"""
         return not self.is_sparse()
 
     # todo may still be side-effecting
@@ -615,9 +739,87 @@ class Experiment:
 
         return Experiment(reads=sparse_reads, molecules=sparse_molecules)
 
+    # todo
+    # currently, this method has side-effects (mutates existing row_ids, dataframes.
+    # Need more copying, if want to avoid)
     @staticmethod
-    def create_gene_id_to_official_gene_symbol_map(gtf):
+    def concatenate(experiments, metadata_labels=None):
         """
+        Concatenate a set of Experiment objects. Each cell is considered to be unique,
+        even if they share the same barcodes. If collisions are found, _%d will be added
+        to each cell, where %d is equal to the position of the Experiment in the input
+        experiments list.
+
+        Concatenate should be run after filtering each dataset individually, since the
+        datasets are considered to have distinct cells (even if they share the same
+        barcodes)
+
+        If metadata_labels are provided, a new entry in metadata will be included for
+        each cell. This can be useful to mark each cell by which experiment it originated
+        from in order to track batch effects, for example. metadata_labels should be a
+        dictionary of lists, where the list has the same number of entries as the number
+        of passed experiments. Thus, if one passed experiments=[e1, e2, e3] and
+        metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
+        each cell in the corresponding experiment
+
+        :param experiments:
+        :param metadata_labels: dict {label_name: [values], ...}
+        :return:
+        """
+
+        if metadata_labels is None:
+            metadata_labels = {}
+        if not all(e.is_dense() for e in experiments):
+            raise ValueError('merge may only be run on sparse inputs.')
+
+        # todo are these getting mutated twice??
+        # mutate cell identifiers to ensure they are unique after merging
+        old_index = []
+        for i, e in enumerate(experiments):
+            old_index.append(e.molecules.index)
+            suffix = '_{!s}'.format(i)
+            new_cells = [str(c) + suffix for c in e.molecules.index]
+            e.molecules.index = new_cells
+            e.metadata.index = new_cells
+
+        # merge genes, create new cell list
+        genes = set()
+        cells = []
+        meta_cols = set()
+        for e in experiments:
+            genes.update(list(e.molecules.columns))
+            cells.extend(deepcopy(list(e.molecules.index)))
+            meta_cols.update(list(e.metadata.columns))  # list not necessary?
+
+        # combine data
+        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
+        metadata = pd.DataFrame(index=cells, columns=meta_cols)
+        m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
+        for e in experiments:
+            m_combined.ix[e.molecules.index, e.molecules.columns] = e.molecules
+            metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
+
+        # add additional metadata
+        for k, v in metadata_labels.items():
+            metadata[k] = pd.Series(index=cells, dtype='O')
+            for e, metadata_val in zip(experiments, v):
+                metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
+
+        # regenerate original columns in experiemnt
+        for i, e in zip(old_index, experiments):
+            e.molecules.index = i
+            e.metadata.index = i
+
+        return Experiment(molecules=m_combined, reads=None, metadata=metadata)
+
+    # todo @ambrosejcarr make this faster; it is way too slow.
+    @staticmethod
+    def create_gene_id_to_official_gene_symbol_map(gtf: str):
+        """
+        create_gene_id_to_official_gene_symbol_map: map integer ENSEMBL ids to
+        official gene symbols.
+
+        :param gtf: str, filename of gtf file from which to create the map.
         """
         pattern = re.compile(
             r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
@@ -631,7 +833,11 @@ class Experiment:
 
     def ensembl_gene_id_to_official_gene_symbol(self, gtf=None, gene_id_map=None):
         """convert self.index containing scids into an index of gene names
-        :param gtf:
+
+        :param gtf: str, filename of a gtf file
+        :param gene_id_map: gene_id_map constructed from
+          Experiment.create_gene_id_to_official_gene_symbol_map. If converting multiple
+          objects, it is much faster to only construct the map a single time.
         :return: Experiment
         """
         if gene_id_map is None:
@@ -650,12 +856,17 @@ class Experiment:
         exp._normalized = self._normalized
         return exp
 
-    def scid_to_official_gene_symbol(self, gtf):
-        """convert scids to official gene symbols; useful for older v0.1.2 data
+    def scid_to_official_gene_symbol(self, gtf: str):
+        """
+        Deprecated. convert scids to official gene symbols; useful for older v0.1.2 data.
 
-        :param gtf:
+        :param gtf: str gtf filename.
         :return:
         """
+        warnings.warn('DeprecationWarning: This function is only useful for data created '
+                      'with SEQC v0.1.2. You should re-process your data to take '
+                      'advantage of new tools present in modern versions of SEQC')
+
         pattern = re.compile(
             r'(^.*?gene_name ")(.*?)(".*?scseq_id "SC)(.*?)(".*?$)')
 
@@ -719,9 +930,9 @@ class Experiment:
         exp._normalized = self._normalized
         return exp
 
-    def plot_mitochondrial_molecule_fraction(self, fig=None, ax=None,
-                                             title='Dead Cell Identification Plot'):
-        """ plot the fraction
+    def plot_mitochondrial_molecule_fraction(
+            self, fig=None, ax=None, title='Dead Cell Identification Plot'):
+        """ plot the fraction of mRNA that are of mitochondrial origin for each cell.
 
         :param title: title for the plot (e.g. the sample name)
         :param fig: figure
@@ -758,7 +969,8 @@ class Experiment:
     def exclude_dead_cells_with_high_mt_fraction(self, max_mt_fraction=0.2):
         """remove cells containing > max_mt_fraction mitochondrial molecules
 
-        :param max_mt_fraction:
+        :param max_mt_fraction: float, maximum percentage of mRNA that can come from the
+          mitochondria before the cell is considered invalid.
         :return: Experiment
         """
         if self._normalized:
@@ -778,84 +990,15 @@ class Experiment:
         exp._normalized = self._normalized
         return exp
 
-    # todo currently, this method has side-effects (mutates existing row_ids, dataframes. Need more copying, if want to avoid)
-    @staticmethod
-    def concatenate(experiments, metadata_labels=None):
-        """
-        Concatenate a set of Experiment objects. Each cell is considered to be unique,
-        even if they share the same barcodes. If collisions are found, _%d will be added
-        to each cell, where %d is equal to the position of the Experiment in the input
-        experiments list.
-
-        Concatenate should be run after filtering each dataset individually, since the
-        datasets are considered to have distinct cells (even if they share the same
-        barcodes)
-
-        If metadata_labels are provided, a new entry in metadata will be included for
-        each cell. This can be useful to mark each cell by which experiment it originated
-        from in order to track batch effects, for example. metadata_labels should be a
-        dictionary of lists, where the list has the same number of entries as the number
-        of passed experiments. Thus, if one passed experiments=[e1, e2, e3] and
-        metadata_labels={'batch': [1, 2, 3]}, batches 1, 2, and 3 would be propagated to
-        each cell in the corresponding experiment
-
-        :param experiments:
-        :param metadata_labels: dict {label_name: [values], ...}
-        :return:
-        """
-
-
-        if metadata_labels is None:
-            metadata_labels = {}
-        if not all(e.is_dense() for e in experiments):
-            raise ValueError('merge may only be run on sparse inputs.')
-
-        # todo are these getting mutated twice??
-        # mutate cell identifiers to ensure they are unique after merging
-        old_index = []
-        for i, e in enumerate(experiments):
-            old_index.append(e.molecules.index)
-            suffix = '_{!s}'.format(i)
-            new_cells = [str(c) + suffix for c in e.molecules.index]
-            e.molecules.index = new_cells
-            e.metadata.index = new_cells
-
-        # merge genes, create new cell list
-        genes = set()
-        cells = []
-        meta_cols = set()
-        for e in experiments:
-            genes.update(list(e.molecules.columns))
-            cells.extend(deepcopy(list(e.molecules.index)))
-            meta_cols.update(list(e.metadata.columns))  # list not necessary?
-
-        # combine data
-        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
-        metadata = pd.DataFrame(index=cells, columns=meta_cols)
-        m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
-        for e in experiments:
-            m_combined.ix[e.molecules.index, e.molecules.columns] = e.molecules
-            metadata.ix[e.metadata.index, e.metadata.columns] = e.metadata
-
-        # add additional metadata
-        for k, v in metadata_labels.items():
-            metadata[k] = pd.Series(index=cells, dtype='O')
-            for e, metadata_val in zip(experiments, v):
-                metadata[k].ix[e.metadata.index] = [metadata_val] * len(e.metadata.index)
-
-        # regenerate original columns in experiemnt
-        for i, e in zip(old_index, experiments):
-            e.molecules.index = i
-            e.metadata.index = i
-
-        return Experiment(molecules=m_combined, reads=None, metadata=metadata)
-
     def plot_molecules_vs_genes(self, fig=None, ax=None, title=''):
         """
-        should be linear relationship
-        :param ax:
-        :param fig:
-        :return:
+        plot the (expected linear) relationship between number of molecules captured and
+        the number of genes detected
+
+        :param title: optional title to plot on axis
+        :param ax: matplotlib axis
+        :param fig: matplotlib figure
+        :return: fig, ax
         """
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
@@ -889,6 +1032,11 @@ class Experiment:
         return fig, ax
 
     def remove_low_complexity_cells(self):
+        """Remove any cells for which the residual of the linear fit between molecules
+        and genes detected is greater than .15.
+
+        See plot_molecules_vs_genes for visualization of this fit.
+        """
         if self._normalized:
             raise RuntimeError('plot_molecules_vs_reads_per_molecule() should be run on '
                                'unnormalized data')
@@ -914,7 +1062,9 @@ class Experiment:
 
     def normalize_data(self):
         """
-        uses AVO method of normalization; stores original library sizes
+        uses AVO method of normalization; stores original library sizes. Sets
+        self._normalized = True
+
         :return: Experiment
         """
 
@@ -944,6 +1094,12 @@ class Experiment:
             self.reads = self.reads.groupby(axis=1).sum()
 
     def run_pca(self, n_components=100):
+        """
+        run Van Der Maaten PCA on Experiment and stores the decomposition in self.pca
+
+        :param n_components: number of PCA components to store.
+        :return:
+        """
 
         X = self.molecules.values  # todo added this
         # Make sure data is zero mean
@@ -986,8 +1142,9 @@ class Experiment:
 
     def run_pca_matlab(self, no_components=100):
         """
+        Deprecated. Runs a Matlab implementation of PCA. Requires Matlab.
 
-        :param no_components:
+        :param no_components: number of PCA components to retain.
         :return:
         """
         warnings.warn('DeprecationWarning: please use Experiment.run_pca()')
@@ -1029,7 +1186,15 @@ class Experiment:
         os.remove('/tmp/pc_mapping_lambda_%f.csv' % rand_tag)
 
     def plot_pca_variance_explained(self, fig=None, ax=None, n_components=30):
-        # plot the eigenvalues
+        """
+        Plot the variance explained by each PCA component. Requires that self.run_pca()
+         has been execued.
+
+        :param fig: matplotlib Figure
+        :param ax: matplotlib Axis
+        :param n_components: number of PCA components to plot
+        """
+
         fig, ax = get_fig(fig=fig, ax=ax)
         ax.plot(np.ravel(self.pca['eigenvalues'].values))
         ax.set_ylim((0, float(np.max(self.pca['eigenvalues']))))
@@ -1040,29 +1205,11 @@ class Experiment:
         sns.despine(ax=ax)
         return fig, ax
 
-    # def run_tsne(self, n_components=15):
-    #     """
-    #     normally run on PCA components; 1st component is normally excluded
-    #
-    #     :param n_components:
-    #     :return:
-    #     """
-    #     warnings.warn('DeprecationWarning: run_tsne() may be deprecated next release. '
-    #                   'Please test run_skl_tsne() and report any problems.')
-    #     data = deepcopy(self.molecules)
-    #     data -= np.min(np.ravel(data))
-    #     data /= np.max(np.ravel(data))
-    #     data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_components]),
-    #                         index=self.molecules.index)
-    #
-    #     self.tsne = pd.DataFrame(bh_sne(data),
-    #                              index=self.molecules.index, columns=['x', 'y'])
-
     def run_tsne(self, n_components=15, **kwargs):
         """
-        normally run on PCA components; 1st component is normally excluded
+        run tnse on a pca-reduced projection of experiment
 
-        :param n_components:
+        :param n_components: number of PCA components to use as input for tsne
         :return:
         """
         data = deepcopy(self.molecules)
@@ -1075,8 +1222,16 @@ class Experiment:
         res = tsne.fit_transform(data.values)
         self.tsne = pd.DataFrame(res, index=self.molecules.index, columns=['x', 'y'])
 
-
     def plot_tsne_by_metadata(self, label, fig=None, ax=None):
+        """
+        plot tsne, coloring the projection by metadata column "label"
+
+        :param label: the metadata column to color the tsne projection with
+        :param fig: Matplotlib Figure
+        :param ax: Matplotlib Axis
+        :return: fig, ax
+        """
+
         cats = set(self.metadata[label])
         colors = qualitative_colors(len(cats))
         fig, ax = get_fig(fig=fig, ax=ax)
@@ -1092,21 +1247,18 @@ class Experiment:
 
     def plot_tsne(self, fig=None, ax=None, c=None, **kwargs):
         """
+        plot the tsne projection, coloring according to c. If c is not provided, default
+         coloration is based on cell density.
 
-        plot tsne by metadata column: c=self.metadata['column']
-        plot tsne by clusters:
-
-        :param fig:
-        :param ax:
-        :param c:
-        :param kwargs:
-        :return:
+        :param fig: Matplotlib Figure
+        :param ax: Matplotlib Axis
+        :param c: numerical vector used to color the cells of experiment
+        :param kwargs: additional key word arguments for plt.scatter
+        :return: fig, ax
         """
         fig, ax = get_fig(fig=fig, ax=ax)
 
-        if c is not None:
-
-            # get colormap
+        if c is not None:  # get colormap
             if 'cmap' in kwargs.keys():
                 cmap = getattr(plt.cm, kwargs['cmap'])
             else:
@@ -1124,9 +1276,18 @@ class Experiment:
         return fig, ax
 
     def plot_tsne_by_cell_sizes(self, fig=None, ax=None, vmin=None, vmax=None,
-                                    title='',
-                                    sizes=None):
+                                title='', sizes=None):
+        """
+        plot tsne, coloring the projection by cell size
 
+        :param fig: Matplotlib Figure
+        :param ax: Matplotlib Axis
+        :param vmin: min value for min color
+        :param vmax: max value for max color
+        :param title: optional title to plot on axis
+        :param sizes: library sizes (calculated from data if not provided)
+        :return: (fig, ax)
+        """
         fig, ax = get_fig(fig, ax)
         if self.tsne is None:
             raise RuntimeError('Please run self.run_tsne() before plotting.')
@@ -1141,26 +1302,37 @@ class Experiment:
         return fig, ax
 
     def run_phenograph(self, n_pca_components=15, **kwargs):
-            """
-            normally run on PCA components; 1st component is normally excluded
-            :param n_pca_components:
-            :param **kwargs: keyword arguments to pass directly to phenograph
+        """
+        Run phenograph clustering on PCA-reduced cells of experiment.
 
-            one useful parameter is 'k', which inversely correlates with the number of
-            clusters that phenograph outputs.
+        one useful kwargs is 'k', which inversely correlates with the number of
+        clusters that phenograph outputs.
 
-            :return:
-            """
-            data = deepcopy(self.molecules)
-            data -= np.min(np.ravel(data))
-            data /= np.max(np.ravel(data))
-            data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
-                                index=self.molecules.index)
+        :param n_pca_components: number of PCA components to consider when projecting
+          experiment data.
+        :param **kwargs: keyword arguments to pass directly to phenograph
 
-            communities, graph, Q = phenograph.cluster(data, **kwargs)
-            self.cluster_assignments = pd.Series(communities, index=data.index)
+        :return:
+        """
+        data = deepcopy(self.molecules)
+        data -= np.min(np.ravel(data))
+        data /= np.max(np.ravel(data))
+        data = pd.DataFrame(np.dot(data, self.pca['loadings'].iloc[:, 0:n_pca_components]),
+                            index=self.molecules.index)
+
+        communities, graph, Q = phenograph.cluster(data, **kwargs)
+        self.cluster_assignments = pd.Series(communities, index=data.index)
 
     def plot_clusters(self, fig=None, ax=None, labels=None, **kwargs):
+        """
+        plot phenograph clusters
+
+        :param fig: Matplotlib Figure
+        :param ax: Matplotlib Axis
+        :param labels: cluster labels
+        :param kwargs: additional arguments to provide to scatter
+        :return:
+        """
 
         if self.tsne is None:
             raise RuntimeError('Cannot plot phenograph before generating tSNE'
