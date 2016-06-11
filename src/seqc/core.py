@@ -365,15 +365,38 @@ class Experiment:
       content suggestive of a dead or apoptotic cell
     :method remove_low_complexity_cells: Remove any cells for which the residual of the
       linear fit between molecules and genes detected is greater than .15.
-    :method remove_clusters_based_on_library_size_distribution: # todo STOPPED HERE
+    :method remove_clusters_based_on_library_size_distribution: # throws out low
+      library size clusters; normally there is only one, but worth visual inspection.
+    :method remove_housekeeping_genes: remove housekeeping genes from Experiment
 
     -- Statistical methods --
     :method run_pca: runs Van Der Maaten PCA on Experiment and stores the decomposition
       in self.pca
     :method run_tsne: runs tsne on a PCA-reduced projection of experiment
     :method run_phenograph: runs phenograph on a PCA-reduced projection of experiment
+    :method run_diffusion_map: runs diffusion maps on a PCA-reduced projection of
+      Experiment.
+    :method run_diffusion_map_correlations: correlate a neighbor-based rolling mean for
+      each gene with each diffusion map correlation.
+    :method run_gsea: Run GSEA on diffusion components
+    :method run_gsea_preranked_list: Helper function. Run GSEA on an already-ranked list
+      of corrleations
+    :method select_biological_components: Reports the top n enrichments with adjusted
+      p-value < alpha for selected diffusion component GSEA enrichments.
+    :method select_genes_from_diffusion_components: Carry out feature selection on genes,
+      retaining only genes having significant correlation with a selected component.
+    :method pairwise_differential_expression: carry out differential expression between
+      two subsets of cells in self.
+    :method single_gene_differential_expression: carry out non-parametric ANOVA across
+      cluster identifiers for a single gene.
+    :method differential_expression: carry out non-parametric ANOVA across cluster
+      identifiers for all genes.
+    :method annotate_clusters_by_expression: Return genes which are uniquely expressed
+      in each cluster. Susceptible to differences in sampling and improper normalization.
 
     -- Plotting methods --
+    :method plot_molecules_vs_reads_per_molecule: plot log10 molecule counts per barcode
+      vs average cell coverage.
     :method plot_mitochondrial_molecule_fraction: plot the fraction of mRNA that are of
       mitochondrial origin for each cell.
     :method plot_molecules_vs_genes: display the relationship between molecules captured
@@ -385,6 +408,13 @@ class Experiment:
     :method plot_tsne_by_metadata: plot tsne, coloring the projection by metadata
     :method plot_tsne_by_cell_sizes: plot tsne, coloring the projection by cell size
     :method plot_clusters: plot phenograph clusters
+    :method plot_diffusion_maps: Visualize diffusion component loadings on the tSNE map
+    :method plot_gene_component_correlations: Plots gene-component correlations for
+      selected components
+    :method plot_gene_expression: display gene expression values on the tSNE projection
+      of experiment. One plot per provided gene.
+    :method plot_aggregate_gene_expression: Display summed expression of a gene set on
+      a tSNE projection.
 
     -- Miscellaneous methods --
     :method is_sparse: True if any data is in sparse format.
@@ -1381,12 +1411,15 @@ class Experiment:
     def run_diffusion_map(self, knn=20, n_diffusion_components=20,
                           n_pca_components=15, epsilon=1):
         """
+        Decompose experiment using diffusion components
 
-        :param knn: default can be a bit low; I use 60+ for large datasets.
-        :param n_diffusion_components:
-        :param n_pca_components:
-        :param epsilon:
-        :return:
+        :param knn: number of nearest neighbors. Default can be a bit low, use 60+ for
+          large datasets.
+        :param n_diffusion_components: number of componenets to calculate
+        :param n_pca_components: The data is pre-reduced; this is the number of PCA
+          components to calculate when doing that reduction
+        :param epsilon: error term
+        :return: None
         """
 
 
@@ -1453,6 +1486,12 @@ class Experiment:
         self.diffusion_eigenvalues = pd.DataFrame(D)
 
     def plot_diffusion_components(self):
+        """
+        Visualize diffusion component loadings on the tSNE map
+
+        :return:
+        """
+
         if self.tsne is None:
             raise RuntimeError('Please run tSNE before plotting diffusion components.')
 
@@ -1488,6 +1527,15 @@ class Experiment:
 
     @staticmethod
     def _correlation(x: np.array, vals: np.array):
+        """
+        private method, calculate pairwise correlation correlation between x and each
+         column in vals
+
+        :param x: vector to be correlated
+        :param vals: matrix containing n columns to correlate with x
+        :return: n-length vector of correlation coefficients.
+        """
+
         x = x[:, np.newaxis]
         mu_x = x.mean()  # cells
         mu_vals = vals.mean(axis=0)  # cells by gene --> cells by genes
@@ -1497,6 +1545,14 @@ class Experiment:
         return ((vals * x).mean(axis=0) - mu_vals * mu_x) / (sigma_vals * sigma_x)
 
     def run_diffusion_map_correlations(self, components=None, no_cells=10):
+        """
+        correlate a neighbor-based rolling mean for each gene with each diffusion
+        map correlation
+
+        :param components: list or array of components to correlate with
+        :param no_cells: number of cells over which to smooth expression values
+        :return:
+        """
         if components is None:
             components = np.arange(self.diffusion_eigenvectors.shape[1])
         else:
@@ -1508,15 +1564,10 @@ class Experiment:
         diffusion_map_correlations = np.empty((self.molecules.shape[1],
                                                self.diffusion_eigenvectors.shape[1]),
                                                dtype=np.float)
-        # assert diffusion_map_correlations.shape == (gene_shape, component_shape),
-        #     '{!r}, {!r}'.format(diffusion_map_correlations.shape,
-        #                         (gene_shape, component_shape))
 
         for component_index in components:
             component_data = self.diffusion_eigenvectors.values[:, component_index]
 
-            # assert component_data.shape == (cell_shape,), '{!r} != {!r}'.format(
-            #     component_data.shape, (cell_shape,))
             order = np.argsort(component_data)
             x = pd.rolling_mean(component_data[order], no_cells)[no_cells:]
             # assert x.shape == (cell_shape - no_cells,)
@@ -1535,11 +1586,7 @@ class Experiment:
                 columns=components)
 
     def determine_gene_diffusion_correlations(self, components=None, no_cells=10):
-        """
-
-        :param no_cells:
-        :return:
-        """
+        """Deprecated. Matlab-based run_diffusion_map_correlations. Requires Matlab."""
         warnings.warn('DeprecationWarning: please use '
                       'Experiment.run_diffusion_map_correlations(). It offers a 10x '
                       'speed-up')
@@ -1580,7 +1627,7 @@ class Experiment:
     def plot_gene_component_correlations(
             self, components=None, fig=None, ax=None,
             title='Gene vs. Diffusion Component Correlations'):
-        """ plots gene-component correlations for a subset of components
+        """ plots gene-component correlations for selected of components
 
         :param title: str, title for the plot
         :param components: Iterable of integer component numbers
@@ -1609,6 +1656,11 @@ class Experiment:
 
     @staticmethod
     def _gmt_options():
+        """
+        Private method. identifies GMT files available for mouse or human genomes
+        :return: str, file options
+        """
+
         mouse_options = os.listdir(os.path.expanduser('~/.seqc/tools/mouse'))
         human_options = os.listdir(os.path.expanduser('~/.seqc/tools/human'))
         print('Available GSEA .gmt files:\n\nmouse:\n{m}\n\nhuman:\n{h}\n'.format(
@@ -1617,7 +1669,19 @@ class Experiment:
         print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
 
     @staticmethod
-    def _gsea_process(c, diffusion_map_correlations, output_stem, gmt_file):
+    def _gsea_process(c: int, diffusion_map_correlations: str, output_stem: str,
+                      gmt_file: str):
+        """
+        Private method. function passed to multiprocessing.map() to carry out the
+        GSEA enrichment for a single diffusion component.
+
+        :param c: int, diffusion component to be tested
+        :param diffusion_map_correlations: list of correlations
+        :param output_stem: location for GSEA output
+        :param gmt_file: location for .gmt file containing gene sets to be tested
+        :return: None
+        """
+
 
         # save the .rnk file
         out_dir, out_prefix = os.path.split(output_stem)
@@ -1666,10 +1730,15 @@ class Experiment:
             return b'GSEA output pattern was not found, and could not be changed.'
 
     @classmethod
-    def run_gsea_preranked_list(cls, rnk_file, output_stem, gmt_file=None):
-        """helper function to run gsea on already generated .rnk files
+    def run_gsea_preranked_list(cls, rnk_file: str, output_stem: str, gmt_file: str=None):
+        """
+        Helper function. Run GSEA on an already-ranked list of corrleations
 
-        :return:
+        :param rnk_file: .rnk file containing correlations in ranked order according to
+          an independent variable.
+        :param output_stem: location for GSEA output
+        :param gmt_file: location for .gmt file containing gene sets to be tested
+        :return: None
         """
 
         if output_stem.find('-') > -1:
@@ -1720,12 +1789,14 @@ class Experiment:
             # execute if file cannot be found
             return b'GSEA output pattern was not found, and could not be changed.'
 
-
+    # todo @ambrosjcarr review statistical assumptions
     def run_gsea_diffexpr(self, cluster_1, cluster_2, output_stem, gmt_file=None):
         """
+        Warning: may contain bugs or improper statistical functions.
+        Helper function to carry out GSEA based on differential expression between two
+        clusters
 
-        :param cluster_1:
-        :param cluster_2:
+        :param cluster_1, cluster_2:
         :param output_stem:  the file location and prefix for the output of GSEA
         :param gmt_file:
         :param components:
@@ -1803,15 +1874,15 @@ class Experiment:
             # execute if file cannot be found
             return b'GSEA output pattern was not found, and could not be changed.'
 
-    def run_gsea(self, output_stem, gmt_file=None, components=None):
+    def run_gsea(self, output_stem: str, gmt_file: str=None, components=None):
         """
+        Run Gene Set Enrichment Analysis on diffusion component correlations
 
-        :param output_stem:  the file location and prefix for the output of GSEA
-        :param gmt_file:
-        :param components:
+        :param output_stem: location for GSEA output
+        :param gmt_file: location for .gmt file containing gene sets to be tested
+        :param components: list or array of components to be tested
         :return:
         """
-
         if output_stem.find('-') > -1:
             raise ValueError('ouptput_stem cannot contain special characters such as -')
 
@@ -1848,13 +1919,16 @@ class Experiment:
         errors = pool.map(partial_gsea_process, components)
         return errors
 
-    def select_biological_components(self, output_stem, n=10, alpha=0.5,
+    def select_biological_components(self, output_stem: str, n: int=10, alpha: float=0.5,
                                      components=None):
         """
-        :param output_stem:
-        :param n:  number of significant enrichments to report
-        :param alpha:  float, significance threshold
-        :param components:
+        Reports the top n enrichments with adjusted p-value < alpha for selected
+        diffusion component GSEA enrichments.
+
+        :param output_stem: str, location of GSEA output
+        :param n: int, number of significant enrichments to report
+        :param alpha: float, significance threshold
+        :param components: list or array of components to be reported
         :return:
         """
         if components is None:
@@ -1899,12 +1973,14 @@ class Experiment:
 
     def select_genes_from_diffusion_components(self, components, plot=False):
         """
+        Carry out feature selection on genes, retaining only genes having significant
+        correlation with a selected component.
 
-        done based on GSEA enrichments
-
-        :param components:
-        :return:
+        :param components: list or array of selected components
+        :param plot: if True, visualize the distribution of correlations
+        :return: Experiment, contains selected features
         """
+
         if self.diffusion_map_correlations is None:
             raise RuntimeError('Please run self.determine_gene_diffusion_correlations() '
                                'before selecting genes based on those correlations.')
@@ -1942,10 +2018,10 @@ class Experiment:
         """
         carry out differential expression (post-hoc tests) between cells c1 and cells c2,
         using bh-FDR to correct for multiple tests
-        :param alpha:
-        :param c1:
-        :param c2:
-        :return:
+        :param alpha: type I error rate
+        :param c1, c2: arrays of cell identifiers to be compared
+
+        :return: pval_sorted, fold_change
         """
         # get genes expressed in either set
         expressed = self.molecules.loc[c1 | c2].sum(axis=0) != 0
@@ -1983,7 +2059,8 @@ class Experiment:
         corrected p-values are below alpha determine the specific samples that are
         differentially expressed
 
-        :param gene:
+        :param gene: str: gene name
+        :param alpha: type I error.
         :return: KW p-val, pairwise ranksums pvals
         """
         gene = self.molecules.ix[:, gene]
@@ -2004,7 +2081,7 @@ class Experiment:
         else:
             return pval, None
 
-    def differential_expression(self, alpha=0.05):
+    def differential_expression(self, alpha: float=0.05):
         """
         carry out kruskal-wallis non-parametric (rank-wise) ANOVA with two-stage bh-FDR
         correction to determine the genes that are differentially expressed in at least
@@ -2025,9 +2102,8 @@ class Experiment:
         Does not deal with the circumstance where all means are non-zero. can call
         positive expression but not negative.
 
-        :param experiments:
-        :param gene:
-        :return:
+        :param alpha: float, type I error rate (default=0.05)
+        :return: pval_corrected
         """
 
         if not isinstance(self.cluster_assignments, pd.Series):
@@ -2048,12 +2124,18 @@ class Experiment:
         pvals = np.apply_along_axis(f, 0, data)
 
         # correct the pvals
-        alpha = 0.05
         reject, pval_corrected, _, _ = multipletests(pvals, alpha, method='fdr_tsbh')
 
         return pd.Series(pval_corrected, index=self.molecules.columns).sort_values(inplace=False)
 
     def plot_gene_expression(self, genes, log=False):
+        """
+        Display gene expression on the tSNE projection. One plot is made per gene.
+
+        :param genes: array of string gene_ids to be displayed
+        :param log: values should be log transformed (default False)
+        :return: fig, axes
+        """
 
         not_in_dataframe = set(genes).difference(self.molecules.columns)
         if not_in_dataframe:
@@ -2091,6 +2173,15 @@ class Experiment:
         return fig, axes
 
     def plot_aggregate_gene_expression(self, genes, fig=None, ax=None, title=None):
+        """
+        Display summed expression of a gene set on a tSNE projection.
+
+        :param genes: genes to be summed over
+        :param fig: Matplotlib Figure
+        :param ax: Matplotlib Axis
+        :param title: Plot this title on the figure
+        :return: fig, ax
+        """
 
         # remove genes missing from experiment
         not_in_dataframe = set(genes).difference(self.molecules.columns)
@@ -2122,16 +2213,12 @@ class Experiment:
         return fig, ax
 
     def plot_molecules_vs_reads_per_molecule(
-            self,
-            fig=None,
-            ax=None,
-            min_molecules=10,
-            ylim=(0, 150),
+            self, fig=None, ax=None, min_molecules=10, ylim=(0, 150),
             title='Cell Coverage Plot'):
-
         """
         plots log10 molecules counts per barcode vs reads per molecule / molecules per
         barcode
+
         :param title: str, title for the plot (e.g. the sample name)
         :param ylim: tuple, indicates the min and max for the y-axis of the plot
         :param min_molecules: display only cells with this number of molecules or more
@@ -2171,13 +2258,12 @@ class Experiment:
     def remove_housekeeping_genes(self, organism='human', additional_hk_genes=set()):
         """
         Remove snoRNA and miRNAs because they are undetectable by the library construction
-        procedure; their identification is a probable false-postive.
+        procedure; their identification is a probable false-postive. Then remove
+        housekeeping genes based on GO annotations.
 
-        Next, removes housekeeping genes based on GO annotations.
-        :param additional_hk_genes:
+        :param additional_hk_genes: set of additional string gene ids to remove
         :param organism: options: [human, mouse], default=human.
         """
-
         genes = self.molecules.columns
         # MT genes
         genes = genes[~genes.str.contains('MT-')]
@@ -2216,6 +2302,8 @@ class Experiment:
 
     def annotate_clusters_by_expression(self, alpha=0.05):
         """
+        Annotate clusters with genes that are uniquely expressed in them.
+
         considering only genes which are differentially expressed across the
         population, label each cluster with the genes that are significantly expressed
         in one population relative to > 80% of other populations.
