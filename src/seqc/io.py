@@ -151,7 +151,7 @@ class S3:
 
         if not boto:
             s3link = 's3://' + bucket + '/' + key
-            cmd = 'aws s3 mv {fname} {s3link}'.format(fname=filename, s3link=s3link)
+            cmd = 'aws s3 cp {fname} {s3link}'.format(fname=filename, s3link=s3link)
             download_cmd = shlex.split(cmd)
             Popen(download_cmd).wait()
         else:
@@ -220,7 +220,7 @@ class S3:
         for file_, key in zip(all_files, upload_keys):
             if not boto:
                 s3link = 's3://' + bucket + '/' + key
-                cmd = 'aws s3 mv {fname} {s3link}'.format(fname=file_, s3link=s3link)
+                cmd = 'aws s3 cp {fname} {s3link}'.format(fname=file_, s3link=s3link)
                 download_cmd = shlex.split(cmd)
                 Popen(download_cmd).wait()
             else:
