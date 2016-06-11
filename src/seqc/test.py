@@ -142,13 +142,13 @@ class TestLocalProcessExperiment(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.human = 's3://dplab-data/genomes/hg38_phiX'
-        cls.mouse = 's3://dplab-data/genomes/mm38_phiX'
+        cls.human = 's3://dplab-data/genomes/hg38_chr19/'
+        cls.mouse = 's3://dplab-data/genomes/mm38_chr19/'
         cls.email = input('provide an email address to receive test results: ')
-        cls.output = 's3://dplab-data/seqc/test/{platform}/'
+        cls.output = 's3://dplab-data/seqc/test/{platform}_chr19/'
         cls.barcode_files = 's3://dplab-data/barcodes/{platform}/flat/'
-        cls.barcode_fastq = 's3://dplab-data/seqc/test/{platform}/barcode/'
-        cls.genomic_fastq = 's3://dplab-data/seqc/test/{platform}/genomic/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/{platform}_chr19/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/{platform}_chr19/genomic/'
 
     def test_in_drop(self):
         platform = 'in_drop'
@@ -159,7 +159,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
-            '--barcode-files', self.barcode_files.format(platform)
+            '--barcode-files', self.barcode_files.format(platform),
+            '--local',
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -173,7 +174,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
-            '--barcode-files', self.barcode_files.format(platform)
+            '--barcode-files', self.barcode_files.format(platform),
+            '--local',
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -187,6 +189,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
+            '--local',
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -200,7 +203,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
-            '--barcode-files', self.barcode_files.format(platform)
+            '--barcode-files', self.barcode_files.format(platform),
+            '--local',
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -214,7 +218,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
-            '--barcode-files', self.barcode_files.format(platform)
+            '--barcode-files', self.barcode_files.format(platform),
+            '--local',
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
