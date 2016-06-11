@@ -20,6 +20,18 @@ class BotoCallError(Exception):
     pass
 
 
+class ConfigurationError(Exception):
+    pass
+
+
+class ArgumentParserError(Exception):
+    pass
+
+
+class SparseMatrixError(Exception):
+    pass
+
+
 @contextmanager
 def boto_errors(ident=None):
     """context manager that traps and retries boto functions
@@ -51,17 +63,3 @@ def retry_boto_call(func, retries=3):
             if numtries == 0:
                 raise BotoCallError('Unresolvable error in boto call, exiting.')
     return wrapper
-
-
-class ConfigurationError(Exception):
-    pass
-
-
-class ArgumentParserError(Exception):
-    pass
-
-
-class SparseMatrixError(Exception):
-    pass
-
-

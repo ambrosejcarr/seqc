@@ -21,17 +21,17 @@ def exception():
 
 
 def notify(message):
-    """print a timestamped update for the user and log it to file
-    :param message:
-    """
+    """print a timestamped update for the user and log it to file"""
     info(message)
     print('SEQC: ' + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': %s' % message)
 
 
 def args(arguments):
     """
-    :param arguments:
-    :return:
+    log namespace object from argument parser to file.
+
+    :param arguments: namespace object, output of ArgumentParser.parse_args()
+    :return: None
     """
     arguments = vars(arguments)
     info('Passed command line arguments: {}'.format(
