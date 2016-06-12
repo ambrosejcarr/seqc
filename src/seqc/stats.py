@@ -19,9 +19,6 @@ from tinydb import TinyDB
 from functools import partial
 from collections import namedtuple
 
-# for yields class --> see if necessary
-import seqc
-
 
 class GraphDiffusion:
     def __init__(self, knn=10, normalization='smarkov', epsilon=1,
@@ -91,6 +88,7 @@ class GraphDiffusion:
 
     @staticmethod  # todo fix; what is S?
     def bimarkov(W, max_iters=100, abs_error=0.00001, verbose=False, **kwargs):
+        """normalization method for GraphDiffusion"""
 
         if W.size == 0:
             return
@@ -123,6 +121,7 @@ class GraphDiffusion:
 
     @staticmethod
     def smarkov(D, N, W):
+        """normalization method for GraphDiffusion"""
         D = csr_matrix((np.sqrt(D), (range(N), range(N))), shape=[N, N])
         P = D
         T = D.dot(W).dot(D)
@@ -131,11 +130,13 @@ class GraphDiffusion:
 
     @staticmethod
     def markov(D, N, W):
+        """normalization method for GraphDiffusion"""
         T = csr_matrix((D, (range(N), range(N))), shape=[N, N]).dot(W)
         return T, None
 
     @staticmethod
     def sbeltrami(D, N, W):
+        """normalization method for GraphDiffusion"""
         P = csr_matrix((D, (range(N), range(N))), shape=[N, N])
         K = P.dot(W).dot(P)
 
@@ -151,6 +152,7 @@ class GraphDiffusion:
 
     @staticmethod
     def beltrami(D, N, W):
+        """normalization method for GraphDiffusion"""
         D = csr_matrix((D, (range(N), range(N))), shape=[N, N])
         K = D.dot(W).dot(D)
 
@@ -163,6 +165,7 @@ class GraphDiffusion:
 
     @staticmethod
     def FokkerPlanck(D, N, W):
+        """normalization method for GraphDiffusion"""
         D = csr_matrix((np.sqrt(D), (range(N), range(N))), shape=[N, N])
         K = D.dot(W).dot(D)
 
@@ -174,6 +177,7 @@ class GraphDiffusion:
         return T, None
 
     def sFokkerPlanck(self, D, N, W):
+        """normalization method for GraphDiffusion"""
         print('(sFokkerPlanck) ... ')
 
         D = csr_matrix((np.sqrt(D), (range(N), range(N))), shape=[N, N])
@@ -252,6 +256,9 @@ class GraphDiffusion:
 
 
 class NormalizeCells:
+    """
+    Contains row normalization techniques for equalizing cell sampling.
+    """
 
     @staticmethod
     def size(data: np.ndarray, percentile=None):
@@ -275,6 +282,9 @@ class NormalizeCells:
 
 
 class ScaleFeatures:
+    """
+    Contains column normalization techniques for equalizing feature sampling
+    """
 
     @staticmethod
     def unit_size(data: np.ndarray, copy=True):
@@ -355,7 +365,7 @@ class tSNE:
     def fit_transform(self, data: np.ndarray or pd.DataFrame) -> None:
             """
             fit the tSNE model to data given the parameters provided during
-             initialization
+             initialization and transform the output
 
             :param data: n observation x k feature data array
             :return: None
@@ -481,6 +491,13 @@ class correlation:
 
     @staticmethod
     def vector(x: np.array, y: np.array):
+        """
+        Correlate each column in y with a vector x
+
+        :param x: np.ndarray vector of length n
+        :param y: np.ndarray matrix of shape (n, k)
+        :returns: vector of length n
+        """
         # x = x[:, np.newaxis]  # for working with matrices
         mu_x = x.mean()  # cells
         mu_y = y.mean(axis=0)  # cells by gene --> cells by genes
@@ -492,7 +509,7 @@ class correlation:
 
     @staticmethod
     def map(x, y):
-        """Correlate each n with each m.
+        """Correlate each column of x with each column of y
 
         :param x: np.array; shape N x T.
         :param y: np.array; shape M x T.
@@ -510,7 +527,15 @@ class correlation:
 
     @staticmethod
     def eigv(evec, data, components=tuple(), knn=10):
+        """
+        get pairwise correlations of eigenvectors with columns in data
 
+        :param evec: eigenvectors
+        :param data: np.ndarray genes x cells data matrix
+        :param components: which eigenvectors to select
+        :param knn: number of neighbors to smooth gene expression values over
+        :return:
+        """
         if isinstance(data, pd.DataFrame):
             D = data.values
             df = True
@@ -528,32 +553,19 @@ class correlation:
         components = components[components != 0]
 
         eigv_corr = np.empty((D.shape[1], evec.shape[1]), dtype=np.float)
-        # assert eigv_corr.shape == (gene_shape, component_shape),
-        #     '{!r}, {!r}'.format(eigv_corr.shape,
-        #                         (gene_shape, component_shape))
 
         for component_index in components:
             component_data = evec[:, component_index]
 
-            # assert component_data.shape == (cell_shape,), '{!r} != {!r}'.format(
-            #     component_data.shape, (cell_shape,))
             order = np.argsort(component_data)
-            # x = pd.rolling_mean(pd.DataFrame(component_data[order]), knn)[knn:].values
             x = pd.DataFrame(component_data[order]).rolling(
                 window=knn, center=False).mean()[knn:].values
-            # assert x.shape == (cell_shape - no_cells,)
-
             # this fancy indexing will copy self.molecules
-            # vals = pd.rolling_mean(pd.DataFrame(D[order, :]), knn, axis=0)[
-            #        knn:].values
             vals = pd.DataFrame(D[order, :]).rolling(
                 window=knn, center=False, axis=0).mean()[knn:].values
-            # assert vals.shape == (cell_shape - no_cells, gene_shape)
-
             eigv_corr[:, component_index] = correlation.vector(x, vals)
 
         # this is sorted by order, need it in original order (reverse the sort)
-
         eigv_corr = eigv_corr[:, components]
         if df:
             eigv_corr = pd.DataFrame(eigv_corr, index=data.columns, columns=components)
@@ -567,6 +579,7 @@ class ExperimentalYield:
         """
         calculates basic loss statistics and constructs a summary
         that will be sent to the user after the SEQC run has completed.
+
         :param summary: dictionary constructed during error correction
         :return: output of basic summary statistics
         """
@@ -667,6 +680,9 @@ class smoothing:
     @staticmethod
     def kneighbors(data, n_neighbors=50):
         """
+        Smooth gene expression values by setting the expression of each gene in each
+        cell equal to the mean value of itself and its n_neighbors
+
         :param data: np.ndarray | pd.DataFrame; genes x cells array
         :param n_neighbors: int; number of neighbors to smooth over
         :return: np.ndarray | pd.DataFrame; same as input
@@ -701,6 +717,8 @@ class GSEA:
 
     def __init__(self, correlations, labels=None):
         """
+        Create a Gene Set Enrichment Object
+
         :param correlations: pd.Series or iterable of pd.Series;
           objects containing correlations. If a single series is passed, the main process
           will compute gene set enrichments. If an iterable is passed, processes will be
@@ -755,13 +773,15 @@ class GSEA:
         @staticmethod
         def create(gene_set_files, file_labels, db_name):
             """
+            Create a searchable database of Gene Sets from .gmt files provided by GSEA
+
             :param gene_set_files: [str, ...]; GSEA .gmt files to add to the database
-            :param file_labels: [str, ...]; labels corresponding to each of the gene_set_files.
-              Must be the same length as gene_set_files
+            :param file_labels: [str, ...]; labels corresponding to each of the
+              gene_set_files. Must be the same length as gene_set_files
             :param db_name: str; path and name of .json file in which to store database.
               ".json" will be appended to to the filename if db_name does not end with
               that suffix.
-            :return: TinyDB database
+            :return: TinyDB database (stored in .json)
             """
             records = []
             for file_, label in zip(gene_set_files, file_labels):
@@ -779,7 +799,9 @@ class GSEA:
 
         @staticmethod
         def load(db_name):
-            """wrapper for TinyDB loading
+            """
+            wrapper for TinyDB loading; loads an existing database from a .json file
+
             :param db_name:  database to load
             :return: TinyDB database
             """
@@ -787,9 +809,12 @@ class GSEA:
 
         @staticmethod
         def select(data, field):
-            """return field from each data entry extracted from a database
+            """
+            return field from each data entry extracted from a database
 
-            # todo add example usage
+            e.g. to get genes from a database query,
+            $> data = Query(<query>)
+            $> genes = GSEA.Database.select(data, 'genes')
 
             :param data: [dict, ...]; output of a database Query
             :param field: str; key for field to be extracted
@@ -799,12 +824,21 @@ class GSEA:
 
         @staticmethod
         def keys(db):
+            """Return the available fields (keys) in a homogeneous database object"""
             return db.table('_default').all()[0].keys()
 
     class SetMasks:
 
         @staticmethod
         def from_db(sets, correlations):
+            """
+            Convenience function for GSEA. Map sets of genes to the index of
+            correlatations for masking unused genes.
+
+            :param sets: k sets of genes to map to the index of correlations
+            :param correlations: correlations across n genes
+            :return: np.ndarray of n genes x k sets
+            """
             set_genes = GSEA.Database.select(sets, 'genes')
 
             # map genes to index; should the map consider the union?
@@ -820,6 +854,8 @@ class GSEA:
     @staticmethod
     def _gsea_process(correlations, sets, n_perm, alpha):
         """
+        Initialize a GSEA process where sets are tested against correlations.
+
         :param correlations: pd.Series; an ordered list of correlations
         :param sets: gene sets extracted from GSEA database
         :param n_perm: int; number of permutations to use in constructing the null
@@ -837,8 +873,10 @@ class GSEA:
 
     def test(self, sets, n_perm=500, alpha=0.05):
         """
-        :param sets: gene sets to test against ordered correlations; these can be extracted
-          from a Database using Query() syntax. e.g.:
+        Test sets of genes against the correlations used to initialize the GSEA object.
+
+        :param sets: gene sets to test against ordered correlations; these can be
+          extracted from a Database using Query() syntax. e.g.:
             # retrieve a database
             db = seqc.stats.GSEA.Database.load('MSigDB.json')
             # search for sets of type 'HALLMARK' that have > 50 genes
@@ -851,23 +889,10 @@ class GSEA:
         :param n_perm: int; number of permutations to use in constructing the null
           distribution for significance testing; note that n_perm sets the granularity of
           significance values; if n_perm=500, significance bins are of size 1/500.
-        :param alpha: float; percentage of type I error to use when computing False Discovery
-          Rate correction.
+        :param alpha: float; percentage of type I error to use when computing False
+          Discovery Rate correction.
         :return: dict
         """
-        # # no longer used
-        # partial_gsea_process = partial(
-        #     self._gsea_process,
-        #     sets=sets,
-        #     n_perm=n_perm,
-        #     alpha=alpha)
-
-        # optimize n_sets vs n_series
-        # (1) first, factor out fdr to occur in this method; if parallelizing across sets,
-        # it can't occur earlier.
-        # (2) break up sets into smaller chunks (but never mix sets!)
-        # (3) when returning, instead of setting dictionary to values, create lists and
-        # np.vstack them.
 
         def split(a, n):
             k, m = len(a) // n, len(a) % n
@@ -912,10 +937,6 @@ class GSEA:
         # merge sets
         res = join(res, p)
 
-        # do fdr
-        # calculate adjusted p-vals
-        # adj_p = multipletests(pvals, alpha=alpha, method='fdr_tsbh')[1]
-
         res_df = {c.name: df for (c, df) in zip(self.correlations, res)}
 
         for df in res_df.values():
@@ -925,14 +946,21 @@ class GSEA:
         return res_df
 
     @staticmethod
-    def construct_normalized_correlation_matrices(correlations, set_masks):
+    def construct_normalized_correlation_matrices(correlations, set_mask):
+        """
+        construct normalized matrices of genes in set_masks and not in set_masks
 
-        N = np.tile(correlations, (set_masks.shape[0], 1))  # tile one row per set mask
+        :param correlations: pd.Series of correlations
+        :param set_mask: single set mask
+        :return: pos, neg: normalized sets
+        """
+
+        N = np.tile(correlations, (set_mask.shape[0], 1))  # tile one row per set mask
 
         # create arrays masked based on whether or not genes were in the gene set
-        pos = ma.masked_array(N, mask=set_masks)
+        pos = ma.masked_array(N, mask=set_mask)
         # copy for neg, else can't use in-place operations
-        neg = ma.masked_array(N.copy(), mask=~set_masks.copy())
+        neg = ma.masked_array(N.copy(), mask=~set_mask.copy())
         neg.fill(1)  # negative decrements are binary, not based on correlations
 
         # normalize positive and negative arrays
@@ -944,6 +972,8 @@ class GSEA:
     @staticmethod
     def calculate_enrichment_score(pos, neg):
         """
+        calculate a gene set enrichment score from normalized correlation matrices.
+
         :param pos: n x k matrix of n gene_sets x k normalized gene correlations where
           genes were in sets, else 0.
         :param neg: n x k matrix of n gene_sets x k genes where entries are equal to
@@ -957,8 +987,7 @@ class GSEA:
 
     @staticmethod
     def permute_correlation_ranks(pos_corr_matrix, neg_corr_matrix):
-        # catch numpy.ma warnings about in-place mask modification, it is warning us
-        # about a desired feature.
+        """wrapper for np.permutation that catches warnings about a desired feature"""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             np.random.shuffle(pos_corr_matrix)
@@ -966,6 +995,15 @@ class GSEA:
 
     @staticmethod
     def calculate_enrichment_significance(pos, neg, n_perm=1000, alpha=0.05):
+        """
+        calculate enrichment scores and significance of the enrichment
+
+        :param pos: np.ndarray, normalized correlations of genes in set
+        :param neg: np.ndarray, normalized correlations of genes not in set
+        :param n_perm: int, number of permutations
+        :param alpha: float (0, 1]
+        :return: pvals, es
+        """
         es = GSEA.calculate_enrichment_score(pos, neg)  # score
 
         # todo here's the slow part. Any way to parallelize?
@@ -1014,6 +1052,10 @@ class ExpressionTree:
 
     def __init__(self, data, group_assignments, alpha=0.05):
         """
+        Create an hierarchical tree and calculate differential expression at each branch
+        point, agglomerating over the leaves of the branch. Uses multinomial resampling
+        of cells to eliminate non-identical sampling across cell types
+
         :param data: n cells x k genes 2d array
         :param group_assignments: n cells 1d vector
         :param alpha: float (0, 1], acceptable type I error
@@ -1105,6 +1147,7 @@ class ExpressionTree:
         return self._results
 
     class Node:
+        """Simple hashable node class that for tree leaves"""
         __slots__ = ['node_id', 'left', 'right', 'distance', 'n_daughters']
 
         def __init__(self, node_id, left=None, right=None, distance=None,
@@ -1125,6 +1168,15 @@ class ExpressionTree:
     class Tree:
 
         def __init__(self, linkage, data=None):
+            """
+            Simple tree class to represent the hierarchical clustering of data
+
+            :param linkage: result of hierarchical clustering. Used to build the tree
+            :param data: np.ndarray, of cells x genes, and basis of the clustering.
+              Examined for differential expression.
+
+            """
+
 
             # store expression data
             self.linkage = linkage
@@ -1163,6 +1215,7 @@ class ExpressionTree:
             return 'Hierarchical Tree: {:.0f} nodes'.format(self.n_nodes)
 
         def dfs(self, node=None, visited=None):
+            """depth first ordered search of Tree"""
             if visited is None:
                 visited = []
             if node is None:
@@ -1176,6 +1229,7 @@ class ExpressionTree:
             return visited
 
         def bfs(self, node=None):
+            """breadth-first ordered search of tree"""
 
             if node is None:
                 node = self.root
@@ -1194,6 +1248,7 @@ class ExpressionTree:
             return visited
 
         def agglomerate(self, node):
+            """returns all leaves of node"""
             return set(n.node_id for n in self.dfs(node))
 
         def plot(self, ax, **kwargs):
@@ -1205,6 +1260,8 @@ class ExpressionTree:
             a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
             alpha=0.01):
         """
+        Return t-statistic from resampled populations a and b
+
         :param a: n cells x k genes np.ndarray
         :param b: m cells x k genes np.ndarray
         :param n_iter: number of times to resample a and b
@@ -1268,22 +1325,11 @@ class ExpressionTree:
         # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
         statistic[np.isnan(statistic)] = 0  # calculate df
 
-        # numerator = (a_var + b_var) ** 2  # (samples, genes)
-        # denominator = a_var ** 2 / (n_cells - 1) + b_var ** 2 / (n_cells - 1)
-        # df = np.floor(numerator / denominator)  # (samples, genes)
-
-        # # get significance values
-        # p = np.zeros((n_iter, a.shape[1]), dtype=float)
-        # for i in np.arange(statistic.shape[0]):
-        #     p[i, :] = t.cdf(np.abs(statistic[i, :]), df[i])
-
         df = 2
 
         statistic = statistic.mean(axis=0)
         p = t.cdf(np.abs(statistic), df)
 
-        # can determine frequency with which p < 0.05; can do a proper FDR based on these distributions. Until then,
-        # can just look at the means themselves.
         q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
 
         return statistic, q
@@ -1303,13 +1349,15 @@ class ExpressionTree:
 
     def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000):
         """
-        :param n_iter:
-        :param central_value_func:
-          Indicates that clusters should be downsampled to the median of all populations prior to comparison to
-          control for sampling bias. This can be done to check clustering stability and to get reliable gene expression
-           differences.
-        :param n_cells:
-        :return:
+        carry out differential expression at each stage of the Hierarchy.
+
+        :param n_iter: int, number of iterations
+        :param central_value_func: function,
+          Indicates that clusters should be downsampled to the median of all populations
+          prior to comparison to control for sampling bias. This can be done to check
+          clustering stability and to get reliable gene expression differences.
+        :param n_cells: int, number of cells to sample at each iteration
+        :return: dictionary of pd.DataFrame objects containing results
         """
 
         # get expression means
@@ -1336,6 +1384,7 @@ class ExpressionTree:
         return self._results
 
     def plot_hierarchy(self, ax=None, alternate_labels=None):
+        """Plot the dendrogram corresponding to hierarchical clustering of self."""
         if ax is None:
             import matplotlib.pyplot as plt
             ax = plt.gca()
@@ -1352,6 +1401,8 @@ class DifferentialExpression:
 
     def __init__(self, data, group_assignments, alpha=0.05):
         """
+        Carry out ANOVA between the groups of data
+
         :param data: n cells x k genes 2d array
         :param group_assignments: n cells 1d vector
         :param alpha: float (0, 1], acceptable type I error
@@ -1418,6 +1469,8 @@ class DifferentialExpression:
 
     def anova(self, min_mean_expr=None):
         """
+        carry out non-parametric ANOVA across the groups of self.
+
         :param min_mean_expr: minimum average gene expression value that must be reached
           in at least one cluster for the gene to be considered
         :return:
@@ -1441,7 +1494,8 @@ class DifferentialExpression:
 
     def post_hoc_tests(self):
         """
-        carries out post-hoc tests using Welch's U-test on ranked data.
+        carries out post-hoc tests between genes with significant ANOVA results using
+        Welch's U-test on ranked data.
         """
         if self._anova is None:
             self.anova()

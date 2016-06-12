@@ -6,9 +6,9 @@ _pattern_v2 = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCAA){s<=2}(.{8})(.{8})(
 
 
 def _check_spacer_v2(sequence):
-    """a fast, in-drop-v1 specific command to find a spacer sequence and cb length
+    """a fast, in-drop-v2 specific command to find a spacer sequence and cb length
 
-    :b: barcode fastq
+    :param sequence: fastq sequence data
     :returns: (cell_barcode, rmt, poly_t)
     """
     assert ~sequence.endswith(b'\n')
@@ -42,7 +42,7 @@ def _check_spacer_v2(sequence):
 def _check_spacer_v1(sequence):
     """a fast, in-drop-v1 specific command to find a spacer sequence and cb length
 
-    :arg b: barcode fastq
+    :param sequence: fastq sequence data
     :returns: (cell_barcode, rmt, poly_t)
     """
     assert ~sequence.endswith(b'\n')
@@ -74,6 +74,16 @@ def _check_spacer_v1(sequence):
 
 
 def in_drop(g, b):
+    """
+    merge forward and reverse in-drop v1 reads, annotating the reverse read (containing
+    genomic information) with the cell barcode, rmt, and number of poly_t. Pool is left
+    empty.
+
+    :param g: genomic fastq sequence data
+    :param b: barcode fastq sequence data
+    :return: annotated genomic sequence.
+    """
+
     cell, rmt, poly_t = _check_spacer_v1(b.sequence[:-1])
     if not cell:
         try:
@@ -88,9 +98,13 @@ def in_drop(g, b):
 
 def in_drop_v2(g, b):
     """
-    :param g:
-    :param b:
-    :return:
+    merge forward and reverse in-drop v2 reads, annotating the reverse read (containing
+    genomic information) with the cell barcode, rmt, and number of poly_t. Pool is left
+    empty.
+
+    :param g: genomic fastq sequence data
+    :param b: barcode fastq sequence data
+    :return: annotated genomic sequence.
     """
     cell, rmt, poly_t = _check_spacer_v2(b.sequence[:-1])
     if not cell:
@@ -106,9 +120,13 @@ def in_drop_v2(g, b):
 
 def drop_seq(g, b):
     """
-    :param g:
-    :param b:
-    :return:
+    merge forward and reverse drop-seq reads, annotating the reverse read (containing
+    genomic information) with the cell barcode and rmt. Number of poly_t and pool fields
+    are left empty.
+
+    :param g: genomic fastq sequence data
+    :param b: barcode fastq sequence data
+    :return: annotated genomic sequence.
     """
     cell = b.sequence[:12]
     rmt = b.sequence[12:20]
@@ -119,9 +137,15 @@ def drop_seq(g, b):
 
 def mars1_seq(g, *args):
     """
-    :param g:
-    :param args:
-    :return:
+    re-annotate reverse mars-seq reads in a format consistent with other SEQC platforms,
+    annotating the reverse read (containing genomic information) with the pool, cell
+    barcode, rmt, number of poly_t.
+
+    :param g: genomic fastq sequence data
+    :param args: provided so that a (potentially empty) parameter can be passed
+      corresponding to the non-existent barcode parameter so that all merge functions
+      support an identical parameterization and API.
+    :return: annotated genomic sequence.
     """
     *name_fields, pool, cell, rmt = g.name[1:-1].split(b':')
     g.name = (b'@' + b':'.join((pool, cell, rmt, b'')) + b';' +
@@ -131,9 +155,15 @@ def mars1_seq(g, *args):
 
 def mars2_seq(g, *args):
     """
-    :param g:
-    :param args:
-    :return:
+    re-annotate reverse mars-seq v2 reads in a format consistent with other SEQC
+    platforms, annotating the reverse read (containing genomic information) with the pool,
+    cell barcode, rmt, number of poly_t.
+
+    :param g: genomic fastq sequence data
+    :param args: provided so that a (potentially empty) parameter can be passed
+      corresponding to the non-existent barcode parameter so that all merge functions
+      support an identical parameterization and API.
+    :return: annotated genomic sequence.
     """
     *name_fields, pool, cell, rmt = g.name[1:-1].split(b'-')
     g.name = (b'@' + b':'.join((pool, cell, rmt, b'')) + b';' +

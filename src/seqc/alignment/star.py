@@ -34,19 +34,16 @@ def default_alignment_args(fastq_records, n_threads, index, output_dir):
 def align(fastq_file, index, n_threads, alignment_dir, reverse_fastq_file=None,
           **kwargs):
     """
-    :param fastq_file:
-    :param index:
-    :param n_threads:
-    :param alignment_dir:
-    :param reverse_fastq_file:
-    :param kwargs:
-    :return:
-    """
+    align a fastq file, or a paired set of fastq files
 
-    # check if file exists; if it does, return the filename
-    # if os.path.isfile(alignment_dir + 'Aligned.out.sam'):
-    #     if os.path.getsize(alignment_dir + 'Aligned.out.sam') > 0:
-    #         return alignment_dir + 'Aligned.out.sam'
+    :param fastq_file: str, location of a fastq file
+    :param index: str, folder containing the STAR index
+    :param n_threads: int, number of parallel alignment processes to spawn
+    :param alignment_dir: directory for output data
+    :param reverse_fastq_file: optional, location of reverse paired-end fastq file
+    :param kwargs: additional kwargs for STAR, passed without the leading '--'
+    :return: str, .sam file location
+    """
 
     runtime_args = default_alignment_args(
         fastq_file, n_threads, index, alignment_dir)

@@ -1,9 +1,7 @@
 import fileinput
 import string
 from collections import defaultdict
-
 from intervaltree import IntervalTree
-
 import seqc
 
 
@@ -12,6 +10,10 @@ def first(iterable):
 
 
 class Record:
+    """
+    Simple namespace object that makes the fields of a GTF record available. Subclassed
+    to create records specific to exons, transcripts, and genes
+    """
 
     __slots__ = ['_fields', '_attribute']
 
@@ -84,6 +86,12 @@ class Record:
         return self._fields
 
     def attribute(self, item):
+        """
+        access an item from the attribute field of a GTF file.
+
+        :param item: item to access
+        :return: value of item
+        """
         try:
             return self._attribute[item]
         except KeyError:
@@ -96,20 +104,25 @@ class Record:
 
     @property
     def integer_gene_id(self) -> int:
+        """ENSEMBL gene id without the organism specific prefix, encoded as an integer"""
         return int(self.attribute(b'gene_id').split(b'.')[0]
                    .translate(None, self._del_letters))
 
     @property
     def organism_prefix(self) -> bytes:
+        """Organism prefix of ENSEMBL gene id (e.g. ENSG for human, ENSMUSG)"""
         return self.attribute(b'gene_id').translate(None, self._del_non_letters)
 
     @property
     def string_gene_id(self) -> bytes:
+        """ENSEMBL gene id, including organism prefix."""
         return self.attribute(b'gene_id')
 
     @staticmethod
     def int2str_gene_id(integer_id: int, organism_prefix: bytes) -> bytes:
-        """converts an integer gene id to a string gene id
+        """
+        converts an integer gene id (suffix) to a string gene id (including organism-
+        specific suffix)
         :param organism_prefix: bytes
         :param integer_id: int
         """
@@ -132,6 +145,14 @@ class Exon(Record):
 
 
 class Gene(Record):
+    """
+    Gene record object. In addition to base properties of the Record object, provides:
+
+    :property exons: set, exon objects associated with this gene
+    :method genomic_intervals: iterator, yields tuples of sequence that are covered by
+      this gene.
+
+    """
 
     __slots__ = ['_exons']
 
@@ -144,6 +165,10 @@ class Gene(Record):
         return self._exons
 
     def genomic_intervals(self):
+        """
+        Iterator, yields tuples of genomic sequence that codes for this gene. In cases
+        where multiple exons overlap, the union of the intervals is returned.
+        """
         assert self.exons
         ivs = sorted(((e.start, e.end) for e in self.exons))
         ivs = sorted(ivs)
@@ -159,6 +184,13 @@ class Gene(Record):
 
 
 class GeneIntervals:
+    """
+    Encodes genomic ranges in an Intervaltree
+
+    :method translate: translates a genomic coordinate on a stranded chromosome into the
+      gene identifier that occupies that location (if any exists)
+
+    """
 
     def __init__(self, gtf: str):
         interval_tree = defaultdict(IntervalTree)
@@ -178,14 +210,31 @@ class GeneIntervals:
         self._interval_tree = interval_tree
 
     def translate(self, chromosome: bytes, strand: bytes, position: int):
-            ivs = self._interval_tree[(chromosome, strand)].search(position)
-            if len(ivs) == 1:
-                return first(ivs).data
-            else:
-                return None
+        """
+        translates a genomic coordinate on a stranded chromosome into the gene identifier
+        that occupies that location. If no gene ids or an ambiguous location with more
+        than one gene id is identified, returns None.
+
+        :param chromosome: bytes, chromosome id
+        :param strand: bytes, [b'+', b'-'], the strand
+        :param position: int, position on the chromosome
+        :return: int, gene id.
+        """
+        ivs = self._interval_tree[(chromosome, strand)].search(position)
+        if len(ivs) == 1:
+            return first(ivs).data
+        else:
+            return None
 
 
 class Reader(seqc.reader.Reader):
+    """
+    SubClass of reader.Reader, returns an Reader with several specialized iterator
+    methods.
+
+    :method __iter__: Iterator over all non-header records in gtf; yields Record objects.
+    :method iter_genes: Iterator over all genes in gtf; yields Gene objects.
+    """
 
     def __iter__(self):
         """return an iterator over all non-header records in gtf"""
@@ -204,10 +253,7 @@ class Reader(seqc.reader.Reader):
                 yield record.split(b'\t')
 
     def iter_genes(self):
-        """iterate over all the records for each gene in passed gtf
-
-        :yields: Gene
-        """
+        """iterate over all the records for each gene in passed gtf"""
 
         records = iter(self)
 

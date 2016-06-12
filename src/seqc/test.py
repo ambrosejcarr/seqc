@@ -10,6 +10,10 @@ seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
 
 class TestProcessExperimentGeneral(unittest.TestCase):
+    """
+    Tests for portions of ProcessExperiment (the main package pipeline function).
+    These tests should immediately return success or failure.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -39,6 +43,9 @@ class TestProcessExperimentGeneral(unittest.TestCase):
 
 
 class TestRemoteProcessExperiment(unittest.TestCase):
+    """
+    Complete tests for the remote running of process_experiment.py
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -139,6 +146,9 @@ class TestRemoteProcessExperiment(unittest.TestCase):
 
 
 class TestLocalProcessExperiment(unittest.TestCase):
+    """
+    Complete tests for local running of process_experiment.py
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -226,6 +236,10 @@ class TestLocalProcessExperiment(unittest.TestCase):
 
 
 class TestThreeBitEquivalence(unittest.TestCase):
+    """
+    Tests that show that the decode and encode functions in
+    seqc.sequence.Encodings.DNA3bit properly regenerate the input value.
+    """
 
     @classmethod
     def setUpClass(cls):

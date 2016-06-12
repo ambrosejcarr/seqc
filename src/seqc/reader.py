@@ -4,7 +4,11 @@ import bz2
 
 
 class Reader:
-    """fastq reader"""
+    """
+    Basic reader object that seamlessly loops over multiple input files
+
+    Can be subclassed to create readers for specific file types (fastq, gtf, etc.)
+    """
 
     def __init__(self, files_):
 
@@ -39,5 +43,5 @@ class Reader:
 
     @property
     def size(self) -> int:
-        """return the colective size of all files being read in bytes"""
+        """return the collective size of all files being read in bytes"""
         return sum(os.stat(f).st_size for f in self._files)

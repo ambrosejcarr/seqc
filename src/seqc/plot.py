@@ -67,8 +67,27 @@ matplotlib.rcParams.update(style_dictionary)
 
 
 class FigureGrid:
+    """
+    Generates a grid of axes for plotting
+
+    axes can be iterated over or selected by number. e.g.:
+
+    >>> # iterate over axes and plot some nonsense
+    >>> fig = FigureGrid(4, max_cols=2)
+    >>> for i, ax in enumerate(fig):
+    >>>     plt.plot(np.arange(10) * i)
+
+    >>> # select axis using indexing
+    >>> ax3 = fig[3]
+    >>> ax3.set_title("I'm axis 3")
+    """
 
     def __init__(self, n: int, max_cols=3):
+        """
+        :param n: number of axes to generate
+        :param max_cols: maximum number of axes in a given row
+        """
+
         self.n = n
         self.nrows = int(np.ceil(n / max_cols))
         self.ncols = int(min((max_cols, n)))
@@ -93,22 +112,42 @@ class FigureGrid:
             yield self[i]
 
     def tight_layout(self):
+        """wrapper for plt.tight_layout"""
         self.gs.tight_layout(self.figure)
 
     def despine(self, top=True, right=True, **kwargs):
+        """wrapper for seaborn despine, removes right and top spines by default"""
         for i in range(self.n):
             sns.despine(ax=self[i], top=top, right=right, **kwargs)
 
     def detick(self, x=True, y=True):
+        """
+        removes tick labels
+
+        :param x: bool, if True, remove tick labels from x-axis
+        :param y: bool, if True, remove tick labels from y-axis
+        """
+
         for ax in self:
             detick(ax, x=x, y=y)
 
     def savefig(self, filename, pad_inches=0.1, bbox_inches='tight', *args, **kwargs):
+        """
+        wrapper for savefig, including necessary paramters to avoid cut-off
+
+        :param filename: str, name of output file
+        :param pad_inches: float, number of inches to pad
+        :param bbox_inches: str, method to use when considering bbox inches
+        :param args: additional args for plt.savefig()
+        :param kwargs: additional kwargs for plt.savefig()
+        :return:
+        """
         self.figure.savefig(
             filename, pad_inches=pad_inches, bbox_inches=bbox_inches, *args, **kwargs)
 
 
 def detick(ax, x=True, y=True):
+    """helper function for removing tick labels from an axis"""
     if x:
         ax.xaxis.set_major_locator(plt.NullLocator())
     if y:
@@ -116,14 +155,17 @@ def detick(ax, x=True, y=True):
 
 
 def xtick_vertical(ax):
+    """set xticklabels on ax to vertical instead of the horizontal default orientation"""
     xt = ax.get_xticks()
     ax.set_xticklabels(xt, rotation='vertical')
 
 
 def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
     """
-    :param data:
-    :param cmap:
+    create a discrete colormap from cmap appropriate for data
+
+    :param data: categorical vector to map to colormap
+    :param cmap: cmap to discretize
     :return:
     """
     categories = np.unique(data)
@@ -137,11 +179,13 @@ def add_legend_to_categorical_vector(
         colors: np.ndarray, labels, ax, loc='center left', bbox_to_anchor=(0.98, 0.5),
         markerscale=0.75, **kwargs):
     """
-    :param colors:
-    :param labels:
-    :param ax:
+    Add a legend to a plot where the color scale was set by discretizing a colormap.
+
+    :param colors: np.ndarray, output of map_categorical_vector_to_cmap()
+    :param labels: np.ndarray, category labels
+    :param ax: axis on which the legend should be plotted
     :param kwargs: additional kwargs for legend
-    :return:
+    :return: None
     """
     artists = []
     for c in colors:
@@ -158,14 +202,16 @@ class scatter:
             x, y, c, ax=None, cmap=plt.get_cmap(), legend=True, legend_kwargs=None,
             randomize=True, *args, **kwargs):
         """
-        :param x:
-        :param y:
-        :param c:
-        :param ax:
-        :param cmap:
-        :param legend_kwargs:
-        :param args:
-        :param kwargs:
+        wrapper for scatter wherein the output should be colored by a categorical vector
+        c
+
+        :param x, y: np.ndarray, coordinate data to be scattered
+        :param c: categories for data
+        :param ax: axis on which to scatter data
+        :param cmap: color map
+        :param legend_kwargs: additional kwargs for legend
+        :param args: additional args for scatter
+        :param kwargs: additional kwargs for scatter
         :return: ax
         """
         if not ax:  # todo replace with plt.gridspec() method
@@ -192,11 +238,12 @@ class scatter:
     @staticmethod
     def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True, **kwargs):
         """
-        :param x:
-        :param y:
-        :param c:
-        :param ax:
-        :param kwargs:
+        wrapper for scatter wherein the coordinates x and y are colored according to a
+        continuous vector c
+        :param x, y: np.ndarray, coordinate data
+        :param c: np.ndarray, continuous vector by which to color data points
+        :param args: additional args for scatter
+        :param kwargs: additional kwargs for scatter
         :return: ax
         """
 
@@ -224,9 +271,8 @@ class scatter:
     def density_2d(x, y):
         """return x and y and their density z, sorted by their density (smallest to largest)
 
-        :param x:
-        :param y:
-        :return:
+        :param x, y: np.ndarray: coordinate data
+        :return: sorted x, y, and density
         """
         xy = np.vstack([np.ravel(x), np.ravel(y)])
         z = gaussian_kde(xy)(xy)

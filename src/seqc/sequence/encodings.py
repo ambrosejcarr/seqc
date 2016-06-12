@@ -1,6 +1,6 @@
 class DNA3Bit:
     """
-    Compact encoding scheme for sequence data.
+    Compact 3-bit encoding scheme for sequence data.
     """
 
     _str2bindict = {65: 0b100, 67: 0b110, 71: 0b101, 84: 0b011, 78: 0b111,
@@ -10,9 +10,12 @@ class DNA3Bit:
 
     @classmethod
     def encode(cls, b: bytes) -> int:
-        """Convert string nucleotide sequence into binary, note: string is reversed so
+        """
+        Convert string nucleotide sequence into binary, note: string is reversed so
         that the first nucleotide is in the LSB position
-        :param b: """
+
+        :param b: bytes, sequence containing nucleotides to be encoded
+        """
         res = 0
         for c in b:
             res <<= 3
@@ -21,8 +24,10 @@ class DNA3Bit:
 
     @classmethod
     def decode(cls, i: int) -> bytes:
-        """Convert binary nucleotide sequence into string
-        :param i:
+        """
+        Convert binary nucleotide sequence into string
+
+        :param i: int, encoded sequence to be converted back to nucleotides
         """
         if i < 0:
             message = 'i must be an unsigned (positive) integer, not {0!s}'.format(i)
@@ -35,8 +40,10 @@ class DNA3Bit:
 
     @staticmethod
     def gc_content(i: int) -> float:
-        """calculate percentage of i that is G or C
-        :param i:
+        """
+        calculates percentage of nucleotides in i that is G or C
+
+        :param i: int, encoded sequence
         """
         gc = 0
         length = 0
@@ -50,8 +57,10 @@ class DNA3Bit:
 
     @staticmethod
     def seq_len(i: int) -> int:
-        """Return the length of a sequence based on its binary representation
-        :param i:
+        """
+        Return the length of an encoded sequence based on its binary representation
+
+        :param i: int, encoded sequence
         """
         l = 0
         while i > 0:
@@ -64,8 +73,9 @@ class DNA3Bit:
         """
         return true if the char (bin representation) is contained in seq (binary
         representation)
-        :param char:
-        :param s:
+
+        :param char: int, encoded character (one must be only one nucleotide)
+        :param s: int, sequence of encoded nucleotides
         """
         while s > 0:
             if char == (s & 0b111):
@@ -75,8 +85,11 @@ class DNA3Bit:
 
     @staticmethod
     def bitlength(i: int) -> int:
-        """return the bitlength of the sequence
-        :param i:
+        """
+        return the bitlength of the sequence, compensating for terminal 'T' encodings
+        which are truncated because 0b011 is converted into 0b11 by python internals.
+
+        :param i: int, encoded sequence
         """
         bitlen = i.bit_length()
         # correct for leading T-nucleotide (011) whose leading 0 gets trimmed
@@ -86,8 +99,14 @@ class DNA3Bit:
 
     @staticmethod
     def ints2int(ints):
-        """convert [i1, i2, i3] -> 0bi1i2i3
-        :param ints:
+        """
+        convert an iterable of sequences [i1, i2, i3] into a concatenated single integer
+        0bi1i2i3. In cases where the sequence is longer than 64 bits, python will
+        transition seamlessly to a long int representation, however the user must be
+        aware that downsteam interaction with numpy or other fixed-size representations
+        may not function
+
+        :param ints: iterable of encoded sequences to concatenate
         """
 
         res = 0

@@ -3,7 +3,7 @@ import gzip
 
 
 class SamRecord:
-    """simple record object to use when iterating over sam files"""
+    """Simple record object allowing access to Sam record properties"""
 
     __slots__ = ['_record', '_parsed_name_field']
 
@@ -157,12 +157,11 @@ class SamRecord:
 
 
 class Reader:
-    """simple sam reader, optimized for utility rather than speed"""
+    """Simple sam reader, optimized for utility rather than speed"""
 
     def __init__(self, samfile: str):
         """
-        :param samfile:
-        :return:
+        :param samfile: str, location of a .sam file
         """
 
         self._samfile = samfile

@@ -18,6 +18,11 @@ from seqc.io import check_s3links, obtain_size
 
 
 class NewArgumentParser(argparse.ArgumentParser):
+    """
+    Simple wrapper for ArgumentParser that allows flags to be caught before the presence
+    of 'required' arguments are tested. Allows us to add flags, for example, for
+    checking the progress of existing SEQC runs.
+     """
     def error(self, message):
         # checks to see whether user wants to check remote experiment status
         if '--check-progress' in sys.argv[1:]:
@@ -28,6 +33,13 @@ class NewArgumentParser(argparse.ArgumentParser):
 
 
 def parse_args(args):
+    """
+    command line argument parser for process_experiment
+
+    :param args: list of command-line arguments (either passed as a list, or retrieved
+      from sys.argv.
+    :returns: args, namespace object, output of ArgumentParser.parse_args()
+    """
     p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
@@ -138,6 +150,15 @@ def parse_args(args):
 
 
 def recreate_command_line_arguments(args):
+    """
+    Helper function to recreate command line arguments for passing to the remote run that
+    is often called by the local process. This function is aware that 'platform' is
+    a positional argument, and '--remote' is a flag; otherwise arguments are
+    reconstructed from the dictionary.
+
+    This function may require adjustment when new flags or positional arguments are added
+    to process_experiment.py
+    """
     args = copy(args)  # don't break original object
     platform = args.platform
     del args.platform  # we explicitly create a positional parameter
@@ -155,6 +176,9 @@ def recreate_command_line_arguments(args):
 
 def run_remote(args, volsize):
     """
+    Mirror the local arguments to an AWS server and execute the run there. When complete,
+    terminates the local process.
+
     :param args: simple namespace object; output of parse_args()
     :param volsize: estimated volume needed for run
     """
@@ -207,9 +231,12 @@ def run_remote(args, volsize):
         sys.exit(2)
 
 
+# todo @kristychoi what is the significance of ~/.seqc/instance.txt? please document.
 def cluster_cleanup():
-    """checks for all security groups that are unused and deletes
-    them prior to each SEQC run. Updates ~/.seqc/instance.txt as well"""
+    """
+    checks for all security groups that are unused and deletes
+    them prior to each SEQC run. Updates ~/.seqc/instance.txt as well
+    """
 
     cmd = 'aws ec2 describe-instances --output text'
     cmd2 = 'aws ec2 describe-security-groups --output text'
@@ -255,6 +282,8 @@ def check_arguments(args, basespace_token: str):
 
     additionally, this function obtains a rough estimate of how much
     volume storage is needed for the overall SEQC run.
+
+    :param basespace_token: OAuth token for BaseSpace.
     """
 
     # make sure only one filetype has been passed
@@ -360,7 +389,15 @@ def check_arguments(args, basespace_token: str):
     return total
 
 
-def main(args: list=None):
+#todo refactor; this function is too large for code analysis
+def main(args: list=None) -> None:
+    """
+    Execute a SEQC run.
+
+    :param args: list of arguments. Normally either extracted from sys.argv or passed as
+      a list from a testing function.
+    :return: None
+    """
 
     args = parse_args(args)
     if args.aws:

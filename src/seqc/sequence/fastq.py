@@ -4,6 +4,19 @@ import seqc
 
 
 class FastqRecord:
+    """Fastq record object
+
+    Defines several properties for accessing fastq record information:
+    :property name: name field
+    :property sequence: sequence field
+    :property name2: second name field
+    :property quality: quality field
+
+    Also defines several methods for accessing SEQC annotation fields:
+    :property annotations: list of annotations
+    :property metadata: dictionary of read metadata (if any present)
+    :property average_quality: return the mean quality of FastqRecord
+    """
 
     __slots__ = ['_data']
 
@@ -99,7 +112,13 @@ class FastqRecord:
 
 
 class Reader(seqc.reader.Reader):
-    """simple Reader Class, designed for inheritance across data types"""
+    """
+    Fastq Reader, defines some special methods for reading and summarizing fastq data:
+
+    :method __iter__: Iterator over fastq Record objects
+    :method __len__: return number of records in file
+    :method estimate_sequence_length: estimate the length of fastq sequences in file
+    """
 
     @staticmethod
     def record_grouper(iterable):
@@ -142,7 +161,9 @@ class Reader(seqc.reader.Reader):
 
 def merge_paired(merge_function, fout, genomic, barcode=None):
     """
-    annotate genomic fastq with barcode information from reverse read
+    General function to annotate genomic fastq with barcode information from reverse read.
+    Takes a merge_function which indicates which kind of platform was used to generate
+    the data, and specifies how the merging should be done.
 
     args:
     -----

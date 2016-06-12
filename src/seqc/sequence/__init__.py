@@ -12,7 +12,7 @@ _revcomp_bytes = {b'A': b'T', b'T': b'A', b'C': b'G', b'G': b'C', b'N': b'N',
 
 def revcomp(s: str) -> str:
     """
-    returns the reverse-complement of s
+    returns the reverse-complement of nucleotide sequence s
 
     :param s: str; nucleotide sequence to be reverse complemented
     :return: str; reverse complemented input string s
