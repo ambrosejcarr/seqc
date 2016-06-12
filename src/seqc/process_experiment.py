@@ -22,7 +22,7 @@ class NewArgumentParser(argparse.ArgumentParser):
     Simple wrapper for ArgumentParser that allows flags to be caught before the presence
     of 'required' arguments are tested. Allows us to add flags, for example, for
     checking the progress of existing SEQC runs.
-     """
+    """
     def error(self, message):
         # checks to see whether user wants to check remote experiment status
         if '--check-progress' in sys.argv[1:]:
