@@ -16,9 +16,11 @@ logging.getLogger('paramiko').setLevel(logging.CRITICAL)
 
 
 class ClusterServer(object):
-    """Connects to AWS instance using paramiko and a private RSA key,
+    """
+    Connects to AWS instance using paramiko and a private RSA key,
     allows for the creation/manipulation of EC2 instances and executions
-    of commands on the remote server"""
+    of commands on the remote server
+    """
 
     def __init__(self):
 
@@ -37,7 +39,7 @@ class ClusterServer(object):
         self.spot_bid = None
 
     def create_security_group(self):
-        """Creates a new security group for the cluster"""
+        """creates a new security group for the cluster"""
 
         success = False
         num_retries = 20
@@ -86,9 +88,11 @@ class ClusterServer(object):
         self.spot_bid = spot_bid
 
     def create_spot_cluster(self, volume_size):
-        """launches an instance using the specified spot bid
+        """
+        launches an instance using the specified spot bid
         and cancels bid in case of error or timeout
-        :param volume_size: size of volume (GB) to be attached to instance"""
+        :param volume_size: size of volume (GB) to be attached to instance
+        """
 
         if self.spot_bid is None:
             raise RuntimeError('Cannot create a spot instance without a spot_bid value')
@@ -230,9 +234,11 @@ class ClusterServer(object):
 
     @staticmethod
     def wait_for_cluster(inst_id: str):
-        """waits until newly created cluster exists and is running
+        """
+        waits until newly created cluster exists and is running
         changing default waiter settings to avoid waiting forever
-        :param inst_id: instance id of AWS cluster"""
+        :param inst_id: instance id of AWS cluster
+        """
 
         client = boto3.client('ec2')
         exist_waiter = client.get_waiter('instance_exists')
@@ -270,6 +276,7 @@ class ClusterServer(object):
 
     def stop_cluster(self):
         """stops a running cluster"""
+
         if self.cluster_is_running():
             self.inst_id.stop()
             self.inst_id.wait_until_stopped()
@@ -278,8 +285,12 @@ class ClusterServer(object):
             seqc.log.notify('Instance %s is not running!' % self.inst_id)
 
     def create_volume(self, vol_size):
-        """creates a volume of size vol_size and returns the volume's id
-        :param vol_size: size(GB) of volume to be created"""
+        """
+        creates a volume of size vol_size and returns the volume's id
+        :param vol_size: size(GB) of volume to be created
+        :return: volume id of newly created volume
+        """
+
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
                                      VolumeType='gp2')
         vol_id = vol.id
@@ -297,10 +308,12 @@ class ClusterServer(object):
         return vol_id
 
     def attach_volume(self, vol_id, dev_id):
-        """attaches a vol_id to inst_id at dev_id
+        """
+        attaches a vol_id to inst_id at dev_id
         :param dev_id: where volume will be mounted
         :param vol_id: ID of volume to be attached
         """
+
         vol = self.ec2.Volume(vol_id)
         self.inst_id.attach_volume(VolumeId=vol_id, Device=dev_id)
         max_tries = 40
@@ -342,7 +355,11 @@ class ClusterServer(object):
                         (vol_id, self.inst_id.id, dev_id))
 
     def connect_server(self):
-        """connects to the aws instance"""
+        """
+        connects to the aws instance
+        :return: id of newly connected AWS instance
+        """
+
         ssh_server = SSHServer(self.inst_id.id, self.keypath)
         seqc.log.notify('Connecting to instance %s...' % self.inst_id.id)
         ssh_server.connect()
@@ -352,9 +369,11 @@ class ClusterServer(object):
         return self.inst_id.id
 
     def allocate_space(self, spot: bool, vol_size: int):
-        """dynamically allocates the specified amount of space on /data
+        """
+        dynamically allocates the specified amount of space on /data
         :param spot: True if spot bid, False otherwise
-        :param vol_size: size (GB) of volume to be attached to instance"""
+        :param vol_size: size (GB) of volume to be attached to instance
+        """
 
         dev_id = "/dev/xvdf"
         if not spot:
@@ -405,16 +424,20 @@ class ClusterServer(object):
             raise seqc.exceptions.EC2RuntimeError('Error installing SEQC on the cluster.')
 
     def set_credentials(self):
+        """sets aws credentials on remote instance from user's local config file"""
+
         self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
         self.serv.exec_command(
             'aws configure set aws_secret_access_key %s' % self.aws_key)
         self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
 
     def cluster_setup(self, volsize, aws_instance, spot_bid=None):
-        """creates a new cluster, attaches the appropriate volume, configures
-        :param spot_bid:
+        """
+        creates a new cluster, attaches the appropriate volume, configures
+        :param spot_bid: amount to use for spot bid, default is None
         :param volsize: size (GB) of volume to be attached
-        :param aws_instance: instance type (c3, c4, r3)"""
+        :param aws_instance: instance type (c3, c4, r3)
+        """
 
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
@@ -435,8 +458,10 @@ class ClusterServer(object):
 
 
 def terminate_cluster(instance_id):
-    """terminates a running cluster
-    :param instance_id: id of instance to terminate"""
+    """
+    terminates a running cluster
+    :param instance_id: id of instance to terminate
+    """
 
     ec2 = boto3.resource('ec2')
     instance = ec2.Instance(instance_id)
@@ -454,8 +479,10 @@ def terminate_cluster(instance_id):
 
 
 def remove_sg(sg_id):
-    """removes security group to avoid accumulation
-    :param sg_id: security group id number to be deleted"""
+    """
+    removes security group to avoid accumulation
+    :param sg_id: security group id number to be deleted
+    """
 
     ec2 = boto3.resource('ec2')
     sg = ec2.SecurityGroup(sg_id)
@@ -475,7 +502,8 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
     :param attachment: the file location of the attachment to append to the email
     :param email_body: text to send in the body of the email
-    :param email_address: the address to which the email should be sent."""
+    :param email_address: the address to which the email should be sent"""
+
     if isinstance(email_body, str):
         email_body = email_body.encode()
 
@@ -486,8 +514,11 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
 
 
 def gzip_file(filename):
-    """gzips a given file using pigz, returns name of gzipped file
-    :param filename: name of file to be gzipped"""
+    """
+    gzips a given file using pigz, returns name of gzipped file
+    :param filename: name of file to be gzipped
+    :return: name of newly gzipped file
+    """
 
     cmd = 'pigz ' + filename
     pname = Popen(cmd.split())
@@ -498,6 +529,7 @@ def gzip_file(filename):
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
                    start_pos: str, summary: dict, log_name: str) -> None:
     """
+    uploads remaining files from the SEQC run
     :param output_stem: specified output directory in cluster
     :param email_address: e-mail where run summary will be sent
     :param aws_upload_key: tar gzipped files will be uploaded to this S3 bucket
@@ -552,8 +584,10 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
 
 def check_progress():
-    """flag that can be used with process_experiment.py --check-progress
-    to retrieve remote seqc.log and track the progress of the remote run"""
+    """
+    flag that can be used with process_experiment.py --check-progress
+    to retrieve remote seqc.log and track the progress of the remote run
+    """
 
     # reading in configuration file
     config_file = os.path.expanduser('~/.seqc/config')
@@ -606,6 +640,9 @@ def check_progress():
 
 
 class SSHServer(object):
+    """Class that wraps the newly launched AWS instance to allow for connecting
+    and execution of commands remotely"""
+
     def __init__(self, inst_id, keypath):
         ec2 = boto3.resource('ec2')
         self.instance = ec2.Instance(inst_id)
@@ -616,6 +653,8 @@ class SSHServer(object):
         self.ssh = paramiko.SSHClient()
 
     def connect(self):
+        """connects to a remote instance"""
+
         max_attempts = 25
         attempt = 1
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -637,16 +676,26 @@ class SSHServer(object):
                     raise
 
     def is_connected(self):
+        """checks whether the user is connected to the desired instance"""
+
         if self.ssh.get_transport() is None:
             return False
         else:
             return True
 
     def disconnect(self):
+        """closes the ssh connection to a remote instance"""
+
         if self.is_connected():
             self.ssh.close()
 
     def get_file(self, localfile, remotefile):
+        """
+        obtains a file located on a remote AWS instance and downloads it locally
+        :param localfile: name of file to be downloaded on the local machine
+        :param remotefile: name of file on AWS instance to be fetched
+        """
+
         if not self.is_connected():
             seqc.log.notify('You are not connected!')
             sys.exit(2)
@@ -655,6 +704,12 @@ class SSHServer(object):
         ftp.close()
 
     def put_file(self, localfile, remotefile):
+        """
+        places a file from the local machine onto a remote instance
+        :param localfile: name of file to be copied to remote instance
+        :param remotefile: name of file placed remotely
+        """
+
         if not self.is_connected():
             seqc.log.notify('You are not connected!')
             sys.exit(2)
@@ -665,6 +720,12 @@ class SSHServer(object):
         ftp.close()
 
     def exec_command(self, args):
+        """
+        executes the specified arguments remotely on an AWS instance
+        :param args: args to be executed remotely
+        :return: decoded stdout and stderr parsed into lines
+        """
+
         if not self.is_connected():
             seqc.log.notify('You are not connected!')
             sys.exit(2)

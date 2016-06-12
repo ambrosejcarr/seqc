@@ -1,8 +1,8 @@
 import sys
-from glob import glob
 import os
 import ftplib
 import shlex
+from glob import glob
 from functools import partial
 from multiprocessing import Process, Pool
 from queue import Queue, Empty
@@ -28,13 +28,14 @@ class S3:
     @staticmethod
     def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False,
                       boto: bool=False):
-        """download the file key located in bucket, sending output to filename fout
+        """
+        download the file key located in bucket, sending output to filename fout
 
-        :param overwrite:
-        :param fout:
-        :param key:
-        :param bucket:
-        :param boto:
+        :param overwrite: True if overwrite existing file
+        :param fout: name of output file
+        :param key: key of S3 bucket
+        :param bucket: name of S3 bucket
+        :param boto: True if download using boto3 (default=False, uses awscli)
         """
 
         if not overwrite:
@@ -77,14 +78,15 @@ class S3:
         If desired, removes a number of leading directories equal to cut_dirs. Finally,
         can overwrite files lying in the download path if overwrite is True.
 
-        :param overwrite:
-        :param cut_dirs:
-        :param output_prefix:
-        :param key_prefix:
-        :param bucket:
+        :param overwrite: True if overwrite existing file
+        :param cut_dirs: number of leading directories to remove
+        :param output_prefix: location to download file
+        :param key_prefix: key of S3 bucket to download
+        :param bucket: name of S3 bucket
         :param boto: use boto3 to download files from S3 (takes longer than awscli)
         :param filters: a list of file extensions to download without the period
         (ex) ['h5', 'log'] for .h5 and .log files
+        :return: sorted list of file names that were downloaded
         """
 
         # get bucket and file names
@@ -133,10 +135,10 @@ class S3:
     @staticmethod
     def upload_file(filename, bucket, key, boto=False):
         """upload filename to aws at s3://bucket/key/filename
-        :param key:
-        :param bucket:
-        :param filename:
-        :param boto:
+        :param key: key of S3 bucket to download
+        :param bucket: name of S3 bucket
+        :param filename: name of file to download
+        :param boto: True if download using boto3 (default=False, uses awscli)
         """
 
         if key.startswith('/'):
@@ -175,10 +177,10 @@ class S3:
         s3://MyBucket/tmp/dir1/file3
         s3://MyBucket/tmp/dir2/dir3/file4
 
-        :param cut_dirs:
-        :param key_prefix:
-        :param bucket:
-        :param file_prefix:
+        :param cut_dirs: number of leading directories to remove
+        :param key_prefix: key of S3 bucket to upload
+        :param bucket: name of S3 bucket
+        :param file_prefix: name of files' prefix to upload
         """
 
         # if a wildcard was present, we will need to filter files in the last directory
@@ -232,8 +234,9 @@ class S3:
         list all objects beginning with key_prefix
         since amazon stores objects as keys, not as a filesystem, this is synonymous to
         listing the directory defined by key_prefix
-        :param key_prefix:
-        :param bucket:
+        :param key_prefix: prefix of S3 bucket to be listed
+        :param bucket: name of S3 bucket
+        :return: keys of items to be downloaded from S3
         """
         client = boto3.client('s3')
         objs = client.list_objects(Bucket=bucket, Prefix=key_prefix)['Contents']
@@ -243,20 +246,20 @@ class S3:
     @staticmethod
     def remove_file(bucket: str, key: str):
         """delete AWS s3 file at s3://bucket/key
-        :type bucket: str
-        :param key: str
-        :param bucket:
+        :param key: key of S3 bucket to remove
+        :param bucket: name of S3 bucket
         """
+
         client = boto3.client('s3')
         _ = client.delete_object(Bucket=bucket, Key=key)
 
     @classmethod
     def remove_files(cls, bucket: str, key_prefix: str):
         """
-        :param bucket: str
-        :param key_prefix: str
-        :return:
+        :param bucket: name of S3 bucket
+        :param key_prefix: key of S3 bucket containing files to remove
         """
+
         keys = cls.listdir(bucket, key_prefix)
         client = boto3.client('s3')
         for k in keys:
@@ -285,6 +288,13 @@ class GEO:
 
     @staticmethod
     def _ftp_login(ip, port=0, username='anonymous', password=''):
+        """
+        method to log in using ftf
+        :param: port: name of port to use
+        :param: username: default = anonymous
+        :param: password: default = ''
+        :return: ftp connection
+        """
         ftp = ftplib.FTP()
         ftp.connect(ip, port)
         ftp.login(user=username, passwd=password)
@@ -377,7 +387,7 @@ class GEO:
         :param verbose: If True, status updates will be printed throughout file download
         :param clobber: If True, overwrite existing files
         :param port: Port for login. for NCBI, this should be zero (default).
-        :returns: list of downloaded files
+        :return: list of downloaded files
         """
 
         if not srp.startswith('ftp://'):
@@ -514,7 +524,14 @@ class BaseSpace:
 
     @staticmethod
     def _download_basespace_content(item_data, access_token, dest_path, index):
-        """gets the content of a file requested from the BaseSpace REST API."""
+        """
+        obtains the content of a file requested from the BaseSpace REST API
+        :param item_data:
+        :param access_token: basespace access token
+        :param dest_path: path to where basespace content to be downloaded
+        :param index:
+        """
+
         item = item_data[index]
         response = requests.get('https://api.basespace.illumina.com/v1pre3/files/' +
                                 item['Id'] + '/content?access_token=' +
@@ -526,8 +543,13 @@ class BaseSpace:
             fd.close()
 
     @classmethod
-    def check_sample(cls, sample_id, access_token):
-        """checks whether provided basespace sample id is valid """
+    def check_sample(cls, sample_id: str, access_token: str):
+        """
+        checks whether provided basespace sample id is valid
+
+        :param sample_id: id of sample to check
+        :param access_token: basespace access token
+        """
 
         # send request to see whether basespace sample exists
         response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
@@ -543,9 +565,14 @@ class BaseSpace:
 
     @classmethod
     def check_size(cls, sample_id, access_token):
-        """checks size of basespace files to be downloaded.
-         this function will be executed after check_sample(), so
-         the API request will already have returned status code 200"""
+        """
+        checks size of basespace files to be downloaded.
+        this function will be executed after check_sample(), so
+        the API request will already have returned status code 200
+
+        :param sample_id: sample id of basespace files to download
+        :param access_token: basespace token required for sample download
+         """
 
         # send request to obtain json metadata
         response = requests.get('https://api.basespace.illumina.com/v1pre3/samples/' +
@@ -660,6 +687,7 @@ class ProcessManager:
         :param proc: an instance of subprocess.Popen
         :return:
         """
+
         fcntl.fcntl(proc.stderr.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
         error_msg = proc.stderr.read()
         if error_msg:
@@ -673,10 +701,9 @@ class ProcessManager:
         """
         Executes processes in proc_list and saves them in self.processes.
         All processes executed in this function are non-blocking.
-
         :param proc_list: Command to be executed (obtained from format_proces).
-        :return:
         """
+
         for i, cmd in enumerate(proc_list):
             if i != 0:
                 proc = Popen(cmd, stdin=self.processes[i-1].stdout, stdout=PIPE,
@@ -692,8 +719,8 @@ class ProcessManager:
         """
         This function must be called in order for the processes to be executed.
         All processes are non-blocking and executed in the background.
-        :return:
         """
+
         for arg in self.args:
             proc_list = self.format_processes(arg)
             self.run_background_processes(proc_list)
@@ -704,6 +731,7 @@ class ProcessManager:
         Any error calls are raised to notify the user.
         :return: list of outputs from each executed process
         """
+
         output = []
         for proc in self.processes:
             out, err = proc.communicate()
@@ -739,6 +767,12 @@ def check_s3links(input_args: list):
 
 
 def obtain_size(item):
+    """
+    obtains the size of desired item, used to determine how much volume
+    should be allocated for the remote AWS instance
+    :param item: name of file input
+    """
+
     cmd = 'aws s3 ls --summarize --recursive ' + item + ' | grep "Total Size"'
     obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
     return obj_size
