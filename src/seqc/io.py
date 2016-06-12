@@ -450,6 +450,18 @@ class GEO:
     @staticmethod
     def _extract_fastq(sra_queue, working_directory, verbose=True, paired_end=False,
                        clobber=False):
+        """
+        Private method. Serially extracts .SRA archive into paired fastq.
+
+        :param sra_queue: SRA files to be extracted
+        :param working_directory: str, directory for output files
+        :param verbose: if True, print status updates
+        :param paired_end: if True, extracts paired-ended data
+        :param clobber: if True, will overwrite existing files that were previously
+          extracted
+        :return: None
+        """
+
 
         while True:
             try:
@@ -481,13 +493,14 @@ class GEO:
     def extract_fastq(cls, sra_files, max_concurrent, working_directory='.',
                       verbose=True, paired_end=False, clobber=False):
         """
-        :param sra_files:
-        :param max_concurrent:
-        :param working_directory:
-        :param verbose:
-        :param paired_end:
-        :param clobber:
-        :return:
+        :param sra_files: list of str, .SRA files to be extracted
+        :param max_concurrent: int, maximum number of processes to initiate
+        :param working_directory: str, directory for fastq output
+        :param verbose: bool, if True, prints status updates
+        :param paired_end: bool, if True, generates paired-end fastq
+        :param clobber: bool, if True, will overwrite existing fastq files with the
+          same filestem as the archive that is being extracted.
+        :return: None
         """
 
         # check that fastq-dump exists
