@@ -185,7 +185,7 @@ class ReadArray:
             pool = seqc.sequence.encodings.DNA3Bit.encode(alignment.pool)
             cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
             rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
-            n_poly_t = alignment.poly_t.count(b'T')
+            n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
             dust_score = alignment.dust_low_complexity_score
             data[i] = (pool, cell, rmt, n_poly_t, dust_score, gene, alignment.pos)
 
