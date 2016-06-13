@@ -173,7 +173,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
         cls.human = 's3://dplab-data/genomes/hg38_chr19/'
         cls.mouse = 's3://dplab-data/genomes/mm38_chr19/'
         cls.email = input('provide an email address to receive test results: ')
-        cls.output = 'test/TestLocalProcessExperiment/{}/'
+        cls.output = 'test/TestLocalProcessExperiment/{}/test'  # Note: not directory
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
         cls.barcode_fastq = 's3://dplab-data/seqc/test/{}_chr19/barcode/'
         cls.genomic_fastq = 's3://dplab-data/seqc/test/{}_chr19/genomic/'
