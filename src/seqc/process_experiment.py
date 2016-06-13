@@ -276,6 +276,17 @@ def cluster_cleanup():
         pass  # instances.txt file has not yet been created
 
 
+# todo: added new
+def check_executables():
+    pigz = False
+    email = False
+    if os.path.exists('/usr/local/bin/pigz') or os.path.exists('/usr/bin/pigz'):
+        pigz = True
+    if os.path.exists('/usr/local/bin/mutt') or os.path.exists('/usr/bin/mutt'):
+        email = True
+    return pigz, email
+
+
 def check_arguments(args, basespace_token: str):
     """
     checks data input through the command line arguments and throws
@@ -408,6 +419,10 @@ def main(args: list=None) -> None:
         seqc.log.setup_logger(args.log_name)
     try:
         err_status = False
+        pigz, email = check_executables()
+        if not email and not args.remote:
+            seqc.log.notify('mutt was not found on this machine; an email will not '
+                            'be sent to the user upon termination of SEQC run.')
         seqc.log.args(args)
 
         # read in config file, make sure it exists
@@ -607,7 +622,10 @@ def main(args: list=None) -> None:
 
             # wait until merged fastq file is zipped before alignment
             seqc.log.info('Gzipping merged fastq file.')
-            pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
+            if pigz:
+                pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
+            else:
+                pigz_zip = "gzip {fname}".format(fname=args.merged_fastq)
             pigz_proc = seqc.io.ProcessManager(pigz_zip)
             pigz_proc.run_all()
             pigz_proc.wait_until_complete()  # prevents slowing down STAR alignment
@@ -621,7 +639,10 @@ def main(args: list=None) -> None:
                 args.merged_fastq = seqc.io.S3.download_file(bucket, prefix,
                                                              output_dir+'/'+fname)
                 if args.merged_fastq.endswith('.gz'):
-                    cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
+                    if pigz:
+                        cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
+                    else:
+                        cmd = 'gunzip {fname}'.format(fname=args.merged_fastq)
                     gunzip_proc = seqc.io.ProcessManager(cmd)
                     gunzip_proc.run_all()
                     gunzip_proc.wait_until_complete()  # finish before STAR alignment
@@ -768,7 +789,10 @@ def main(args: list=None) -> None:
         df.to_csv(sparse_csv)
 
         # gzipping sparse_csv annd uploading to S3
-        sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
+        if pigz:
+            sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
+        else:
+            sparse_zip = "gzip {fname}".format(fname=sparse_csv)
         sparse_upload = 'aws s3 mv {fname} {s3link}'.format(fname=sparse_csv+'.gz',
                                                             s3link=aws_upload_key)
         sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
@@ -815,7 +839,7 @@ def main(args: list=None) -> None:
                 # todo: run summary will not be reported if n_fastq or n_sam = NA
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data,
-                    summary, args.log_name)
+                    summary, args.log_name, email)
 
     except BaseException as e:
         if not isinstance(e, SystemExit):

@@ -462,7 +462,6 @@ class GEO:
         :return: None
         """
 
-
         while True:
             try:
                 file_ = sra_queue.get_nowait()

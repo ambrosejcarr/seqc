@@ -513,21 +513,8 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     email_process.communicate(email_body)
 
 
-def gzip_file(filename):
-    """
-    gzips a given file using pigz, returns name of gzipped file
-    :param filename: name of file to be gzipped
-    :return: name of newly gzipped file
-    """
-
-    cmd = 'pigz ' + filename
-    pname = Popen(cmd.split())
-    pname.communicate()
-    return filename + '.gz'
-
-
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str, summary: dict, log_name: str) -> None:
+                   start_pos: str, summary: dict, log_name: str, email: bool) -> None:
     """
     uploads remaining files from the SEQC run
     :param output_stem: specified output directory in cluster
@@ -536,6 +523,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     :param start_pos: determines where in the script SEQC started
     :param summary: dictionary of summary statistics from SEQC run
     :param log_name: log name of SEQC run provided by user
+    :param email: True if mutt is installed, False otherwise.
     """
 
     prefix, directory = os.path.split(output_stem)
@@ -576,11 +564,12 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
             '</font>' % (aws_upload_key, run_summary))
-    body = body.replace('\n', '<br>')
-    body = body.replace('\t', '&emsp;')
-    email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')
+    body = body.replace('\n', '<br>')
+    body = body.replace('\t', '&emsp;')
+    if email:
+        email_user(log, body, email_address)
 
 
 def check_progress():
