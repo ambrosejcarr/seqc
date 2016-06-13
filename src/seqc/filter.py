@@ -8,6 +8,7 @@ from sklearn.linear_model import LinearRegression
 _primer_lengths = dict(
     in_drop=47,
     in_drop_v2=49,
+    in_drop_v3=16,
     drop_seq=20,
     mars1_seq=None,  # mars-seq has not been provided to us as pre-demultiplexed data
     mars2_seq=None
