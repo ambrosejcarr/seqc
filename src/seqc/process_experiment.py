@@ -43,7 +43,7 @@ def parse_args(args):
     p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
-                            'mars2_seq', 'in_drop_v2'],
+                            'mars2_seq', 'in_drop_v2', 'in_drop_v3'],
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')

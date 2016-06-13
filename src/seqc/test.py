@@ -94,6 +94,23 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
+    def test_in_drop_v3(self):
+        platform = 'in_drop_v3'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
     def test_drop_seq(self):
         platform = 'drop_seq'
         args = [
@@ -155,10 +172,10 @@ class TestLocalProcessExperiment(unittest.TestCase):
         cls.human = 's3://dplab-data/genomes/hg38_chr19/'
         cls.mouse = 's3://dplab-data/genomes/mm38_chr19/'
         cls.email = input('provide an email address to receive test results: ')
-        cls.output = 's3://dplab-data/seqc/test/{platform}_chr19/'
-        cls.barcode_files = 's3://dplab-data/barcodes/{platform}/flat/'
-        cls.barcode_fastq = 's3://dplab-data/seqc/test/{platform}_chr19/barcode/'
-        cls.genomic_fastq = 's3://dplab-data/seqc/test/{platform}_chr19/genomic/'
+        cls.output = 's3://dplab-data/seqc/test/{}_chr19/'
+        cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/{}_chr19/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/{}_chr19/genomic/'
 
     def test_in_drop(self):
         platform = 'in_drop'
