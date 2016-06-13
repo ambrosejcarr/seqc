@@ -212,6 +212,23 @@ class TestLocalProcessExperiment(unittest.TestCase):
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
+    def test_in_drop_v3(self):
+        platform = 'in_drop_v3'
+        os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
+                    exist_ok=True)
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--local',
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
     def test_drop_seq(self):
         platform = 'drop_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
