@@ -231,11 +231,12 @@ def run_remote(args, volsize):
         sys.exit(2)
 
 
-# todo @kristychoi what is the significance of ~/.seqc/instance.txt? please document.
 def cluster_cleanup():
     """
     checks for all security groups that are unused and deletes
-    them prior to each SEQC run. Updates ~/.seqc/instance.txt as well
+    them prior to each SEQC run. Instance ids that are created by seqc
+    will be documented in instances.txt and can used to clean up unused
+    security groups/instances after SEQC runs have terminated.
     """
 
     cmd = 'aws ec2 describe-instances --output text'
