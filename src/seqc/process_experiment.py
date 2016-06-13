@@ -228,7 +228,7 @@ def run_remote(args, volsize):
             seqc.log.notify('Cleaning up instance {id} before exiting...'.format(
                 id=cluster.inst_id.instance_id))
             seqc.remote.terminate_cluster(cluster.inst_id.instance_id)
-        sys.exit(2)
+        raise  # re-raise original exception
 
 
 def cluster_cleanup():
@@ -420,9 +420,8 @@ def main(args: list=None) -> None:
 
         if args.spot_bid is not None:
             if args.spot_bid < 0:
-                seqc.log.notify('"{bid}" must be a non-negative float! Exiting.'.format(
+                raise ValueError('"{bid}" must be a non-negative float! Exiting.'.format(
                     bid=args.spot_bid))
-                sys.exit(2)
 
         # extract basespace token and make sure args.index is a directory
         basespace_token = config['BaseSpaceToken']['base_space_token']
@@ -439,9 +438,8 @@ def main(args: list=None) -> None:
             if args.output_stem.startswith('s3://'):
                 output_dir, output_prefix = os.path.split(args.output_stem[:-1])
             else:
-                seqc.log.notify('-o/--output-stem should not be a directory for local '
-                                'SEQC runs.')
-                sys.exit(2)
+                raise ValueError('-o/--output-stem should not be a directory for local '
+                                 'SEQC runs.')
         else:
             output_dir, output_prefix = os.path.split(args.output_stem)
 
@@ -452,7 +450,7 @@ def main(args: list=None) -> None:
                                  'runs.')
             cluster_cleanup()
             run_remote(args, total_size)
-            sys.exit()
+            sys.exit(0)
 
         if args.aws:
             aws_upload_key = args.output_stem
@@ -819,8 +817,9 @@ def main(args: list=None) -> None:
                     args.output_stem, args.email_status, aws_upload_key, input_data,
                     summary, args.log_name)
 
-    except:
-        seqc.log.exception()
+    except BaseException as e:
+        if not isinstance(e, SystemExit):
+            seqc.log.exception()
         err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
