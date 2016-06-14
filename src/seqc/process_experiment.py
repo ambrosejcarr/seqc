@@ -133,10 +133,10 @@ def parse_args(args):
     r.add_argument('--instance-type', default='c4',
                    help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
     r.add_argument('--spot-bid', type=float, default=None,
-                   help='Amount to bid for a spot instance. Default=None (will reserve a '
-                        'non-spot instance). WARNING: using spot instances will cause '
-                        'your instance to terminate if instance prices exceed your spot '
-                        'bid during runtime.')
+                   help='float, Amount to bid for a spot instance. Default=None (will '
+                        'reserve a non-spot instance). WARNING: using spot instances '
+                        'will cause your instance to terminate if instance prices exceed '
+                        'your spot bid during runtime.')
     r.add_argument('--log-name', type=str, default='seqc.log',
                    help='Output log name (default=seqc.log)')
 

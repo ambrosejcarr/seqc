@@ -280,6 +280,40 @@ class TestLocalProcessExperiment(unittest.TestCase):
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
+class TestRemoteSpeciesMixExperiment(unittest.TestCase):
+    """
+    Complete tests for local running of process_experiment.py
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        os.makedirs(seqc_dir + 'test/TestRemoteSpeciesMixExperiment', exist_ok=True)
+        cls.index = 's3://dplab-data/genomes/hg19_mm10/'
+        cls.email = input('provide an email address to receive test results: ')
+        cls.output = 's3://dplab-data/seqc/test/species_mix/'
+        cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/species_mix/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/species_mix/genomic/'
+
+    def test_in_drop_v2(self):
+        platform = 'in_drop_v2'
+        os.makedirs(seqc_dir + 'test/TestRemoteSpeciesMixExperiment/{}'.format(platform),
+                    exist_ok=True)
+        args = [
+            platform,
+            '-o', self.output,
+            '-i', self.index,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq,
+            '-g', self.genomic_fastq,
+            '--barcode-files', self.barcode_files.format(platform),
+            '--instance-type', 'r3',
+            '--spot-bid', '1.0',
+        ]
+        process_experiment.main(args)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+
 class TestThreeBitEquivalence(unittest.TestCase):
     """
     Tests that show that the decode and encode functions in
