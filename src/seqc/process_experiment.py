@@ -234,7 +234,7 @@ def run_remote(args, volsize):
 def check_executables():
     """
     checks whether pigz and mutt are installed on the machine of the
-    current seqc run. returns True/False for both; to be used in main()
+    current seqc run. returns True/False for both
     """
 
     pigz = False
@@ -246,7 +246,7 @@ def check_executables():
     return pigz, email
 
 
-def check_arguments(args, basespace_token: str):
+def check_arguments(args, basespace_token: str) -> float:
     """
     checks data input through the command line arguments and throws
     an error if the provided input data is invalid.
@@ -255,6 +255,7 @@ def check_arguments(args, basespace_token: str):
     volume storage is needed for the overall SEQC run.
 
     :param basespace_token: OAuth token for BaseSpace.
+    :returns total: float, estimated Kb of Volume space needed to run SEQC remotely.
     """
 
     # make sure only one filetype has been passed
