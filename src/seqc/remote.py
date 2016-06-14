@@ -628,6 +628,51 @@ def check_progress():
         sys.exit(0)
 
 
+def cluster_cleanup():
+    """
+    checks for all security groups that are unused and deletes
+    them prior to each SEQC run. Instance ids that are created by seqc
+    will be documented in instances.txt and can used to clean up unused
+    security groups/instances after SEQC runs have terminated.
+    """
+
+    cmd = 'aws ec2 describe-instances --output text'
+    cmd2 = 'aws ec2 describe-security-groups --output text'
+    in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
+    all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
+    to_delete = list(all_sgs - in_use)
+
+    # set up ec2 resource from boto3
+    ec2 = boto3.resource('ec2')
+
+    # iteratively remove unused SEQC security groups
+    for sg in to_delete:
+        sg_id = sg.decode()
+        sg_name = ec2.SecurityGroup(sg_id).group_name
+        if 'SEQC-' in sg_name:
+            seqc.remote.remove_sg(sg_id)
+
+    # check which instances in instances.txt are still running
+    inst_file = os.path.expanduser('~/.seqc/instance.txt')
+
+    if os.path.isfile(inst_file):
+        with open(inst_file, 'r') as f:
+            seqc_list = [line.strip('\n') for line in f]
+        if seqc_list:
+            with open(inst_file, 'w') as f:
+                for i in range(len(seqc_list)):
+                    try:
+                        entry = seqc_list[i]
+                        inst_id = entry.split(':')[0]
+                        instance = ec2.Instance(inst_id)
+                        if instance.state['Name'] == 'running':
+                            f.write('%s\n' % entry)
+                    except:
+                        continue
+    else:
+        pass  # instances.txt file has not yet been created
+
+
 class SSHServer(object):
     """Class that wraps the newly launched AWS instance to allow for connecting
     and execution of commands remotely"""

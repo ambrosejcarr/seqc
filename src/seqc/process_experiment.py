@@ -4,12 +4,12 @@ import argparse
 import configparser
 import multiprocessing
 import os
+import shutil
 import pickle
 import sys
 from subprocess import Popen, check_output
 from copy import copy
 
-import boto3
 import numpy as np
 
 import seqc
@@ -231,58 +231,17 @@ def run_remote(args, volsize):
         raise  # re-raise original exception
 
 
-def cluster_cleanup():
-    """
-    checks for all security groups that are unused and deletes
-    them prior to each SEQC run. Instance ids that are created by seqc
-    will be documented in instances.txt and can used to clean up unused
-    security groups/instances after SEQC runs have terminated.
-    """
-
-    cmd = 'aws ec2 describe-instances --output text'
-    cmd2 = 'aws ec2 describe-security-groups --output text'
-    in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
-    all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
-    to_delete = list(all_sgs - in_use)
-
-    # set up ec2 resource from boto3
-    ec2 = boto3.resource('ec2')
-
-    # iteratively remove unused SEQC security groups
-    for sg in to_delete:
-        sg_id = sg.decode()
-        sg_name = ec2.SecurityGroup(sg_id).group_name
-        if 'SEQC-' in sg_name:
-            seqc.remote.remove_sg(sg_id)
-
-    # check which instances in instances.txt are still running
-    inst_file = os.path.expanduser('~/.seqc/instance.txt')
-
-    if os.path.isfile(inst_file):
-        with open(inst_file, 'r') as f:
-            seqc_list = [line.strip('\n') for line in f]
-        if seqc_list:
-            with open(inst_file, 'w') as f:
-                for i in range(len(seqc_list)):
-                    try:
-                        entry = seqc_list[i]
-                        inst_id = entry.split(':')[0]
-                        instance = ec2.Instance(inst_id)
-                        if instance.state['Name'] == 'running':
-                            f.write('%s\n' % entry)
-                    except:
-                        continue
-    else:
-        pass  # instances.txt file has not yet been created
-
-
-# todo: added new
 def check_executables():
+    """
+    checks whether pigz and mutt are installed on the machine of the
+    current seqc run. returns True/False for both; to be used in main()
+    """
+
     pigz = False
     email = False
-    if os.path.exists('/usr/local/bin/pigz') or os.path.exists('/usr/bin/pigz'):
+    if shutil.which('pigz'):
         pigz = True
-    if os.path.exists('/usr/local/bin/mutt') or os.path.exists('/usr/bin/mutt'):
+    if shutil.which('mutt'):
         email = True
     return pigz, email
 
@@ -463,7 +422,7 @@ def main(args: list=None) -> None:
             if not args.output_stem.startswith('s3://'):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
-            cluster_cleanup()
+            seqc.remote.cluster_cleanup()
             run_remote(args, total_size)
             sys.exit(0)
 
@@ -847,8 +806,12 @@ def main(args: list=None) -> None:
         err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
-            seqc.remote.email_user(attachment='/data/' + args.log_name,
-                                   email_body=email_body, email_address=args.email_status)
+            if args.aws:
+                attachment = '/data/' + args.log_name
+            else:
+                attachment = args.log_name
+            seqc.remote.email_user(attachment=attachment, email_body=email_body,
+                                   email_address=args.email_status)
 
         raise
 
