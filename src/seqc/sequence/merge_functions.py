@@ -136,6 +136,7 @@ def in_drop_v3(g, b):
     poly_t = b.sequence[16:-1]  # leave out newline
     cell2 = g.name[-9:-1]  # second index holds barcode, final part of line. (skip \n)
     g.add_annotation((b'', cell1 + cell2, rmt, poly_t))
+    return g
 
 
 def drop_seq(g, b):
