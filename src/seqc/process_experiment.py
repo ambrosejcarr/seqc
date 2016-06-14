@@ -747,14 +747,17 @@ def main(args: list=None) -> None:
         sparse_csv = args.output_stem + '_counts.csv'
         df.to_csv(sparse_csv)
 
-        # gzipping sparse_csv annd uploading to S3
+        # gzipping sparse_csv and uploading to S3
         if pigz:
             sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
         else:
             sparse_zip = "gzip {fname}".format(fname=sparse_csv)
         sparse_upload = 'aws s3 mv {fname} {s3link}'.format(fname=sparse_csv+'.gz',
                                                             s3link=aws_upload_key)
-        sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
+        if aws_upload_key:
+            sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
+        else:
+            sparse_proc = seqc.io.ProcessManager(sparse_zip)
         sparse_proc.run_all()
 
         # in this version, local runs won't be able to upload to S3
