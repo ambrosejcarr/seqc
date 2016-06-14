@@ -809,12 +809,13 @@ def main(args: list=None) -> None:
         err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
-            if args.aws:
-                attachment = '/data/' + args.log_name
-            else:
-                attachment = args.log_name
-            seqc.remote.email_user(attachment=attachment, email_body=email_body,
-                                   email_address=args.email_status)
+            if email:
+                if args.aws:
+                    attachment = '/data/' + args.log_name
+                else:
+                    attachment = args.log_name
+                seqc.remote.email_user(attachment=attachment, email_body=email_body,
+                                       email_address=args.email_status)
 
         raise
 
