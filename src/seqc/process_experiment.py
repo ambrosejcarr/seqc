@@ -584,7 +584,7 @@ def main(args: list=None) -> None:
             if pigz:
                 pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
             else:
-                pigz_zip = "gzip -k {fname}".format(fname=args.merged_fastq)
+                pigz_zip = "gzip -kf {fname}".format(fname=args.merged_fastq)
             pigz_proc = seqc.io.ProcessManager(pigz_zip)
             pigz_proc.run_all()
             pigz_proc.wait_until_complete()  # prevents slowing down STAR alignment
