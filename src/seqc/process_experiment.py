@@ -4,12 +4,12 @@ import argparse
 import configparser
 import multiprocessing
 import os
+import shutil
 import pickle
 import sys
-from subprocess import Popen, check_output
+from subprocess import Popen
 from copy import copy
 
-import boto3
 import numpy as np
 
 import seqc
@@ -228,52 +228,22 @@ def run_remote(args, volsize):
             seqc.log.notify('Cleaning up instance {id} before exiting...'.format(
                 id=cluster.inst_id.instance_id))
             seqc.remote.terminate_cluster(cluster.inst_id.instance_id)
-        sys.exit(2)
+        raise  # re-raise original exception
 
 
-def cluster_cleanup():
+def check_executables():
     """
-    checks for all security groups that are unused and deletes
-    them prior to each SEQC run. Instance ids that are created by seqc
-    will be documented in instances.txt and can used to clean up unused
-    security groups/instances after SEQC runs have terminated.
+    checks whether pigz and mutt are installed on the machine of the
+    current seqc run. returns True/False for both; to be used in main()
     """
 
-    cmd = 'aws ec2 describe-instances --output text'
-    cmd2 = 'aws ec2 describe-security-groups --output text'
-    in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
-    all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
-    to_delete = list(all_sgs - in_use)
-
-    # set up ec2 resource from boto3
-    ec2 = boto3.resource('ec2')
-
-    # iteratively remove unused SEQC security groups
-    for sg in to_delete:
-        sg_id = sg.decode()
-        sg_name = ec2.SecurityGroup(sg_id).group_name
-        if 'SEQC-' in sg_name:
-            seqc.remote.remove_sg(sg_id)
-
-    # check which instances in instances.txt are still running
-    inst_file = os.path.expanduser('~/.seqc/instance.txt')
-
-    if os.path.isfile(inst_file):
-        with open(inst_file, 'r') as f:
-            seqc_list = [line.strip('\n') for line in f]
-        if seqc_list:
-            with open(inst_file, 'w') as f:
-                for i in range(len(seqc_list)):
-                    try:
-                        entry = seqc_list[i]
-                        inst_id = entry.split(':')[0]
-                        instance = ec2.Instance(inst_id)
-                        if instance.state['Name'] == 'running':
-                            f.write('%s\n' % entry)
-                    except:
-                        continue
-    else:
-        pass  # instances.txt file has not yet been created
+    pigz = False
+    email = False
+    if shutil.which('pigz'):
+        pigz = True
+    if shutil.which('mutt'):
+        email = True
+    return pigz, email
 
 
 def check_arguments(args, basespace_token: str):
@@ -408,6 +378,10 @@ def main(args: list=None) -> None:
         seqc.log.setup_logger(args.log_name)
     try:
         err_status = False
+        pigz, email = check_executables()
+        if not email and not args.remote:
+            seqc.log.notify('mutt was not found on this machine; an email will not '
+                            'be sent to the user upon termination of SEQC run.')
         seqc.log.args(args)
 
         # read in config file, make sure it exists
@@ -420,9 +394,8 @@ def main(args: list=None) -> None:
 
         if args.spot_bid is not None:
             if args.spot_bid < 0:
-                seqc.log.notify('"{bid}" must be a non-negative float! Exiting.'.format(
+                raise ValueError('"{bid}" must be a non-negative float! Exiting.'.format(
                     bid=args.spot_bid))
-                sys.exit(2)
 
         # extract basespace token and make sure args.index is a directory
         basespace_token = config['BaseSpaceToken']['base_space_token']
@@ -439,9 +412,8 @@ def main(args: list=None) -> None:
             if args.output_stem.startswith('s3://'):
                 output_dir, output_prefix = os.path.split(args.output_stem[:-1])
             else:
-                seqc.log.notify('-o/--output-stem should not be a directory for local '
-                                'SEQC runs.')
-                sys.exit(2)
+                raise ValueError('-o/--output-stem should not be a directory for local '
+                                 'SEQC runs.')
         else:
             output_dir, output_prefix = os.path.split(args.output_stem)
 
@@ -450,9 +422,9 @@ def main(args: list=None) -> None:
             if not args.output_stem.startswith('s3://'):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
-            cluster_cleanup()
+            seqc.remote.cluster_cleanup()
             run_remote(args, total_size)
-            sys.exit()
+            sys.exit(0)
 
         if args.aws:
             aws_upload_key = args.output_stem
@@ -609,7 +581,10 @@ def main(args: list=None) -> None:
 
             # wait until merged fastq file is zipped before alignment
             seqc.log.info('Gzipping merged fastq file.')
-            pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
+            if pigz:
+                pigz_zip = "pigz --best -k {fname}".format(fname=args.merged_fastq)
+            else:
+                pigz_zip = "gzip {fname}".format(fname=args.merged_fastq)
             pigz_proc = seqc.io.ProcessManager(pigz_zip)
             pigz_proc.run_all()
             pigz_proc.wait_until_complete()  # prevents slowing down STAR alignment
@@ -623,7 +598,10 @@ def main(args: list=None) -> None:
                 args.merged_fastq = seqc.io.S3.download_file(bucket, prefix,
                                                              output_dir+'/'+fname)
                 if args.merged_fastq.endswith('.gz'):
-                    cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
+                    if pigz:
+                        cmd = 'pigz -d {fname}'.format(fname=args.merged_fastq)
+                    else:
+                        cmd = 'gunzip {fname}'.format(fname=args.merged_fastq)
                     gunzip_proc = seqc.io.ProcessManager(cmd)
                     gunzip_proc.run_all()
                     gunzip_proc.wait_until_complete()  # finish before STAR alignment
@@ -769,11 +747,17 @@ def main(args: list=None) -> None:
         sparse_csv = args.output_stem + '_counts.csv'
         df.to_csv(sparse_csv)
 
-        # gzipping sparse_csv annd uploading to S3
-        sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
+        # gzipping sparse_csv and uploading to S3
+        if pigz:
+            sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
+        else:
+            sparse_zip = "gzip {fname}".format(fname=sparse_csv)
         sparse_upload = 'aws s3 mv {fname} {s3link}'.format(fname=sparse_csv+'.gz',
                                                             s3link=aws_upload_key)
-        sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
+        if aws_upload_key:
+            sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
+        else:
+            sparse_proc = seqc.io.ProcessManager(sparse_zip)
         sparse_proc.run_all()
 
         # in this version, local runs won't be able to upload to S3
@@ -817,15 +801,21 @@ def main(args: list=None) -> None:
                 # todo: run summary will not be reported if n_fastq or n_sam = NA
                 seqc.remote.upload_results(
                     args.output_stem, args.email_status, aws_upload_key, input_data,
-                    summary, args.log_name)
+                    summary, args.log_name, email)
 
-    except:
-        seqc.log.exception()
+    except BaseException as e:
+        if not isinstance(e, SystemExit):
+            seqc.log.exception()
         err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
-            seqc.remote.email_user(attachment='/data/' + args.log_name,
-                                   email_body=email_body, email_address=args.email_status)
+            if email:
+                if args.aws:
+                    attachment = '/data/' + args.log_name
+                else:
+                    attachment = args.log_name
+                seqc.remote.email_user(attachment=attachment, email_body=email_body,
+                                       email_address=args.email_status)
 
         raise
 

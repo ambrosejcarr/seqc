@@ -3,7 +3,7 @@ import sys
 import os
 import configparser
 import random
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, check_output
 import shutil
 import paramiko
 import boto3
@@ -513,21 +513,8 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     email_process.communicate(email_body)
 
 
-def gzip_file(filename):
-    """
-    gzips a given file using pigz, returns name of gzipped file
-    :param filename: name of file to be gzipped
-    :return: name of newly gzipped file
-    """
-
-    cmd = 'pigz ' + filename
-    pname = Popen(cmd.split())
-    pname.communicate()
-    return filename + '.gz'
-
-
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
-                   start_pos: str, summary: dict, log_name: str) -> None:
+                   start_pos: str, summary: dict, log_name: str, email: bool) -> None:
     """
     uploads remaining files from the SEQC run
     :param output_stem: specified output directory in cluster
@@ -536,6 +523,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     :param start_pos: determines where in the script SEQC started
     :param summary: dictionary of summary statistics from SEQC run
     :param log_name: log name of SEQC run provided by user
+    :param email: True if mutt is installed, False otherwise.
     """
 
     prefix, directory = os.path.split(output_stem)
@@ -555,18 +543,19 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
                         '_alignment_summary.txt')
         files.append(alignment_summary)
 
-    bucket, key = seqc.io.S3.split_link(aws_upload_key)
-    for item in files:
-        try:
-            seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(item, bucket, key)
-            item_name = item.split('/')[-1]
-            seqc.log.info('Successfully uploaded %s to the specified S3 location '
-                          '"%s%s".' % (item, aws_upload_key, item_name))
-        except FileNotFoundError:
-            seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
+    if aws_upload_key:
+        bucket, key = seqc.io.S3.split_link(aws_upload_key)
+        for item in files:
+            try:
+                seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(item, bucket, key)
+                item_name = item.split('/')[-1]
+                seqc.log.info('Successfully uploaded %s to the specified S3 location '
+                              '"%s%s".' % (item, aws_upload_key, item_name))
+            except FileNotFoundError:
+                seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
 
-    # get the name of the output file
-    seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
+        # get the name of the output file
+        seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
 
     # email results to user
     body = ('<font face="Courier New, Courier, monospace">'
@@ -576,11 +565,12 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
             '</font>' % (aws_upload_key, run_summary))
-    body = body.replace('\n', '<br>')
-    body = body.replace('\t', '&emsp;')
-    email_user(log, body, email_address)
     seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
                   'flag was specified.')
+    body = body.replace('\n', '<br>')
+    body = body.replace('\t', '&emsp;')
+    if email:
+        email_user(log, body, email_address)
 
 
 def check_progress():
@@ -637,6 +627,51 @@ def check_progress():
     except FileNotFoundError:
         print('You have not started a remote instance -- exiting.')
         sys.exit(0)
+
+
+def cluster_cleanup():
+    """
+    checks for all security groups that are unused and deletes
+    them prior to each SEQC run. Instance ids that are created by seqc
+    will be documented in instances.txt and can used to clean up unused
+    security groups/instances after SEQC runs have terminated.
+    """
+
+    cmd = 'aws ec2 describe-instances --output text'
+    cmd2 = 'aws ec2 describe-security-groups --output text'
+    in_use = set([x for x in check_output(cmd.split()).split() if x.startswith(b'sg-')])
+    all_sgs = set([x for x in check_output(cmd2.split()).split() if x.startswith(b'sg-')])
+    to_delete = list(all_sgs - in_use)
+
+    # set up ec2 resource from boto3
+    ec2 = boto3.resource('ec2')
+
+    # iteratively remove unused SEQC security groups
+    for sg in to_delete:
+        sg_id = sg.decode()
+        sg_name = ec2.SecurityGroup(sg_id).group_name
+        if 'SEQC-' in sg_name:
+            seqc.remote.remove_sg(sg_id)
+
+    # check which instances in instances.txt are still running
+    inst_file = os.path.expanduser('~/.seqc/instance.txt')
+
+    if os.path.isfile(inst_file):
+        with open(inst_file, 'r') as f:
+            seqc_list = [line.strip('\n') for line in f]
+        if seqc_list:
+            with open(inst_file, 'w') as f:
+                for i in range(len(seqc_list)):
+                    try:
+                        entry = seqc_list[i]
+                        inst_id = entry.split(':')[0]
+                        instance = ec2.Instance(inst_id)
+                        if instance.state['Name'] == 'running':
+                            f.write('%s\n' % entry)
+                    except:
+                        continue
+    else:
+        pass  # instances.txt file has not yet been created
 
 
 class SSHServer(object):
