@@ -7,7 +7,7 @@ import os
 import shutil
 import pickle
 import sys
-from subprocess import Popen, check_output
+from subprocess import Popen
 from copy import copy
 
 import numpy as np

@@ -3,7 +3,7 @@ import sys
 import os
 import configparser
 import random
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, check_output
 import shutil
 import paramiko
 import boto3
