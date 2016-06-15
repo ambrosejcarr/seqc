@@ -26,4 +26,4 @@ node_instance_type = r3.8xlarge
 availability_zone = us-east-1c
 
 [BaseSpaceToken]
-base_space_token = None
+base_space_token = 281c3014957a451080f991fcac3cf406 
