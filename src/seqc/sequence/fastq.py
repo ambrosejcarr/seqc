@@ -159,19 +159,18 @@ class Reader(seqc.reader.Reader):
         return np.mean(data), np.std(data), np.unique(data, return_counts=True)
 
 
-def merge_paired(merge_function, fout, genomic, barcode=None):
+def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
     """
     General function to annotate genomic fastq with barcode information from reverse read.
     Takes a merge_function which indicates which kind of platform was used to generate
     the data, and specifies how the merging should be done.
 
-    args:
-    -----
-    :arg merge_function: function from merge_functions.py
-    :arg fout: merged output file name
-    :arg genomic: fastq containing genomic data
-    :arg barcode: fastq containing barcode data
-    :return: fout
+    :param merge_function: function from merge_functions.py
+    :param fout: merged output file name
+    :param genomic: fastq containing genomic data
+    :param barcode: fastq containing barcode data
+    :return fout, num_records: (str, int), filename of merged fastq file and number of
+      fastq records that were processed.
     """
     directory, filename = os.path.split(fout)
     if not os.path.isdir(directory):
