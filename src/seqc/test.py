@@ -104,6 +104,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success',
         ]
         try:
             process_experiment.main(args)
@@ -419,6 +420,21 @@ class TestThreeBitEquivalence(unittest.TestCase):
             case2_decoded = seqc.sequence.encodings.ThreeBit.bin2str(case2_int)
             self.assertEqual(case1, case1_decoded)
             self.assertEqual(case2, case2_decoded)
+
+
+class TestLogExtractData(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        test_folder = 'test/TestLogExtractData/'
+        os.makedirs(test_folder, exist_ok=True)
+        cls.logfile = test_folder + 'seqc.log'
+        if not os.path.isfile(cls.logfile):
+            seqc.io.S3.download_file(
+                'dplab-data', 'seqc/test/in_drop_v2/seqc.log', cls.logfile)
+
+    def test_functional(self):
+        res = seqc.log.extract_data(self.logfile)
 
 
 if __name__ == "__main__":
