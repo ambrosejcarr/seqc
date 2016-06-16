@@ -915,6 +915,7 @@ def main(args: list=None) -> None:
             create_or_download_read_array(
             process_samfile, args.samfile, output_dir, args.index, args.read_array,
             args.output_stem, aws_upload_key, input_data)
+        args.read_array = h5_file
 
         args.barcode_files = download_barcodes(
             args.platform, args.barcode_files, output_dir)
@@ -943,7 +944,7 @@ def main(args: list=None) -> None:
         else:
             if aws_upload_key:
                 seqc.log.info('Uploading read array to S3.')
-                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=h5_file,
+                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
                                                                 s3link=aws_upload_key)
                 manage_ra = seqc.io.ProcessManager(upload_ra)
                 manage_ra.run_all()
