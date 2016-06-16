@@ -104,6 +104,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success',
         ]
         try:
             process_experiment.main(args)
@@ -172,7 +173,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment', exist_ok=True)
         cls.human = 's3://dplab-data/genomes/hg38_chr19/'
         cls.mouse = 's3://dplab-data/genomes/mm38_chr19/'
-        cls.email = input('provide an email address to receive test results: ')
+        # cls.email = input('provide an email address to receive test results: ')
         cls.output = 'test/TestLocalProcessExperiment/{}/test'  # Note: not directory
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
         cls.barcode_fastq = 's3://dplab-data/seqc/test/{}_chr19/barcode/'
@@ -186,7 +187,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
-            '--email-status', self.email,
+            # '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
@@ -203,7 +204,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
-            '--email-status', self.email,
+            # '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
@@ -220,7 +221,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
-            '--email-status', self.email,
+            # '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
@@ -237,7 +238,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
-            '--email-status', self.email,
+            # '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--local',
@@ -253,7 +254,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
-            '--email-status', self.email,
+            # '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
@@ -270,7 +271,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
-            '--email-status', self.email,
+            # '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
@@ -419,6 +420,21 @@ class TestThreeBitEquivalence(unittest.TestCase):
             case2_decoded = seqc.sequence.encodings.ThreeBit.bin2str(case2_int)
             self.assertEqual(case1, case1_decoded)
             self.assertEqual(case2, case2_decoded)
+
+
+class TestLogExtractData(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        test_folder = 'test/TestLogExtractData/'
+        os.makedirs(test_folder, exist_ok=True)
+        cls.logfile = test_folder + 'seqc.log'
+        if not os.path.isfile(cls.logfile):
+            seqc.io.S3.download_file(
+                'dplab-data', 'seqc/test/in_drop_v2/seqc.log', cls.logfile)
+
+    def test_functional(self):
+        res = seqc.log.extract_data(self.logfile)
 
 
 if __name__ == "__main__":

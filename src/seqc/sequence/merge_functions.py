@@ -131,9 +131,10 @@ def in_drop_v3(g, b):
     :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
+    seq = b.sequence.strip()
     cell1 = b.sequence[:8]
     rmt = b.sequence[8:16]
-    poly_t = b.sequence[16:-1]  # leave out newline
+    poly_t = b.sequence[16:]
     cell2 = g.name[-9:-1]  # second index holds barcode, final part of line. (skip \n)
     g.add_annotation((b'', cell1 + cell2, rmt, poly_t))
     return g
