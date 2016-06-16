@@ -698,7 +698,7 @@ def create_or_download_read_array(
             seqc.log.info('Read array %s successfully installed from S3.' %
                           read_array)
         ra = seqc.core.ReadArray.load(read_array)
-    return ra, input_data, manage_samfile, sam_records
+    return ra, input_data, manage_samfile, sam_records, read_array
 
 
 def download_barcodes(platform: str, barcode_files: list, output_dir: str) -> list:
@@ -911,7 +911,8 @@ def main(args: list=None) -> None:
                 args.merged_fastq, output_dir, args.output_stem, args.star_args,
                 args.index, n_processes, aws_upload_key, pigz)
 
-        ra, input_data, manage_samfile, sam_records = create_or_download_read_array(
+        ra, input_data, manage_samfile, sam_records, h5_file = \
+            create_or_download_read_array(
             process_samfile, args.samfile, output_dir, args.index, args.read_array,
             args.output_stem, aws_upload_key, input_data)
 
@@ -942,7 +943,7 @@ def main(args: list=None) -> None:
         else:
             if aws_upload_key:
                 seqc.log.info('Uploading read array to S3.')
-                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=h5_file,
                                                                 s3link=aws_upload_key)
                 manage_ra = seqc.io.ProcessManager(upload_ra)
                 manage_ra.run_all()
