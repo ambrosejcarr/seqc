@@ -481,7 +481,6 @@ class TestLogData(unittest.TestCase):
         duplicates = seqc.log.LogData.identify_duplicate_patterns(pattern)
         for k, v in duplicates.items():
             pattern = seqc.log.LogData.replace_replicated_patterns(pattern, k)
-        print(pattern)
         # verify that no replicates remain
         residual = seqc.log.LogData.identify_duplicate_patterns(pattern)
         assert not residual
@@ -502,12 +501,12 @@ class TestLogData(unittest.TestCase):
 
     def test_parse_log(self):
         df = seqc.log.LogData.parse_log(self.logfile)
-        print(df)
 
     def test_parse_multiple(self):
         df = seqc.log.LogData.parse_multiple(os.path.expanduser(
             '~/google_drive/manuscripts/breast_cancer_immune/data/'),
             exclude='.*?seqc.log')
+        print(df)
 
 
 

@@ -46,6 +46,33 @@ def args(arguments):
 
 class LogData:
 
+    _oldver = ('{divide}\nINPUT\n{divide}\n'
+               'Total input reads:\t{n_fastq}\n'
+               '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
+               'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
+               ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
+               ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+               ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
+               '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
+               'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
+               'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
+               'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
+               'Missing cell barcodes:\t{no_cell} ({bad_cell}%)\n'
+               'Missing RMTs (same as above):\t{no_cell} ({bad_cell}%)\n'
+               'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+               'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+               '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
+               'Total molecules:\t\t{tot_mc}\n'
+               'Molecules lost:\t{mols_lost}\n'
+               'Cells lost:\t{cells_lost}\n'
+               'Cell description:\n{cell_desc}\n'
+               '{divide}\nSUMMARY\n{divide}\n'
+               'Total retained reads:\t{n_good} ({prop_good}%)\n'
+               'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
+               'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
+               '{divide}\n'
+               )
+
     @staticmethod
     def string_to_regex(summary: str=None) -> str:
         """
@@ -216,22 +243,24 @@ class LogData:
         if pattern is None:
             pattern = cls.string_to_regex()
 
-        duplicates = cls.identify_duplicate_patterns(pattern)
-        for k, v in duplicates.items():
-            pattern = cls.replace_replicated_patterns(pattern, k)
+        def get_match_object(pattern_):
+            duplicates = cls.identify_duplicate_patterns(pattern_)
 
-        # add beginning and end wildcards
-        pattern = '^.*?'+ pattern + '.*?$'
-        print(pattern)
-        with open(log_file, 'r') as f:
-            summary_data = f.read()
-            mo = re.match(pattern, summary_data, re.M | re.DOTALL)
-            try:
+            for k, v in duplicates.items():
+                pattern_ = cls.replace_replicated_patterns(pattern_, k)
+
+            # add beginning and end wildcards
+            pattern_ = '^.*?' + pattern_ + '.*?$'
+            with open(log_file, 'r') as f:
+                summary_data = f.read()
+                mo = re.match(pattern_, summary_data, re.M | re.DOTALL)
                 data = mo.groupdict()
-            except AttributeError:
-                raise seqc.exceptions.NoMatchError(
-                    '{} does not have the expected format for a SEQC log'
-                    ''.format(log_file))
+            return data
+
+        try:
+            data = get_match_object(pattern)
+        except AttributeError:
+            data = get_match_object(cls.string_to_regex(cls._oldver))
         return data
 
     @classmethod
