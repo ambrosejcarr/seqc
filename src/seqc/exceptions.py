@@ -24,6 +24,10 @@ class ConfigurationError(Exception):
     pass
 
 
+class NoMatchError(Exception):
+    pass
+
+
 class ArgumentParserError(Exception):
     pass
 

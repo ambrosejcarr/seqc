@@ -3,6 +3,7 @@ import os
 import nose2
 import unittest
 import seqc
+import pandas as pd
 from seqc import process_experiment
 
 
@@ -422,6 +423,95 @@ class TestThreeBitEquivalence(unittest.TestCase):
             self.assertEqual(case2, case2_decoded)
 
 
+class TestLogData(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        test_folder = 'test/TestLogData/'
+        os.makedirs(test_folder, exist_ok=True)
+        # cls.logfile = test_folder + 'seqc.log'
+        cls.logfile = test_folder + 'JE9636_LYMPHNODE2.log'
+        if not os.path.isfile(cls.logfile):
+            seqc.io.S3.download_file(
+                'dplab-data', 'seqc/test/in_drop_v2/seqc.log', cls.logfile)
+        # note that this is a frozen instance of the summary that is printed in the log
+        # at v0.1.8rc3
+        cls.test_pattern = (
+            '{divide}\nINPUT\n{divide}\n'
+            'Total input reads:\t{n_fastq}\n'
+            '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
+            'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
+            ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
+            ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+            ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
+            '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
+            'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
+            'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
+            'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
+            'Missing cell barcodes/RMT:\t{no_cell} ({bad_cell}%)\n'
+            'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+            'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+            '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
+            'Total molecules:\t\t{tot_mc}\n'
+            'Molecules lost:\t{mols_lost}\n'
+            'Cells lost:\t{cells_lost}\n'
+            'Cell description:\n{cell_desc}\n'
+            '{divide}\nSUMMARY\n{divide}\n'
+            'Total retained reads:\t{n_good} ({prop_good}%)\n'
+            'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
+            'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
+            '{divide}\n')
+
+    def test_string_to_regex(self):
+        pattern2 = self.test_pattern.replace('{divide}', '-*?')
+        pattern2 = pattern2.replace('(', '\(')
+        pattern2 = pattern2.replace(')', '\)')
+        pattern2 = pattern2.replace('{', '(?P<')
+        pattern2 = pattern2.replace('}', '>.*?)')
+        pattern = seqc.log.LogData.string_to_regex(self.test_pattern)
+        assert pattern == pattern2, '{} != {}'.format(pattern, pattern2)
+
+    def test_identify_duplicate_patterns(self):
+        pattern = seqc.log.LogData.string_to_regex(self.test_pattern)
+        d = seqc.log.LogData.identify_duplicate_patterns(pattern)
+        assert dict(d) == {'genomic': 1, 'phi_x': 1}
+
+    def test_replace_replicated_patterns(self):
+        pattern = seqc.log.LogData.string_to_regex(self.test_pattern)
+        duplicates = seqc.log.LogData.identify_duplicate_patterns(pattern)
+        for k, v in duplicates.items():
+            pattern = seqc.log.LogData.replace_replicated_patterns(pattern, k)
+        print(pattern)
+        # verify that no replicates remain
+        residual = seqc.log.LogData.identify_duplicate_patterns(pattern)
+        assert not residual
+
+    def test_match_log(self):
+        mo = seqc.log.LogData.match_log(self.logfile)
+        assert mo
+
+    def test_parse_special_fields(self):
+        mo = seqc.log.LogData.match_log(self.logfile)
+        matches = seqc.log.LogData.parse_special_fields(mo)
+        assert all(matches)
+
+    def test_dictionary_to_dataframe(self):
+        mo = seqc.log.LogData.match_log(self.logfile)
+        df = seqc.log.LogData.dictionary_to_dataframe(mo, 'test')
+        assert isinstance(df, pd.DataFrame)
+
+    def test_parse_log(self):
+        df = seqc.log.LogData.parse_log(self.logfile)
+        print(df)
+
+    def test_parse_multiple(self):
+        df = seqc.log.LogData.parse_multiple(os.path.expanduser(
+            '~/google_drive/manuscripts/breast_cancer_immune/data/'),
+            exclude='.*?seqc.log')
+
+
+
+
 class TestLogExtractData(unittest.TestCase):
 
     @classmethod
@@ -434,7 +524,12 @@ class TestLogExtractData(unittest.TestCase):
                 'dplab-data', 'seqc/test/in_drop_v2/seqc.log', cls.logfile)
 
     def test_functional(self):
-        res = seqc.log.extract_data(self.logfile)
+        res = seqc.log.extract_run_data(self.logfile)
+        mo = seqc.log.extract_run_data(self.logfile)
+        if mo:
+            print(mo.groups())
+        else:
+            print('no match :(')
 
 
 if __name__ == "__main__":

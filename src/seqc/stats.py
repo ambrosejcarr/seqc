@@ -574,8 +574,34 @@ class correlation:
 
 class ExperimentalYield:
 
-    @staticmethod
-    def construct_run_summary(summary: dict):
+    output = (
+        '{divide}\nINPUT\n{divide}\n'
+        'Total input reads:\t{n_fastq}\n'
+        '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
+        'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
+        ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
+        ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+        ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
+        '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
+        'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
+        'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
+        'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
+        'Missing cell barcodes/RMT:\t{no_cell} ({bad_cell}%)\n'
+        'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+        'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+        '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
+        'Total molecules:\t\t{tot_mc}\n'
+        'Molecules lost:\t{mols_lost}\n'
+        'Cells lost:\t{cells_lost}\n'
+        'Cell description:\n{cell_desc}\n'
+        '{divide}\nSUMMARY\n{divide}\n'
+        'Total retained reads:\t{n_good} ({prop_good}%)\n'
+        'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
+        'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
+        '{divide}\n')
+
+    @classmethod
+    def construct_run_summary(cls, summary: dict):
         """
         calculates basic loss statistics and constructs a summary
         that will be sent to the user after the SEQC run has completed.
@@ -635,42 +661,15 @@ class ExperimentalYield:
         prop_good = round((n_good/n_fastq) * 100, 1)
 
         # format output
-        output = ('{divide}\nINPUT\n{divide}\n'
-                  'Total input reads:\t{n_fastq}\n'
-                  '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
-                  'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
-                  ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
-                  ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
-                  ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
-                  '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
-                  'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
-                  'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
-                  'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
-                  'Missing cell barcodes/RMT:\t{no_cell} ({bad_cell}%)\n'
-                  # 'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
-                  'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
-                  'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
-                  '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
-                  'Total molecules:\t\t{tot_mc}\n'
-                  'Molecules lost:\t{mols_lost}\n'
-                  'Cells lost:\t{cells_lost}\n'
-                  'Cell description:\n{cell_desc}\n'
-                  '{divide}\nSUMMARY\n{divide}\n'
-                  'Total retained reads:\t{n_good} ({prop_good}%)\n'
-                  'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
-                  'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
-                  '{divide}\n'
-                  .format(n_fastq=n_fastq, n_sam=n_sam, genomic=genomic,
-                          phi_x=phix, no_cell=no_cell, wrong_cb=wrong_cb,
-                          rmt_N=rmt_N, poly_t=poly_t, divide=divide,
-                          prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix,
-                          lost_al=lost_al, n_bad=n_bad, n_good=n_good,
-                          prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
-                          bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
-                          bad_cell=bad_cell, bad_rmtN=bad_rmtN,
-                          bad_polyt=bad_polyt, trans=trans, prop_trans=prop_trans,
-                          tot_mc=tot_mc, mols_lost=mols_lost, cells_lost=cells_lost,
-                          cell_desc=cell_desc))
+        output = cls.output.format(
+            n_fastq=n_fastq, n_sam=n_sam, genomic=genomic, phi_x=phix, no_cell=no_cell,
+            wrong_cb=wrong_cb, rmt_N=rmt_N, poly_t=poly_t, divide=divide,
+            prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix, lost_al=lost_al,
+            n_bad=n_bad, n_good=n_good, prop_good=prop_good, prop_bad=prop_bad,
+            prop_un=prop_un, bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
+            bad_cell=bad_cell, bad_rmtN=bad_rmtN, bad_polyt=bad_polyt, trans=trans,
+            prop_trans=prop_trans, tot_mc=tot_mc, mols_lost=mols_lost,
+            cells_lost=cells_lost, cell_desc=cell_desc)
         return output
 
 
