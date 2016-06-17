@@ -35,6 +35,9 @@ class ArgumentParserError(Exception):
 class SparseMatrixError(Exception):
     pass
 
+class EmptyMatrixError(Exception):
+    pass
+
 
 @contextmanager
 def boto_errors(ident=None):

@@ -469,9 +469,13 @@ class Experiment:
         molecules_lost = OrderedDict()
 
         if not self.molecules.columns.dtype.char == 'U':
-            raise RuntimeError('non-string column names detected. Please convert '
-                               'column names into string gene symbols before calling '
-                               'this function.')
+            if self.molecules.sum().sum() == 0:
+                raise seqc.exceptions.EmptyMatrixError(
+                    'Matrix is empty, cannot create dense matrix')
+            else:
+                raise RuntimeError(
+                    'non-string column names detected. Please convert column names into '
+                    'string gene symbols before calling this function.')
         if not isinstance(max_mt_content, float):
             raise TypeError('Parameter max_mt_content must be of type float.')
         if not 0 <= max_mt_content <= 1:
