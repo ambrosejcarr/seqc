@@ -509,25 +509,6 @@ class TestLogData(unittest.TestCase):
             exclude='.*?seqc.log')
         assert not np.sum(np.isnan(df.values))
 
-class TestLogExtractData(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        test_folder = 'test/TestLogExtractData/'
-        os.makedirs(test_folder, exist_ok=True)
-        cls.logfile = test_folder + 'seqc.log'
-        if not os.path.isfile(cls.logfile):
-            seqc.io.S3.download_file(
-                'dplab-data', 'seqc/test/in_drop_v2/seqc.log', cls.logfile)
-
-    def test_functional(self):
-        res = seqc.log.extract_run_data(self.logfile)
-        mo = seqc.log.extract_run_data(self.logfile)
-        if mo:
-            print(mo.groups())
-        else:
-            print('no match :(')
-
 
 if __name__ == "__main__":
     nose2.main()

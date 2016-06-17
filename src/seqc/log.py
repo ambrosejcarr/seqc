@@ -45,6 +45,15 @@ def args(arguments):
 
 
 class LogData:
+    """
+    Automatically parse SEQC logs
+
+    :method parse_log: parse an individual seqc log into a pd.DataFrame with a MultiIndex
+      index corresponding to the categories of the seqc log
+    :method parse_multiple: parse a directory hierarchy into a pd.DataFrame with an index
+      as above, but the columns recapitulate the directory structure that the logs are
+      stored in.
+    """
 
     _oldver = ('{divide}\nINPUT\n{divide}\n'
                'Total input reads:\t{n_fastq}\n'
