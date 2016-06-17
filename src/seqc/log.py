@@ -309,7 +309,7 @@ class LogData:
 
         # create column index
         cols = pd.MultiIndex.from_tuples(list(map(lambda p: tuple(p.split('/')), logs)))
-        df = pd.concat(frames)
+        df = pd.concat(frames, 1)
         df.columns = cols
         return df
 

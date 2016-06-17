@@ -4,6 +4,7 @@ import nose2
 import unittest
 import seqc
 import pandas as pd
+import numpy as np
 from seqc import process_experiment
 
 
@@ -506,10 +507,7 @@ class TestLogData(unittest.TestCase):
         df = seqc.log.LogData.parse_multiple(os.path.expanduser(
             '~/google_drive/manuscripts/breast_cancer_immune/data/'),
             exclude='.*?seqc.log')
-        print(df)
-
-
-
+        assert not np.sum(np.isnan(df.values))
 
 class TestLogExtractData(unittest.TestCase):
 
