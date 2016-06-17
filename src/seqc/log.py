@@ -170,6 +170,11 @@ class LogData:
         data_list = ('n_fastq', 'n_sam', 'genomic', 'phi_x', 'trans', 'genomic', 'phi_x',
                      'wrong_cb', 'no_cell', 'rmt_N', 'poly_t', 'n_good',
                      'lost_al', 'n_bad', 'tot_mc')
+
+        # account for older log version
+        if groupdict['wrong_cb'] == 'NA':
+            groupdict['wrong_cb'] = 0
+
         data = list(map(lambda x: float(groupdict[x]), data_list))
 
         spec_index, spec_data = cls.parse_special_fields(groupdict)
