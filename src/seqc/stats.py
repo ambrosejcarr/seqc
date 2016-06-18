@@ -647,8 +647,8 @@ class ExperimentalYield:
             n_bad += wrong_cb
             bad_cb = round((wrong_cb/n_bad) * 100, 1)
         except KeyError:
-            wrong_cb = 'NA'
-            bad_cb = 'NA'
+            wrong_cb = 0
+            bad_cb = 0
         # continue with calculations
         n_good = n_sam - n_bad
         bad_gen = round((genomic/n_bad) * 100, 1)
