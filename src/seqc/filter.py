@@ -1,3 +1,4 @@
+import warnings
 from seqc.sequence.fastq import Reader
 from math import floor
 import numpy as np
@@ -61,7 +62,17 @@ def low_count(molecules, is_invalid):
     cms = np.cumsum(norm_ms)
     d1 = np.diff(pd.Series(cms).rolling(10).mean()[10:])
     d2 = np.diff(pd.Series(d1).rolling(10).mean()[10:])
-    inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
+    try:
+        inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
+    except ValueError as e:
+        if e.args[0] == ('zero-size array to reduction operation minimum which has no '
+                         'identity'):
+            warnings.warn('Low count filter passed-through; too few cells to estimate '
+                          'inflection point.')
+            return is_invalid  # can't estimate validity
+        else:
+            raise
+
     vcrit = ms[idx][inflection_pt]
 
     is_invalid = is_invalid.copy()
