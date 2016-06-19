@@ -94,19 +94,20 @@ def low_coverage(molecules, reads, is_invalid):
     :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
-    if len(molecules.shape) < 2:
-        warnings.warn(
-            'Low coverage filter passed-through; too few cells to calculate '
-            'mixture model.')
-        return is_invalid
-    elif molecules.shape[1] < 2:
-        warnings.warn(
-            'Low coverage filter passed-through; too few cells to calculate '
-            'mixture model.')
-        return is_invalid
-
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
+
+
+    if len(ms.shape) < 2:
+        warnings.warn(
+            'Low coverage filter passed-through; too few cells to calculate '
+            'mixture model.')
+        return is_invalid
+    elif ms.shape[1] < 2:
+        warnings.warn(
+            'Low coverage filter passed-through; too few cells to calculate '
+            'mixture model.')
+        return is_invalid
 
     # get read / cell ratio, filter out low coverage cells
     ratio = rs / ms
