@@ -917,7 +917,7 @@ def main(args: list=None) -> None:
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts, _, summary = correct_errors(
+        cell_counts, summary = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)
