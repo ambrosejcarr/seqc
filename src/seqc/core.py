@@ -846,6 +846,38 @@ class Experiment:
 
         return Experiment(molecules=m_combined, reads=None, metadata=metadata)
 
+    @staticmethod
+    def fast_concatenate(experiments: list, labels: tuple=None):
+        """
+        Concatenate a set of Experiment objects or DataFrames. Each cell is considered to
+        be unique, even if they share the same barcodes. An hierarchical multi-index is
+        constructed on the rows, where labels serve as the first level to distinguish
+        cells from multiple experiments that may have gotten the same cell barcode.
+
+        Concatenate should be run after filtering each dataset individually, since the
+        datasets are considered to have distinct cells (even if they share the same
+        barcodes)
+
+        :param experiments: list or iterable of Experiment or DataFrame objects
+        :param labels: tuple, labels for experiments, length must match number of
+          experiments.
+        :return merged: Experiment object concatenated along the row axis (0).
+        """
+
+        if labels is None:
+            labels = np.arange(len(experiments))
+
+        if all(isinstance(e, Experiment) for e in experiments):
+            data = pd.concat([e.molecules for e in experiments], keys=labels)
+            metadata = pd.concat([e.molecules for e in experiments], keys=labels)
+        elif all(isinstance(e, pd.DataFrame) for e in experiments):
+            data = pd.concat(experiments, keys=labels)
+            metadata = None
+        else:
+            raise TypeError('experiments must be pandas DataFrame or Experiment objects.')
+
+        return Experiment(molecules=data, reads=None, metadata=metadata)
+
     # todo @ambrosejcarr make this faster; it is way too slow.
     @staticmethod
     def create_gene_id_to_official_gene_symbol_map(gtf: str):

@@ -97,7 +97,6 @@ def low_coverage(molecules, reads, is_invalid):
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
 
-
     if len(ms.shape) < 2:
         warnings.warn(
             'Low coverage filter passed-through; too few cells to calculate '
