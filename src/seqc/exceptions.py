@@ -24,11 +24,18 @@ class ConfigurationError(Exception):
     pass
 
 
+class NoMatchError(Exception):
+    pass
+
+
 class ArgumentParserError(Exception):
     pass
 
 
 class SparseMatrixError(Exception):
+    pass
+
+class EmptyMatrixError(Exception):
     pass
 
 

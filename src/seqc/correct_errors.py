@@ -461,7 +461,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
     tot_time=time.process_time()-start
     #print('tot time: {}'.format(tot_time))
-    return res_dic, grouped_ra, summary
+    return res_dic, summary
 
 
 def base_count(seq_dic, umi_len=8):
@@ -560,7 +560,7 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
             alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha,
             singleton_weight=singleton_weight)
 
-    return grouped_res_dic, err_correction_res, summary
+    return grouped_res_dic, summary
 
 
 def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,

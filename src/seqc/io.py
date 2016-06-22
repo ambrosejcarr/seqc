@@ -40,8 +40,9 @@ class S3:
 
         if not overwrite:
             if os.path.isfile(fout):
-                raise FileExistsError('file "%s" already exists. Set overwrite=True to '
-                                      're-download' % fout)
+                seqc.log.info('Skipped download of file "{fout}" because it already '
+                              'exists.'.format(fout=fout))
+                return fout
 
         # key should not start with a forward slash
         if key.startswith('/'):
@@ -118,6 +119,9 @@ class S3:
             # check for overwriting
             if os.path.isfile(fout):
                 if overwrite is False:
+                    seqc.log.info('Skipped download of file "{fout}" because it already '
+                                  'exists.'.format(fout=fout))
+                    output_files.append(fout)
                     continue
 
             # download file

@@ -444,30 +444,27 @@ def get_s3_fastq(fastq_file: list, output_dir: str) -> list:
                                      'neither an s3 link or a valid filepath' %
                                      ', '.join(map(str, fastq_file)))
         else:
-            try:
-                seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
-                if fastq_file[0].endswith('/'):
-                    # s3 directory specified, download all files recursively
-                    bucket, prefix = seqc.io.S3.split_link(fastq_file[0])
-                    cut_dirs = prefix.count('/')
-                    fastq_file = seqc.io.S3.download_files(
-                        bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
-                        cut_dirs=cut_dirs)
-                else:
-                    # individual s3 links provided, download each fastq file
-                    downloaded_files = []
-                    for s3link in fastq_file:
-                        bucket, prefix = seqc.io.S3.split_link(s3link)
-                        _, fname = os.path.split(prefix)
-                        fname = output_dir + '/' + fname
-                        seqc.io.S3.download_file(bucket, prefix, fname)
-                        downloaded_files.append(fname)
-                    fastq_file = sorted(downloaded_files)
-                # note that this is printed regardless of whether a file is downloaded
-                seqc.log.info('Genomic fastq files [%s] successfully installed.' %
-                              ', '.join(map(str, fastq_file)))
-            except FileExistsError:
-                pass  # file is already present.
+            seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
+            if fastq_file[0].endswith('/'):
+                # s3 directory specified, download all files recursively
+                bucket, prefix = seqc.io.S3.split_link(fastq_file[0])
+                cut_dirs = prefix.count('/')
+                fastq_file = seqc.io.S3.download_files(
+                    bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                    cut_dirs=cut_dirs)
+            else:
+                # individual s3 links provided, download each fastq file
+                downloaded_files = []
+                for s3link in fastq_file:
+                    bucket, prefix = seqc.io.S3.split_link(s3link)
+                    _, fname = os.path.split(prefix)
+                    fname = output_dir + '/' + fname
+                    seqc.io.S3.download_file(bucket, prefix, fname)
+                    downloaded_files.append(fname)
+                fastq_file = sorted(downloaded_files)
+            # note that this is printed regardless of whether a file is downloaded
+            seqc.log.info('Genomic fastq files [%s] successfully installed.' %
+                          ', '.join(map(str, fastq_file)))
     return fastq_file
 
 
@@ -493,19 +490,12 @@ def get_index(output_dir: str, index: str, read_array: str, samfile: str) -> str
             cut_dirs = prefix.count('/')
             # install whole index
             if not samfile:
-                try:
-                    seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
-                                              output_prefix=index,
-                                              cut_dirs=cut_dirs)
-                except FileExistsError:
-                    pass  # file is already present
+                seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
+                                          output_prefix=index, cut_dirs=cut_dirs)
             else:  # samfile provided, only download annotations file
-                try:
-                    annotations_file = index + 'annotations.gtf'
-                    seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
-                                             annotations_file)
-                except FileExistsError:
-                    pass  # file is already present
+                annotations_file = index + 'annotations.gtf'
+                seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
+                                         annotations_file)
     return index
 
 
@@ -718,19 +708,16 @@ def download_barcodes(platform: str, barcode_files: list, output_dir: str) -> li
                                      'an s3 link or a valid filepath' %
                                      ', '.join(map(str, barcode_files)))
         else:
-            try:
-                seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
-                if not barcode_files[0].endswith('/'):
-                    barcode_files[0] += '/'
-                bucket, prefix = seqc.io.S3.split_link(barcode_files[0])
-                cut_dirs = prefix.count('/')
-                barcode_files = seqc.io.S3.download_files(
-                    bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
-                    cut_dirs=cut_dirs)
-                seqc.log.info('Barcode files [%s] successfully installed.' %
-                              ', '.join(map(str, barcode_files)))
-            except FileExistsError:
-                pass  # file is already present.
+            seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+            if not barcode_files[0].endswith('/'):
+                barcode_files[0] += '/'
+            bucket, prefix = seqc.io.S3.split_link(barcode_files[0])
+            cut_dirs = prefix.count('/')
+            barcode_files = seqc.io.S3.download_files(
+                bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
+                cut_dirs=cut_dirs)
+            seqc.log.info('Barcode files [%s] successfully downloaded.' %
+                          ', '.join(map(str, barcode_files)))
     return barcode_files
 
 
@@ -930,7 +917,7 @@ def main(args: list=None) -> None:
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts, _, summary = correct_errors(
+        cell_counts, summary = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             singleton_weight=args.singleton_weight)

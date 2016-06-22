@@ -1,3 +1,4 @@
+import warnings
 from seqc.sequence.fastq import Reader
 from math import floor
 import numpy as np
@@ -61,7 +62,17 @@ def low_count(molecules, is_invalid):
     cms = np.cumsum(norm_ms)
     d1 = np.diff(pd.Series(cms).rolling(10).mean()[10:])
     d2 = np.diff(pd.Series(d1).rolling(10).mean()[10:])
-    inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
+    try:
+        inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
+    except ValueError as e:
+        if e.args[0] == ('zero-size array to reduction operation minimum which has no '
+                         'identity'):
+            warnings.warn('Low count filter passed-through; too few cells to estimate '
+                          'inflection point.')
+            return is_invalid  # can't estimate validity
+        else:
+            raise
+
     vcrit = ms[idx][inflection_pt]
 
     is_invalid = is_invalid.copy()
@@ -85,6 +96,17 @@ def low_coverage(molecules, reads, is_invalid):
     """
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
+
+    if len(ms.shape) < 2:
+        warnings.warn(
+            'Low coverage filter passed-through; too few cells to calculate '
+            'mixture model.')
+        return is_invalid
+    elif ms.shape[1] < 2:
+        warnings.warn(
+            'Low coverage filter passed-through; too few cells to calculate '
+            'mixture model.')
+        return is_invalid
 
     # get read / cell ratio, filter out low coverage cells
     ratio = rs / ms
