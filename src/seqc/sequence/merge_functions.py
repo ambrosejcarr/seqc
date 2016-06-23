@@ -3,7 +3,7 @@ import regex as re
 
 _pattern = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCTT){s<=2}(.{8})(.{6})(.*?)')
 _pattern_v2 = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCAA){s<=2}(.{8})(.{8})(.*?)')
-
+# todo Linas changed the spacer again to have a terminal AT.
 
 def _check_spacer_v2(sequence):
     """a fast, in-drop-v2 specific command to find a spacer sequence and cb length
