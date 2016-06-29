@@ -946,7 +946,7 @@ def main(args: list=None) -> None:
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
-        seqc.log.info('Successfully generaed sparse count matrix.')
+        seqc.log.info('Successfully generated sparse count matrix.')
 
         seqc.log.info('filtering, summarizing cell molecule count distribution, and '
                       'generating dense count matrix')
