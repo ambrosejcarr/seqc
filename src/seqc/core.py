@@ -202,10 +202,31 @@ class ReadArray:
           sequences. Typically sequences with dust_score > 10 may be discarded.
         :return: ReadArray
         """
+        phix_genes = np.array(range(1, 7)) * 111111111
         data = self.data[((self.data['n_poly_t'] >= min_poly_t) &
                           (self.data['dust_score'] <= max_dust_score) &
                           (self.data['gene'] != 0) &
-                          (self.data['cell'] != 0))]
+                          (self.data['cell'] != 0) &
+                          (self.data['rmt'] != 0))]
+
+        # filter out phiX genes
+        not_phix = ~np.in1d(data['gene'], phix_genes)
+        data = data[not_phix]
+
+        # filter out N's in cell barcode and rmt
+        res = np.zeros(len(data), dtype=np.bool)
+        cell = data['cell'].copy()
+        rmt = data['rmt'].copy()
+        while np.any(rmt):
+            n_filter = rmt & 0b111 == 0b111
+            res[n_filter] = True
+            rmt >>= 3
+
+        while np.any(cell):
+            n_filter = cell & 0b111 == 0b111
+            res[n_filter] = True
+            cell >>= 3
+        data = data[~res]
         return ReadArray(data)
 
     def save(self, archive_name: str) -> None:
