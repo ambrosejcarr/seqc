@@ -135,7 +135,7 @@ def in_drop_v3(g, b):
     cell2 = seq[:8]
     rmt = seq[8:16]
     poly_t = seq[16:]
-    cell1 = g.name.strip()[-8:]
+    cell1 = g.name.strip()[-17:-9]  # bc is in a fixed position in the name; assumes 8bp indices.
     g.add_annotation((b'', cell1 + cell2, rmt, poly_t))
     return g
 
