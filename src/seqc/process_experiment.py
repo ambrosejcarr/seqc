@@ -483,19 +483,18 @@ def get_index(output_dir: str, index: str, read_array: str, samfile: str) -> str
             raise ValueError('Provided index: "%s" is neither an s3 link or a valid '
                              'filepath' % index)
     else:
-        if not read_array:  # does not require index
-            seqc.log.info('AWS s3 link provided for index. Downloading index.')
-            bucket, prefix = seqc.io.S3.split_link(index)
-            index = output_dir + '/index/'  # set index  based on s3 download
-            cut_dirs = prefix.count('/')
-            # install whole index
-            if not samfile:
-                seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
-                                          output_prefix=index, cut_dirs=cut_dirs)
-            else:  # samfile provided, only download annotations file
-                annotations_file = index + 'annotations.gtf'
-                seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
-                                         annotations_file)
+        seqc.log.info('AWS s3 link provided for index. Downloading index.')
+        bucket, prefix = seqc.io.S3.split_link(index)
+        index = output_dir + '/index/'  # set index  based on s3 download
+        cut_dirs = prefix.count('/')
+        # install whole index
+        if not any([samfile, read_array]):
+            seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
+                                      output_prefix=index, cut_dirs=cut_dirs)
+        else:  # either samfile or read array provided, only download annotations file
+            annotations_file = index + 'annotations.gtf'
+            seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
+                                     annotations_file)
     return index
 
 
@@ -764,17 +763,20 @@ def upload_data_and_notify_user(
     if email_status and aws_upload_key is not None:
         # make sure that all other files are uploaded before termination
         if align and input_data != 'merged':
-            manage_merged.wait_until_complete()
-            seqc.log.info('Successfully uploaded %s to the specified S3 '
-                          'location "%s"' % (merged_fastq, aws_upload_key))
+            if manage_merged:
+                manage_merged.wait_until_complete()
+                seqc.log.info('Successfully uploaded %s to the specified S3 '
+                              'location "%s"' % (merged_fastq, aws_upload_key))
         if process_samfile:
             if input_data != 'samfile':
-                manage_samfile.wait_until_complete()
+                if manage_samfile:
+                    manage_samfile.wait_until_complete()
+                    seqc.log.info('Successfully uploaded %s to the specified S3 '
+                                  'location "%s"' % (samfile, aws_upload_key))
+            if manage_ra:
+                manage_ra.wait_until_complete()
                 seqc.log.info('Successfully uploaded %s to the specified S3 '
-                              'location "%s"' % (samfile, aws_upload_key))
-            manage_ra.wait_until_complete()
-            seqc.log.info('Successfully uploaded %s to the specified S3 '
-                          'location "%s"' % (read_array, aws_upload_key))
+                              'location "%s"' % (read_array, aws_upload_key))
             sparse_proc.wait_until_complete()
             seqc.log.info('Successfully uploaded %s to the specified S3 '
                           'location "%s"' % (sparse_csv + '.gz', aws_upload_key))
@@ -897,11 +899,14 @@ def main(args: list=None) -> None:
             args.samfile, input_data, manage_merged = align_fastq_records(
                 args.merged_fastq, output_dir, args.output_stem, args.star_args,
                 args.index, n_processes, aws_upload_key, pigz)
+        else:
+            manage_merged = None
 
         ra, input_data, manage_samfile, sam_records, h5_file = \
         create_or_download_read_array(
             process_samfile, args.samfile, output_dir, args.index, args.read_array,
             args.output_stem, aws_upload_key, input_data)
+        args.read_array = h5_file
 
         args.barcode_files = download_barcodes(
             args.platform, args.barcode_files, output_dir)
@@ -927,8 +932,8 @@ def main(args: list=None) -> None:
             seqc.log.info('Removing .h5 file for memory management.')
             rm_ra = 'rm {fname}'.format(fname=args.read_array)
             seqc.io.ProcessManager(rm_ra).run_all()
+            manage_ra = None
         else:
-            args.read_array = h5_file
             if aws_upload_key:
                 seqc.log.info('Uploading read array to S3.')
                 upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
