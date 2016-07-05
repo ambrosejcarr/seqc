@@ -164,30 +164,30 @@ def mars1_seq(g, *args):
     barcode, rmt, number of poly_t.
 
     :param g: genomic fastq sequence data
-    :param args: provided so that a (potentially empty) parameter can be passed
-      corresponding to the non-existent barcode parameter so that all merge functions
-      support an identical parameterization and API.
+    :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
+
     *name_fields, pool, cell, rmt = g.name[1:-1].split(b':')
     g.name = (b'@' + b':'.join((pool, cell, rmt, b'')) + b';' +
               b':'.join(name_fields) + b'\n')
     return g
 
 
-def mars2_seq(g, *args):
+def mars2_seq(g, b):
     """
     re-annotate reverse mars-seq v2 reads in a format consistent with other SEQC
     platforms, annotating the reverse read (containing genomic information) with the pool,
     cell barcode, rmt, number of poly_t.
 
     :param g: genomic fastq sequence data
-    :param args: provided so that a (potentially empty) parameter can be passed
-      corresponding to the non-existent barcode parameter so that all merge functions
-      support an identical parameterization and API.
+    :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
-    *name_fields, pool, cell, rmt = g.name[1:-1].split(b'-')
-    g.name = (b'@' + b':'.join((pool, cell, rmt, b'')) + b';' +
-              b':'.join(name_fields) + b'\n')
+    pool = g.name[5:9]
+    seq = b.sequence.strip()
+    cell = seq[:7]
+    rmt = seq[7:15]
+    poly_t = seq[15:]
+    g.add_annotation((b'', pool + cell, rmt, poly_t))
     return g
