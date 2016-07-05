@@ -184,7 +184,7 @@ def mars2_seq(g, b):
     :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
-    pool = g.name[5:9]
+    pool = g.sequence.strip()[5:9]
     seq = b.sequence.strip()
     cell = seq[:7]
     rmt = seq[7:15]
