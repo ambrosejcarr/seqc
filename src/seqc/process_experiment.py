@@ -999,6 +999,10 @@ def main(args: list=None) -> None:
                     attachment = '/data/' + args.log_name
                 else:
                     attachment = args.log_name
+                if aws_upload_key:
+                    bucket, key = seqc.io.S3.split_link(aws_upload_key)
+                    seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(attachment,
+                                                                            bucket, key)
                 seqc.remote.email_user(attachment=attachment, email_body=email_body,
                                        email_address=args.email_status)
         raise  # re-raise exception
