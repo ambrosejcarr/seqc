@@ -787,7 +787,7 @@ class Experiment:
         # make coo matrices
         shape = len(cell_index), len(gene_index)
         reads = coo_matrix((read_data, (row, col)), shape=shape, dtype=np.uint32)
-        molecules = coo_matrix((molecule_data, (row, col)), shape=shape, dtype=np.uint32)
+        molecules = coo_matrix((molecule_data, (row, col)), shape=shape, dtype=np.float32)
 
         sparse_reads = SparseFrame(reads, cell_index, gene_index)
         sparse_molecules = SparseFrame(molecules, cell_index, gene_index)
@@ -847,7 +847,7 @@ class Experiment:
             meta_cols.update(list(e.metadata.columns))  # list not necessary?
 
         # combine data
-        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
+        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.float32)
         metadata = pd.DataFrame(index=cells, columns=meta_cols)
         m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
         for e in experiments:
@@ -996,7 +996,7 @@ class Experiment:
 
         # get molecule and read counts per cell
         molecule_cell_sums = pd.Series(np.ravel(self.molecules.sum(axis=1)),
-                                       index=self.molecules.index, dtype=np.uint32)
+                                       index=self.molecules.index, dtype=np.float32)
         read_cell_sums = pd.Series(np.ravel(self.reads.sum(axis=1)),
                                    index=self.reads.index, dtype=np.uint32)
 
