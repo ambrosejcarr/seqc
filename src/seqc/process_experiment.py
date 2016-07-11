@@ -232,20 +232,15 @@ def run_remote(args, volsize):
         raise  # re-raise original exception
 
 
-def check_executables() -> (bool, bool):
+def check_executables(*executables):
     """
-    checks whether pigz and mutt are installed on the machine of the
-    current seqc run. returns True/False for both
+    checks whether executables are installed on the machine of the
+    current seqc run.
 
-    :returns pigz, email: (bool, bool) Booleans indicating if pigz and mutt are installed.
+    :param executables: Tuple of executables to check
+    :returns : Tuple of boolean (True if a specific executable is installed).
     """
-    pigz = False
-    email = False
-    if shutil.which('pigz'):
-        pigz = True
-    if shutil.which('mutt'):
-        email = True
-    return pigz, email
+    return tuple(map(lambda exe: shutil.which(exe) is not None, executables))
 
 
 def check_arguments(args, basespace_token: str) -> float:
@@ -820,7 +815,7 @@ def main(args: list=None) -> None:
         seqc.log.setup_logger(args.log_name)
     try:
         err_status = False
-        pigz, email = check_executables()
+        pigz, email = check_executables('pigz', 'mutt')
         if not email and not args.remote:
             seqc.log.notify('mutt was not found on this machine; an email will not '
                             'be sent to the user upon termination of SEQC run.')
