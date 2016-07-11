@@ -427,24 +427,25 @@ def update_directories_for_aws(output_stem: str, output_prefix: str) -> (
     return aws_upload_key, output_stem, output_dir, output_prefix
 
 
-def get_s3_fastq(fastq_file: list, output_dir: str) -> list:
+def get_s3_fastq(fastq_file: list, output_dir: str, ftype: str) -> list:
     """
     Checks if -g/--genomic-fastq was passed. If it was, downloads the necessary files if
     any passed arguments were s3 links.
 
     :param fastq_file: list, a list of fastq files or s3 links to fastq files
     :param output_dir: directory in which to download fastq files
+    :param ftype: denotes whether fastq files are genomic or barcode
     :returns fastq_file: list, filename(s) of local genomic_fastq files.
     """
     if fastq_file:
         if not fastq_file[0].startswith('s3://'):
             for gf in fastq_file:
                 if not os.path.isfile(gf):
-                    raise ValueError('Provided genomic fastq files: "[%s]" is '
+                    raise ValueError('Provided %s fastq files: "[%s]" is '
                                      'neither an s3 link or a valid filepath' %
-                                     ', '.join(map(str, fastq_file)))
+                                     (ftype, ', '.join(map(str, fastq_file))))
         else:
-            seqc.log.info('Downloading genomic fastq files from Amazon s3 link.')
+            seqc.log.info('Downloading {} fastq files from Amazon s3 link.'.format(ftype))
             if fastq_file[0].endswith('/'):
                 # s3 directory specified, download all files recursively
                 bucket, prefix = seqc.io.S3.split_link(fastq_file[0])
@@ -463,8 +464,8 @@ def get_s3_fastq(fastq_file: list, output_dir: str) -> list:
                     downloaded_files.append(fname)
                 fastq_file = sorted(downloaded_files)
             # note that this is printed regardless of whether a file is downloaded
-            seqc.log.info('Genomic fastq files [%s] successfully installed.' %
-                          ', '.join(map(str, fastq_file)))
+            seqc.log.info('%s fastq files [%s] successfully installed.'
+                          % (ftype, ', '.join(map(str, fastq_file))))
     return fastq_file
 
 
@@ -870,8 +871,8 @@ def main(args: list=None) -> None:
                 args, output_dir, basespace_token)
 
         # check for remote fastq file links
-        args.genomic_fastq = get_s3_fastq(args.genomic_fastq, output_dir)
-        args.barcode_fastq = get_s3_fastq(args.barcode_fastq, output_dir)
+        args.genomic_fastq = get_s3_fastq(args.genomic_fastq, output_dir, 'genomic')
+        args.barcode_fastq = get_s3_fastq(args.barcode_fastq, output_dir, 'barcode')
 
         # check if the index must be downloaded
         args.index = get_index(output_dir, args.index, args.read_array, args.samfile)
@@ -998,6 +999,10 @@ def main(args: list=None) -> None:
                     attachment = '/data/' + args.log_name
                 else:
                     attachment = args.log_name
+                if aws_upload_key:
+                    bucket, key = seqc.io.S3.split_link(aws_upload_key)
+                    seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(attachment,
+                                                                            bucket, key)
                 seqc.remote.email_user(attachment=attachment, email_body=email_body,
                                        email_address=args.email_status)
         raise  # re-raise exception
