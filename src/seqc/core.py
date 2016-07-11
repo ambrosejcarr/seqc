@@ -287,7 +287,7 @@ class SparseFrame:
         if not isinstance(columns, np.ndarray):
             raise TypeError('columns must be type np.ndarray')
 
-        self._data = data.astype(np.uint32)
+        self._data = data  #.astype(np.uint32)  # was causing casting errors; molecules should be float32!
         self._index = index
         self._columns = columns
 
