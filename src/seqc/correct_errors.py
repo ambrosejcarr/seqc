@@ -587,7 +587,10 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
     cur_f = 0
     N = BinRep._str2bindict['N']
     for_removal = []
+    loop_counter=0
+    print("keys",str(d.keys()))
     for feature, cell in d.keys():
+        loop_counter+=1
         # sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) +
         #                  ' groups processed. (' + str((100 * cur_f) / tot_feats) + '%)')
         cur_f += 1
@@ -662,6 +665,7 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
     tot_time=time.process_time()-start
     # seqc.log.info('total error correction runtime: {}'.format(tot_time))
     # f.close()
+    print("loop", loop_counter)
     return grouped_res_dic, error_count
 
 
