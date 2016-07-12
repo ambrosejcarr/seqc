@@ -32,6 +32,15 @@ def notify(message):
     print('SEQC: ' + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': %s' % message)
 
 
+def print_exact_command_line(arg_line):
+    """
+    log command line for easy copy pasting
+
+    :param arg_line A string corresponding to the command that was called
+    """
+    notify("Executing the following command line:\n\t> "+arg_line)
+
+
 def args(arguments):
     """
     log namespace object from argument parser to file.
