@@ -168,7 +168,7 @@ def recreate_command_line_arguments(args):
     for key, value in vars(args).items():
         if value:
             if isinstance(value, list):
-                value = ' '.join(str(value))
+                value = ' '.join(value)
             key = key.replace('_', '-')
             cmd += '--{} {} '.format(key, str(value))
     cmd += '--local --aws'
