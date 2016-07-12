@@ -282,7 +282,7 @@ def check_arguments(args, basespace_token: str) -> float:
         raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
     if args.instance_type not in ['c3', 'c4', 'r3']:
         raise ValueError('All AWS instance types must be either c3, c4, or r3.')
-    if args.no_terminate not in ['True', 'true', 'False', 'false', 'on-success']:
+    if args.no_terminate not in ['True', 'true', 'False', 'false', 'on-success', True]:
         raise ValueError('the --no-terminate flag must be either True, False, '
                          'or on-success.')
 
