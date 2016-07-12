@@ -687,13 +687,14 @@ class ExperimentalYield:
 class smoothing:
 
     @staticmethod
-    def kneighbors(data, n_neighbors=50):
+    def kneighbors(data, n_neighbors=50, run_pca=True):
         """
         Smooth gene expression values by setting the expression of each gene in each
         cell equal to the mean value of itself and its n_neighbors
 
         :param data: np.ndarray | pd.DataFrame; genes x cells array
         :param n_neighbors: int; number of neighbors to smooth over
+        :param run_pca: bool; reduce features by PCA prior to computing distances
         :return: np.ndarray | pd.DataFrame; same as input
         """
 
@@ -705,6 +706,9 @@ class smoothing:
             data_ = data
         else:
             raise TypeError("data must be a pd.DataFrame or np.ndarray")
+        if run_pca:
+            pca = PCA(n_components=100)
+            data = pca.fit_transform(data)
 
         knn = NearestNeighbors(
             n_neighbors=n_neighbors,
