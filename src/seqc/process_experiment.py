@@ -168,9 +168,9 @@ def recreate_command_line_arguments(args):
     for key, value in vars(args).items():
         if value:
             if isinstance(value, list):
-                value = ' '.join(value)
+                value = ' '.join(str(value))
             key = key.replace('_', '-')
-            cmd += '--{} {} '.format(key, value)
+            cmd += '--{} {} '.format(key, str(value))
     cmd += '--local --aws'
     return cmd
 
@@ -232,20 +232,15 @@ def run_remote(args, volsize):
         raise  # re-raise original exception
 
 
-def check_executables() -> (bool, bool):
+def check_executables(*executables):
     """
-    checks whether pigz and mutt are installed on the machine of the
-    current seqc run. returns True/False for both
+    checks whether executables are installed on the machine of the
+    current seqc run.
 
-    :returns pigz, email: (bool, bool) Booleans indicating if pigz and mutt are installed.
+    :param executables: Tuple of executables to check
+    :returns : Tuple of boolean (True if a specific executable is installed).
     """
-    pigz = False
-    email = False
-    if shutil.which('pigz'):
-        pigz = True
-    if shutil.which('mutt'):
-        email = True
-    return pigz, email
+    return tuple(map(lambda exe: shutil.which(exe) is not None, executables))
 
 
 def check_arguments(args, basespace_token: str) -> float:
@@ -820,7 +815,7 @@ def main(args: list=None) -> None:
         seqc.log.setup_logger(args.log_name)
     try:
         err_status = False
-        pigz, email = check_executables()
+        pigz, email = check_executables('pigz', 'mutt')
         if not email and not args.remote:
             seqc.log.notify('mutt was not found on this machine; an email will not '
                             'be sent to the user upon termination of SEQC run.')
@@ -999,6 +994,10 @@ def main(args: list=None) -> None:
                     attachment = '/data/' + args.log_name
                 else:
                     attachment = args.log_name
+                if aws_upload_key:
+                    bucket, key = seqc.io.S3.split_link(aws_upload_key)
+                    seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(attachment,
+                                                                            bucket, key)
                 seqc.remote.email_user(attachment=attachment, email_body=email_body,
                                        email_address=args.email_status)
         raise  # re-raise exception
