@@ -362,14 +362,18 @@ class tSNE:
         self.tsne = None
         self.pca = None
 
-    def fit_transform(self, data: np.ndarray or pd.DataFrame) -> None:
+    def fit_transform(self, data: np.ndarray or pd.DataFrame, fillna=0) -> None:
             """
             fit the tSNE model to data given the parameters provided during
              initialization and transform the output
 
             :param data: n observation x k feature data array
+            :param fillna: fill np.NaN values with this value. If None, will not fill.
             :return: None
             """
+            if fillna is not None:
+                data[np.where(np.isnan(data))] = fillna
+                data[np.where(np.isinf(data))] = fillna
             if self.scale:
                 data = ScaleFeatures.unit_size(data, copy=True)
             if self.run_pca:
@@ -382,10 +386,12 @@ class tSNE:
 
             tsne = TSNE(n_components=self.n_components, method='barnes_hut',
                         **self.kwargs)
-            res = tsne.fit_transform(data.values)
+
             if isinstance(data, pd.DataFrame):
+                res = tsne.fit_transform(data.values)
                 self.tsne = pd.DataFrame(res, index=data.index)
             else:
+                res = tsne.fit_transform(data)
                 self.tsne = res
 
 
@@ -401,13 +407,18 @@ class PCA:
         self.loadings = None
         self.eigenvalues = None
 
-    def fit(self, data):
+    def fit(self, data, fillna=0):
         """
         Fit the model to data
 
         :param data: n observation x k feature data array
+        :param fillna: fill np.NaN values with this value. If None, will not fill.
         :return: None
         """
+
+        if fillna is not None:
+            data[np.where(np.isnan(data))] = fillna
+            data[np.where(np.isinf(data))] = fillna
 
         if isinstance(data, pd.DataFrame):
             X = data.values
