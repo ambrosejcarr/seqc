@@ -51,6 +51,10 @@ class ClusterServer(object):
                 seqc.log.notify('Assigned instance name %s.' % name)
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
+                seqc.log.notify("First rule passed")
+                sg.authorize_ingress(IpProtocol=-1, CidrIp="0.0.0.0/0", FromPort=63000,
+                                     ToPort=63000)  # Aims to provide another entry for remote debugging
+                seqc.log.notify("Second rule passed")
                 sg.authorize_ingress(SourceSecurityGroupName=name)
                 # check to make sure that security group exists
                 time.sleep(2)
@@ -405,7 +409,7 @@ class ClusterServer(object):
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='develop'))
+                location=location, version='cyril_small_fixes'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
