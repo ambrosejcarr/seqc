@@ -168,7 +168,7 @@ def recreate_command_line_arguments(args):
     for key, value in vars(args).items():
         if value:
             if isinstance(value, list):
-                value = ' '.join(str(value))
+                value = ' '.join(value)
             key = key.replace('_', '-')
             cmd += '--{} {} '.format(key, str(value))
     cmd += '--local --aws'
@@ -187,7 +187,7 @@ def run_remote(args, volsize):
 
     # recreate remote command, but instruct it to run locally on the server.
     cmd = recreate_command_line_arguments(args)
-
+    seqc.log.print_exact_command_line(cmd)
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
     volsize = int(np.ceil(volsize/1e9))
@@ -806,7 +806,7 @@ def main(args: list=None) -> None:
       a list from a testing function.
     :return: None
     """
-
+    args_old = args
     args = parse_args(args)
     if args.aws:
         args.log_name = args.log_name.split('/')[-1]
@@ -814,6 +814,7 @@ def main(args: list=None) -> None:
     else:
         seqc.log.setup_logger(args.log_name)
     try:
+        seqc.log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
         err_status = False
         pigz, email = check_executables('pigz', 'mutt')
         if not email and not args.remote:
@@ -964,7 +965,7 @@ def main(args: list=None) -> None:
         if pigz:
             sparse_zip = "pigz --best {fname}".format(fname=sparse_csv)
         else:
-            sparse_zip = "gzip {fname}".format(fname=sparse_csv)
+            sparse_zip = "gzip -f {fname}".format(fname=sparse_csv)
         sparse_upload = 'aws s3 mv {fname} {s3link}'.format(fname=sparse_csv+'.gz',
                                                             s3link=aws_upload_key)
         if aws_upload_key:
