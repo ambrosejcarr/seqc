@@ -478,7 +478,7 @@ class tSNE:
                 data = self.pca.fit_transform(data)
 
             if not self.kwargs:
-                self.kwargs = dict(angle=0.4, init='pca', random_state=0, n_iter=500,
+                self.kwargs = dict(angle=0.7, init='pca', random_state=0, n_iter=500,
                                    perplexity=30)
 
             tsne = TSNE(n_components=self.n_components, method='barnes_hut',
@@ -494,8 +494,7 @@ class tSNE:
 
 class PCA:
 
-    def __init__(self, n_components=100):
-        """
+    def __init__(self, n_components=100):        """
         construct a model for Principle Component Analysis
 
         :param n_components: number of principle components to retain
