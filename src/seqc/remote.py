@@ -52,7 +52,7 @@ class ClusterServer(object):
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
                 seqc.log.notify("First rule passed")
-                sg.authorize_ingress(IpProtocol=-1, CidrIp="0.0.0.0/0", FromPort=63000,
+                sg.authorize_ingress(IpProtocol="-1", CidrIp="0.0.0.0/0", FromPort=63000,
                                      ToPort=63000)  # Aims to provide another entry for remote debugging
                 seqc.log.notify("Second rule passed")
                 sg.authorize_ingress(SourceSecurityGroupName=name)
