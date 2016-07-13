@@ -494,7 +494,8 @@ class tSNE:
 
 class PCA:
 
-    def __init__(self, n_components=100):        """
+    def __init__(self, n_components=100):
+        """
         construct a model for Principle Component Analysis
 
         :param n_components: number of principle components to retain
