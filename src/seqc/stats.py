@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy import ma
 import pandas as pd
@@ -18,6 +19,102 @@ from scipy.stats import t
 from tinydb import TinyDB
 from functools import partial
 from collections import namedtuple
+import subprocess
+
+
+# todo finish this function later
+class ReadTextFile():
+    """
+    Memory efficient reader for large data arrays
+    """
+
+    def read_process(self, filename, rowlength, delimiter, index_cols, dtype):
+        data = np.fromiter(self.iter_func(filename, delimiter, index_cols, dtype), dtype=dtype)
+        data = data.reshape((-1, rowlength))
+        return data
+
+    def read(self):
+        rowlength = self.get_row_length(self.filename, self.index_rows, self.index_cols, self.delimiter)
+        files = self.split_file(self.n_proc - 2, self.filename, self.index_rows)
+
+        # todo multiprocess these as well
+        index = self.make_index(self.filename, self.index_cols, self.delimiter, self.index_names)
+        columns = self.make_columns(self.filename, self.index_rows, self.delimiter, self.column_names)
+
+        pool = multiprocessing.Pool(self.n_proc - 2)
+        read_func = partial(self.read_process, rowlength=rowlength, delimiter=self.delimiter,
+                            index_cols=self.index_cols, dtype=self.dtype)
+        res = pool.starmap(read_func, files)
+
+        return pd.DataFrame(np.vstack(res), index=index, columns=columns)
+
+    @staticmethod
+    def make_index(file_name, index_cols, delimiter, index_names):
+        if not index_cols:
+            return
+
+        def read_index():
+            with open(file_name, 'r') as f:
+                for line in f:
+                    yield line.rstrip().strip(delimiter).split(delimiter)[:index_cols]
+
+        return pd.MultiIndex.from_tuples(list(read_index()), names=index_names)
+
+    @staticmethod
+    def make_columns(file_name, index_rows: int, delimiter, column_names):
+
+        def read_columns():
+            with open(file_name, 'r') as f:
+                for i in range(index_rows):
+                    yield next(f).rstrip().strip(delimiter).split(delimiter)
+
+        return pd.MultiIndex.from_arrays([list(a) for a in read_columns()], names=column_names)
+
+    @staticmethod
+    def get_row_length(file_name, index_rows, index_cols, delimiter):
+        with open(file_name, 'r') as f:
+            for i in range(index_rows):
+                next(f)
+            return len(next(f).rstrip().strip(delimiter).split(delimiter)) - index_cols
+
+    @staticmethod
+    def make_index(iterable, names):
+        return
+
+    @staticmethod
+    def make_columns(iterable, names):
+        return
+
+    @staticmethod
+    def iter_func(filename, delimiter='\t', skipcols=0, dtype=np.float32):
+        with open(filename, 'r') as infile:
+            for line in infile:
+                line = line.rstrip().strip(delimiter).split(delimiter)
+                for item in line[skipcols:]:
+                    yield dtype(item)
+
+    def split_file(self, n_proc, file_name, index_rows):
+
+        # todo estimate the number of lines for each partition instead of reading whole file, will speed up
+        file_len = int(subprocess.check_output(['wc', '-l', file_name]))
+        n_lines = int(file_len / n_proc)
+        tmpdir = os.environ['TMPDIR']
+
+        split_file = 'tail -n +{skiprows!s} {file_name} | split -l {n_lines} {tmpdir}til_'.format(
+            skiprows=index_rows, file_name=file_name, n_lines=n_lines, tmpdir=tmpdir)
+        subprocess.Popen(split_file, shell=True)
+        return [tmpdir + f for f in os.listdir(tmpdir) if f.startswith('til_')]
+
+    def __init__(self, filename, index_cols=0, index_rows=0, dtype=np.float64, delimiter=None, column_names=None,
+                 index_names=None):
+        self.n_proc = multiprocessing.cpu_count()
+        self.filename = filename
+        self.index_cols = index_cols
+        self.index_rows = index_rows
+        self.dtype = dtype
+        self.delimiter = delimiter
+        self.column_names = column_names
+        self.index_names = index_names
 
 
 class GraphDiffusion:
