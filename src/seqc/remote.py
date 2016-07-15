@@ -51,10 +51,6 @@ class ClusterServer(object):
                 seqc.log.notify('Assigned instance name %s.' % name)
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
-                seqc.log.notify("First rule passed")
-                sg.authorize_ingress(IpProtocol="-1", CidrIp="0.0.0.0/0", FromPort=63000,
-                                     ToPort=63000)  # Aims to provide another entry for remote debugging
-                seqc.log.notify("Second rule passed")
                 sg.authorize_ingress(SourceSecurityGroupName=name)
                 # check to make sure that security group exists
                 time.sleep(2)
@@ -458,6 +454,9 @@ class ClusterServer(object):
             self.create_cluster()
             self.connect_server()
             self.allocate_space(False, volsize)
+        seqc.log.notify("You should now be able to log in with ssh\t"
+                        "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s"
+                        % str(self.inst_id.ip_address))
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
