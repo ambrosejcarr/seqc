@@ -454,11 +454,11 @@ class ClusterServer(object):
             self.create_cluster()
             self.connect_server()
             self.allocate_space(False, volsize)
+        self.git_pull()
+        self.set_credentials()
         seqc.log.notify("You should now be able to log in with ssh\t"
                         "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s"
                         % str(self.inst_id.ip_address))
-        self.git_pull()
-        self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
 
 
