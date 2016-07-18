@@ -51,10 +51,6 @@ class ClusterServer(object):
                 seqc.log.notify('Assigned instance name %s.' % name)
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
-                seqc.log.notify("First rule passed")
-                sg.authorize_ingress(IpProtocol="-1", CidrIp="0.0.0.0/0", FromPort=63000,
-                                     ToPort=63000)  # Aims to provide another entry for remote debugging
-                seqc.log.notify("Second rule passed")
                 sg.authorize_ingress(SourceSecurityGroupName=name)
                 # check to make sure that security group exists
                 time.sleep(2)
@@ -418,7 +414,7 @@ class ClusterServer(object):
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='cyril_small_fixes'))
+                location=location, version='develop'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
@@ -455,7 +451,6 @@ class ClusterServer(object):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
         self.create_security_group()
-
         # modified cluster creation for spot bid
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
@@ -465,6 +460,9 @@ class ClusterServer(object):
             self.create_cluster()
             self.connect_server()
             self.allocate_space(False, volsize)
+        seqc.log.notify('Use the following command to log in:\t\t'
+                        'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s'
+                        % str(self.inst_id.public_ip_address))
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
