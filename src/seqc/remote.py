@@ -51,6 +51,10 @@ class ClusterServer(object):
                 seqc.log.notify('Assigned instance name %s.' % name)
                 sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                      ToPort=22)
+                seqc.log.notify("First rule passed")
+                sg.authorize_ingress(IpProtocol="-1", CidrIp="0.0.0.0/0", FromPort=63000,
+                                     ToPort=63000)  # Aims to provide another entry for remote debugging
+                seqc.log.notify("Second rule passed")
                 sg.authorize_ingress(SourceSecurityGroupName=name)
                 # check to make sure that security group exists
                 time.sleep(2)
@@ -151,6 +155,8 @@ class ClusterServer(object):
                     'SecurityGroupIds': [self.sg],
                 }
             )
+        else:
+            self.unknown_instance_handling()
 
         # check status of spot bid request
         all_resp = client.describe_spot_instance_requests()['SpotInstanceRequests']
@@ -224,7 +230,7 @@ class ClusterServer(object):
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
         else:
-            raise ValueError('Wrong instance type %s' % str(self.inst_type))
+            self.unknown_instance_handling()
         instance = clust[0]
         self.inst_id = instance
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
@@ -233,6 +239,11 @@ class ClusterServer(object):
         # sleep for 5s just in case boto call needs a bit more time
         time.sleep(5)
         seqc.exceptions.retry_boto_call(self.wait_for_cluster)(instance.id)
+
+    def unknown_instance_handling(self):
+        """ Deal with amazon instance types not found in the config file"""
+        raise ValueError('Seq-c is unable to configure the following instance type: %s'
+                         % str(self.inst_type))
 
     @staticmethod
     def wait_for_cluster(inst_id: str):
@@ -456,9 +467,6 @@ class ClusterServer(object):
             self.allocate_space(False, volsize)
         self.git_pull()
         self.set_credentials()
-        seqc.log.notify("You should now be able to log in with ssh\t"
-                        "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s"
-                        % str(self.inst_id.ip_address))
         seqc.log.notify('Remote instance successfully configured.')
 
 
