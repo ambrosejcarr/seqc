@@ -364,13 +364,13 @@ def check_arguments(args, basespace_token: str) -> float:
     return total
 
 
-def read_config(config_file: str) -> dict:
+def read_config(config_file: str= None) -> dict:
     """
     :param config_file: str, location of seqc configuration file
     :returns config: dict, dictionary of arguments and values in the configuration file
     """
     # todo add additional checks to make sure correct parameters are filled in!
-    config_file = os.path.expanduser('~/.seqc/config')
+    config_file = config_file if config_file else os.path.expanduser('~/.seqc/config')
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '
@@ -813,6 +813,7 @@ def main(args: list=None) -> None:
         seqc.log.setup_logger('/data/' + args.log_name)
     else:
         seqc.log.setup_logger(args.log_name)
+    aws_upload_key = None   # Default in case the error below is triggered
     try:
         seqc.log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
         err_status = False
@@ -837,8 +838,6 @@ def main(args: list=None) -> None:
             total_size = None
 
         # check whether output is an s3 or local directory, split output_stem
-        # TODO Validate this, but trying a saner approach with no final slash issues
-        aws_upload_key = None   # Default in case the error below is triggered
 
         if args.remote ^ args.output_stem.startswith('s3://'):    # remote and s3:// or local files
             raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
@@ -925,14 +924,14 @@ def main(args: list=None) -> None:
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
             seqc.log.info('Removing .h5 file for memory management.')
-            rm_ra = 'rm {fname}'.format(fname=args.read_array)
+            rm_ra = 'rm {f_name}'.format(f_name=args.read_array)
             seqc.io.ProcessManager(rm_ra).run_all()
             manage_ra = None
         else:
             if aws_upload_key:
                 seqc.log.info('Uploading read array to S3. Link is %s' % aws_upload_key)
-                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
-                                                                s3link=aws_upload_key)
+                upload_ra = 'aws s3 mv {f_name} {s3link}'.format(f_name=args.read_array,
+                                                                 s3link=aws_upload_key)
                 manage_ra = seqc.io.ProcessManager(upload_ra)
                 manage_ra.run_all()
 
