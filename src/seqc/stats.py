@@ -18,8 +18,9 @@ from scipy.stats.mstats import kruskalwallis, rankdata
 from scipy.stats import t
 from tinydb import TinyDB
 from functools import partial
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import subprocess
+from contextlib import closing
 
 
 # todo finish this function later
@@ -504,18 +505,15 @@ class PCA:
         self.loadings = None
         self.eigenvalues = None
 
-    def fit(self, data, fillna=0):
+    def fit(self, data, fillna=0, scale=True):
         """
         Fit the model to data
 
         :param data: n observation x k feature data array
         :param fillna: fill np.NaN values with this value. If None, will not fill.
+        :param scale: subtract min and divide by max
         :return: None
         """
-
-        if fillna is not None:
-            data[np.where(np.isnan(data))] = fillna
-            data[np.where(np.isinf(data))] = fillna
 
         if isinstance(data, pd.DataFrame):
             X = data.values
@@ -524,10 +522,15 @@ class PCA:
         else:
             raise TypeError('data must be a pd.DataFrame or np.ndarray')
 
+        if fillna is not None:
+            data[np.where(np.isnan(data))] = fillna
+            data[np.where(np.isinf(data))] = fillna
+
         # Make sure data is zero mean
-        X = ScaleFeatures.unit_size(X)
-        # X = np.subtract(X, np.amin(X))
-        # X = np.divide(X, np.amax(X))
+        # X = ScaleFeatures.unit_size(X)
+        if scale:
+            X = np.subtract(X, np.amin(X))
+            X = np.divide(X, np.amax(X))
 
         # Compute covariance matrix
         if X.shape[1] < X.shape[0]:
@@ -563,7 +566,7 @@ class PCA:
         self.loadings = M
         self.eigenvalues = l
 
-    def transform(self, data, components=None) -> np.ndarray or pd.DataFrame:
+    def transform(self, data, components=None, scale=True) -> np.ndarray or pd.DataFrame:
         """
         Transform data using the fit PCA model.
 
@@ -575,13 +578,17 @@ class PCA:
 
         if components is None:
             components = np.arange(self.n_components)
+        if scale:
+            data = np.subtract(data, np.amin(data))
+            data = np.divide(data, np.amax(data))
+
         projected = np.dot(data, self.loadings[:, components])
         if isinstance(data, pd.DataFrame):
             return pd.DataFrame(projected, index=data.index)
         else:
             return projected
 
-    def fit_transform(self, data, n_components=None) -> np.ndarray or pd.DataFrame:
+    def fit_transform(self, data, n_components=None, scale=True) -> np.ndarray or pd.DataFrame:
         """
         Fit the model to data and transform the data using the fit model
 
@@ -591,8 +598,8 @@ class PCA:
         :return: np.ndarray containing transformed data
         """
 
-        self.fit(data)
-        return self.transform(data, components=n_components)
+        self.fit(data, scale=scale)
+        return self.transform(data, components=n_components, scale=scale)
 
 
 class correlation:
@@ -1292,7 +1299,6 @@ class ExpressionTree:
 
             """
 
-
             # store expression data
             self.linkage = linkage
             self.data = data
@@ -1367,8 +1373,27 @@ class ExpressionTree:
             return set(n.node_id for n in self.dfs(node))
 
         def plot(self, ax, **kwargs):
+
+            def augmented_dendrogram(*args, **kwargs):
+
+                ddata = dendrogram(*args, **kwargs)
+
+                # get left-to-right ordering of nodes
+                # ids = [n.node_id for n in self.dfs() if not (n.left is None or n.right is None)]
+
+                n = len(ddata['dcoord']) + 1
+                if not kwargs.get('no_plot', False):
+                    for id_, (i, d) in enumerate(zip(ddata['icoord'], ddata['dcoord'])):
+                        x = 0.5 * sum(i[1:3])
+                        y = d[1]
+                        ax.plot(x, y, 'ro', markersize=4)
+                        ax.annotate("%d" % (id_ + n), (x, y), xytext=(0, -4),
+                                    textcoords='offset points',
+                                    va='top', ha='center', fontsize=7)
+
+                return ddata
             """plot a dendrogram on ax"""
-            dendrogram(self.linkage, ax=ax, **kwargs)
+            augmented_dendrogram(self.linkage, ax=ax, **kwargs)
 
     @staticmethod
     def resampled_welchs_t(
@@ -1416,12 +1441,11 @@ class ExpressionTree:
         # map to a process pool
         a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
         b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
-        pool = multiprocessing.Pool(n_cpu)
-
-        a_res = pool.map(a_sampler, size)
-        b_res = pool.map(b_sampler, size)
-        a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
-        b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
+        with closing(multiprocessing.Pool(n_cpu)) as pool:
+            a_res = pool.map(a_sampler, size)
+            b_res = pool.map(b_sampler, size)
+            a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
+            b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
 
         # no nans should be produced by the mean
         assert np.sum(np.isnan(a_mu)) == 0
@@ -1449,16 +1473,18 @@ class ExpressionTree:
 
         return statistic, q
 
-    def create_hierarchy(self):
+    def create_hierarchy(self, method='ward', **kwargs):
         """
         hierarchically cluster cluster centroids and store the results as self.tree
+
+        :param kwargs: keyword arguments to pass to fastcluster.linkage
         """
         fmean = partial(np.mean, axis=0)
 
         cluster_array_views = np.array_split(self.data, self._split_indices, axis=0)
         means = np.vstack(list(map(fmean, cluster_array_views)))
         distance = pdist(means)
-        linkage = fastcluster.linkage(distance, method='single')
+        linkage = fastcluster.linkage(distance, method=method, **kwargs)
 
         self._tree = self.Tree(linkage)
 
@@ -1479,10 +1505,12 @@ class ExpressionTree:
         if self.tree is None:
             self.create_hierarchy()
 
-        self._results = {}
+        self._results = OrderedDict()
         for node in self.tree.bfs():
-            l_clusters = np.array(self.tree.agglomerate(node.left))
-            r_clusters = np.array(self.tree.agglomerate(node.right))
+            if not (node.left and node.right):
+                continue
+            l_clusters = np.array(list(self.tree.agglomerate(node.left)))
+            r_clusters = np.array(list(self.tree.agglomerate(node.right)))
             l_cells = np.in1d(self.group_assignments, l_clusters)
             r_cells = np.in1d(self.group_assignments, r_clusters)
             alpha_adj = self.alpha / (len(set(self.group_assignments)) - 1)
@@ -1495,7 +1523,7 @@ class ExpressionTree:
                 alpha=alpha_adj)
             if self._index is not None:
                 res = pd.Series(res, index=self._index).sort_values(inplace=False)
-            self._results[(node.left.node_id, node.right.node_id)] = res
+            self._results[(self.tree[node.left].node_id, self.tree[node.right].node_id)] = res
         return self._results
 
     def plot_hierarchy(self, ax=None, alternate_labels=None):
