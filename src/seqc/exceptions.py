@@ -40,7 +40,7 @@ class EmptyMatrixError(Exception):
 
 
 @contextmanager
-def boto_errors(ident=None):
+def boto_errors(ident=None, time_retry=5):
     """context manager that traps and retries boto functions
     to prevent random failures -- usually during batch runs
     :param ident: name of boto call"""
@@ -48,10 +48,11 @@ def boto_errors(ident=None):
     try:
         yield
     except Exception:
+        retry_str = ', retrying in {delay}s....'.format(delay=time_retry)
         if ident:
-            seqc.log.notify('Error in ' + ident + ', retrying in 5s...')
+            seqc.log.notify('Error in ' + ident + retry_str)
         else:
-            seqc.log.notify('Error during boto call, retrying in 5s...')
+            seqc.log.notify('Error during boto call' + retry_str)
         time.sleep(5)
 
 
