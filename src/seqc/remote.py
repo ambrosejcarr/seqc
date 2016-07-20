@@ -151,8 +151,6 @@ class ClusterServer(object):
                     'SecurityGroupIds': [self.sg],
                 }
             )
-        else:
-            self.unknown_instance_handling()
 
         # check status of spot bid request
         all_resp = client.describe_spot_instance_requests()['SpotInstanceRequests']
@@ -218,15 +216,13 @@ class ClusterServer(object):
                                                       'AvailabilityZone': self.zone},
                                                   SecurityGroupIds=[self.sg],
                                                   SubnetId=self.subnet)
-        elif 'c3' in self.inst_type:  # c3 instance
+        else:  # c3 instance
             clust = self.ec2.create_instances(ImageId=self.image_id, MinCount=1,
                                               MaxCount=1,
                                               KeyName=self.keyname,
                                               InstanceType=self.inst_type,
                                               Placement={'AvailabilityZone': self.zone},
                                               SecurityGroupIds=[self.sg])
-        else:
-            self.unknown_instance_handling()
         instance = clust[0]
         self.inst_id = instance
         seqc.log.notify('Created new instance %s. Waiting until instance is running' %
@@ -235,11 +231,6 @@ class ClusterServer(object):
         # sleep for 5s just in case boto call needs a bit more time
         time.sleep(5)
         seqc.exceptions.retry_boto_call(self.wait_for_cluster)(instance.id)
-
-    def unknown_instance_handling(self):
-        """ Deal with amazon instance types not found in the config file"""
-        raise ValueError('Seq-c is unable to configure the following instance type: %s'
-                         % str(self.inst_type))
 
     @staticmethod
     def wait_for_cluster(inst_id: str):
@@ -451,6 +442,7 @@ class ClusterServer(object):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
         self.create_security_group()
+
         # modified cluster creation for spot bid
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
@@ -460,9 +452,6 @@ class ClusterServer(object):
             self.create_cluster()
             self.connect_server()
             self.allocate_space(False, volsize)
-        seqc.log.notify('Use the following command to log in:\t\t'
-                        'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s'
-                        % str(self.inst_id.public_ip_address))
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')

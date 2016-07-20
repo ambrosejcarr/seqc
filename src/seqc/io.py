@@ -6,7 +6,7 @@ from glob import glob
 from functools import partial
 from multiprocessing import Process, Pool
 from queue import Queue, Empty
-from subprocess import Popen, check_output, PIPE, CalledProcessError
+from subprocess import Popen, check_output, PIPE
 from itertools import zip_longest
 import fcntl
 import boto3
@@ -776,10 +776,7 @@ def check_s3links(input_args: list):
                     res = check_output(cmd.split())
                     if b'PRE ' in res:  # subdirectories present
                         raise ValueError
-        except CalledProcessError:
-            seqc.log.notify('Failed to access %s with "aws s3 ls", check your link' % infile)
-            sys.exit(2)
-        except ValueError:
+        except:
             seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
                             'input files to SEQC.' % infile)
             sys.exit(2)
