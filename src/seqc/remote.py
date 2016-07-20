@@ -41,8 +41,7 @@ class ClusterServer(object):
         self.aws_key = None
         self.spot_bid = None
 
-    @retry_boto_call(retries=20, exceptions_to_catch=ClientError, delay_retry=2,
-                     exception_to_raise=TimeoutError("Failed to create a security group"))
+
     def create_security_group(self):
         """creates a new security group for the cluster"""
         name = 'SEQC-%07d' % random.randint(1, int(1e7))
@@ -158,8 +157,6 @@ class ClusterServer(object):
                       'constraint-not-fulfillable', 'schedule-expired',
                       'bad-parameters', 'system-error', 'canceled-before-fulfillment']
 
-        @retry_boto_call(retries=40, delay_retry=15, exceptions_to_catch=seqc.exceptions.BotoCallError,
-                         exception_to_raise=seqc.exceptions.SpotBidError('Timeout: spot bid could not be fulfilled'))
         def attempt_bidding():
             spot_resp = client.describe_spot_instance_requests()['SpotInstanceRequests'][idx]
             status_code = spot_resp['Status']['Code']
@@ -172,7 +169,10 @@ class ClusterServer(object):
             raise seqc.exceptions.BotoCallError()
 
         try:
-            bid_response = attempt_bidding()
+            bid_response = retry_boto_call(func=attempt_bidding, retries=40, delay_retry=15,
+                                           exceptions_to_catch=seqc.exceptions.BotoCallError,
+                                           exception_to_raise=seqc.exceptions.SpotBidError('Timeout: spot bid could'\
+                                                                                           'not be fulfilled'))
             seqc.log.notify('Spot bid request was successfully fulfilled!')
             return bid_response['InstanceId']
         except seqc.exceptions.SpotBidError:
@@ -274,8 +274,6 @@ class ClusterServer(object):
             seqc.exceptions.EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
         # Wait for volume to be attached
 
-        @retry_boto_call(exceptions_to_catch=(IndexError, seqc.exceptions.BotoCallError), retries=40, delay_retry=.5,
-                         exception_to_raise=seqc.exceptions.VolumeCreationError('New volume could not be attached'))
         def query_device_info():
             self.inst_id.reload()
             device_info = self.inst_id.block_device_mappings
@@ -283,7 +281,9 @@ class ClusterServer(object):
             if status != 'attached':
                 raise seqc.exceptions.BotoCallError()
 
-        query_device_info()
+        retry_boto_call(func=query_device_info, exceptions_to_catch=(IndexError, seqc.exceptions.BotoCallError),
+                        exception_to_raise=seqc.exceptions.VolumeCreationError('New volume could not be attached'),
+                        retries=40, delay_retry=.5,)
         seqc.log.notify('Volume %s attached to %s at %s.' % (vol.id, self.inst_id.id, dev_id))
 
     def connect_server(self):
@@ -341,14 +341,14 @@ class ClusterServer(object):
                                '--strip-components 1' % folder)
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
 
-        @retry_boto_call(exceptions_to_catch=seqc.exceptions.BotoCallError, retries=30, delay_retry=2,
-                         exception_to_raise=seqc.exceptions.EC2RuntimeError('Error installing SEQC on the cluster.'))
         def test_install():
             out_test_install, _ = self.serv.exec_command('process_experiment.py -h | grep RNA')
             if not out_test_install:
                 raise seqc.exceptions.BotoCallError()
 
-        test_install()
+        retry_boto_call(func=test_install(),exceptions_to_catch=seqc.exceptions.BotoCallError,
+                        exception_to_raise=seqc.exceptions.EC2RuntimeError('Error installing SEQC on the cluster.'),
+                        retries=30, delay_retry=2)
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
@@ -369,7 +369,8 @@ class ClusterServer(object):
 
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
-        self.create_security_group()
+        retry_boto_call(func=self.create_security_group, retries=20, exceptions_to_catch=ClientError, delay_retry=2,
+                     exception_to_raise=TimeoutError("Failed to create a security group"))
         # modified cluster creation for spot bid
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
