@@ -169,15 +169,17 @@ class LogData:
             ('filtered', 'phi_x'),
             ('filtered', 'incorrect_barcodes'),
             ('filtered', 'no_barcodes'),
+            ('filtered', 'CB_contains_N'),
             ('filtered', 'RMT_contains_N'),
             ('filtered', 'broken_capture_primer'),
+            ('filtered', 'low_complexity'),
             ('summary', 'reads_retained'),
             ('summary', 'reads_not_aligned'),
             ('summary', 'reads_filtered'),
             ('summary', 'total_molecules')
         )
         data_list = ('n_fastq', 'n_sam', 'genomic', 'phi_x', 'trans', 'genomic', 'phi_x',
-                     'wrong_cb', 'no_cell', 'rmt_N', 'poly_t', 'n_good',
+                     'wrong_cb', 'no_cell', 'cell_N', 'rmt_N', 'poly_t', 'dust', 'n_good',
                      'lost_al', 'n_bad', 'tot_mc')
 
         # account for older log version
