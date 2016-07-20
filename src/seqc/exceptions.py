@@ -56,15 +56,17 @@ def retry_boto_call(func, retries=3, exceptions_to_catch=Exception, exception_to
         while num_tries > 0:
             try:
                 return func(*args, **kwargs)
-            except exceptions_to_catch:
-                pass
-            num_tries -= 1
-            if num_tries == 0:
-                real_exception = BotoCallError('Boto3 failed repeatedly.') \
-                    if not exception_to_raise else exception_to_raise
-                seqc.log.notify("SeqC encountered repeated failures while trying to execute"
-                                "{method}. Giving up after {nbr_tries} with {sec}s spacing."
-                                .format(method=func.__name__, nbr_tries=retries, sec=delay_retry))
-                raise real_exception
-            time.sleep(delay_retry)
+            except exceptions_to_catch as e:
+                if __debug__:
+                    seqc.log.notify("Non fatal error in function "+func.__qualname__+" --> "+str(e)+
+                                    " | retrying in {nbr}s".format(nbr=delay_retry))
+                num_tries -= 1
+                if num_tries == 0:
+                    real_exception = BotoCallError('Boto3 failed repeatedly.') \
+                        if not exception_to_raise else exception_to_raise
+                    seqc.log.notify("SeqC encountered repeated failures while trying to execute"
+                                    "{method}. Giving up after {nbr_tries} with {sec}s spacing."
+                                    .format(method=func.__qualname__, nbr_tries=retries, sec=delay_retry))
+                    raise real_exception
+                time.sleep(delay_retry)
     return wrapper

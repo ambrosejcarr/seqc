@@ -187,7 +187,7 @@ def run_remote(args, volsize):
 
     # recreate remote command, but instruct it to run locally on the server.
     cmd = recreate_command_line_arguments(args)
-    seqc.log.print_exact_command_line(cmd)
+    seqc.log.print_exact_command_line(cmd, remote=True)
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
     volsize = int(np.ceil(volsize/1e9))
@@ -370,7 +370,7 @@ def read_config(config_file: str= None) -> dict:
     :returns config: dict, dictionary of arguments and values in the configuration file
     """
     # todo add additional checks to make sure correct parameters are filled in!
-    config_file = config_file if config_file else os.path.expanduser('~/.seqc/config')
+    config_file = os.path.expanduser(config_file) if config_file else os.path.expanduser('~/.seqc/config')
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '

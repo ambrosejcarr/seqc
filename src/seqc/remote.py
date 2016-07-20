@@ -90,9 +90,9 @@ class ClusterServer(object):
             'InstanceType': self.inst_type,
             'Placement': {'AvailabilityZone': self.zone},
             'SecurityGroupIds': [self.sg]}
-        if self.inst_type in 'c3':
+        if 'c3' in self.inst_type:
             pass
-        elif self.inst_type in ['c4', 'r3']:
+        elif 'c4' in self.inst_type or 'r3' in self.inst_type:
             if not self.subnet:
                 raise ValueError('A subnet-id must be specified for R3/C4 instances!')
             else:
@@ -172,7 +172,7 @@ class ClusterServer(object):
             bid_response = retry_boto_call(func=attempt_bidding, retries=40, delay_retry=15,
                                            exceptions_to_catch=seqc.exceptions.BotoCallError,
                                            exception_to_raise=seqc.exceptions.SpotBidError('Timeout: spot bid could'\
-                                                                                           'not be fulfilled'))
+                                                                                           'not be fulfilled'))()
             seqc.log.notify('Spot bid request was successfully fulfilled!')
             return bid_response['InstanceId']
         except seqc.exceptions.SpotBidError:
@@ -259,13 +259,15 @@ class ClusterServer(object):
 
         # Create
         vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone, VolumeType='gp2')
-        retry_boto_call(reload_vol_until, seqc.exceptions.VolumeCreationError('Volume could not be created.'),
-                        40, 3, seqc.exceptions.BotoCallError)('available')
+        retry_boto_call(func=reload_vol_until, retries=40, delay_retry=3,
+                        exception_to_raise=seqc.exceptions.VolumeCreationError('Volume could not be created.'),
+                        exceptions_to_catch=seqc.exceptions.BotoCallError)(desired_state='available')
         seqc.log.notify('Volume %s created successfully.' % vol.id)
         # Attach
         self.inst_id.attach_volume(VolumeId=vol.id, Device=dev_id)
-        retry_boto_call(reload_vol_until, seqc.exceptions.VolumeCreationError('Volume could not be attached.'),
-                        40, .5, seqc.exceptions.BotoCallError)('in-use')
+        retry_boto_call(func=reload_vol_until, retries=40, delay_retry=.5,
+                        exception_to_raise=seqc.exceptions.VolumeCreationError('Volume could not be attached.'),
+                        exceptions_to_catch=seqc.exceptions.BotoCallError)(desired_state='in-use')
         # Apply changes
         resp = self.inst_id.modify_attribute(
             BlockDeviceMappings=[{'DeviceName': dev_id,
@@ -283,7 +285,7 @@ class ClusterServer(object):
 
         retry_boto_call(func=query_device_info, exceptions_to_catch=(IndexError, seqc.exceptions.BotoCallError),
                         exception_to_raise=seqc.exceptions.VolumeCreationError('New volume could not be attached'),
-                        retries=40, delay_retry=.5,)
+                        retries=40, delay_retry=.5,)()
         seqc.log.notify('Volume %s attached to %s at %s.' % (vol.id, self.inst_id.id, dev_id))
 
     def connect_server(self):
@@ -339,6 +341,7 @@ class ClusterServer(object):
                 location=location, version='develop'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
+        seqc.log.notify("Sources are installed and decompressed, setting up seqc")
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
 
         def test_install():
@@ -346,9 +349,9 @@ class ClusterServer(object):
             if not out_test_install:
                 raise seqc.exceptions.BotoCallError()
 
-        retry_boto_call(func=test_install(),exceptions_to_catch=seqc.exceptions.BotoCallError,
+        retry_boto_call(func=test_install,exceptions_to_catch=seqc.exceptions.BotoCallError,
                         exception_to_raise=seqc.exceptions.EC2RuntimeError('Error installing SEQC on the cluster.'),
-                        retries=30, delay_retry=2)
+                        retries=30, delay_retry=2)()
         seqc.log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
@@ -370,7 +373,7 @@ class ClusterServer(object):
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
         retry_boto_call(func=self.create_security_group, retries=20, exceptions_to_catch=ClientError, delay_retry=2,
-                     exception_to_raise=TimeoutError("Failed to create a security group"))
+                        exception_to_raise=TimeoutError("Failed to create a security group"))()
         # modified cluster creation for spot bid
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
@@ -626,13 +629,14 @@ class SSHServer(object):
             raise RuntimeError(self._error_msg,"The key file %s does not exist" % self.key)
 
     def connect(self):
-        """connects to a remote instance"""  # TODO use wrapper amd better handling
+        """connects to a remote instance"""
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             retry_boto_call(func=self.ssh.connect, retries=25,
                             exceptions_to_catch=(paramiko.SSHException, socket.error),
                             exception_to_raise=RuntimeError("Authentication to EC2 failed with key %s." % self.key),
-                            delay_retry=5)(self.instance.public_dns_name, username='ubuntu', key_filename=self.key)
+                            delay_retry=5)(self.instance.public_dns_name, username='ubuntu', key_filename=self.key,
+                                           timeout=3.0)
         except paramiko.AuthenticationException:
             seqc.log.notify("Authentication failure using key %s, try to log in manually with ssh" % self.key)
 
