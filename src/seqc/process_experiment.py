@@ -837,20 +837,20 @@ def main(args: list=None) -> None:
             total_size = None
 
         # check whether output is an s3 or local directory, split output_stem
-        # TODO Validate this, but trying a saner approach with no final slash issues
-        aws_upload_key = None   # Default in case the error below is triggered
+        if args.output_stem.endswith('/'):
+            if args.output_stem.startswith('s3://'):
+                output_dir, output_prefix = os.path.split(args.output_stem[:-1])
+            else:
+                raise ValueError('-o/--output-stem should not be a directory for local '
+                                 'SEQC runs.')
+        else:
+            output_dir, output_prefix = os.path.split(args.output_stem)
 
-        if args.remote ^ args.output_stem.startswith('s3://'):    # remote and s3:// or local files
-            raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
-                             'runs, or a full local path for a local run. Here remote '
-                             'is %s and the output is %s'
-                             % (str(args.remote), args.output_stem))
-
-        output_stem_no_final_slash = args.output_stem[:-1] if args.output_stem.endswith('/') else args.output_stem
-        output_dir, output_prefix = os.path.split(output_stem_no_final_slash)  # parsing
-
-        # if remote mode, start remote seqc instance and shutdown gracefully
+        # check output directory if remote run
         if args.remote:
+            if not args.output_stem.startswith('s3://'):
+                raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
+                                 'runs.')
             seqc.remote.cluster_cleanup()
             run_remote(args, total_size)
             sys.exit(0)
@@ -858,6 +858,8 @@ def main(args: list=None) -> None:
         if args.aws:
             aws_upload_key, args.output_stem, output_dir, output_prefix = \
                 update_directories_for_aws(args.output_stem, output_prefix)
+        else:
+            aws_upload_key = None
 
         # download data if necessary
         if args.basespace:
@@ -934,7 +936,7 @@ def main(args: list=None) -> None:
             manage_ra = None
         else:
             if aws_upload_key:
-                seqc.log.info('Uploading read array to S3. Link is %s' % aws_upload_key)
+                seqc.log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
                 upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
                                                                 s3link=aws_upload_key)
                 manage_ra = seqc.io.ProcessManager(upload_ra)
