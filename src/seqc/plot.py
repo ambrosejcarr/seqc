@@ -240,9 +240,10 @@ class scatter:
 
         ax.scatter(np.ravel(x)[ind], np.ravel(y)[ind], c=color_vector[ind], *args,
                    **kwargs)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
 
         labels, colors = zip(*sorted(category_to_color.items()))
-        sns.despine(ax=ax)
         if legend:
             add_legend_to_categorical_vector(colors, labels, ax, **legend_kwargs)
         return ax
