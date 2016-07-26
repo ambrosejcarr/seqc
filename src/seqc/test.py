@@ -329,8 +329,7 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
 class TestingRemote(unittest.TestCase):
     """
     Testing EC2 management and SSH communications
-    No "test_" prefix, favoring fail-at-once behavior since
-    it is a bit long
+    Should not be parallelized
     """  # TODO Spot bidding currently unsupported
 
     @classmethod
@@ -382,12 +381,11 @@ class TestingRemote(unittest.TestCase):
             self.fail("Bad authentication should have been caught")
 
     def test040_primed_for_remote_run(self):
-        #     ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
-        #                       's3://dplab-data/genomes/hg38_phiX/', '--email-status', 'cyril-cros@hotmail.fr', '-b',
-        #                       's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
-        #                       's3://dplab-data/seqc/test/drop_seq/genomic/']
+        # This starts a remote job, but tearDown will kill it as soon as run_remote exits => != from above
         ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
-                          's3://dplab-data/genomes/hg38_phiX/', '-v']
+                          's3://dplab-data/genomes/hg38_phiX/', '--email-status', 'cyril-cros@hotmail.fr', '-b',
+                          's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
+                          's3://dplab-data/seqc/test/drop_seq/genomic/']
         args = process_experiment.parse_args(ready_made_cmd)
         process_experiment.run_remote(args, volsize=self.vol)
 

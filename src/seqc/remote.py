@@ -255,8 +255,8 @@ class ClusterServer(object):
         :return: volume id of newly created volume
         """
 
-        if volsize <= 0:
-            raise ValueError("Cannot create a volume of size {vol}".format(vol=volsize))
+        if vol_size <= 0:
+            raise ValueError("Cannot create a volume of size {vol}".format(vol=vol_size))
 
         def reload_vol_until(desired_state):
             vol.reload()
