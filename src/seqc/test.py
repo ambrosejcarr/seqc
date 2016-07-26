@@ -4,7 +4,8 @@ import unittest
 import seqc
 import pandas as pd
 import numpy as np
-from seqc import process_experiment, exceptions
+import paramiko
+from seqc import process_experiment
 
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -127,6 +128,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
         ]
         try:
+            print(args)
             process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
@@ -325,22 +327,30 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
 
 
 class TestingRemote(unittest.TestCase):
+    """
+    Testing EC2 management and SSH communications
+    No "test_" prefix, favoring fail-at-once behavior since
+    it is a bit long
+    """  # TODO Spot bidding currently unsupported
 
-    def setUpClass(self):
-        self.vol = 5000000000
-        self.cluster = seqc.remote.ClusterServer()
+    @classmethod
+    def setUp(cls):
+        cls.vol = 10   # GB
+        cls.cluster = seqc.remote.ClusterServer()
         config_file = os.path.expanduser('~/.seqc/config')
-        self.cluster.configure_cluster(config_file, "r3")
+        cls.cluster.configure_cluster(config_file, "r3")
 
-    def tearDown(self):
+    @classmethod
+    def tearDown(cls):
         try:
-            if self.cluster.is_cluster_running():
-                inst_id_cluster = self.cluster.inst_id.id
+            if cls.cluster.is_cluster_running():
+                inst_id_cluster = cls.cluster.inst_id.id
                 seqc.remote.terminate_cluster(inst_id_cluster)
+            seqc.remote.cluster_cleanup()
         except Exception as e:
             print(e)
 
-    def test_bad_instance(self):
+    def test010_bad_instance(self):
         bad_inst_type = "r2d2"
         self.cluster.inst_type = bad_inst_type
         self.cluster.spot_bid = 1
@@ -348,10 +358,38 @@ class TestingRemote(unittest.TestCase):
             self.cluster.create_spot_cluster(self.vol)
         self.cluster.spot_bid = None
         with self.assertRaises(ValueError):
-            self.cluster.create_cluster(self.vol)
+            self.cluster.create_cluster()
 
-    def test_ssh_operations(self):
-        pass
+    def test030_volume_creation(self):
+        self.cluster.create_security_group()
+        self.cluster.create_cluster()
+        with self.assertRaises(ValueError):
+            self.cluster.allocate_space(vol_size=-1)
+        self.cluster.allocate_space(vol_size=self.vol)
+
+    def test020_bad_ssh_config(self):
+        self.cluster.create_security_group()
+        self.cluster.create_cluster()
+        with self.assertRaises(FileNotFoundError):
+            self.cluster.keypath = os.path.expanduser("~/.seqc/config_foo")  # file not found
+            self.cluster.connect_server()
+        try:
+            self.cluster.keypath = os.path.expanduser("~/.ssh/id_rsa_Github")   # another key
+            self.cluster.connect_server()
+        except (paramiko.AuthenticationException, paramiko.SSHException):
+            pass
+        except:
+            self.fail("Bad authentication should have been caught")
+
+    def test040_primed_for_remote_run(self):
+        #     ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
+        #                       's3://dplab-data/genomes/hg38_phiX/', '--email-status', 'cyril-cros@hotmail.fr', '-b',
+        #                       's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
+        #                       's3://dplab-data/seqc/test/drop_seq/genomic/']
+        ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
+                          's3://dplab-data/genomes/hg38_phiX/', '-v']
+        args = process_experiment.parse_args(ready_made_cmd)
+        process_experiment.run_remote(args, volsize=self.vol)
 
 
 class TestThreeBitEquivalence(unittest.TestCase):
@@ -549,10 +587,11 @@ class TestLogData(unittest.TestCase):
 ###########################################################################################
 
 if __name__ == "__main__":
-    suite_Gen = unittest.makeSuite(TestProcessExperimentGeneral)
-    suite_Loc = unittest.makeSuite(TestLocalProcessExperiment)
+    # suite_Gen = unittest.makeSuite(TestProcessExperimentGeneral)
+    # suite_Loc = unittest.makeSuite(TestLocalProcessExperiment)
     suite_Rem = unittest.makeSuite(TestRemoteProcessExperiment)
-    full_suite = unittest.TestSuite((suite_Gen, suite_Loc, suite_Rem))
+    suite_SSH = unittest.makeSuite(TestingRemote)
+    full_suite = unittest.TestSuite(suite_SSH)
     runner_all_tests = unittest.TextTestRunner(descriptions=5, verbosity=5)
     runner_all_tests.run(full_suite)
 

@@ -117,7 +117,6 @@ class ClusterServer(object):
         client = boto3.client('ec2')
         seqc.log.notify('Launching cluster with volume size {volume_size} GB at spot '
                         'bid {spot_bid}.'.format(volume_size=volume_size, spot_bid=self.spot_bid))
-        seqc.log.notify()
         launch_specs = self.generate_launch_specs()
         launch_specs['BlockDeviceMappings'] = [{'DeviceName': '/dev/xvdf',
                                                 'Ebs': {'VolumeSize': volume_size,
@@ -255,6 +254,10 @@ class ClusterServer(object):
         :param dev_id: device where to attach the volume
         :return: volume id of newly created volume
         """
+
+        if volsize <= 0:
+            raise ValueError("Cannot create a volume of size {vol}".format(vol=volsize))
+
         def reload_vol_until(desired_state):
             vol.reload()
             if vol.state != desired_state:
@@ -305,7 +308,7 @@ class ClusterServer(object):
         self.serv = ssh_server
         return self.inst_id.id
 
-    def allocate_space(self, spot: bool, vol_size: int, dev_id: str="/dev/xvdf"):
+    def allocate_space(self, vol_size: int, spot: bool=False, dev_id: str="/dev/xvdf"):
         """
         dynamically allocates the specified amount of space on /data
         :param spot: True if spot bid, False otherwise
@@ -318,6 +321,7 @@ class ClusterServer(object):
             vol_id = self.create_and_attach_volume(vol_size, dev_id)
             seqc.log.notify("Successfully attached %d GB in 1 volume." % vol_size)
 
+        seqc.log.notify("Formatting and mounting %s" % dev_id)
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount %s /data" % dev_id)
@@ -373,6 +377,7 @@ class ClusterServer(object):
         :param aws_instance: instance type (c3, c4, r3)
         """
 
+
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
         self.create_security_group()
@@ -380,11 +385,11 @@ class ClusterServer(object):
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
             self.connect_server()
-            self.allocate_space(True, volsize)
+            self.allocate_space(volsize,True)
         else:
             self.create_cluster()
             self.connect_server()
-            self.allocate_space(False, volsize)
+            self.allocate_space(volsize,False)
         seqc.log.notify('Use the following command to log in:\t\t'
                         'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s'
                         % str(self.inst_id.public_ip_address))
@@ -404,6 +409,8 @@ def terminate_cluster(instance_id):
     try:
         if instance.state['Name'] != 'terminated' and instance.state['Name'] != \
                 'shutting-down':
+            seqc.log.notify('Requesting termination of instance {id}'.format(
+                id=instance_id))
             instance.terminate()
             instance.wait_until_terminated()
             seqc.log.notify('Termination of instance {id} complete!'.format(
@@ -628,19 +635,20 @@ class SSHServer(object):
         """Checks the rsa file is present"""
         if not os.path.isfile(self.key):
             seqc.log.notify('The key %s was not found!' % self.key)
-            raise RuntimeError(self._error_msg, "The key file %s does not exist" % self.key)
+            raise FileNotFoundError(self._error_msg, "The key file %s does not exist" % self.key)
 
     def connect(self):
         """connects to a remote instance"""
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             retry_boto_call(func=self.ssh.connect, retries=25,
-                            exceptions_to_catch=(paramiko.SSHException, socket.error),
+                            exceptions_to_catch=(socket.error),
                             exception_to_raise=RuntimeError("Authentication to EC2 failed with key %s." % self.key),
                             delay_retry=5)(self.instance.public_dns_name, username='ubuntu', key_filename=self.key,
                                            timeout=3.0)
-        except paramiko.AuthenticationException:
+        except (paramiko.AuthenticationException, paramiko.SSHException) :
             seqc.log.notify("Authentication failure using key %s, try to log in manually with ssh" % self.key)
+            raise
 
     def is_connected(self):
         """checks whether the user is connected to the desired instance"""
