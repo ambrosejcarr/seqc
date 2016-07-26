@@ -1,6 +1,5 @@
 import random
 import os
-import nose2
 import unittest
 import seqc
 import pandas as pd
@@ -54,7 +53,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         os.makedirs(seqc_dir + 'test/TestRemoteProcessExperiment', exist_ok=True)
         cls.human = 's3://dplab-data/genomes/hg38_phiX/'
         cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
-        cls.email = input('provide an email address to receive test results: ')
+        cls.email = 'cyril-cros@hotmail.fr'
         cls.output = 's3://dplab-data/seqc/test/{}/'
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
         cls.barcode_fastq = 's3://dplab-data/seqc/test/{}/barcode/'
@@ -89,7 +88,9 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate True',
         ]
+        print( "WARNING ############   --no-terminate")
         try:
             process_experiment.main(args)
         except SystemExit:
@@ -210,7 +211,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
-            '--local',
+            '--local'
         ]
         process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -509,6 +510,14 @@ class TestLogData(unittest.TestCase):
             exclude='.*?seqc.log')
         assert not np.sum(np.isnan(df.values))
 
-
 if __name__ == "__main__":
-    nose2.main()
+    suite_Gen = unittest.makeSuite(TestProcessExperimentGeneral)
+    suite_Loc = unittest.makeSuite(TestLocalProcessExperiment)
+    suite_Rem = unittest.makeSuite(TestRemoteProcessExperiment)
+    full_suite = unittest.TestSuite((suite_Gen, suite_Loc, suite_Rem))
+    runner_all_tests = unittest.TextTestRunner()
+    runner_all_tests.run(full_suite)
+
+
+
+

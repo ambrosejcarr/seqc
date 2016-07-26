@@ -187,13 +187,13 @@ def run_remote(args, volsize):
 
     # recreate remote command, but instruct it to run locally on the server.
     cmd = recreate_command_line_arguments(args)
-    seqc.log.print_exact_command_line(cmd, remote=True)
+    seqc.log.print_exact_command_line(cmd)
     # set up remote cluster
     cluster = seqc.remote.ClusterServer()
     volsize = int(np.ceil(volsize/1e9))
 
     try:  # if anything goes wrong during cluster setup, clean up the instance
-        cluster.setup_cluster(volsize, args.instance_type, spot_bid=args.spot_bid)
+        cluster.cluster_setup(volsize, args.instance_type, spot_bid=args.spot_bid)
         cluster.serv.connect()
 
         seqc.log.notify('Beginning remote run.')
@@ -225,7 +225,7 @@ def run_remote(args, volsize):
                         'to monitor the status of the remote run.')
     except Exception as e:
         seqc.log.notify('Error {e} occurred during cluster setup!'.format(e=e))
-        if cluster.is_cluster_running():
+        if cluster.cluster_is_running():
             seqc.log.notify('Cleaning up instance {id} before exiting...'.format(
                 id=cluster.inst_id.instance_id))
             seqc.remote.terminate_cluster(cluster.inst_id.instance_id)
@@ -364,13 +364,13 @@ def check_arguments(args, basespace_token: str) -> float:
     return total
 
 
-def read_config(config_file: str= None) -> dict:
+def read_config(config_file: str) -> dict:
     """
     :param config_file: str, location of seqc configuration file
     :returns config: dict, dictionary of arguments and values in the configuration file
     """
     # todo add additional checks to make sure correct parameters are filled in!
-    config_file = os.path.expanduser(config_file) if config_file else os.path.expanduser('~/.seqc/config')
+    config_file = os.path.expanduser('~/.seqc/config')
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '
@@ -813,7 +813,6 @@ def main(args: list=None) -> None:
         seqc.log.setup_logger('/data/' + args.log_name)
     else:
         seqc.log.setup_logger(args.log_name)
-    aws_upload_key = None   # Default in case the error below is triggered
     try:
         seqc.log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
         err_status = False
@@ -838,18 +837,20 @@ def main(args: list=None) -> None:
             total_size = None
 
         # check whether output is an s3 or local directory, split output_stem
+        if args.output_stem.endswith('/'):
+            if args.output_stem.startswith('s3://'):
+                output_dir, output_prefix = os.path.split(args.output_stem[:-1])
+            else:
+                raise ValueError('-o/--output-stem should not be a directory for local '
+                                 'SEQC runs.')
+        else:
+            output_dir, output_prefix = os.path.split(args.output_stem)
 
-        if args.remote ^ args.output_stem.startswith('s3://'):    # remote and s3:// or local files
-            raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
-                             'runs, or a full local path for a local run. Here remote '
-                             'is %s and the output is %s'
-                             % (str(args.remote), args.output_stem))
-
-        output_stem_no_final_slash = args.output_stem[:-1] if args.output_stem.endswith('/') else args.output_stem
-        output_dir, output_prefix = os.path.split(output_stem_no_final_slash)  # parsing
-
-        # if remote mode, start remote seqc instance and shutdown gracefully
+        # check output directory if remote run
         if args.remote:
+            if not args.output_stem.startswith('s3://'):
+                raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
+                                 'runs.')
             seqc.remote.cluster_cleanup()
             run_remote(args, total_size)
             sys.exit(0)
@@ -857,6 +858,8 @@ def main(args: list=None) -> None:
         if args.aws:
             aws_upload_key, args.output_stem, output_dir, output_prefix = \
                 update_directories_for_aws(args.output_stem, output_prefix)
+        else:
+            aws_upload_key = None
 
         # download data if necessary
         if args.basespace:
@@ -924,14 +927,14 @@ def main(args: list=None) -> None:
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
             seqc.log.info('Removing .h5 file for memory management.')
-            rm_ra = 'rm {f_name}'.format(f_name=args.read_array)
+            rm_ra = 'rm {fname}'.format(fname=args.read_array)
             seqc.io.ProcessManager(rm_ra).run_all()
             manage_ra = None
         else:
             if aws_upload_key:
-                seqc.log.info('Uploading read array to S3. Link is %s' % aws_upload_key)
-                upload_ra = 'aws s3 mv {f_name} {s3link}'.format(f_name=args.read_array,
-                                                                 s3link=aws_upload_key)
+                seqc.log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
+                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+                                                                s3link=aws_upload_key)
                 manage_ra = seqc.io.ProcessManager(upload_ra)
                 manage_ra.run_all()
 
