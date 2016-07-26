@@ -32,6 +32,10 @@ def notify(message):
     print('SEQC: ' + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': %s' % message)
 
 
+def debug(message):
+    logging.debug(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':%(module)s:%(funcName)s:' + ': %s' % message)
+
+
 def print_exact_command_line(arg_line, remote=False):
     """
     log command line for easy copy pasting

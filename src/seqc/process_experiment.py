@@ -193,7 +193,7 @@ def run_remote(args, volsize):
     volsize = int(np.ceil(volsize/1e9))
 
     try:  # if anything goes wrong during cluster setup, clean up the instance
-        cluster.cluster_setup(volsize, args.instance_type, spot_bid=args.spot_bid)
+        cluster.setup_cluster(volsize, args.instance_type, spot_bid=args.spot_bid)
         cluster.serv.connect()
 
         seqc.log.notify('Beginning remote run.')
@@ -225,7 +225,7 @@ def run_remote(args, volsize):
                         'to monitor the status of the remote run.')
     except Exception as e:
         seqc.log.notify('Error {e} occurred during cluster setup!'.format(e=e))
-        if cluster.cluster_is_running():
+        if cluster.is_cluster_running():
             seqc.log.notify('Cleaning up instance {id} before exiting...'.format(
                 id=cluster.inst_id.instance_id))
             seqc.remote.terminate_cluster(cluster.inst_id.instance_id)

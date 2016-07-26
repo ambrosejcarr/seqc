@@ -12,7 +12,6 @@ from seqc.exceptions import retry_boto_call
 import seqc
 import socket
 import logging
-import unittest
 
 # turn off paramiko non-error logging
 logging.getLogger('paramiko').setLevel(logging.CRITICAL)
@@ -41,21 +40,25 @@ class ClusterServer(object):
         self.aws_key = None
         self.spot_bid = None
 
-
     def create_security_group(self):
         """creates a new security group for the cluster"""
-        name = 'SEQC-%07d' % random.randint(1, int(1e7))
-        sg = self.ec2.create_security_group(GroupName=name, Description=name)
-        seqc.log.notify('Assigned instance name %s.' % name)
-        sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
-                             ToPort=22)
-        sg.authorize_ingress(SourceSecurityGroupName=name)
-        # check to make sure that security group exists
-        time.sleep(2)
-        client = boto3.client('ec2')
-        client.describe_security_groups(GroupIds=[sg.id])
-        self.sg = sg.id
-        seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
+
+        def create_security_group_attempt():
+            name = 'SEQC-%07d' % random.randint(1, int(1e7))
+            sg = self.ec2.create_security_group(GroupName=name, Description=name)
+            seqc.log.notify('Assigned instance name %s.' % name)
+            sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
+                                 ToPort=22)
+            sg.authorize_ingress(SourceSecurityGroupName=name)
+            # check to make sure that security group exists
+            time.sleep(2)
+            client = boto3.client('ec2')
+            client.describe_security_groups(GroupIds=[sg.id])
+            self.sg = sg.id
+            seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
+
+        retry_boto_call(func=create_security_group_attempt, retries=20, exceptions_to_catch=ClientError,
+                        delay_retry=2, exception_to_raise=TimeoutError("Failed to create a security group"))()
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):
         """
@@ -338,7 +341,7 @@ class ClusterServer(object):
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='develop'))
+                location=location, version='cyril_remote_integration_to_develop'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         seqc.log.notify("Sources are installed and decompressed, setting up seqc")
@@ -372,8 +375,7 @@ class ClusterServer(object):
 
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
-        retry_boto_call(func=self.create_security_group, retries=20, exceptions_to_catch=ClientError, delay_retry=2,
-                        exception_to_raise=TimeoutError("Failed to create a security group"))()
+        self.create_security_group()
         # modified cluster creation for spot bid
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
@@ -541,7 +543,7 @@ def check_progress():
                         continue
                 except:
                     print('Cluster (%s) for run "%s" has been terminated.'
-                          % (inst_id,run_name))
+                          % (inst_id, run_name))
                     continue
 
                 s.connect()
@@ -626,7 +628,7 @@ class SSHServer(object):
         """Checks the rsa file is present"""
         if not os.path.isfile(self.key):
             seqc.log.notify('The key %s was not found!' % self.key)
-            raise RuntimeError(self._error_msg,"The key file %s does not exist" % self.key)
+            raise RuntimeError(self._error_msg, "The key file %s does not exist" % self.key)
 
     def connect(self):
         """connects to a remote instance"""
@@ -701,30 +703,3 @@ class SSHServer(object):
         return data, errs
 
 
-class TestingRemote(unittest.TestCase):
-
-    def setUpClass(self):
-        self.vol = 5000000000
-        self.cluster = ClusterServer()
-        config_file = os.path.expanduser('~/.seqc/config')
-        self.cluster.configure_cluster(config_file, "r3")
-
-    def tearDown(self):
-        try:
-            inst_id_cluster = self.cluster.inst_id.id
-            terminate_cluster(inst_id_cluster)
-        except Exception as e:
-            print(e)
-
-    def test_bad_instance(self):
-        bad_inst_type = "r2d2"
-        self.cluster.inst_type = bad_inst_type
-        self.cluster.spot_bid = 1
-        with self.assertRaises(ValueError):
-            self.cluster.create_spot_cluster(self.vol)
-        self.cluster.spot_bid = None
-        with self.assertRaises(ValueError):
-            self.cluster.create_cluster(self.vol)
-
-    def test_ssh(self):
-        pass
