@@ -932,7 +932,7 @@ def main(args: list=None) -> None:
             manage_ra = None
         else:
             if aws_upload_key:
-                seqc.log.info('Uploading read array to S3.')
+                seqc.log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
                 upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
                                                                 s3link=aws_upload_key)
                 manage_ra = seqc.io.ProcessManager(upload_ra)
