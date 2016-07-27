@@ -353,6 +353,21 @@ class ScaleFeatures:
 
 
 class tSNE:
+    """Barnes-hut tSNE
+
+    Carry out t-stochastic neighbor embedding
+
+    :param n_components: number of components to which data should be projected
+    :param normalize: if True, scales features to unit size
+    :param run_pca: if True, runs PCA on the input data and runs tSNE on the
+      components retained by PCA.
+    :param n_pca_components:  Number of components retained by PCA
+    :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
+
+    :method fit_transform: fits the tSNE model to data and returns the transformed
+      result
+
+    """
 
     def __init__(self, n_components: int=2, scale: bool=True, run_pca: bool=True,
                  n_pca_components: int=10, **kwargs):
@@ -745,9 +760,9 @@ class smoothing:
 
         # smoothing creates large intermediates; break up to avoid memory errors
         pieces = []
-        num_pieces = max(1, data_.shape[0] / 2000)
-        if num_pieces != 1:
-            sep = np.linspace(0, data_.shape[0] + 1, num_pieces, dtype=int)
+        num_partitions = np.round(data_.shape[0] / 2000) + 1
+        if num_partitions > 2:  # 2 partitions produces start + end, need a third to split
+            sep = np.linspace(0, data_.shape[0] + 1, num_partitions, dtype=int)
             for start, end in zip(sep, sep[1:]):
                 pieces.append(data_[inds[start:end, :], :].mean(axis=1))
             res = np.vstack(pieces)
