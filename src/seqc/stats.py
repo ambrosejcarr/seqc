@@ -23,101 +23,6 @@ import subprocess
 from contextlib import closing
 
 
-# todo finish this function later
-class ReadTextFile():
-    """
-    Memory efficient reader for large data arrays
-    """
-
-    def read_process(self, filename, rowlength, delimiter, index_cols, dtype):
-        data = np.fromiter(self.iter_func(filename, delimiter, index_cols, dtype), dtype=dtype)
-        data = data.reshape((-1, rowlength))
-        return data
-
-    def read(self):
-        rowlength = self.get_row_length(self.filename, self.index_rows, self.index_cols, self.delimiter)
-        files = self.split_file(self.n_proc - 2, self.filename, self.index_rows)
-
-        # todo multiprocess these as well
-        index = self.make_index(self.filename, self.index_cols, self.delimiter, self.index_names)
-        columns = self.make_columns(self.filename, self.index_rows, self.delimiter, self.column_names)
-
-        pool = multiprocessing.Pool(self.n_proc - 2)
-        read_func = partial(self.read_process, rowlength=rowlength, delimiter=self.delimiter,
-                            index_cols=self.index_cols, dtype=self.dtype)
-        res = pool.starmap(read_func, files)
-
-        return pd.DataFrame(np.vstack(res), index=index, columns=columns)
-
-    @staticmethod
-    def make_index(file_name, index_cols, delimiter, index_names):
-        if not index_cols:
-            return
-
-        def read_index():
-            with open(file_name, 'r') as f:
-                for line in f:
-                    yield line.rstrip().strip(delimiter).split(delimiter)[:index_cols]
-
-        return pd.MultiIndex.from_tuples(list(read_index()), names=index_names)
-
-    @staticmethod
-    def make_columns(file_name, index_rows: int, delimiter, column_names):
-
-        def read_columns():
-            with open(file_name, 'r') as f:
-                for i in range(index_rows):
-                    yield next(f).rstrip().strip(delimiter).split(delimiter)
-
-        return pd.MultiIndex.from_arrays([list(a) for a in read_columns()], names=column_names)
-
-    @staticmethod
-    def get_row_length(file_name, index_rows, index_cols, delimiter):
-        with open(file_name, 'r') as f:
-            for i in range(index_rows):
-                next(f)
-            return len(next(f).rstrip().strip(delimiter).split(delimiter)) - index_cols
-
-    @staticmethod
-    def make_index(iterable, names):
-        return
-
-    @staticmethod
-    def make_columns(iterable, names):
-        return
-
-    @staticmethod
-    def iter_func(filename, delimiter='\t', skipcols=0, dtype=np.float32):
-        with open(filename, 'r') as infile:
-            for line in infile:
-                line = line.rstrip().strip(delimiter).split(delimiter)
-                for item in line[skipcols:]:
-                    yield dtype(item)
-
-    def split_file(self, n_proc, file_name, index_rows):
-
-        # todo estimate the number of lines for each partition instead of reading whole file, will speed up
-        file_len = int(subprocess.check_output(['wc', '-l', file_name]))
-        n_lines = int(file_len / n_proc)
-        tmpdir = os.environ['TMPDIR']
-
-        split_file = 'tail -n +{skiprows!s} {file_name} | split -l {n_lines} {tmpdir}til_'.format(
-            skiprows=index_rows, file_name=file_name, n_lines=n_lines, tmpdir=tmpdir)
-        subprocess.Popen(split_file, shell=True)
-        return [tmpdir + f for f in os.listdir(tmpdir) if f.startswith('til_')]
-
-    def __init__(self, filename, index_cols=0, index_rows=0, dtype=np.float64, delimiter=None, column_names=None,
-                 index_names=None):
-        self.n_proc = multiprocessing.cpu_count()
-        self.filename = filename
-        self.index_cols = index_cols
-        self.index_rows = index_rows
-        self.dtype = dtype
-        self.delimiter = delimiter
-        self.column_names = column_names
-        self.index_names = index_names
-
-
 class GraphDiffusion:
     def __init__(self, knn=10, normalization='smarkov', epsilon=1,
                  n_diffusion_components=10):
@@ -385,22 +290,29 @@ class ScaleFeatures:
     """
 
     @staticmethod
-    def unit_size(data: np.ndarray, copy=True):
+    def unit_size(data: np.ndarray, copy=True, dtype=np.float32):
         """
         scales features in data between 0 and 1
+
 
         :param data: n observation x k feature array
         :param copy: bool, if True, creates a copy of data. Otherwise carries out
           standardization in-place
+        :param dtype: optional datatype parameter, options [np.float32, np.float64, float],
+          defaults to np.float32 to save space.
         :return: n x k scaled array
         """
+
+        if dtype not in [float, np.float32, np.float64]:
+            raise TypeError('dtype must be one of np.float32, np.float64 or float')
         if copy:
-            data = data.copy().astype(np.float32)
+            data = data.copy().astype(dtype)
         else:
-            data = data.astype(np.float32)
-        d_min, d_max = np.min(data), np.max(data)
+            data = data.astype(dtype)
+        d_min = np.amin(data, axis=0)
         data -= d_min
-        data /= d_max - d_min
+        d_max = np.amax(data, axis=0)
+        data /= d_max
         return data
 
     @staticmethod
@@ -791,7 +703,7 @@ class ExperimentalYield:
 class smoothing:
 
     @staticmethod
-    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=True):
+    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False):
         """
         Smooth gene expression values by setting the expression of each gene in each
         cell equal to the mean value of itself and its n_neighbors
@@ -812,7 +724,7 @@ class smoothing:
             raise TypeError("data must be a pd.DataFrame or np.ndarray")
         if run_pca:
             pca = PCA(n_components=100)
-            data = pca.fit_transform(data)
+            data_ = pca.fit_transform(data_)
 
         knn = NearestNeighbors(
             n_neighbors=n_neighbors,
@@ -823,11 +735,14 @@ class smoothing:
 
         # smoothing creates large intermediates; break up to avoid memory errors
         pieces = []
-        num_pieces = data.shape[0] / 2000
-        sep = np.linspace(0, data.shape[0] + 1, num_pieces, dtype=int)
-        for start, end in zip(sep, sep[1:]):
-            pieces.append(data.values[inds[start:end, :], :].mean(axis=1))
-        res = np.vstack(pieces)
+        num_pieces = max(1, data_.shape[0] / 2000)
+        if num_pieces != 1:
+            sep = np.linspace(0, data_.shape[0] + 1, num_pieces, dtype=int)
+            for start, end in zip(sep, sep[1:]):
+                pieces.append(data_[inds[start:end, :], :].mean(axis=1))
+            res = np.vstack(pieces)
+        else:
+            res = data_[inds, :].mean(axis=1)
 
         if df:
             res = pd.DataFrame(res, index=data.index,
@@ -1477,6 +1392,7 @@ class ExpressionTree:
         """
         hierarchically cluster cluster centroids and store the results as self.tree
 
+        :param method: clustering method; fastcluster default is single, we change this to ward
         :param kwargs: keyword arguments to pass to fastcluster.linkage
         """
         fmean = partial(np.mean, axis=0)
@@ -1488,7 +1404,7 @@ class ExpressionTree:
 
         self._tree = self.Tree(linkage)
 
-    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000):
+    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000, **kwargs):
         """
         carry out differential expression at each stage of the Hierarchy.
 
@@ -1498,12 +1414,13 @@ class ExpressionTree:
           prior to comparison to control for sampling bias. This can be done to check
           clustering stability and to get reliable gene expression differences.
         :param n_cells: int, number of cells to sample at each iteration
+        :param kwargs: keyword arguments for hierarchical clustering
         :return: dictionary of pd.DataFrame objects containing results
         """
 
         # get expression means
         if self.tree is None:
-            self.create_hierarchy()
+            self.create_hierarchy(**kwargs)
 
         self._results = OrderedDict()
         for node in self.tree.bfs():
