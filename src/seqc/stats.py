@@ -312,7 +312,9 @@ class ScaleFeatures:
         d_min = np.amin(data, axis=0)
         data -= d_min
         d_max = np.amax(data, axis=0)
-        data /= d_max
+
+        # divide by max unless max is zero, then divide by 1
+        data /= np.amax(np.array([d_max, np.ones_like(d_max)]), axis=0)
         return data
 
     @staticmethod
@@ -373,36 +375,37 @@ class tSNE:
         self.pca = None
 
     def fit_transform(self, data: np.ndarray or pd.DataFrame, fillna=0) -> None:
-            """
-            fit the tSNE model to data given the parameters provided during
-             initialization and transform the output
+        """
+        fit the tSNE model to data given the parameters provided during
+         initialization and transform the output
 
-            :param data: n observation x k feature data array
-            :param fillna: fill np.NaN values with this value. If None, will not fill.
-            :return: None
-            """
-            if fillna is not None:
-                data[np.where(np.isnan(data))] = fillna
-                data[np.where(np.isinf(data))] = fillna
-            if self.scale:
-                data = ScaleFeatures.unit_size(data, copy=True)
-            if self.run_pca:
-                self.pca = PCA(n_components=self.n_pca_components)
-                data = self.pca.fit_transform(data)
+        :param data: n observation x k feature data array
+        :param fillna: fill np.NaN values with this value. If None, will not fill.
+        :return: None
+        """
+        if fillna is not None:
+            data[np.where(np.isnan(data))] = fillna
+            data[np.where(np.isinf(data))] = fillna
+        if self.scale:
+            data = ScaleFeatures.unit_size(data, copy=True)
+        if self.run_pca:
+            self.pca = PCA(n_components=self.n_pca_components)
+            data = self.pca.fit_transform(data)
 
-            if not self.kwargs:
-                self.kwargs = dict(angle=0.7, init='pca', random_state=0, n_iter=500,
-                                   perplexity=30)
+        if not self.kwargs:
+            self.kwargs = dict(angle=0.7, init='pca', random_state=0, n_iter=500,
+                               perplexity=30)
 
-            tsne = TSNE(n_components=self.n_components, method='barnes_hut',
-                        **self.kwargs)
+        tsne = TSNE(n_components=self.n_components, method='barnes_hut',
+                    **self.kwargs)
 
-            if isinstance(data, pd.DataFrame):
-                res = tsne.fit_transform(data.values)
-                self.tsne = pd.DataFrame(res, index=data.index)
-            else:
-                res = tsne.fit_transform(data)
-                self.tsne = res
+        if isinstance(data, pd.DataFrame):
+            res = tsne.fit_transform(data.values)
+            self.tsne = pd.DataFrame(res, index=data.index)
+        else:
+            res = tsne.fit_transform(data)
+            self.tsne = res
+        return self.tsne
 
 
 class PCA:
