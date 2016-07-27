@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import paramiko
 from seqc import process_experiment
-
+import nose2
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
@@ -57,7 +57,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         os.makedirs(seqc_dir + 'test/TestRemoteProcessExperiment', exist_ok=True)
         cls.human = 's3://dplab-data/genomes/hg38_phiX/'
         cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
-        cls.email = 'cyril-cros@hotmail.fr'
+        # cls.email = 'cyril-cros@hotmail.fr'
+        cls.email = input('provide an email address to receive test results: ')
         cls.output = 's3://dplab-data/seqc/test/{}/'
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
         cls.barcode_fastq = 's3://dplab-data/seqc/test/{}/barcode/'
@@ -587,11 +588,12 @@ class TestLogData(unittest.TestCase):
 if __name__ == "__main__":
     # suite_Gen = unittest.makeSuite(TestProcessExperimentGeneral)
     # suite_Loc = unittest.makeSuite(TestLocalProcessExperiment)
-    suite_Rem = unittest.makeSuite(TestRemoteProcessExperiment)
-    suite_SSH = unittest.makeSuite(TestingRemote)
-    full_suite = unittest.TestSuite(suite_SSH)
-    runner_all_tests = unittest.TextTestRunner(descriptions=5, verbosity=5)
-    runner_all_tests.run(full_suite)
+    # suite_Rem = unittest.makeSuite(TestRemoteProcessExperiment)
+    # suite_SSH = unittest.makeSuite(TestingRemote)
+    # full_suite = unittest.TestSuite(suite_SSH)
+    # runner_all_tests = unittest.TextTestRunner(descriptions=5, verbosity=5)
+    # runner_all_tests.run(full_suite)
+    nose2.main()
 
 ###########################################################################################
 

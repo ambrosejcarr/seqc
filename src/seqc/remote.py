@@ -321,6 +321,9 @@ class ClusterServer(object):
             vol_id = self.create_and_attach_volume(vol_size, dev_id)
             seqc.log.notify("Successfully attached %d GB in 1 volume." % vol_size)
 
+        if not self.serv or not self.serv.is_connected:
+            self.connect_server()
+
         seqc.log.notify("Formatting and mounting %s" % dev_id)
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
         self.serv.exec_command("sudo mkdir -p /data")
@@ -345,7 +348,7 @@ class ClusterServer(object):
             'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
             'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
             'sudo tee {location} > /dev/null'.format(
-                location=location, version='cyril_remote_integration_to_develop'))
+                location=location, version='develop'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
         seqc.log.notify("Sources are installed and decompressed, setting up seqc")
