@@ -300,7 +300,7 @@ class ReadArray:
                         self.data['gene'][ind] = g
                         
                         
-        print('Total reads in samfile: {}'.format(len(_self)))
+        print('Total reads in samfile: {}'.format(len(self)))
         print('Reads that passed the filter: {}'.format(total_reads))
         print('Aligned reads: {}, resolved reads: {}, can\'t be resolved: {}, competing models (unhandeled): {}'.format(reads_res[NO_DISAMBIGUATION], 
                 reads_res[RESOLVED_GENE], reads_res[NO_GENE_RESOLVED], reads_res[MULTIPLE_MODELS]))
