@@ -644,8 +644,7 @@ class SSHServer(object):
         """connects to a remote instance"""
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            retry_boto_call(func=self.ssh.connect, retries=25,
-                            exceptions_to_catch=socket.error,
+            retry_boto_call(func=self.ssh.connect, retries=25, exceptions_to_catch=socket.error,
                             exception_to_raise=RuntimeError("Authentication to EC2 failed with key %s." % self.key),
                             delay_retry=5)(self.instance.public_dns_name, username='ubuntu', key_filename=self.key,
                                            timeout=3.0)

@@ -41,7 +41,7 @@ class EmptyMatrixError(Exception):
 
 
 def retry_boto_call(func, retries=3, exceptions_to_catch=Exception, exception_to_raise: Exception = None,
-                    delay_retry=5):
+                    delay_retry=5, verbose=False):
     """improved wrapper to avoid issues with Boto3 by retrying an operation until success
     :param func: boto call to be wrapped
     :param retries: total # tries to re-call boto function
@@ -57,7 +57,7 @@ def retry_boto_call(func, retries=3, exceptions_to_catch=Exception, exception_to
             try:
                 return func(*args, **kwargs)
             except exceptions_to_catch as e:
-                if __debug__:
+                if verbose:
                     seqc.log.notify("Non fatal error in function "+func.__qualname__+" --> "+str(e) +
                                     " | retrying in {nbr}s".format(nbr=delay_retry))
                 num_tries -= 1
