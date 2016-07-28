@@ -259,8 +259,9 @@ class GraphDiffusion:
 
 
 class NormalizeCells:
-    """
-    Contains row normalization techniques for equalizing cell sampling.
+    """Contains row normalization techniques for equalizing cell sampling.
+
+    :method size: divides by library size
     """
 
     @staticmethod
@@ -287,6 +288,10 @@ class NormalizeCells:
 class ScaleFeatures:
     """
     Contains column normalization techniques for equalizing feature sampling
+
+    :method unit_size: scale each feature between 0 and 1
+    :method standardize: center the mean of each feature at zero and scale by standard deviation
+    :method unit_length: scale each feature so that its euclidean length is 1
     """
 
     @staticmethod
@@ -424,12 +429,22 @@ class tSNE:
 
 
 class PCA:
+    """
+
+    """
 
     def __init__(self, n_components=100):
         """
         construct a model for Principle Component Analysis
 
         :param n_components: number of principle components to retain
+
+        :property eigenvalues: stores the eigenvalues computed by fit()
+        :property loadings: stores the eigenvectors of the pca decomposition computed by fit()
+
+        :method fit: fit the model to the data
+        :method transform: project the data onto a subset of the principle components
+        :method fit_transform: fit and transform the data, returning the projected result
         """
         self.n_components = n_components
         self.loadings = None
@@ -533,6 +548,13 @@ class PCA:
 
 
 class correlation:
+    """Fast vectorized correlation methods
+
+    :method vector(x, y): correlate each column in y with a vector in x
+    :method map(x, y): correlate each column of x with each column in y
+    :method eigv(evec, data): get pairwise correlations of eigenvectors
+      with columns of data
+    """
 
     @staticmethod
     def vector(x: np.array, y: np.array):
@@ -726,6 +748,11 @@ class ExperimentalYield:
 
 
 class smoothing:
+    """Data smoothing kernels
+
+    :method kneighbors: transforms each observation (row) of data by setting it
+      equal to the average of its k-nearest neighbors
+    """
 
     @staticmethod
     def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False):
@@ -1121,6 +1148,19 @@ class ExpressionTree:
         :param data: n cells x k genes 2d array
         :param group_assignments: n cells 1d vector
         :param alpha: float (0, 1], acceptable type I error
+
+        :method create_hierarchy: generate a hierarchical tree from the group
+          means, as determined by group_assignments
+        :method plot_hierarchy: plot the tree
+        :method compare_hierarchy: compute differential expression between the clusters
+          associated with each branch of the tree, and all their daughter branches.
+          Stores the result in results.
+        :method resampled_welchs_t: differential expression method to compare observations
+          whose distributions are not IID.
+
+        :property results: dictionary whose keys are a tuple of the integer ids of the
+          compared nodes, and whose values are the results of the significance test
+        :property tree: Tree representation of the data
         """
 
         self._tree = None
