@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy import ma
 import pandas as pd
@@ -17,7 +18,9 @@ from scipy.stats.mstats import kruskalwallis, rankdata
 from scipy.stats import t
 from tinydb import TinyDB
 from functools import partial
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
+import subprocess
+from contextlib import closing
 
 
 class GraphDiffusion:
@@ -256,8 +259,9 @@ class GraphDiffusion:
 
 
 class NormalizeCells:
-    """
-    Contains row normalization techniques for equalizing cell sampling.
+    """Contains row normalization techniques for equalizing cell sampling.
+
+    :method size: divides by library size
     """
 
     @staticmethod
@@ -284,25 +288,38 @@ class NormalizeCells:
 class ScaleFeatures:
     """
     Contains column normalization techniques for equalizing feature sampling
+
+    :method unit_size: scale each feature between 0 and 1
+    :method standardize: center the mean of each feature at zero and scale by standard deviation
+    :method unit_length: scale each feature so that its euclidean length is 1
     """
 
     @staticmethod
-    def unit_size(data: np.ndarray, copy=True):
+    def unit_size(data: np.ndarray, copy=True, dtype=np.float32):
         """
         scales features in data between 0 and 1
+
 
         :param data: n observation x k feature array
         :param copy: bool, if True, creates a copy of data. Otherwise carries out
           standardization in-place
+        :param dtype: optional datatype parameter, options [np.float32, np.float64, float],
+          defaults to np.float32 to save space.
         :return: n x k scaled array
         """
+
+        if dtype not in [float, np.float32, np.float64]:
+            raise TypeError('dtype must be one of np.float32, np.float64 or float')
         if copy:
-            data = data.copy().astype(np.float32)
+            data = data.copy().astype(dtype)
         else:
-            data = data.astype(np.float32)
-        d_min, d_max = np.min(data), np.max(data)
+            data = data.astype(dtype)
+        d_min = np.amin(data, axis=0)
         data -= d_min
-        data /= d_max - d_min
+        d_max = np.amax(data, axis=0)
+
+        # divide by max unless max is zero, then divide by 1
+        data /= np.amax(np.array([d_max, np.ones_like(d_max)]), axis=0)
         return data
 
     @staticmethod
@@ -341,6 +358,21 @@ class ScaleFeatures:
 
 
 class tSNE:
+    """Barnes-hut tSNE
+
+    Carry out t-stochastic neighbor embedding
+
+    :param n_components: number of components to which data should be projected
+    :param normalize: if True, scales features to unit size
+    :param run_pca: if True, runs PCA on the input data and runs tSNE on the
+      components retained by PCA.
+    :param n_pca_components:  Number of components retained by PCA
+    :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
+
+    :method fit_transform: fits the tSNE model to data and returns the transformed
+      result
+
+    """
 
     def __init__(self, n_components: int=2, scale: bool=True, run_pca: bool=True,
                  n_pca_components: int=10, **kwargs):
@@ -362,50 +394,69 @@ class tSNE:
         self.tsne = None
         self.pca = None
 
-    def fit_transform(self, data: np.ndarray or pd.DataFrame) -> None:
-            """
-            fit the tSNE model to data given the parameters provided during
-             initialization and transform the output
+    def fit_transform(self, data: np.ndarray or pd.DataFrame, fillna=0) -> None:
+        """
+        fit the tSNE model to data given the parameters provided during
+         initialization and transform the output
 
-            :param data: n observation x k feature data array
-            :return: None
-            """
-            if self.scale:
-                data = ScaleFeatures.unit_size(data, copy=True)
-            if self.run_pca:
-                self.pca = PCA(n_components=self.n_pca_components)
-                data = self.pca.fit_transform(data)
+        :param data: n observation x k feature data array
+        :param fillna: fill np.NaN values with this value. If None, will not fill.
+        :return: None
+        """
+        if fillna is not None:
+            data[np.where(np.isnan(data))] = fillna
+            data[np.where(np.isinf(data))] = fillna
+        if self.scale:
+            data = ScaleFeatures.unit_size(data, copy=True)
+        if self.run_pca:
+            self.pca = PCA(n_components=self.n_pca_components)
+            data = self.pca.fit_transform(data)
 
-            if not self.kwargs:
-                self.kwargs = dict(angle=0.4, init='pca', random_state=0, n_iter=500,
-                                   perplexity=30)
+        if not self.kwargs:
+            self.kwargs = dict(angle=0.7, init='pca', random_state=0, n_iter=500,
+                               perplexity=30)
 
-            tsne = TSNE(n_components=self.n_components, method='barnes_hut',
-                        **self.kwargs)
+        tsne = TSNE(n_components=self.n_components, method='barnes_hut',
+                    **self.kwargs)
+
+        if isinstance(data, pd.DataFrame):
             res = tsne.fit_transform(data.values)
-            if isinstance(data, pd.DataFrame):
-                self.tsne = pd.DataFrame(res, index=data.index)
-            else:
-                self.tsne = res
+            self.tsne = pd.DataFrame(res, index=data.index)
+        else:
+            res = tsne.fit_transform(data)
+            self.tsne = res
+        return self.tsne
 
 
 class PCA:
+    """
+
+    """
 
     def __init__(self, n_components=100):
         """
         construct a model for Principle Component Analysis
 
         :param n_components: number of principle components to retain
+
+        :property eigenvalues: stores the eigenvalues computed by fit()
+        :property loadings: stores the eigenvectors of the pca decomposition computed by fit()
+
+        :method fit: fit the model to the data
+        :method transform: project the data onto a subset of the principle components
+        :method fit_transform: fit and transform the data, returning the projected result
         """
         self.n_components = n_components
         self.loadings = None
         self.eigenvalues = None
 
-    def fit(self, data):
+    def fit(self, data, fillna=0, scale=True):
         """
         Fit the model to data
 
         :param data: n observation x k feature data array
+        :param fillna: fill np.NaN values with this value. If None, will not fill.
+        :param scale: subtract min and divide by max
         :return: None
         """
 
@@ -416,10 +467,15 @@ class PCA:
         else:
             raise TypeError('data must be a pd.DataFrame or np.ndarray')
 
+        if fillna is not None:
+            data[np.where(np.isnan(data))] = fillna
+            data[np.where(np.isinf(data))] = fillna
+
         # Make sure data is zero mean
-        X = ScaleFeatures.unit_size(X)
-        # X = np.subtract(X, np.amin(X))
-        # X = np.divide(X, np.amax(X))
+        # X = ScaleFeatures.unit_size(X)
+        if scale:
+            X = np.subtract(X, np.amin(X))
+            X = np.divide(X, np.amax(X))
 
         # Compute covariance matrix
         if X.shape[1] < X.shape[0]:
@@ -455,7 +511,7 @@ class PCA:
         self.loadings = M
         self.eigenvalues = l
 
-    def transform(self, data, components=None) -> np.ndarray or pd.DataFrame:
+    def transform(self, data, components=None, scale=True) -> np.ndarray or pd.DataFrame:
         """
         Transform data using the fit PCA model.
 
@@ -467,13 +523,17 @@ class PCA:
 
         if components is None:
             components = np.arange(self.n_components)
+        if scale:
+            data = np.subtract(data, np.amin(data))
+            data = np.divide(data, np.amax(data))
+
         projected = np.dot(data, self.loadings[:, components])
         if isinstance(data, pd.DataFrame):
             return pd.DataFrame(projected, index=data.index)
         else:
             return projected
 
-    def fit_transform(self, data, n_components=None) -> np.ndarray or pd.DataFrame:
+    def fit_transform(self, data, n_components=None, scale=True) -> np.ndarray or pd.DataFrame:
         """
         Fit the model to data and transform the data using the fit model
 
@@ -483,11 +543,18 @@ class PCA:
         :return: np.ndarray containing transformed data
         """
 
-        self.fit(data)
-        return self.transform(data, components=n_components)
+        self.fit(data, scale=scale)
+        return self.transform(data, components=n_components, scale=scale)
 
 
 class correlation:
+    """Fast vectorized correlation methods
+
+    :method vector(x, y): correlate each column in y with a vector in x
+    :method map(x, y): correlate each column of x with each column in y
+    :method eigv(evec, data): get pairwise correlations of eigenvectors
+      with columns of data
+    """
 
     @staticmethod
     def vector(x: np.array, y: np.array):
@@ -574,8 +641,34 @@ class correlation:
 
 class ExperimentalYield:
 
-    @staticmethod
-    def construct_run_summary(summary: dict):
+    output = (
+        '{divide}\nINPUT\n{divide}\n'
+        'Total input reads:\t{n_fastq}\n'
+        '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
+        'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
+        ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
+        ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
+        ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
+        '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
+        'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
+        'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
+        'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
+        'Missing cell barcodes/RMT:\t{no_cell} ({bad_cell}%)\n'
+        'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+        'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+        '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
+        'Total molecules:\t\t{tot_mc}\n'
+        'Molecules lost:\t{mols_lost}\n'
+        'Cells lost:\t{cells_lost}\n'
+        'Cell description:\n{cell_desc}\n'
+        '{divide}\nSUMMARY\n{divide}\n'
+        'Total retained reads:\t{n_good} ({prop_good}%)\n'
+        'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
+        'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
+        '{divide}\n')
+
+    @classmethod
+    def construct_run_summary(cls, summary: dict):
         """
         calculates basic loss statistics and constructs a summary
         that will be sent to the user after the SEQC run has completed.
@@ -621,8 +714,8 @@ class ExperimentalYield:
             n_bad += wrong_cb
             bad_cb = round((wrong_cb/n_bad) * 100, 1)
         except KeyError:
-            wrong_cb = 'NA'
-            bad_cb = 'NA'
+            wrong_cb = 0
+            bad_cb = 0
         # continue with calculations
         n_good = n_sam - n_bad
         bad_gen = round((genomic/n_bad) * 100, 1)
@@ -635,55 +728,35 @@ class ExperimentalYield:
         prop_good = round((n_good/n_fastq) * 100, 1)
 
         # format output
-        output = ('{divide}\nINPUT\n{divide}\n'
-                  'Total input reads:\t{n_fastq}\n'
-                  '{divide}\nALIGNMENT (% FROM INPUT)\n{divide}\n'
-                  'Total reads aligned:\t{n_sam} ({prop_al}%)\n'
-                  ' - Genomic alignments:\t{genomic} ({prop_gen}%)\n'
-                  ' - PhiX alignments:\t{phi_x} ({prop_phix}%)\n'
-                  ' - Transcriptome alignments:\t{trans} ({prop_trans}%)\n'
-                  '{divide}\nFILTERING (% FROM ALIGNMENT)\n{divide}\n'
-                  'Genomic alignments:\t{genomic} ({bad_gen}%)\n'
-                  'PhiX alignments:\t{phi_x} ({bad_phi}%)\n'
-                  'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
-                  'Missing cell barcodes/RMT:\t{no_cell} ({bad_cell}%)\n'
-                  # 'Missing RMTs:\t\t{no_rmt} ({bad_rmt}%)\n'
-                  'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
-                  'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
-                  '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
-                  'Total molecules:\t\t{tot_mc}\n'
-                  'Molecules lost:\t{mols_lost}\n'
-                  'Cells lost:\t{cells_lost}\n'
-                  'Cell description:\n{cell_desc}\n'
-                  '{divide}\nSUMMARY\n{divide}\n'
-                  'Total retained reads:\t{n_good} ({prop_good}%)\n'
-                  'Total reads unaligned:\t{lost_al} ({prop_un}%)\n'
-                  'Total reads filtered:\t{n_bad} ({prop_bad}%)\n'
-                  '{divide}\n'
-                  .format(n_fastq=n_fastq, n_sam=n_sam, genomic=genomic,
-                          phi_x=phix, no_cell=no_cell, wrong_cb=wrong_cb,
-                          rmt_N=rmt_N, poly_t=poly_t, divide=divide,
-                          prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix,
-                          lost_al=lost_al, n_bad=n_bad, n_good=n_good,
-                          prop_good=prop_good, prop_bad=prop_bad, prop_un=prop_un,
-                          bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
-                          bad_cell=bad_cell, bad_rmtN=bad_rmtN,
-                          bad_polyt=bad_polyt, trans=trans, prop_trans=prop_trans,
-                          tot_mc=tot_mc, mols_lost=mols_lost, cells_lost=cells_lost,
-                          cell_desc=cell_desc))
+        output = cls.output.format(
+            n_fastq=n_fastq, n_sam=n_sam, genomic=genomic, phi_x=phix, no_cell=no_cell,
+            wrong_cb=wrong_cb, rmt_N=rmt_N, poly_t=poly_t, divide=divide,
+            prop_al=prop_al, prop_gen=prop_gen, prop_phix=prop_phix, lost_al=lost_al,
+            n_bad=n_bad, n_good=n_good, prop_good=prop_good, prop_bad=prop_bad,
+            prop_un=prop_un, bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
+            bad_cell=bad_cell, bad_rmtN=bad_rmtN, bad_polyt=bad_polyt, trans=trans,
+            prop_trans=prop_trans, tot_mc=tot_mc, mols_lost=mols_lost,
+            cells_lost=cells_lost, cell_desc=cell_desc)
         return output
 
 
 class smoothing:
+    """Data smoothing kernels
+
+    :method kneighbors: transforms each observation (row) of data by setting it
+      equal to the average of its k-nearest neighbors
+    """
 
     @staticmethod
-    def kneighbors(data, n_neighbors=50):
+    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False, **kwargs):
         """
         Smooth gene expression values by setting the expression of each gene in each
         cell equal to the mean value of itself and its n_neighbors
 
         :param data: np.ndarray | pd.DataFrame; genes x cells array
         :param n_neighbors: int; number of neighbors to smooth over
+        :param run_pca: bool; reduce features by PCA prior to computing distances
+        :param kwargs: keyword arguments to pass sklearn.NearestNeighbors
         :return: np.ndarray | pd.DataFrame; same as input
         """
 
@@ -695,16 +768,28 @@ class smoothing:
             data_ = data
         else:
             raise TypeError("data must be a pd.DataFrame or np.ndarray")
+        if run_pca:
+            pca = PCA(n_components=100)
+            data_ = pca.fit_transform(data_)
 
         knn = NearestNeighbors(
             n_neighbors=n_neighbors,
-            n_jobs=multiprocessing.cpu_count() - 1)
+            n_jobs=multiprocessing.cpu_count() - 1,
+            **kwargs)
 
         knn.fit(data_)
-        dist, inds = knn.kneighbors(data_)
+        inds = knn.kneighbors(data_, return_distance=False)
 
-        # set values equal to their means across neighbors
-        res = data_[inds, :].mean(axis=1)
+        # smoothing creates large intermediates; break up to avoid memory errors
+        pieces = []
+        num_partitions = np.round(data_.shape[0] / 2000) + 1
+        if num_partitions > 2:  # 2 partitions produces start + end, need a third to split
+            sep = np.linspace(0, data_.shape[0] + 1, num_partitions, dtype=int)
+            for start, end in zip(sep, sep[1:]):
+                pieces.append(data_[inds[start:end, :], :].mean(axis=1))
+            res = np.vstack(pieces)
+        else:
+            res = data_[inds, :].mean(axis=1)
 
         if df:
             res = pd.DataFrame(res, index=data.index,
@@ -1058,6 +1143,19 @@ class ExpressionTree:
         :param data: n cells x k genes 2d array
         :param group_assignments: n cells 1d vector
         :param alpha: float (0, 1], acceptable type I error
+
+        :method create_hierarchy: generate a hierarchical tree from the group
+          means, as determined by group_assignments
+        :method plot_hierarchy: plot the tree
+        :method compare_hierarchy: compute differential expression between the clusters
+          associated with each branch of the tree, and all their daughter branches.
+          Stores the result in results.
+        :method resampled_welchs_t: differential expression method to compare observations
+          whose distributions are not IID.
+
+        :property results: dictionary whose keys are a tuple of the integer ids of the
+          compared nodes, and whose values are the results of the significance test
+        :property tree: Tree representation of the data
         """
 
         self._tree = None
@@ -1176,7 +1274,6 @@ class ExpressionTree:
 
             """
 
-
             # store expression data
             self.linkage = linkage
             self.data = data
@@ -1251,8 +1348,27 @@ class ExpressionTree:
             return set(n.node_id for n in self.dfs(node))
 
         def plot(self, ax, **kwargs):
+
+            def augmented_dendrogram(*args, **kwargs):
+
+                ddata = dendrogram(*args, **kwargs)
+
+                # get left-to-right ordering of nodes
+                # ids = [n.node_id for n in self.dfs() if not (n.left is None or n.right is None)]
+
+                n = len(ddata['dcoord']) + 1
+                if not kwargs.get('no_plot', False):
+                    for id_, (i, d) in enumerate(zip(ddata['icoord'], ddata['dcoord'])):
+                        x = 0.5 * sum(i[1:3])
+                        y = d[1]
+                        ax.plot(x, y, 'ro', markersize=4)
+                        ax.annotate("%d" % (id_ + n), (x, y), xytext=(0, -4),
+                                    textcoords='offset points',
+                                    va='top', ha='center', fontsize=7)
+
+                return ddata
             """plot a dendrogram on ax"""
-            dendrogram(self.linkage, ax=ax, **kwargs)
+            augmented_dendrogram(self.linkage, ax=ax, **kwargs)
 
     @staticmethod
     def resampled_welchs_t(
@@ -1300,12 +1416,11 @@ class ExpressionTree:
         # map to a process pool
         a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
         b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
-        pool = multiprocessing.Pool(n_cpu)
-
-        a_res = pool.map(a_sampler, size)
-        b_res = pool.map(b_sampler, size)
-        a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
-        b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
+        with closing(multiprocessing.Pool(n_cpu)) as pool:
+            a_res = pool.map(a_sampler, size)
+            b_res = pool.map(b_sampler, size)
+            a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
+            b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
 
         # no nans should be produced by the mean
         assert np.sum(np.isnan(a_mu)) == 0
@@ -1333,20 +1448,23 @@ class ExpressionTree:
 
         return statistic, q
 
-    def create_hierarchy(self):
+    def create_hierarchy(self, method='ward', **kwargs):
         """
         hierarchically cluster cluster centroids and store the results as self.tree
+
+        :param method: clustering method; fastcluster default is single, we change this to ward
+        :param kwargs: keyword arguments to pass to fastcluster.linkage
         """
         fmean = partial(np.mean, axis=0)
 
         cluster_array_views = np.array_split(self.data, self._split_indices, axis=0)
         means = np.vstack(list(map(fmean, cluster_array_views)))
         distance = pdist(means)
-        linkage = fastcluster.linkage(distance, method='single')
+        linkage = fastcluster.linkage(distance, method=method, **kwargs)
 
         self._tree = self.Tree(linkage)
 
-    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000):
+    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000, **kwargs):
         """
         carry out differential expression at each stage of the Hierarchy.
 
@@ -1356,17 +1474,20 @@ class ExpressionTree:
           prior to comparison to control for sampling bias. This can be done to check
           clustering stability and to get reliable gene expression differences.
         :param n_cells: int, number of cells to sample at each iteration
+        :param kwargs: keyword arguments for hierarchical clustering
         :return: dictionary of pd.DataFrame objects containing results
         """
 
         # get expression means
         if self.tree is None:
-            self.create_hierarchy()
+            self.create_hierarchy(**kwargs)
 
-        self._results = {}
+        self._results = OrderedDict()
         for node in self.tree.bfs():
-            l_clusters = np.array(self.tree.agglomerate(node.left))
-            r_clusters = np.array(self.tree.agglomerate(node.right))
+            if not (node.left and node.right):
+                continue
+            l_clusters = np.array(list(self.tree.agglomerate(node.left)))
+            r_clusters = np.array(list(self.tree.agglomerate(node.right)))
             l_cells = np.in1d(self.group_assignments, l_clusters)
             r_cells = np.in1d(self.group_assignments, r_clusters)
             alpha_adj = self.alpha / (len(set(self.group_assignments)) - 1)
@@ -1379,7 +1500,7 @@ class ExpressionTree:
                 alpha=alpha_adj)
             if self._index is not None:
                 res = pd.Series(res, index=self._index).sort_values(inplace=False)
-            self._results[(node.left.node_id, node.right.node_id)] = res
+            self._results[(self.tree[node.left].node_id, self.tree[node.right].node_id)] = res
         return self._results
 
     def plot_hierarchy(self, ax=None, alternate_labels=None):

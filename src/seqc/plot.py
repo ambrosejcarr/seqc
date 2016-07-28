@@ -2,6 +2,7 @@ import os
 import warnings
 import numpy as np
 import matplotlib
+from matplotlib.colors import hex2color
 from scipy.stats import gaussian_kde
 try:
     os.environ['DISPLAY']
@@ -17,6 +18,7 @@ fm.findfont('Raleway')
 fm.findfont('Lato')
 
 dark_gray = '.15'
+
 
 style_dictionary = {
     'figure.figsize': (3, 3),
@@ -111,9 +113,9 @@ class FigureGrid:
         for i in range(self.n):
             yield self[i]
 
-    def tight_layout(self):
+    def tight_layout(self, **kwargs):
         """wrapper for plt.tight_layout"""
-        self.gs.tight_layout(self.figure)
+        self.gs.tight_layout(self.figure, **kwargs)
 
     def despine(self, top=True, right=True, **kwargs):
         """wrapper for seaborn despine, removes right and top spines by default"""
@@ -209,7 +211,9 @@ class scatter:
         :param c: categories for data
         :param ax: axis on which to scatter data
         :param cmap: color map
+        :param legend: bool, if True, plot legend
         :param legend_kwargs: additional kwargs for legend
+        :param randomize: if True, randomize order of plotting
         :param args: additional args for scatter
         :param kwargs: additional kwargs for scatter
         :return: ax
@@ -219,7 +223,15 @@ class scatter:
 
         if legend_kwargs is None:
             legend_kwargs = dict()
-        color_vector, category_to_color = map_categorical_to_cmap(c, cmap)
+
+        if cmap == 'tatarize':
+            categories = np.unique(c)
+            n = len(categories)
+            colors = tatarize(n)
+            category_to_color = dict(zip(categories, colors))
+            color_vector = np.array([category_to_color[i] for i in c])
+        else:
+            color_vector, category_to_color = map_categorical_to_cmap(c, cmap)
 
         if randomize:
             ind = np.random.permutation(len(x))
@@ -228,9 +240,10 @@ class scatter:
 
         ax.scatter(np.ravel(x)[ind], np.ravel(y)[ind], c=color_vector[ind], *args,
                    **kwargs)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
 
         labels, colors = zip(*sorted(category_to_color.items()))
-        sns.despine(ax=ax)
         if legend:
             add_legend_to_categorical_vector(colors, labels, ax, **legend_kwargs)
         return ax
@@ -277,3 +290,18 @@ class scatter:
         xy = np.vstack([np.ravel(x), np.ravel(y)])
         z = gaussian_kde(xy)(xy)
         return np.ravel(x), np.ravel(y), np.arcsinh(z)
+
+
+def tatarize(n):
+    """
+    Return n-by-3 RGB color matrix using the "tatarize" color alphabet (n <= 269)
+    :param n:
+    :return:
+    """
+
+    with open(os.path.expanduser('~/.seqc/tools/tatarize_269.txt')) as f:
+        s = f.read().split('","')
+    s[0] = s[0].replace('{"', '')
+    s[-1] = s[-1].replace('"}', '')
+    s = [hex2color(s) for s in s]
+    return s[:n]

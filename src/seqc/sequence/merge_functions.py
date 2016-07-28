@@ -3,7 +3,7 @@ import regex as re
 
 _pattern = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCTT){s<=2}(.{8})(.{6})(.*?)')
 _pattern_v2 = re.compile(b'(.{8,11}?)(GAGTGATTGCTTGTGACGCCAA){s<=2}(.{8})(.{8})(.*?)')
-
+# todo Linas changed the spacer again to have a terminal AT.
 
 def _check_spacer_v2(sequence):
     """a fast, in-drop-v2 specific command to find a spacer sequence and cb length
@@ -131,11 +131,13 @@ def in_drop_v3(g, b):
     :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
-    cell1 = b.sequence[:8]
-    rmt = b.sequence[8:16]
-    poly_t = b.sequence[16:-1]  # leave out newline
-    cell2 = g.name[-9:-1]  # second index holds barcode, final part of line. (skip \n)
+    seq = b.sequence.strip()
+    cell2 = seq[:8]
+    rmt = seq[8:16]
+    poly_t = seq[16:]
+    cell1 = g.name.strip()[-17:-9]  # bc is in a fixed position in the name; assumes 8bp indices.
     g.add_annotation((b'', cell1 + cell2, rmt, poly_t))
+    return g
 
 
 def drop_seq(g, b):
@@ -162,30 +164,30 @@ def mars1_seq(g, *args):
     barcode, rmt, number of poly_t.
 
     :param g: genomic fastq sequence data
-    :param args: provided so that a (potentially empty) parameter can be passed
-      corresponding to the non-existent barcode parameter so that all merge functions
-      support an identical parameterization and API.
+    :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
+
     *name_fields, pool, cell, rmt = g.name[1:-1].split(b':')
     g.name = (b'@' + b':'.join((pool, cell, rmt, b'')) + b';' +
               b':'.join(name_fields) + b'\n')
     return g
 
 
-def mars2_seq(g, *args):
+def mars2_seq(g, b):
     """
     re-annotate reverse mars-seq v2 reads in a format consistent with other SEQC
     platforms, annotating the reverse read (containing genomic information) with the pool,
     cell barcode, rmt, number of poly_t.
 
     :param g: genomic fastq sequence data
-    :param args: provided so that a (potentially empty) parameter can be passed
-      corresponding to the non-existent barcode parameter so that all merge functions
-      support an identical parameterization and API.
+    :param b: barcode fastq sequence data
     :return: annotated genomic sequence.
     """
-    *name_fields, pool, cell, rmt = g.name[1:-1].split(b'-')
-    g.name = (b'@' + b':'.join((pool, cell, rmt, b'')) + b';' +
-              b':'.join(name_fields) + b'\n')
+    pool = g.sequence.strip()[5:9]
+    seq = b.sequence.strip()
+    cell = seq[:7]
+    rmt = seq[7:15]
+    poly_t = seq[15:]
+    g.add_annotation((b'', pool + cell, rmt, poly_t))
     return g

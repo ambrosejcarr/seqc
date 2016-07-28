@@ -202,10 +202,31 @@ class ReadArray:
           sequences. Typically sequences with dust_score > 10 may be discarded.
         :return: ReadArray
         """
+        phix_genes = np.array(range(1, 7)) * 111111111
         data = self.data[((self.data['n_poly_t'] >= min_poly_t) &
                           (self.data['dust_score'] <= max_dust_score) &
                           (self.data['gene'] != 0) &
-                          (self.data['cell'] != 0))]
+                          (self.data['cell'] != 0) &
+                          (self.data['rmt'] != 0))]
+
+        # filter out phiX genes
+        not_phix = ~np.in1d(data['gene'], phix_genes)
+        data = data[not_phix]
+
+        # filter out N's in cell barcode and rmt
+        res = np.zeros(len(data), dtype=np.bool)
+        cell = data['cell'].copy()
+        rmt = data['rmt'].copy()
+        while np.any(rmt):
+            n_filter = rmt & 0b111 == 0b111
+            res[n_filter] = True
+            rmt >>= 3
+
+        while np.any(cell):
+            n_filter = cell & 0b111 == 0b111
+            res[n_filter] = True
+            cell >>= 3
+        data = data[~res]
         return ReadArray(data)
 
     def save(self, archive_name: str) -> None:
@@ -266,7 +287,7 @@ class SparseFrame:
         if not isinstance(columns, np.ndarray):
             raise TypeError('columns must be type np.ndarray')
 
-        self._data = data.astype(np.uint32)
+        self._data = data  #.astype(np.uint32)  # was causing casting errors; molecules should be float32!
         self._index = index
         self._columns = columns
 
@@ -469,9 +490,13 @@ class Experiment:
         molecules_lost = OrderedDict()
 
         if not self.molecules.columns.dtype.char == 'U':
-            raise RuntimeError('non-string column names detected. Please convert '
-                               'column names into string gene symbols before calling '
-                               'this function.')
+            if self.molecules.sum().sum() == 0:
+                raise seqc.exceptions.EmptyMatrixError(
+                    'Matrix is empty, cannot create dense matrix')
+            else:
+                raise RuntimeError(
+                    'non-string column names detected. Please convert column names into '
+                    'string gene symbols before calling this function.')
         if not isinstance(max_mt_content, float):
             raise TypeError('Parameter max_mt_content must be of type float.')
         if not 0 <= max_mt_content <= 1:
@@ -762,7 +787,7 @@ class Experiment:
         # make coo matrices
         shape = len(cell_index), len(gene_index)
         reads = coo_matrix((read_data, (row, col)), shape=shape, dtype=np.uint32)
-        molecules = coo_matrix((molecule_data, (row, col)), shape=shape, dtype=np.uint32)
+        molecules = coo_matrix((molecule_data, (row, col)), shape=shape, dtype=np.float32)
 
         sparse_reads = SparseFrame(reads, cell_index, gene_index)
         sparse_molecules = SparseFrame(molecules, cell_index, gene_index)
@@ -822,7 +847,7 @@ class Experiment:
             meta_cols.update(list(e.metadata.columns))  # list not necessary?
 
         # combine data
-        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.uint32)
+        empty_molc = np.zeros((len(cells), len(genes)), dtype=np.float32)
         metadata = pd.DataFrame(index=cells, columns=meta_cols)
         m_combined = pd.DataFrame(empty_molc, index=cells, columns=genes)
         for e in experiments:
@@ -841,6 +866,38 @@ class Experiment:
             e.metadata.index = i
 
         return Experiment(molecules=m_combined, reads=None, metadata=metadata)
+
+    @staticmethod
+    def fast_concatenate(experiments: list, labels: tuple=None):
+        """
+        Concatenate a set of Experiment objects or DataFrames. Each cell is considered to
+        be unique, even if they share the same barcodes. An hierarchical multi-index is
+        constructed on the rows, where labels serve as the first level to distinguish
+        cells from multiple experiments that may have gotten the same cell barcode.
+
+        Concatenate should be run after filtering each dataset individually, since the
+        datasets are considered to have distinct cells (even if they share the same
+        barcodes)
+
+        :param experiments: list or iterable of Experiment or DataFrame objects
+        :param labels: tuple, labels for experiments, length must match number of
+          experiments.
+        :return merged: Experiment object concatenated along the row axis (0).
+        """
+
+        if labels is None:
+            labels = np.arange(len(experiments))
+
+        if all(isinstance(e, Experiment) for e in experiments):
+            data = pd.concat([e.molecules for e in experiments], keys=labels)
+            metadata = pd.concat([e.molecules for e in experiments], keys=labels)
+        elif all(isinstance(e, pd.DataFrame) for e in experiments):
+            data = pd.concat(experiments, keys=labels)
+            metadata = None
+        else:
+            raise TypeError('experiments must be pandas DataFrame or Experiment objects.')
+
+        return Experiment(molecules=data, reads=None, metadata=metadata)
 
     # todo @ambrosejcarr make this faster; it is way too slow.
     @staticmethod
@@ -939,7 +996,7 @@ class Experiment:
 
         # get molecule and read counts per cell
         molecule_cell_sums = pd.Series(np.ravel(self.molecules.sum(axis=1)),
-                                       index=self.molecules.index, dtype=np.uint32)
+                                       index=self.molecules.index, dtype=np.float32)
         read_cell_sums = pd.Series(np.ravel(self.reads.sum(axis=1)),
                                    index=self.reads.index, dtype=np.uint32)
 

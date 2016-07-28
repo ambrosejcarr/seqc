@@ -6,7 +6,7 @@ from glob import glob
 from functools import partial
 from multiprocessing import Process, Pool
 from queue import Queue, Empty
-from subprocess import Popen, check_output, PIPE
+from subprocess import Popen, check_output, PIPE, CalledProcessError
 from itertools import zip_longest
 import fcntl
 import boto3
@@ -40,8 +40,9 @@ class S3:
 
         if not overwrite:
             if os.path.isfile(fout):
-                raise FileExistsError('file "%s" already exists. Set overwrite=True to '
-                                      're-download' % fout)
+                seqc.log.info('Skipped download of file "{fout}" because it already '
+                              'exists.'.format(fout=fout))
+                return fout
 
         # key should not start with a forward slash
         if key.startswith('/'):
@@ -118,6 +119,9 @@ class S3:
             # check for overwriting
             if os.path.isfile(fout):
                 if overwrite is False:
+                    seqc.log.info('Skipped download of file "{fout}" because it already '
+                                  'exists.'.format(fout=fout))
+                    output_files.append(fout)
                     continue
 
             # download file
@@ -462,7 +466,6 @@ class GEO:
         :return: None
         """
 
-
         while True:
             try:
                 file_ = sra_queue.get_nowait()
@@ -773,7 +776,10 @@ def check_s3links(input_args: list):
                     res = check_output(cmd.split())
                     if b'PRE ' in res:  # subdirectories present
                         raise ValueError
-        except:
+        except CalledProcessError:
+            seqc.log.notify('Failed to access %s with "aws s3 ls", check your link' % infile)
+            sys.exit(2)
+        except ValueError:
             seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
                             'input files to SEQC.' % infile)
             sys.exit(2)
