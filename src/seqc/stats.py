@@ -748,7 +748,7 @@ class smoothing:
     """
 
     @staticmethod
-    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False):
+    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False, **kwargs):
         """
         Smooth gene expression values by setting the expression of each gene in each
         cell equal to the mean value of itself and its n_neighbors
@@ -756,6 +756,7 @@ class smoothing:
         :param data: np.ndarray | pd.DataFrame; genes x cells array
         :param n_neighbors: int; number of neighbors to smooth over
         :param run_pca: bool; reduce features by PCA prior to computing distances
+        :param kwargs: keyword arguments to pass sklearn.NearestNeighbors
         :return: np.ndarray | pd.DataFrame; same as input
         """
 
@@ -773,7 +774,8 @@ class smoothing:
 
         knn = NearestNeighbors(
             n_neighbors=n_neighbors,
-            n_jobs=multiprocessing.cpu_count() - 1)
+            n_jobs=multiprocessing.cpu_count() - 1,
+            **kwargs)
 
         knn.fit(data_)
         inds = knn.kneighbors(data_, return_distance=False)
