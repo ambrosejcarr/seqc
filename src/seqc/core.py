@@ -297,7 +297,7 @@ class ReadArray:
                     indices = multialignment.get_indices(ind_s, obs_subset)
                     g = multialignment.model_to_gene(model)
                     for ind in indices:
-                        _self.data['gene'][ind] = g
+                        self.data['gene'][ind] = g
                         
                         
         print('Total reads in samfile: {}'.format(len(_self)))
