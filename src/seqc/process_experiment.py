@@ -498,7 +498,7 @@ def main(args: list = None):
                 input_data = 'samfile'
                 args.samfile = s3files_download([args.samfile], output_dir)[0]
                 seqc.log.info('Samfile %s successfully installed from S3.' % args.samfile)
-			tr = seqc.core.ReadArray.create_translator(args.index + 'annotations.gtf')
+            tr = seqc.core.ReadArray.create_translator(args.index + 'annotations.gtf')
             ra = seqc.core.ReadArray.from_samfile(
                 args.samfile, tr)
             ra.save(args.output_stem + '.h5')
@@ -528,9 +528,9 @@ def main(args: list = None):
                                   ', '.join(map(str, args.barcode_files)))
                 except FileExistsError:
                     pass  # file is already present.
-		# Resolve multialignment
-		seqc.log.info('Resolving multialignment')
-		ra.resolve_alignments(args.index, args.barcode_files, required_poly_t=args.min_poly_t, reverse_complement=True, max_ed=args.max_ed)
+        # Resolve multialignment
+        seqc.log.info('Resolving multialignment')
+        ra.resolve_alignments(args.index, args.barcode_files, required_poly_t=args.min_poly_t, reverse_complement=True, max_ed=args.max_ed)
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
         correct_errors = getattr(seqc.correct_errors, args.platform)
