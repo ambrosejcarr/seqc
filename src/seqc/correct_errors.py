@@ -126,6 +126,8 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
 #                err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
             continue
         
+        #For debugging - here we can ask if cor_c1==c1 to check if the code was corrected.
+        
         # For error rate estimation, only reads with at most a single error in both barcodes are counted.
         # note that only base swicth errors are counted towards this threshold, sequencer errors (that cause an 'N') are ignored for this.
         if ed_1 + ed_2 - seq_err_1 - seq_err_2 <= 1:
@@ -179,6 +181,123 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     return res, err_rate
 
 
+
+def group_for_disambiguation(ra, barcode_files, required_poly_t=1, reverse_complement=True, max_ed=2):
+    """
+    Prepare the RA for multi alignment disambiguation. Apply filters, correct the barcodes and group by cell/RMT pairs.
+    Retain the indices corresponding to each read.
+    The resulting dictionary has the following structure:
+        res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
+    Note the mapped genes list should be sorted before converted to a tuple
+    :param max_ed:
+    :param reverse_complement:
+    :param required_poly_t:        
+    :param barcode_files:
+    :param ra:
+    """
+    res = {}
+    tot = 0
+    
+    # Some constants
+    NO_ALIGNMENT = 0
+    GENES_0 = 1
+    ALIGN_1 = 2
+    CELL_0 = 3
+    RMT_0 = 4
+    POLY_T_0 = 5
+    
+    filtered = {NO_ALIGNMENT:0,GENES_0:0,ALIGN_1:0,CELL_0:0,RMT_0:0,POLY_T_0:0}
+    bc_filter = 0
+    
+
+    N = BinRep._str2bindict['N']
+
+    dynamic_codes_table_c1 = {}
+    dynamic_codes_table_c2 = {}
+
+    # Read the barcodes into lists
+    correct_barcodes = []
+    if reverse_complement:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(BinRep.str2bin(rev_comp(line.strip()))
+                                            for line in f.readlines()))
+    else:
+        for barcode_file in barcode_files:
+            with open(barcode_file) as f:
+                correct_barcodes.append(set(BinRep.str2bin(line.strip())
+                                            for line in f.readlines()))
+
+    for i, v in enumerate(ra.data):
+        tot += 1
+        # Apply various pereliminary filters on the data
+        if v['ma_genes'] == []:
+            filtered[NO_ALIGNMENT] += 1
+            continue
+        if v['ma_genes'] == -1:
+            filtered[ALIGN_1] += 1
+            continue
+        if 0 in v['ma_genes']:
+            filtered[GENES_0] += 1
+            continue
+        if v['cell'] == 0:
+            filtered[CELL_0] += 1
+            continue
+        if v['rmt'] == 0:
+            filtered[RMT_0] += 1
+            continue
+        if v['n_poly_t'] < required_poly_t:
+            filtered[POLY_T_0] += 1
+            continue
+        # if BinRep.contains(int(v['cell']), N):
+        #     filtered += 1
+        #     continue
+        #if BinRep.contains(int(v['rmt']), N):
+        #    filtered += 1
+        #    continue
+
+
+        # correct and filter barcodes
+        c1 = BinRep.c1_from_codes(int(v['cell']))
+        try:
+            cor_c1, ed_1 = dynamic_codes_table_c1[c1]
+        except KeyError:
+            dynamic_codes_table_c1[c1] = find_correct_barcode(c1, correct_barcodes[0])
+            cor_c1, ed_1 = dynamic_codes_table_c1[c1]
+
+        c2 = BinRep.c2_from_codes(int(v['cell']))
+        try:
+            cor_c2, ed_2 = dynamic_codes_table_c2[c2]
+        except KeyError:
+            dynamic_codes_table_c2[c2] = find_correct_barcode(c2, correct_barcodes[1])
+            cor_c2, ed_2 = dynamic_codes_table_c2[c2]
+
+        # Filter reads with too many errors in their barcodes
+        if ed_1 > max_ed or ed_2 > max_ed:
+            bc_filter += 1
+            continue
+
+        #print(v['ma_genes'])
+        genes = tuple(set(sorted(v['ma_genes'])))
+        # group according to the correct barcodes and gene
+        cell = BinRep.ints2int([cor_c1, cor_c2])
+        rmt = v['rmt']
+        try:
+            res[cell, rmt][genes].append(i)
+        except KeyError:
+            try:
+                res[cell, rmt][genes] = [i]
+            except KeyError:
+                res[cell, rmt] = {genes: [i]}
+
+    seqc.log.info('Group for disambiguation filtering results: total reads: {}; did not pass preliminary filters: {}; cell barcodes are wrong: '
+                  '{}'.format(tot, filtered, bc_filter))
+    #print('Group for disambiguation filtering results: total reads: {}; did not pass preliminary filters: {}; cell barcodes are wrong: '
+    #              '{}'.format(tot, filtered, bc_filter))
+    seqc.log.info('Total reads: {}. wrong carcodes: {}. filt - NO_ALIGNMENT, GENES_0, ALIGN_1, CELL_0, RMT_0, POLY_T_0: {}'.format(tot, bc_filter, filtered))
+    #print('Total reads: {}. wrong carcodes: {}. filt - NO_ALIGNMENT, GENES_0, ALIGN_1, CELL_0, RMT_0, POLY_T_0: {}'.format(tot, bc_filter, filtered))
+    return res
+    
 # Return the hamming distance between two numbers representing a sequence (3 bits / base)
 def hamming_dist_bin(c1, c2):
     """
@@ -487,6 +606,8 @@ def base_count(seq_dic, umi_len=8):
     count_mat = {'A':np.zeros(umi_len), 'C':np.zeros(umi_len), 'G':np.zeros(umi_len), 'T':np.zeros(umi_len)}
     for seq in seq_dic:
         for i, base in enumerate(BinRep.bin2str(seq)):
+            if base=='N':
+                continue
             count_mat[base][i] += 1
     tot = len(seq_dic)
     for base in count_mat:

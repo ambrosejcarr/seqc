@@ -35,6 +35,10 @@ with warnings.catch_warnings():
     import seaborn as sns
 import phenograph
 import seqc
+from seqc.sequence.encodings import ThreeBit as DNA3Bit
+import multialignment
+import sys
+import correct_errors
 
 
 class SparseMatrixError(Exception):
@@ -138,7 +142,8 @@ class ReadArray:
         ('n_poly_t', np.uint8),
         ('dust_score', np.uint8),
         ('gene', np.uint32),
-        ('position', np.uint64)]
+        ('position', np.uint64),
+        ('ma_genes', np.dtype(object))]
 
     def __init__(self, data):
         self._data = data
@@ -148,7 +153,15 @@ class ReadArray:
         return self._data
 
     @classmethod
-    def from_samfile(cls, samfile: str, gtf: str):
+    def create_translator(cls, gtf:str):
+        translator = seqc.sequence.gtf.GeneIntervals(gtf)
+        f = open(gtf+'_translator.p','wb')
+        pickle.dump(translator, f, protocol=4)
+        f.close()
+        return gtf+'_translator.p'
+    
+    @classmethod
+    def from_samfile(cls, samfile: str, translator_f: str):
         """
         construct a ReadArray object from a samfile containing only uniquely aligned
         records
@@ -157,21 +170,25 @@ class ReadArray:
         :param samfile: str, filename of alignment file.
         :return:
         """
+
         reader = seqc.alignment.sam.Reader(samfile)
-        translator = seqc.sequence.gtf.GeneIntervals(gtf)
+        try:
+            f=open(translator_f, 'rb')
+            translator = pickle.load(f)
+            f.close()
+        except FileNotFoundError:
+            print('No translator loaded, please make sure to run create_translator()')
+            return
 
         data = np.recarray((len(reader),), cls._dtype)
         for i, alignment in enumerate(reader):
-            gene = translator.translate(
-                    alignment.rname, alignment.strand, alignment.pos)
-            if gene is None:
-                gene = 0
+            genes = translator.translate(alignment.rname, alignment.strand, alignment.pos)
             pool = seqc.sequence.encodings.DNA3Bit.encode(alignment.pool)
             cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
             rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
             n_poly_t = alignment.poly_t.count(b'T')
             dust_score = alignment.dust_low_complexity_score
-            data[i] = (pool, cell, rmt, n_poly_t, dust_score, gene, alignment.pos)
+            data[i] = (pool, cell, rmt, n_poly_t, dust_score, 0, alignment.pos, genes)
 
         return cls(data)
 
@@ -201,7 +218,106 @@ class ReadArray:
 
         # store data
         f.create_table(f.root, 'data', self._data)
-        f.close()
+        f.close() 
+    
+    
+    def resolve_alignments(self, index, barcode_files, required_poly_t=1, reverse_complement = True, max_ed=2):
+        """
+        Resolve ambiguously aligned molecules and edit the ReadArray data structures
+        in-place to reflect the more specific gene assignments.
+        args:
+        index: path were p_coalignment_array.p is found - . 
+        required_poly_t (default: 0): the number of poly_t required for a read to be
+          considered a valid input for resolution. Reads lacking a poly_t tail are likely
+          to randomly prime into non-mRNA sequences, so requiring the presence of poly_t
+          in the 5' end of the forward read can reduce unwanted contamination
+        
+        After loading the co alignment matrix we group the reads of the ra by cell/rmt. In each group we look at the different disjoint subsetes of genes reads are aligned to.
+        For each subset there are 4 options:
+        1. It includes one gene only (no disambiguation).
+        2. There is a single gene that explains all (resolved gene)
+        3. There is more than one gene that can explain - can't be resolved
+        4. There are a few models - for now no single model is being picked.
+        """
+        
+        # Some constants
+        NO_DISAMBIGUATION = 0
+        RESOLVED_GENE = 1
+        NO_GENE_RESOLVED = 2
+        MULTIPLE_MODELS = 3
+        
+        reads_res = {NO_DISAMBIGUATION:0,RESOLVED_GENE:0,NO_GENE_RESOLVED:0,MULTIPLE_MODELS:0}
+        total_reads = 0
+
+        print('grouping for disambiguation')
+        #Group according to cell/RMT
+        g_ra = correct_errors.group_for_disambiguation(self, barcode_files, required_poly_t, reverse_complement, max_ed=2)
+        
+        # load the expectations
+        expectations = index + 'p_coalignment_array.p'
+        if os.path.isfile(expectations):
+            with open(expectations, 'rb') as f:
+                expectations = pickle.load(f)
+        elif isinstance(expectations, str):
+            raise FileNotFoundError('could not locate serialized expectations object: %s'
+                                    % expectations)
+        elif isinstance(expectations, dict):
+            pass  # expectations already loaded
+        else:
+            raise TypeError('invalid expectation object type, must be a dict expectation'
+                            ' object or a string filepath')
+        mat = multialignment.reduce_coalignment_array(expectations)
+        
+        print('disambiguating')
+        for g_ra_rec in g_ra.values():
+            obs = {}
+            for genes in g_ra_rec:
+                if genes == ():
+                    continue
+                if genes not in obs:
+                    obs[genes] = len(g_ra_rec[genes])
+                    total_reads += len(g_ra_rec[genes])
+            
+            res = []
+            if () in g_ra_rec:
+                if len(g_ra_rec) == 1:
+                    continue
+            if () in obs:
+                del obs[()]
+        
+            obs_s = multialignment.strip_model(obs)
+            ind_s = multialignment.strip_model(g_ra_rec)
+
+            subsets = multialignment.split_to_disjoint(obs_s)
+            for obs_subset in subsets:
+                models, r = multialignment.best_fit_model(obs_subset, mat)
+                reads_res[r] += sum(obs_subset.values())
+                if r==NO_DISAMBIGUATION or r==RESOLVED_GENE:
+                    model=models[0]
+                    indices = multialignment.get_indices(ind_s, obs_subset)
+                    g = multialignment.model_to_gene(model)
+                    for ind in indices:
+                        _self.data['gene'][ind] = g
+                        
+                        
+        print('Total reads in samfile: {}'.format(len(_self)))
+        print('Reads that passed the filter: {}'.format(total_reads))
+        print('Aligned reads: {}, resolved reads: {}, can\'t be resolved: {}, competing models (unhandeled): {}'.format(reads_res[NO_DISAMBIGUATION], 
+                reads_res[RESOLVED_GENE], reads_res[NO_GENE_RESOLVED], reads_res[MULTIPLE_MODELS]))
+
+        
+        seqc.log.info('Total reads in samfile: {}'.format(len(_self)))
+        seqc.log.info('Reads that passed the filter: {}'.format(total_reads))
+        seqc.log.info('Aligned reads: {}, resolved reads: {}, can\'t be resolved: {}, competing models (unhandeled): {}'.format(reads_res[NO_DISAMBIGUATION], 
+                reads_res[RESOLVED_GENE], reads_res[NO_GENE_RESOLVED], reads_res[MULTIPLE_MODELS]))
+        return
+        
+#    def mask_failing_records(self, n_poly_t_required):
+#        """Return a mask for failing records"""
+#        return ((self.data['cell'] != 0) &
+#                (self.data['rmt'] != 0) &
+#                (self.data['n_poly_t'] >= n_poly_t_required) &
+#                (self.data['gene'] != 0))
 
     @classmethod
     def load(cls, archive_name):

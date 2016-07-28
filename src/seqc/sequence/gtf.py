@@ -1,8 +1,7 @@
 import fileinput
 import string
-from collections import defaultdict
-
-from intervaltree import IntervalTree
+import bisect
+import time
 
 import seqc
 
@@ -161,28 +160,100 @@ class Gene(Record):
 class GeneIntervals:
 
     def __init__(self, gtf: str):
-        interval_tree = defaultdict(IntervalTree)
-        reader = Reader(gtf)
-        for gene in reader.iter_genes():
-            if gene.exons:
-                for start, end in gene.genomic_intervals():
-                    try:
-                        interval_tree[(gene.chromosome, gene.strand)].addi(
-                                start, end, gene.integer_gene_id)
-                    except ValueError:
-                        if start == end:  # ensure this is the reason the error was raised
-                            continue
-                        else:
-                            raise
+        self._pos_scid_dic = self.build_pos_scid_dic(gtf)
+        
+    def build_pos_scid_dic(self, fname):
+        start = time.process_time()
+        exons = []
+        res_dic = {'pos':{}, 'scid':{}} #The resulting dictionary holding two lists. the first is of positions sorted, the second is a list of scids relevant for that position onwards
 
-        self._interval_tree = interval_tree
+        with open(fname) as infile:
+            for line in infile:
+                if line[0]=='#':
+                    continue
+                type = line.split('\t')[2]
+                if type=='exon':    #Go over all exxons in a transcript and save them for later
+                    ex_start = int(line.split('\t')[3])
+                    ex_end = int(line.split('\t')[4])
+                    scid_ind = line.split('\t')[8].find('scseq_id')
+                    scid = line.split('\t')[8][scid_ind+10:-3]
+                    strand = line.split('\t')[6]
+                    if strand == '+':
+                        exons.append((ex_start, ex_end, scid))
+                    elif strand == '-':
+                        exons.insert(0,(ex_start, ex_end, scid))
+                    else:
+                        print('strand is neither - nor + ',strand)
+                else:
+                    if len(exons) > 0:  #we finished going over the tx, we need to calculate thae actual 1000 bases from its end, and log the coordinates of the exons
+                        tx_end = self.calc_tx_1k_end(exons)
+                        for ex_start, ex_end, scid in exons:
+                            if ex_end < tx_end:     #The exon ends before the relevant tx part starts
+                                continue
+                            if ex_start < tx_end:   #the exon starts before the 1000 limit but ends after
+                                ex_start = tx_end
+                        
+                            try:
+                                ind_start = bisect.bisect_left(res_dic['pos'][chr], ex_start)
+                            except KeyError:
+                                res_dic['pos'][chr] = [0]
+                                res_dic['scid'][chr] = [[]]
+                                ind_start = 1
+                            ind_end = ind_start + 1 # This is true since exons don't overlap (or at least shouldn't)
+                            if ex_start in res_dic['pos'][chr]:
+                                if scid not in res_dic['scid'][chr][ind_start]:
+                                    res_dic['scid'][chr][ind_start].append(scid)
+                            else:
+                                res_dic['pos'][chr].insert(ind_start, ex_start)
+                                prev_l = list(res_dic['scid'][chr][ind_start-1])
+                                if scid not in prev_l:
+                                    prev_l.append(scid)
+                                res_dic['scid'][chr].insert(ind_start, prev_l)
+                            
+                            
+                            if ex_end not in res_dic['pos'][chr]:   #There is nothing to do if the position is already marked, but if it isn't we need to add it to mark end of current scid
+                                res_dic['pos'][chr].insert(ind_end, ex_end)
+                                prev_l = list(res_dic['scid'][chr][ind_end-1])
+                                prev_l.remove(scid)
+                                res_dic['scid'][chr].insert(ind_end, prev_l)
+                        exons = []
+                    if type=='gene':
+                        try:
+                            chr = int(line.split('\t')[0])
+                        except ValueError:
+                            #chr is 'X'
+                            chr = 23
+        tot_time=time.process_time()-start
+        #print('time: ',tot_time)
+        return res_dic
+                    
 
-    def translate(self, chromosome: bytes, strand: bytes, position: int):
-            ivs = self._interval_tree[(chromosome, strand)].search(position)
-            if len(ivs) == 1:
-                return first(ivs).data
-            else:
-                return None
+    def calc_tx_1k_end(self, ex_list):
+    # find where is the actual position that's 1k bases from the tx end ()
+        remaining_len = 1000
+        for (ex_start, ex_end, scid) in reversed(ex_list):
+            len = ex_end - ex_start
+            if len >= remaining_len:
+                return ex_end - remaining_len
+            remaining_len -= len
+        # If we're here - tx is shorter than 1000 - return the start of the first exxon
+        return ex_list[0][0]
+    
+    #TODO: Make sure what to do with the strand in translate (I take care of it when building the dic, but what is it used for in translate?)
+    #TODO: when passing a position thats after the end of the chr it still returns one scid
+    def translate(self, chr, strand, pos):
+        chr_dic = {'X':23,'Y':24,'MT':25}
+        try:
+            int_chr = int(chr)
+        except ValueError:
+            try:
+                int_chr = chr_dic[chr]
+            except KeyError:
+                return -1	#this happens when it's a scaffold         
+            
+    # return a list of all scids for the input position
+        ind = bisect.bisect_right(self._pos_scid_dic['pos'][int_chr], pos) - 1
+        return self._pos_scid_dic['scid'][int_chr][ind]
 
 
 class Reader(seqc.reader.Reader):
