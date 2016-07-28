@@ -57,7 +57,8 @@ def retry_boto_call(func, retries=3, exceptions_to_catch=Exception, exception_to
             try:
                 return func(*args, **kwargs)
             except exceptions_to_catch as e:
-                seqc.log.notify("Non fatal error in function "+func.__qualname__+" --> "+str(e)+
+                if __debug__:
+                    seqc.log.notify("Non fatal error in function "+func.__qualname__+" --> "+str(e) +
                                     " | retrying in {nbr}s".format(nbr=delay_retry))
                 num_tries -= 1
                 if num_tries == 0:

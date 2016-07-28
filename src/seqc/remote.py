@@ -612,9 +612,9 @@ def cluster_cleanup():
                         entry = seqc_list[i]
                         inst_id = entry.split(':')[0]
                         instance = ec2.Instance(inst_id)
-                        if instance.state['Name'] == 'running':
+                        if instance and instance.state and instance.state['Name'] == 'running':
                             f.write('%s\n' % entry)
-                    except ClientError:
+                    except (ClientError, KeyError):
                         continue
     else:
         pass  # instances.txt file has not yet been created
@@ -645,7 +645,7 @@ class SSHServer(object):
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             retry_boto_call(func=self.ssh.connect, retries=25,
-                            exceptions_to_catch=(socket.error),
+                            exceptions_to_catch=socket.error,
                             exception_to_raise=RuntimeError("Authentication to EC2 failed with key %s." % self.key),
                             delay_retry=5)(self.instance.public_dns_name, username='ubuntu', key_filename=self.key,
                                            timeout=3.0)
