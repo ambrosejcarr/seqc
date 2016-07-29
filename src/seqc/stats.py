@@ -748,14 +748,15 @@ class smoothing:
     """
 
     @staticmethod
-    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False, **kwargs):
+    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, pca=None, **kwargs):
         """
         Smooth gene expression values by setting the expression of each gene in each
         cell equal to the mean value of itself and its n_neighbors
 
         :param data: np.ndarray | pd.DataFrame; genes x cells array
         :param n_neighbors: int; number of neighbors to smooth over
-        :param run_pca: bool; reduce features by PCA prior to computing distances
+        :param pca: dimensionality reduced matrix, knn will be run on this and applied
+          to data (runs much faster)
         :param kwargs: keyword arguments to pass sklearn.NearestNeighbors
         :return: np.ndarray | pd.DataFrame; same as input
         """
@@ -768,17 +769,18 @@ class smoothing:
             data_ = data
         else:
             raise TypeError("data must be a pd.DataFrame or np.ndarray")
-        if run_pca:
-            pca = PCA(n_components=100)
-            data_ = pca.fit_transform(data_)
 
         knn = NearestNeighbors(
             n_neighbors=n_neighbors,
             n_jobs=multiprocessing.cpu_count() - 1,
             **kwargs)
 
-        knn.fit(data_)
-        inds = knn.kneighbors(data_, return_distance=False)
+        if pca is not None:
+            knn.fit(pca)
+            inds = knn.kneighbors(pca, return_distance=False)
+        else:
+            knn.fit(data_)
+            inds = knn.kneighbors(data_, return_distance=False)
 
         # smoothing creates large intermediates; break up to avoid memory errors
         pieces = []
