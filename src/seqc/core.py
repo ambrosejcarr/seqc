@@ -306,7 +306,7 @@ class ReadArray:
                 reads_res[RESOLVED_GENE], reads_res[NO_GENE_RESOLVED], reads_res[MULTIPLE_MODELS]))
 
         
-        seqc.log.info('Total reads in samfile: {}'.format(len(_self)))
+        seqc.log.info('Total reads in samfile: {}'.format(len(self)))
         seqc.log.info('Reads that passed the filter: {}'.format(total_reads))
         seqc.log.info('Aligned reads: {}, resolved reads: {}, can\'t be resolved: {}, competing models (unhandeled): {}'.format(reads_res[NO_DISAMBIGUATION], 
                 reads_res[RESOLVED_GENE], reads_res[NO_GENE_RESOLVED], reads_res[MULTIPLE_MODELS]))
