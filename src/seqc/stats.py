@@ -1,4 +1,9 @@
 import os
+import re
+import glob
+import shutil
+import warnings
+import shlex
 import numpy as np
 from numpy import ma
 import pandas as pd
@@ -6,8 +11,8 @@ import multiprocessing
 import fastcluster
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import TSNE
-import warnings
 import time
+from scipy.special import expit
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from scipy.spatial.distance import pdist
@@ -798,6 +803,7 @@ class smoothing:
                                columns=data.columns)
         return res
 
+
 class JavaGSEA:
 
     def __init__(self, correlations):
@@ -805,12 +811,17 @@ class JavaGSEA:
         :param correlations: a pandas series of correlations in the range of [-1, 1] whose
           index contains gene names
         """
-        if isinstance(correlations, pd.Series):
-            self._correlations = correlations
-        else:
+        if not isinstance(correlations, pd.Series):
             raise TypeError('correlations must be a pandas series')
-
+        if not ((np.min(correlations) >= -1) & (np.max(correlations) <= 1)):
+            raise RuntimeError('input correlations were not contained within the interval [-1, 1]. '
+                               'Please use JavaGSEA.linear_scale() or JavaGSEA.logistic_scale() to '
+                               'scale values to this interval before running.')
+        self._correlations = correlations
         self._rnk = None
+        self._output_stem = os.environ['TMPDIR'] + 'gsea_corr_{!s}'.format(
+            np.random.randint(0, 1000000))
+        self._results = {}
 
     @property
     def correlations(self):
@@ -820,28 +831,63 @@ class JavaGSEA:
     def correlations(self):
         raise RuntimeError('Please create a new object to compare different correlations')
 
-    def _save_rank_file(self):
+    @property
+    def results(self):
+        return self._results
+
+    @staticmethod
+    def linear_scale(data: pd.Series) -> pd.Series:
+        """scale input vector to interval [-1, 1] using a linear scaling
+        :return correlations: pd.Series, data scaled to the interval [-1, 1]
         """
+        data = data.copy()
+        data -= np.min(data, axis=0)
+        data /= np.max(data, axis=0) / 2
+        data -= 1
+        return data
 
-        :return:
+    #todo @ajc think about removing non-significant genes before scaling by logistic function
+    @staticmethod
+    def logistic_scale(data: pd.Series) -> pd.Series:
+        """scale input vector to interval [-1, 1] using a sigmoid scaling
+        :return correlations: pd.Series, data scaled to the interval [-1, 1]
         """
-        self._rnk = os.environ['TMPDIR'] + 'gsea_corr_{!s}.rnk'.format(
-            np.random.randint(0, 100000))
-        pd.DataFrame(self._correlations).fillna(0).to_csv(genes_file, sep='\t', header=False)
+        return (expit(data) * 2) - 1
 
+    def _save_rank_file(self) -> None:
+        """save the correlations to a .rnk file in TMPDIR
 
-    @classmethod
-    def run_gsea(cls, rnk_file: str, output_stem: str,
-                                gmt_file: str = None):
-        """
-        Helper function. Run GSEA on an already-ranked list of corrleations
-
-        :param rnk_file: .rnk file containing correlations in ranked order according to
-          an independent variable.
-        :param output_stem: location for GSEA output
-        :param gmt_file: location for .gmt file containing gene sets to be tested
         :return: None
         """
+        self._rnk = self._output_stem + '.rnk'
+        pd.DataFrame(self._correlations).fillna(0).to_csv(self._rnk, sep='\t', header=False)
+
+    @staticmethod
+    def _gmt_options():
+        """
+        Private method. identifies GMT files available for mouse or human genomes
+        :return: str, file options
+        """
+
+        mouse_options = os.listdir(os.path.expanduser('~/.seqc/tools/mouse'))
+        human_options = os.listdir(os.path.expanduser('~/.seqc/tools/human'))
+        print('Available GSEA .gmt files:\n\nmouse:\n{m}\n\nhuman:\n{h}\n'.format(
+                m='\n'.join(mouse_options),
+                h='\n'.join(human_options)))
+        print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
+
+    def run(self, gmt_file: (str, str) = None, output_stem: str = None) -> (pd.DataFrame, pd.DataFrame):
+        """
+        Helper function. Run GSEA on an already-ranked list of corrleations. To see available files,
+          leave gmt_file parameter empty
+
+        :param output_stem: location for GSEA output
+        :param gmt_file: (organism: str, filename: str) organism and filename of the gmt file to use
+        :return: positive, negative: pd.DataFrames containing GSEA enrichment results
+        """
+
+        if output_stem is None:
+            output_stem = self._output_stem
 
         if output_stem.find('-') > -1:
             raise ValueError('ouptput_stem cannot contain special characters such as -')
@@ -849,8 +895,11 @@ class JavaGSEA:
         out_dir, out_prefix = os.path.split(output_stem)
         os.makedirs(out_dir, exist_ok=True)
 
+        if self._rnk is None:
+            self._save_rank_file()
+
         if not gmt_file:
-            cls._gmt_options()
+            self._gmt_options()
             return
         else:
             if not len(gmt_file) == 2:
@@ -865,32 +914,38 @@ class JavaGSEA:
             '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
             '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
             '-rpt_label {out_prefix} -out {out_dir}/ -gmx {gmt_file}'
-            ''.format(user=os.path.expanduser('~'), rnk=rnk_file, out_prefix=out_prefix,
+            ''.format(user=os.path.expanduser('~'), rnk=self._rnk, out_prefix=out_prefix,
                       out_dir=out_dir, gmt_file=gmt_file))
 
         # Call GSEA
-        p = Popen(cmd, stderr=PIPE)
+        p = subprocess.Popen(cmd, stderr=subprocess.PIPE)
         _, err = p.communicate()
 
-        # remove annoying suffix from GSEA
+        # find the file that GSEA created
         if err:
             print(err.decode())
             return
         else:
             pattern = '{p}.GseaPreranked.[0-9]*'.format(p=out_prefix)
-            repl = out_prefix
             files = os.listdir(out_dir)
+            folder = None
             for f in files:
                 mo = re.match(pattern, f)
                 if mo:
-                    curr_name = mo.group(0)
-                    shutil.move('{}/{}'.format(out_dir, curr_name),
-                                '{}/{}'.format(out_dir, repl))
-                    return err
+                    folder = os.environ['TMPDIR'] + mo.group(0)
+        if folder is None:
+            raise RuntimeError('seqc.JavaGSEA was not able to recover the output of the Java executable. '
+                               'This likely represents a bug.')
 
-            # execute if file cannot be found
-            return b'GSEA output pattern was not found, and could not be changed.'
-
+        # recover information from run
+        names = ['size', 'es', 'nes', 'p', 'fdr_q', 'fwer_p', 'rank_at_max', 'leading_edge']
+        pos = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*pos*xls')[0], sep='\t').iloc[:, :-1]
+        pos.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
+        neg = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*neg*xls')[0], sep='\t').iloc[:, :-1]
+        neg.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
+        pos.columns, neg.columns = names, names
+        self._results[gmt_file] = {'positive': pos, 'negative': neg}
+        return self._results[gmt_file]
 
 class GSEA:
 
@@ -1771,7 +1826,7 @@ class DifferentialExpression:
 
         return p_adj, statistic, mu
 
-        def population_markers(self, p_crit=0.0):
+    def population_markers(self, p_crit=0.0):
         """
         Return markers that are significantly differentially expressed in one
         population vs all others
