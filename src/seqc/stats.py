@@ -798,6 +798,99 @@ class smoothing:
                                columns=data.columns)
         return res
 
+class JavaGSEA:
+
+    def __init__(self, correlations):
+        """initialize a gsea object
+        :param correlations: a pandas series of correlations in the range of [-1, 1] whose
+          index contains gene names
+        """
+        if isinstance(correlations, pd.Series):
+            self._correlations = correlations
+        else:
+            raise TypeError('correlations must be a pandas series')
+
+        self._rnk = None
+
+    @property
+    def correlations(self):
+        return self._correlations
+
+    @correlations.setter
+    def correlations(self):
+        raise RuntimeError('Please create a new object to compare different correlations')
+
+    def _save_rank_file(self):
+        """
+
+        :return:
+        """
+        self._rnk = os.environ['TMPDIR'] + 'gsea_corr_{!s}.rnk'.format(
+            np.random.randint(0, 100000))
+        pd.DataFrame(self._correlations).fillna(0).to_csv(genes_file, sep='\t', header=False)
+
+
+    @classmethod
+    def run_gsea(cls, rnk_file: str, output_stem: str,
+                                gmt_file: str = None):
+        """
+        Helper function. Run GSEA on an already-ranked list of corrleations
+
+        :param rnk_file: .rnk file containing correlations in ranked order according to
+          an independent variable.
+        :param output_stem: location for GSEA output
+        :param gmt_file: location for .gmt file containing gene sets to be tested
+        :return: None
+        """
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
+
+        out_dir, out_prefix = os.path.split(output_stem)
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not gmt_file:
+            cls._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=rnk_file, out_prefix=out_prefix,
+                      out_dir=out_dir, gmt_file=gmt_file))
+
+        # Call GSEA
+        p = Popen(cmd, stderr=PIPE)
+        _, err = p.communicate()
+
+        # remove annoying suffix from GSEA
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}.GseaPreranked.[0-9]*'.format(p=out_prefix)
+            repl = out_prefix
+            files = os.listdir(out_dir)
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    curr_name = mo.group(0)
+                    shutil.move('{}/{}'.format(out_dir, curr_name),
+                                '{}/{}'.format(out_dir, repl))
+                    return err
+
+            # execute if file cannot be found
+            return b'GSEA output pattern was not found, and could not be changed.'
+
 
 class GSEA:
 
@@ -1678,7 +1771,7 @@ class DifferentialExpression:
 
         return p_adj, statistic, mu
 
-    def population_markers(self, p_crit=0.0):
+        def population_markers(self, p_crit=0.0):
         """
         Return markers that are significantly differentially expressed in one
         population vs all others
