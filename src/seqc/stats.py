@@ -1388,6 +1388,11 @@ class ExpressionTree:
           the minimum value between the two is selected.
         """
 
+        # check that data are raw molecule counts (positive integer values)
+        if np.any(a < 0) or np.any(b < 0):
+            raise TypeError('entries of matrix a and b must be positive integer molecule '
+                            'counts')
+
         # get downsample function
         if isinstance(downsample_value_function, float):
             if 0 < downsample_value_function <= 1:
