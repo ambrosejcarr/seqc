@@ -261,6 +261,7 @@ class GraphDiffusion:
         self.eigenvalues = D
         self.diffusion_operator = T
         self.weights = W
+        return {'operator': T, 'eigval': D, 'eigvec': V, 'weights': W}
 
 
 class NormalizeCells:
