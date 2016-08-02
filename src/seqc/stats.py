@@ -474,8 +474,8 @@ class PCA:
             raise TypeError('data must be a pd.DataFrame or np.ndarray')
 
         if fillna is not None:
-            data[np.where(np.isnan(data))] = fillna
-            data[np.where(np.isinf(data))] = fillna
+            X[np.where(np.isnan(X))] = fillna
+            X[np.where(np.isinf(X))] = fillna
 
         # Make sure data is zero mean
         # X = ScaleFeatures.unit_size(X)
