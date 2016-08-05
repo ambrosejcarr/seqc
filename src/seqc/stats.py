@@ -1520,89 +1520,6 @@ class ExpressionTree:
             """plot a dendrogram on ax"""
             augmented_dendrogram(self.linkage, ax=ax, **kwargs)
 
-    @staticmethod
-    def resampled_welchs_t(
-            a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
-            alpha=0.01):
-        """
-        Return t-statistic from resampled populations a and b
-
-        :param a: n cells x k genes np.ndarray
-        :param b: m cells x k genes np.ndarray
-        :param n_iter: number of times to resample a and b
-        :param downsample_value_function: options: 'mean', 'median' or float percentile
-          in the interval (0, 1]. Function to apply to find the value that a & b should
-          be sampled to. Default: median. A and B are subjected to these functions, and
-          the minimum value between the two is selected.
-        """
-
-        # check that data are raw molecule counts (positive integer values)
-        if np.any(a < 0) or np.any(b < 0):
-            raise TypeError('entries of matrix a and b must be positive integer molecule '
-                            'counts')
-
-        # get downsample function
-        if isinstance(downsample_value_function, float):
-            if 0 < downsample_value_function <= 1:
-                downsample_value_function = partial(np.percentile, q=downsample_value_function * 100)
-            else:
-                raise ValueError('If using a float value for downsample_value_function, the value must fall in the '
-                                 'interval (0, 1].')
-        elif downsample_value_function is 'mean':
-            downsample_value_function = np.mean
-        elif downsample_value_function is 'median' or downsample_value_function is None:
-            downsample_value_function = np.median
-
-        # get sampling value
-        n = min(downsample_value_function(a.sum(axis=1)), downsample_value_function(b.sum(axis=1))).astype(int)
-
-        # normalize cells and obtain probability vectors
-        a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
-        b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
-
-        # determine iterations per process
-        n_cpu = multiprocessing.cpu_count() - 1
-        if n_iter > n_cpu:
-            size = np.array([n_iter // n_cpu] * n_cpu)
-            size[:n_iter % n_cpu] += 1
-        else:
-            size = np.ones((n_iter,))
-
-        # map to a process pool
-        a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
-        b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
-        with closing(multiprocessing.Pool(n_cpu)) as pool:
-            a_res = pool.map(a_sampler, size)
-            b_res = pool.map(b_sampler, size)
-            a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
-            b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
-
-        # no nans should be produced by the mean
-        assert np.sum(np.isnan(a_mu)) == 0
-        assert np.sum(np.isnan(b_mu)) == 0
-
-        # in cases where variance is np.nan, we can safely set the variance to zero since
-        # the mean will also be zero; this will reduce singularities caused by one tissue
-        # never expressing a protein.
-        a_var[np.isnan(a_var)] = 0
-        b_var[np.isnan(b_var)] = 0
-
-        numerator = a_mu - b_mu  # (samples, genes)
-        denominator = np.sqrt(a_var + b_var)  # (samples, genes)
-        statistic = numerator / denominator  # (samples, genes)
-
-        # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
-        statistic[np.isnan(statistic)] = 0  # calculate df
-
-        df = 2
-
-        statistic = statistic.mean(axis=0)
-        p = t.cdf(np.abs(statistic), df)
-
-        q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
-
-        return statistic, q
-
     def create_hierarchy(self, method='ward', **kwargs):
         """
         hierarchically cluster cluster centroids and store the results as self.tree
@@ -1618,6 +1535,7 @@ class ExpressionTree:
         linkage = fastcluster.linkage(distance, method=method, **kwargs)
 
         self._tree = self.Tree(linkage)
+
 
     def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000, **kwargs):
         """
@@ -1646,7 +1564,7 @@ class ExpressionTree:
             l_cells = np.in1d(self.group_assignments, l_clusters)
             r_cells = np.in1d(self.group_assignments, r_clusters)
             alpha_adj = self.alpha / (len(set(self.group_assignments)) - 1)
-            res = self.resampled_welchs_t(
+            res = resampled_t(
                 self.data[l_cells],
                 self.data[r_cells],
                 n_iter=n_iter,
@@ -1861,3 +1779,92 @@ class DifferentialExpression:
             pass  # todo fix this
 
         return marker_genes
+
+
+
+def resampled_t(
+        a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
+        alpha=0.01):
+    """
+    Return t-statistic from resampled populations a and b
+
+    :param a: n cells x k genes np.ndarray
+    :param b: m cells x k genes np.ndarray
+    :param n_iter: number of times to resample a and b
+    :param downsample_value_function: options: 'mean', 'median' or float percentile
+      in the interval (0, 1]. Function to apply to find the value that a & b should
+      be sampled to. Default: median. A and B are subjected to these functions, and
+      the minimum value between the two is selected.
+    """
+
+    # check that data are raw molecule counts (positive integer values)
+    if np.any(a < 0) or np.any(b < 0):
+        raise TypeError('entries of matrix a and b must be positive integer molecule '
+                        'counts')
+
+    # get downsample function
+    if isinstance(downsample_value_function, float):
+        if 0 < downsample_value_function <= 1:
+            downsample_value_function = partial(np.percentile,
+                                                q=downsample_value_function * 100)
+        else:
+            raise ValueError(
+                'If using a float value for downsample_value_function, the value must fall in the '
+                'interval (0, 1].')
+    elif downsample_value_function is 'mean':
+        downsample_value_function = np.mean
+    elif downsample_value_function is 'median' or downsample_value_function is None:
+        downsample_value_function = np.median
+
+    # get sampling value
+    n = min(downsample_value_function(a.sum(axis=1)),
+            downsample_value_function(b.sum(axis=1))).astype(int)
+
+    # normalize cells and obtain probability vectors
+    a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+    b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+
+    # todo build null distribution from permuted sample labels
+
+    # determine iterations per process
+    n_cpu = multiprocessing.cpu_count() - 1
+    if n_iter > n_cpu:
+        size = np.array([n_iter // n_cpu] * n_cpu)
+        size[:n_iter % n_cpu] += 1
+    else:
+        size = np.ones((n_iter,))
+
+    # map to a process pool
+    a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
+    b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
+    with closing(multiprocessing.Pool(n_cpu)) as pool:
+        a_res = pool.map(a_sampler, size)
+        b_res = pool.map(b_sampler, size)
+        a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
+        b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
+
+    # no nans should be produced by the mean
+    assert np.sum(np.isnan(a_mu)) == 0
+    assert np.sum(np.isnan(b_mu)) == 0
+
+    # in cases where variance is np.nan, we can safely set the variance to zero since
+    # the mean will also be zero; this will reduce singularities caused by one tissue
+    # never expressing a protein.
+    a_var[np.isnan(a_var)] = 0
+    b_var[np.isnan(b_var)] = 0
+
+    numerator = a_mu - b_mu  # (samples, genes)
+    denominator = np.sqrt(a_var + b_var)  # (samples, genes)
+    statistic = numerator / denominator  # (samples, genes)
+
+    # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
+    statistic[np.isnan(statistic)] = 0  # calculate df
+
+    df = 2
+
+    statistic = statistic.mean(axis=0)
+    p = t.cdf(np.abs(statistic), df)
+
+    q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
+
+    return statistic, q
