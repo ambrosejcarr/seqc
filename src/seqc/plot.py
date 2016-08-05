@@ -245,7 +245,7 @@ class scatter:
 
         labels, colors = zip(*sorted(category_to_color.items()))
         if legend:
-            add_legend_to_categorical_vector(colors, labels, ax, **legend_kwargs)
+            add_legend_to_categorical_vector(colors, labels, ax, markerscale=2, **legend_kwargs)
         return ax
 
     @staticmethod

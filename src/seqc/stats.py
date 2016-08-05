@@ -1,4 +1,9 @@
 import os
+import re
+import glob
+import shutil
+import warnings
+import shlex
 import numpy as np
 from numpy import ma
 import pandas as pd
@@ -6,8 +11,8 @@ import multiprocessing
 import fastcluster
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import TSNE
-import warnings
 import time
+from scipy.special import expit
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
 from scipy.spatial.distance import pdist
@@ -755,14 +760,15 @@ class smoothing:
     """
 
     @staticmethod
-    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, run_pca=False, **kwargs):
+    def kneighbors(data: np.array or pd.DataFrame, n_neighbors=50, pca=None, **kwargs):
         """
         Smooth gene expression values by setting the expression of each gene in each
         cell equal to the mean value of itself and its n_neighbors
 
         :param data: np.ndarray | pd.DataFrame; genes x cells array
         :param n_neighbors: int; number of neighbors to smooth over
-        :param run_pca: bool; reduce features by PCA prior to computing distances
+        :param pca: dimensionality reduced matrix, knn will be run on this and applied
+          to data (runs much faster)
         :param kwargs: keyword arguments to pass sklearn.NearestNeighbors
         :return: np.ndarray | pd.DataFrame; same as input
         """
@@ -775,17 +781,18 @@ class smoothing:
             data_ = data
         else:
             raise TypeError("data must be a pd.DataFrame or np.ndarray")
-        if run_pca:
-            pca = PCA(n_components=100)
-            data_ = pca.fit_transform(data_)
 
         knn = NearestNeighbors(
             n_neighbors=n_neighbors,
             n_jobs=multiprocessing.cpu_count() - 1,
             **kwargs)
 
-        knn.fit(data_)
-        inds = knn.kneighbors(data_, return_distance=False)
+        if pca is not None:
+            knn.fit(pca)
+            inds = knn.kneighbors(pca, return_distance=False)
+        else:
+            knn.fit(data_)
+            inds = knn.kneighbors(data_, return_distance=False)
 
         # smoothing creates large intermediates; break up to avoid memory errors
         pieces = []
@@ -803,6 +810,149 @@ class smoothing:
                                columns=data.columns)
         return res
 
+
+class JavaGSEA:
+
+    def __init__(self, correlations):
+        """initialize a gsea object
+        :param correlations: a pandas series of correlations in the range of [-1, 1] whose
+          index contains gene names
+        """
+        if not isinstance(correlations, pd.Series):
+            raise TypeError('correlations must be a pandas series')
+        if not ((np.min(correlations) >= -1) & (np.max(correlations) <= 1)):
+            raise RuntimeError('input correlations were not contained within the interval [-1, 1]. '
+                               'Please use JavaGSEA.linear_scale() or JavaGSEA.logistic_scale() to '
+                               'scale values to this interval before running.')
+        self._correlations = correlations
+        self._rnk = None
+        self._output_stem = os.environ['TMPDIR'] + 'gsea_corr_{!s}'.format(
+            np.random.randint(0, 1000000))
+        self._results = {}
+
+    @property
+    def correlations(self):
+        return self._correlations
+
+    @correlations.setter
+    def correlations(self):
+        raise RuntimeError('Please create a new object to compare different correlations')
+
+    @property
+    def results(self):
+        return self._results
+
+    @staticmethod
+    def linear_scale(data: pd.Series) -> pd.Series:
+        """scale input vector to interval [-1, 1] using a linear scaling
+        :return correlations: pd.Series, data scaled to the interval [-1, 1]
+        """
+        data = data.copy()
+        data -= np.min(data, axis=0)
+        data /= np.max(data, axis=0) / 2
+        data -= 1
+        return data
+
+    #todo @ajc think about removing non-significant genes before scaling by logistic function
+    @staticmethod
+    def logistic_scale(data: pd.Series) -> pd.Series:
+        """scale input vector to interval [-1, 1] using a sigmoid scaling
+        :return correlations: pd.Series, data scaled to the interval [-1, 1]
+        """
+        return (expit(data) * 2) - 1
+
+    def _save_rank_file(self) -> None:
+        """save the correlations to a .rnk file in TMPDIR
+
+        :return: None
+        """
+        self._rnk = self._output_stem + '.rnk'
+        pd.DataFrame(self._correlations).fillna(0).to_csv(self._rnk, sep='\t', header=False)
+
+    @staticmethod
+    def _gmt_options():
+        """
+        Private method. identifies GMT files available for mouse or human genomes
+        :return: str, file options
+        """
+
+        mouse_options = os.listdir(os.path.expanduser('~/.seqc/tools/mouse'))
+        human_options = os.listdir(os.path.expanduser('~/.seqc/tools/human'))
+        print('Available GSEA .gmt files:\n\nmouse:\n{m}\n\nhuman:\n{h}\n'.format(
+                m='\n'.join(mouse_options),
+                h='\n'.join(human_options)))
+        print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
+
+    def run(self, gmt_file: (str, str) = None, output_stem: str = None) -> (pd.DataFrame, pd.DataFrame):
+        """
+        Helper function. Run GSEA on an already-ranked list of corrleations. To see available files,
+          leave gmt_file parameter empty
+
+        :param output_stem: location for GSEA output
+        :param gmt_file: (organism: str, filename: str) organism and filename of the gmt file to use
+        :return: positive, negative: pd.DataFrames containing GSEA enrichment results
+        """
+
+        if output_stem is None:
+            output_stem = self._output_stem
+
+        if output_stem.find('-') > -1:
+            raise ValueError('ouptput_stem cannot contain special characters such as -')
+
+        out_dir, out_prefix = os.path.split(output_stem)
+        os.makedirs(out_dir, exist_ok=True)
+
+        if self._rnk is None:
+            self._save_rank_file()
+
+        if not gmt_file:
+            self._gmt_options()
+            return
+        else:
+            if not len(gmt_file) == 2:
+                raise ValueError('gmt_file should be a tuple of (organism, filename).')
+            else:
+                gmt_file = os.path.expanduser('~/.seqc/tools/{}/{}').format(*gmt_file)
+
+        # Construct the GSEA call
+        cmd = shlex.split(
+            'java -cp {user}/.seqc/tools/gsea2-2.2.1.jar -Xmx1g '
+            'xtools.gsea.GseaPreranked -collapse false -mode Max_probe -norm meandiv '
+            '-nperm 1000 -include_only_symbols true -make_sets true -plot_top_x 0 '
+            '-set_max 500 -set_min 50 -zip_report false -gui false -rnk {rnk} '
+            '-rpt_label {out_prefix} -out {out_dir}/ -gmx {gmt_file}'
+            ''.format(user=os.path.expanduser('~'), rnk=self._rnk, out_prefix=out_prefix,
+                      out_dir=out_dir, gmt_file=gmt_file))
+
+        # Call GSEA
+        p = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+        _, err = p.communicate()
+
+        # find the file that GSEA created
+        if err:
+            print(err.decode())
+            return
+        else:
+            pattern = '{p}.GseaPreranked.[0-9]*'.format(p=out_prefix)
+            files = os.listdir(out_dir)
+            folder = None
+            for f in files:
+                mo = re.match(pattern, f)
+                if mo:
+                    folder = os.environ['TMPDIR'] + mo.group(0)
+        if folder is None:
+            raise RuntimeError('seqc.JavaGSEA was not able to recover the output of the Java executable. '
+                               'This likely represents a bug.')
+
+        # recover information from run
+        names = ['size', 'es', 'nes', 'p', 'fdr_q', 'fwer_p', 'rank_at_max', 'leading_edge']
+        pos = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*pos*xls')[0], sep='\t').iloc[:, :-1]
+        pos.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
+        neg = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*neg*xls')[0], sep='\t').iloc[:, :-1]
+        neg.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
+        pos.columns, neg.columns = names, names
+        self._results[gmt_file] = {'positive': pos, 'negative': neg}
+        return self._results[gmt_file]
 
 class GSEA:
 
@@ -1377,84 +1527,6 @@ class ExpressionTree:
             """plot a dendrogram on ax"""
             augmented_dendrogram(self.linkage, ax=ax, **kwargs)
 
-    @staticmethod
-    def resampled_welchs_t(
-            a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
-            alpha=0.01):
-        """
-        Return t-statistic from resampled populations a and b
-
-        :param a: n cells x k genes np.ndarray
-        :param b: m cells x k genes np.ndarray
-        :param n_iter: number of times to resample a and b
-        :param downsample_value_function: options: 'mean', 'median' or float percentile
-          in the interval (0, 1]. Function to apply to find the value that a & b should
-          be sampled to. Default: median. A and B are subjected to these functions, and
-          the minimum value between the two is selected.
-        """
-
-        # get downsample function
-        if isinstance(downsample_value_function, float):
-            if 0 < downsample_value_function <= 1:
-                downsample_value_function = partial(np.percentile, q=downsample_value_function * 100)
-            else:
-                raise ValueError('If using a float value for downsample_value_function, the value must fall in the '
-                                 'interval (0, 1].')
-        elif downsample_value_function is 'mean':
-            downsample_value_function = np.mean
-        elif downsample_value_function is 'median' or downsample_value_function is None:
-            downsample_value_function = np.median
-
-        # get sampling value
-        n = min(downsample_value_function(a.sum(axis=1)), downsample_value_function(b.sum(axis=1))).astype(int)
-
-        # normalize cells and obtain probability vectors
-        a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
-        b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
-
-        # determine iterations per process
-        n_cpu = multiprocessing.cpu_count() - 1
-        if n_iter > n_cpu:
-            size = np.array([n_iter // n_cpu] * n_cpu)
-            size[:n_iter % n_cpu] += 1
-        else:
-            size = np.ones((n_iter,))
-
-        # map to a process pool
-        a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
-        b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
-        with closing(multiprocessing.Pool(n_cpu)) as pool:
-            a_res = pool.map(a_sampler, size)
-            b_res = pool.map(b_sampler, size)
-            a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
-            b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
-
-        # no nans should be produced by the mean
-        assert np.sum(np.isnan(a_mu)) == 0
-        assert np.sum(np.isnan(b_mu)) == 0
-
-        # in cases where variance is np.nan, we can safely set the variance to zero since
-        # the mean will also be zero; this will reduce singularities caused by one tissue
-        # never expressing a protein.
-        a_var[np.isnan(a_var)] = 0
-        b_var[np.isnan(b_var)] = 0
-
-        numerator = a_mu - b_mu  # (samples, genes)
-        denominator = np.sqrt(a_var + b_var)  # (samples, genes)
-        statistic = numerator / denominator  # (samples, genes)
-
-        # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
-        statistic[np.isnan(statistic)] = 0  # calculate df
-
-        df = 2
-
-        statistic = statistic.mean(axis=0)
-        p = t.cdf(np.abs(statistic), df)
-
-        q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
-
-        return statistic, q
-
     def create_hierarchy(self, method='ward', **kwargs):
         """
         hierarchically cluster cluster centroids and store the results as self.tree
@@ -1470,6 +1542,7 @@ class ExpressionTree:
         linkage = fastcluster.linkage(distance, method=method, **kwargs)
 
         self._tree = self.Tree(linkage)
+
 
     def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000, **kwargs):
         """
@@ -1498,7 +1571,7 @@ class ExpressionTree:
             l_cells = np.in1d(self.group_assignments, l_clusters)
             r_cells = np.in1d(self.group_assignments, r_clusters)
             alpha_adj = self.alpha / (len(set(self.group_assignments)) - 1)
-            res = self.resampled_welchs_t(
+            res = resampled_t(
                 self.data[l_cells],
                 self.data[r_cells],
                 n_iter=n_iter,
@@ -1713,3 +1786,92 @@ class DifferentialExpression:
             pass  # todo fix this
 
         return marker_genes
+
+
+
+def resampled_t(
+        a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
+        alpha=0.01):
+    """
+    Return t-statistic from resampled populations a and b
+
+    :param a: n cells x k genes np.ndarray
+    :param b: m cells x k genes np.ndarray
+    :param n_iter: number of times to resample a and b
+    :param downsample_value_function: options: 'mean', 'median' or float percentile
+      in the interval (0, 1]. Function to apply to find the value that a & b should
+      be sampled to. Default: median. A and B are subjected to these functions, and
+      the minimum value between the two is selected.
+    """
+
+    # check that data are raw molecule counts (positive integer values)
+    if np.any(a < 0) or np.any(b < 0):
+        raise TypeError('entries of matrix a and b must be positive integer molecule '
+                        'counts')
+
+    # get downsample function
+    if isinstance(downsample_value_function, float):
+        if 0 < downsample_value_function <= 1:
+            downsample_value_function = partial(np.percentile,
+                                                q=downsample_value_function * 100)
+        else:
+            raise ValueError(
+                'If using a float value for downsample_value_function, the value must fall in the '
+                'interval (0, 1].')
+    elif downsample_value_function is 'mean':
+        downsample_value_function = np.mean
+    elif downsample_value_function is 'median' or downsample_value_function is None:
+        downsample_value_function = np.median
+
+    # get sampling value
+    n = min(downsample_value_function(a.sum(axis=1)),
+            downsample_value_function(b.sum(axis=1))).astype(int)
+
+    # normalize cells and obtain probability vectors
+    a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+    b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
+
+    # todo build null distribution from permuted sample labels
+
+    # determine iterations per process
+    n_cpu = multiprocessing.cpu_count() - 1
+    if n_iter > n_cpu:
+        size = np.array([n_iter // n_cpu] * n_cpu)
+        size[:n_iter % n_cpu] += 1
+    else:
+        size = np.ones((n_iter,))
+
+    # map to a process pool
+    a_sampler = partial(_sampling_function, n_molecules=n, theta=a_prob, n_cells=n_cells)
+    b_sampler = partial(_sampling_function, n_molecules=n, theta=b_prob, n_cells=n_cells)
+    with closing(multiprocessing.Pool(n_cpu)) as pool:
+        a_res = pool.map(a_sampler, size)
+        b_res = pool.map(b_sampler, size)
+        a_mu, a_var = (np.vstack(mats) for mats in zip(*a_res))
+        b_mu, b_var = (np.vstack(mats) for mats in zip(*b_res))
+
+    # no nans should be produced by the mean
+    assert np.sum(np.isnan(a_mu)) == 0
+    assert np.sum(np.isnan(b_mu)) == 0
+
+    # in cases where variance is np.nan, we can safely set the variance to zero since
+    # the mean will also be zero; this will reduce singularities caused by one tissue
+    # never expressing a protein.
+    a_var[np.isnan(a_var)] = 0
+    b_var[np.isnan(b_var)] = 0
+
+    numerator = a_mu - b_mu  # (samples, genes)
+    denominator = np.sqrt(a_var + b_var)  # (samples, genes)
+    statistic = numerator / denominator  # (samples, genes)
+
+    # statistic has NaNs where there are no observations of a or b (DivideByZeroError)
+    statistic[np.isnan(statistic)] = 0  # calculate df
+
+    df = 2
+
+    statistic = statistic.mean(axis=0)
+    p = t.cdf(np.abs(statistic), df)
+
+    q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
+
+    return statistic, q
