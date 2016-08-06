@@ -213,19 +213,13 @@ class ReadArray:
         not_phix = ~np.in1d(data['gene'], phix_genes)
         data = data[not_phix]
 
-        # filter out N's in cell barcode and rmt
+        # filter out N's in rmt
         res = np.zeros(len(data), dtype=np.bool)
-        cell = data['cell'].copy()
         rmt = data['rmt'].copy()
         while np.any(rmt):
             n_filter = rmt & 0b111 == 0b111
             res[n_filter] = True
             rmt >>= 3
-
-        while np.any(cell):
-            n_filter = cell & 0b111 == 0b111
-            res[n_filter] = True
-            cell >>= 3
         data = data[~res]
         return ReadArray(data)
 
