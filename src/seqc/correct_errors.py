@@ -332,9 +332,6 @@ def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     if read['n_poly_t'] < required_poly_t:
         filters_counter['poly_t'] += 1
         return False
-    if BinRep.contains(int(read['cell']), N):
-        filters_counter['cell_N'] += 1
-        return False
     if BinRep.contains(int(read['rmt']), N):
         filters_counter['rmt_N'] += 1
         return False
