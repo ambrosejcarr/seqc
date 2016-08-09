@@ -56,7 +56,7 @@ class H5:
         """list archive contents"""
         try:
             self._archive.open()
-            print(self)
+            print(self._archive)
             self._archive.close()
         except:
             self._archive.close()
