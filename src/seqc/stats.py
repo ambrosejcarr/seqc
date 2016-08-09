@@ -822,6 +822,12 @@ class JavaGSEA:
         """initialize a gsea object
         :param correlations: a pandas series of correlations in the range of [-1, 1] whose
           index contains gene names
+
+        :method linear_scale: method to linearly scale a vector to lie on the interval
+          [-1, 1]
+        :method logisitc_scale: method to scale a vector by the logistic function to lie
+          on the interval [-1, 1]
+        :method run: run GSEA
         """
         if not isinstance(correlations, pd.Series):
             raise TypeError('correlations must be a pandas series')
