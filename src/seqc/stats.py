@@ -392,6 +392,10 @@ class tSNE:
         :param n_pca_components:  Number of components retained by PCA
         :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
         """
+
+        warnings.warn('WARNING: Sklearn tSNE does not produce robust results. Please use '
+                      'the bhtsne package until further notice.')
+
         self.scale = scale
         self.run_pca = run_pca
         self.n_components = n_components
@@ -456,7 +460,7 @@ class PCA:
         self.loadings = None
         self.eigenvalues = None
 
-    def fit(self, data, fillna=0, scale=True):
+    def fit(self, data, fillna=0, scale=False):
         """
         Fit the model to data
 
@@ -979,6 +983,9 @@ class GSEA:
             progression, correlation can be run against ordered clusters.
 
         """
+
+        warnings.warn('Warning: UNTESTED NON-PRODUCTION CODE. Please use JavaGSEA.')
+
         if isinstance(correlations, pd.Series):
             self.correlations = [correlations,]
         elif all(isinstance(obj, pd.Series) for obj in correlations):
