@@ -23,7 +23,7 @@ DEFAULT_BASE_CONVERTION_RATE = 0.02
 
 
 def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True,
-                   max_ed=2, err_correction_mat=''):
+                   max_ed=2, max_dust=10, err_correction_mat=''):
     """
     Prepare the RA for error correction. Apply filters, estimate error correction and
     correct the barcodes
@@ -31,13 +31,15 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     :param max_ed:
     :param reverse_complement:
     :param required_poly_t:
+    :param max_dust:
     :param barcode_files:
     :param ra:
     """
     res = {}
     tot = 0
     bc_filter = 0
-    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0, 'rmt_N': 0}
+    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
+                'rmt_N': 0, 'cell_N': 0, 'dust': 0}
 
     dynamic_codes_table_c1 = {}
     dynamic_codes_table_c2 = {}
@@ -65,7 +67,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
 
     for i, v in enumerate(ra.data):
         tot += 1
-        if not pass_filter(v, filtered, required_poly_t):
+        if not pass_filter(v, filtered, required_poly_t, max_dust):
             continue
 
         gene = v['gene']
@@ -303,9 +305,13 @@ def find_correct_barcode(code, barcodes_list):
     return cor_code, min_ed
         
 
-def pass_filter(read, filters_counter, required_poly_t):
+def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     """
-    return true if a read pass the filters.
+    :param read:
+    :param filters_counter:
+    :param required_poly_t:
+    :param max_dust_score:
+    :return: True if a read passes a;; filters.
     """
     phix_genes = np.array(range(1, 7)) * 111111111
     N = BinRep._str2bindict['N']
@@ -329,26 +335,31 @@ def pass_filter(read, filters_counter, required_poly_t):
     if BinRep.contains(int(read['rmt']), N):
         filters_counter['rmt_N'] += 1
         return False
+    if read['dust_score'] > max_dust_score:
+        filters_counter['dust'] += 1
+        return False
     return True
 
 
-def group_for_dropseq(ra, required_poly_t=4):
+def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
     """
     Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
     :param err_correction_mat:
     :param max_ed:
     :param reverse_complement:
     :param required_poly_t:
+    :param max_dust:
     :param barcode_files:
     :param ra:
     """
     res = {}
     tot = 0
-    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0, 'rmt_N': 0}
+    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
+                'rmt_N': 0, 'cell_N': 0, 'dust': 0}
 
     for i, v in enumerate(ra.data):
         tot += 1
-        if not pass_filter(v, filtered, required_poly_t):
+        if not pass_filter(v, filtered, required_poly_t, max_dust):
             continue
         
         # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
@@ -535,7 +546,7 @@ def in_drop_v3(*args, **kwargs):
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
 def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
             reverse_complement=True, donor_cutoff=1, alpha=0.05,
-            required_poly_t=1, max_ed=2, singleton_weight=1):
+            required_poly_t=1, max_ed=2, max_dust=10, singleton_weight=1):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
     method
@@ -547,6 +558,7 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
     :param donor_cutoff:
     :param alpha:
     :param required_poly_t:
+    :param max_dust:
     :param max_ed:
     :return:
     """
@@ -555,7 +567,7 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
     err_correction_res = ''#np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
     ra_grouped, error_rate, summary = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
-            err_correction_mat='')
+            max_dust, err_correction_mat='')
     grouped_res_dic, error_count = correct_errors(
             alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha,
             singleton_weight=singleton_weight)

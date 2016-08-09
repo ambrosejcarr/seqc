@@ -661,7 +661,9 @@ class ExperimentalYield:
         'Incorrect barcodes:\t{wrong_cb} ({bad_cb}%)\n'
         'Missing cell barcodes/RMT:\t{no_cell} ({bad_cell}%)\n'
         'N present in RMT:\t{rmt_N} ({bad_rmtN}%)\n'
+        'N present in CB:\t{cell_N} ({bad_cellN}%)\n'
         'Insufficient poly(T):\t{poly_t} ({bad_polyt}%)\n'
+        'High dust score:\t{dust} ({bad_dust}%)\n'
         '{divide}\nCELL/MOLECULE COUNT DISTRIBUTION\n{divide}\n'
         'Total molecules:\t\t{tot_mc}\n'
         'Molecules lost:\t{mols_lost}\n'
@@ -693,6 +695,8 @@ class ExperimentalYield:
         no_cell = summary['cell_0']
         # no_rmt = summary['rmt_0']
         rmt_N = summary['rmt_N']
+        cell_N = summary['cell_N']
+        dust = summary['dust']
         poly_t = summary['poly_t']
         tot_mc = summary['total_mc']
         mols_lost = list(summary['mols_lost'].items())
@@ -712,7 +716,7 @@ class ExperimentalYield:
         prop_trans = round((trans/n_sam) * 100, 1)
         lost_al = n_fastq - n_sam
         prop_un = round(100 - prop_al, 1)
-        n_bad = genomic + phix + no_cell + rmt_N + poly_t
+        n_bad = genomic + phix + no_cell + rmt_N + cell_N + poly_t + dust
         # n_bad = genomic + phix + no_cell + no_rmt + rmt_N + poly_t
         # wrong_cb does not apply to drop-seq
         try:
@@ -729,7 +733,9 @@ class ExperimentalYield:
         bad_cell = round((no_cell/n_bad) * 100, 1)
         # bad_rmt = round((no_rmt/n_bad) * 100, 1)
         bad_rmtN = round((rmt_N/n_bad) * 100, 1)
+        bad_cellN = round((cell_N/n_bad) * 100, 1)
         bad_polyt = round((poly_t/n_bad) * 100, 1)
+        bad_dust = round((dust/n_bad) * 100, 1)
         prop_bad = round((n_bad/n_fastq) * 100, 1)
         prop_good = round((n_good/n_fastq) * 100, 1)
 
@@ -741,6 +747,7 @@ class ExperimentalYield:
             n_bad=n_bad, n_good=n_good, prop_good=prop_good, prop_bad=prop_bad,
             prop_un=prop_un, bad_gen=bad_gen, bad_phi=bad_phi, bad_cb=bad_cb,
             bad_cell=bad_cell, bad_rmtN=bad_rmtN, bad_polyt=bad_polyt, trans=trans,
+            cell_N=cell_N, bad_cellN=bad_cellN, dust=dust, bad_dust=bad_dust,
             prop_trans=prop_trans, tot_mc=tot_mc, mols_lost=mols_lost,
             cells_lost=cells_lost, cell_desc=cell_desc)
         return output

@@ -914,6 +914,10 @@ def main(args: list=None) -> None:
             seqc.log.notify('Warning: SEQC started from step other than unmerged fastq '
                             'with empty --min-poly-t parameter. Continuing with '
                             '--min-poly-t=0.')
+        if args.max_dust_score is None:
+            args.max_dust_score = 10
+            seqc.log.notify('Warning: --max-dust-score parameter was not supplied, '
+                            'continuing with --max-dust-score=10.')
 
         # correct errors
         seqc.log.info('Correcting cell barcode and RMT errors')
@@ -922,7 +926,7 @@ def main(args: list=None) -> None:
         cell_counts, summary = correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
-            singleton_weight=args.singleton_weight)
+            max_dust=args.max_dust_score, singleton_weight=args.singleton_weight)
 
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
