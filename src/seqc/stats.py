@@ -962,7 +962,7 @@ class JavaGSEA:
         neg.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
         pos.columns, neg.columns = names, names
         self._results[gmt_file] = {'positive': pos, 'negative': neg}
-        return self._results[gmt_file]
+        return self._results[gmt_file].values()
 
 class GSEA:
 
