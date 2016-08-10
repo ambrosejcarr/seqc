@@ -583,9 +583,8 @@ class correlation:
 
         return ((y * x).mean(axis=0) - mu_y * mu_x) / (sigma_y * sigma_x)
 
-
     @staticmethod
-    def map(x, y):
+    def map(x: np.ndarray, y: np.ndarray):
         """Correlate each column of x with each column of y
 
         :param x: np.array; shape N x T.
@@ -593,14 +592,14 @@ class correlation:
         :returns: np.array; shape N x M in which each element is a correlation
                             coefficient.
         """
-        N = y.shape[1]
-        sum_x = x.sum(axis=1)
-        sum_y = y.sum(axis=1)
-        p1 = N * np.dot(y, x.T)
-        p2 = sum_x * sum_y[:, np.newaxis]
-        p3 = N * ((y ** 2).sum(axis=1)) - (sum_y ** 2)
-        p4 = N * ((x ** 2).sum(axis=1)) - (sum_x ** 2)
-        return (p1 - p2) / np.sqrt(p4 * p3[:, None])
+        assert(x.shape[1] == y.shape[1])
+        n = x.shape[1]
+        x_diff = x - x.mean(axis=-1)[:, None]
+        y_diff = y - y.mean(axis=-1)[:, None]
+        x_std = x.std(axis=-1)
+        y_std = y.std(axis=-1)
+        return np.dot(x_diff, y_diff.T) / (n * x_std[:, np.newaxis] * y_std)
+
 
     @staticmethod
     def eigv(evec, data, components=tuple(), knn=10):
