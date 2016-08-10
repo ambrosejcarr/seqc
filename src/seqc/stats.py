@@ -834,7 +834,7 @@ class JavaGSEA:
             raise RuntimeError('input correlations were not contained within the interval [-1, 1]. '
                                'Please use JavaGSEA.linear_scale() or JavaGSEA.logistic_scale() to '
                                'scale values to this interval before running.')
-        self._correlations = correlations
+        self._correlations = correlations.sort_values()
         self._rnk = None
         self._output_stem = os.environ['TMPDIR'] + 'gsea_corr_{!s}'.format(
             np.random.randint(0, 1000000))
