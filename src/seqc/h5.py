@@ -29,6 +29,9 @@ class H5:
         :param data: DataFrame object to store
         :param location: filepath to save the object in the h5 hierarchy
         """
+        if not isinstance(data, pd.DataFrame):
+            raise TypeError('only pd.DataFrame objects can be saved using this class. To '
+                            'save np.ndarray objects please see the tables package.')
         self._archive.open()  # must be appendable or will raise errors
         try:
             self._archive[location] = data
