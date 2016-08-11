@@ -380,7 +380,6 @@ class ClusterServer(object):
         :param aws_instance: instance type (c3, c4, r3)
         """
 
-
         config_file = os.path.expanduser('~/.seqc/config')
         self.configure_cluster(config_file, aws_instance, spot_bid)
         self.create_security_group()
@@ -393,9 +392,9 @@ class ClusterServer(object):
             self.create_cluster()
             self.connect_server()
             self.allocate_space(volsize,False)
-        seqc.log.notify('Use the following command to log in:\t\t'
-                        'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ubuntu@%s'
-                        % str(self.inst_id.public_ip_address))
+        seqc.log.notify('Use the following command to log in:\t\t ssh -i {rsa_path} '
+                        'ubuntu@{dns_name}'.format(rsa_path=self.keypath,
+                                                   dns_name=self.inst_id.public_dns_name))
         self.git_pull()
         self.set_credentials()
         seqc.log.notify('Remote instance successfully configured.')
