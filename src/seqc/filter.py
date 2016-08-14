@@ -21,9 +21,9 @@ _primer_lengths = dict(
 
 def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
     """
-    estimate the minimum size of poly-t tail that should be present on a properly captured molecule's
-     forward read. If multiple fastq files are passed, the minimum value across all files will be
-     returned
+    estimate the minimum size of poly-t tail that should be present on a properly captured
+    molecule's forward read. If multiple fastq files are passed, the minimum value across
+    all files will be returned
 
     :param fastq_files: list of fastq filenames
     :param platform: the platform used to generate this library
@@ -33,11 +33,13 @@ def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
     try:
         primer_length = _primer_lengths[platform]
     except KeyError:
-        raise ValueError('provided value {} is not a valid argument for platform.'.format(platform))
+        raise ValueError('provided value {} is not a valid argument for platform.'.format(
+            platform))
     if primer_length is None:
-        raise RuntimeError('provided platform does not have a defined primer length, and thus the '
-                           'min_poly_t parameter cannot be estimated. Please provide --min-poly-t '
-                           'explicitly in process_experiment.py.')
+        raise RuntimeError(
+            'provided platform does not have a defined primer length, and thus the '
+            'min_poly_t parameter cannot be estimated. Please provide --min-poly-t '
+            'explicitly in process_experiment.py.')
     for f in fastq_files:
         mean = Reader(f).estimate_sequence_length()[0]
         available_nucleotides = max(0, mean - primer_length)
@@ -147,7 +149,8 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2):
     """
     # identify % genes that are mitochondrial
     mt_genes = np.fromiter(map(lambda x: x.startswith('MT-'), gene_ids), dtype=np.bool)
-    mt_molecules = np.ravel(molecules.tocsr()[~is_invalid, :].tocsc()[:, mt_genes].sum(axis=1))
+    mt_molecules = np.ravel(molecules.tocsr()[~is_invalid, :].tocsc()[:, mt_genes].sum(
+        axis=1))
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     ratios = mt_molecules / ms
 
@@ -220,43 +223,44 @@ def create_filtered_dense_count_matrix(
         raise ValueError('Parameter max_mt_content must be in the interval [0, 1]')
 
     # set data structures and original molecule counts
-    M = molecules.data
-    R = reads.data
-    G = molecules.columns
-    is_invalid = np.zeros(M.shape[0], np.bool)
-    total_molecules = np.sum(M.sum(axis=1))
+    molecules_data = molecules.data
+    reads_data = reads.data
+    molecules_columns = molecules.columns
+    is_invalid = np.zeros(molecules_data.shape[0], np.bool)
+    total_molecules = np.sum(molecules_data.sum(axis=1))
 
-    def additional_loss(new_filter, old_filter, D):
+    def additional_loss(new_filter, old_filter, data_matrix):
         new_cell_loss = np.sum(new_filter) - np.sum(old_filter)
-        D = D.tocsr()
-        total_molecule_loss = D[new_filter].sum().sum()
-        old_molecule_loss = D[old_filter].sum().sum()
+        data_matrix = data_matrix.tocsr()
+        total_molecule_loss = data_matrix[new_filter].sum().sum()
+        old_molecule_loss = data_matrix[old_filter].sum().sum()
         new_molecule_loss = total_molecule_loss - old_molecule_loss
         return new_cell_loss, new_molecule_loss
 
     # filter low counts
-    count_invalid = low_count(M, is_invalid)
+    count_invalid = low_count(molecules_data, is_invalid)
     cells_lost['low_count'], molecules_lost['low_count'] = additional_loss(
-        count_invalid, is_invalid, M)
+        count_invalid, is_invalid, molecules_data)
 
     # filter low coverage
-    cov_invalid = low_coverage(M, R, count_invalid)
+    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid)
     cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
-        cov_invalid, count_invalid, M)
+        cov_invalid, count_invalid, molecules_data)
 
     # filter high_mt_content
-    mt_invalid = high_mitochondrial_rna(M, G, cov_invalid, max_mt_content)
+    mt_invalid = high_mitochondrial_rna(
+        molecules_data, molecules_columns, cov_invalid, max_mt_content)
     cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
-        mt_invalid, cov_invalid, M)
+        mt_invalid, cov_invalid, molecules_data)
 
     # filter low gene abundance
-    gene_invalid = low_gene_abundance(M, mt_invalid)
+    gene_invalid = low_gene_abundance(molecules_data, mt_invalid)
     cells_lost['low_gene_detection'], molecules_lost[
         'low_gene_detection'] = additional_loss(
-        gene_invalid, mt_invalid, M)
+        gene_invalid, mt_invalid, molecules_data)
 
     # construct dense matrix
-    dense = M.tocsr()[~gene_invalid, :].todense()
+    dense = molecules_data.tocsr()[~gene_invalid, :].todense()
     nonzero_gene_count = np.ravel(dense.sum(axis=0) != 0)
     dense = dense[:, nonzero_gene_count]
     dense = pd.DataFrame(
