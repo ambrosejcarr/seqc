@@ -12,8 +12,8 @@ import fcntl
 import boto3
 import logging
 import requests
-import seqc
 import time
+from seqc import log
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
@@ -40,8 +40,8 @@ class S3:
 
         if not overwrite:
             if os.path.isfile(fout):
-                seqc.log.info('Skipped download of file "{fout}" because it already '
-                              'exists.'.format(fout=fout))
+                log.info('Skipped download of file "{fout}" because it already '
+                         'exists.'.format(fout=fout))
                 return fout
 
         # key should not start with a forward slash
@@ -119,8 +119,8 @@ class S3:
             # check for overwriting
             if os.path.isfile(fout):
                 if overwrite is False:
-                    seqc.log.info('Skipped download of file "{fout}" because it already '
-                                  'exists.'.format(fout=fout))
+                    log.info('Skipped download of file "{fout}" because it already '
+                             'exists.'.format(fout=fout))
                     output_files.append(fout)
                     continue
 
@@ -284,8 +284,8 @@ class S3:
         bucket, *key_or_prefix = link_or_prefix.split('/')
         return bucket, '/'.join(key_or_prefix)
 
-    @staticmethod
-    def check_links(input_args: list) -> None:
+    @classmethod
+    def check_links(cls, input_args: list) -> None:
         """determine if valid arguments were passed before initiating run,
         specifically whether s3 links exist
 
@@ -297,7 +297,7 @@ class S3:
             try:
                 if infile.startswith('s3://'):
                     if not infile.endswith('/'):  # check that s3 link for file exists
-                        bucket, key = seqc.io.S3.split_link(infile)
+                        bucket, key = cls.split_link(infile)
                         s3.meta.client.head_object(Bucket=bucket, Key=key)
                     else:
                         cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
@@ -305,11 +305,11 @@ class S3:
                         if b'PRE ' in res:  # subdirectories present
                             raise ValueError
             except CalledProcessError:
-                seqc.log.notify(
+                log.notify(
                     'Failed to access %s with "aws s3 ls", check your link' % infile)
                 sys.exit(2)
             except ValueError:
-                seqc.log.notify(
+                log.notify(
                     'Error: Provided s3 link "%s" does not contain the proper '
                     'input files to SEQC.' % infile)
                 sys.exit(2)
@@ -676,8 +676,7 @@ class BaseSpace:
 
         func = partial(cls._download_basespace_content, data['Response']['Items'],
                        access_token, dest_path)
-        seqc.log.info('BaseSpace API link provided, downloading files from '
-                      'BaseSpace.')
+        log.info('BaseSpace API link provided, downloading files from BaseSpace.')
         with Pool(len(data['Response']['Items'])) as pool:
             pool.map(func, range(len(data['Response']['Items'])))
 
