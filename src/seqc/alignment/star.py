@@ -1,15 +1,16 @@
 from subprocess import Popen, PIPE
 
 
-def default_alignment_args(fastq_records, n_threads, index, output_dir):
+def default_alignment_args(
+        fastq_records: str, n_threads: int or str, index: str, output_dir: str) -> dict:
     """default arguments for STAR alignment
 
     To report unaligned reads, add '--outSAMunmapped': 'Within',
 
-    :param fastq_records:
-    :param n_threads:
-    :param index:
-    :param output_dir:
+    :param fastq_records: str, name of fastq file
+    :param n_threads: int or str, number of threads to allocate when calling STAR
+    :param index: str, location of the STAR index
+    :param output_dir: str, prefix for output files
     :return: dict, default alignment arguments
     """
     default_align_args = {
@@ -30,15 +31,14 @@ def default_alignment_args(fastq_records, n_threads, index, output_dir):
     return default_align_args
 
 
-def align(fastq_file, index, n_threads, alignment_dir, reverse_fastq_file=None,
-          **kwargs):
-    """
-    align a fastq file, or a paired set of fastq files
+def align(fastq_file: str, index: str, n_threads: int, alignment_dir: str,
+          reverse_fastq_file: str or bool=None, **kwargs) -> str:
+    """align a fastq file, or a paired set of fastq files
 
     :param fastq_file: str, location of a fastq file
     :param index: str, folder containing the STAR index
     :param n_threads: int, number of parallel alignment processes to spawn
-    :param alignment_dir: directory for output data
+    :param alignment_dir: str, directory for output data
     :param reverse_fastq_file: optional, location of reverse paired-end fastq file
     :param kwargs: additional kwargs for STAR, passed without the leading '--'
     :return: str, .sam file location
