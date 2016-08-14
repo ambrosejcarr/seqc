@@ -14,6 +14,10 @@ import pandas as pd
 import seqc
 from seqc.read_array import ReadArray
 from seqc.exceptions import ConfigurationError, ArgumentParserError
+from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
+                               create_gene_id_to_official_gene_symbol_map)
+from seqc.filter import create_filtered_dense_count_matrix
+from seqc.sparse_frame import SparseFrame
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -362,13 +366,15 @@ def check_arguments(args, basespace_token: str) -> float:
     return total
 
 
-def read_config(config_file: str) -> dict:
+def read_config(config_file: str=None) -> dict:
     """
     :param config_file: str, location of seqc configuration file
     :returns config: dict, dictionary of arguments and values in the configuration file
     """
     # todo add additional checks to make sure correct parameters are filled in!
-    config_file = os.path.expanduser('~/.seqc/config')
+
+    if config_file is None:
+        config_file = os.path.expanduser('~/.seqc/config')
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '
@@ -516,17 +522,16 @@ def determine_start_point(args) -> (bool, bool, bool):
 
 
 def merge_fastq_files(
-        platform: str, barcode_fastq: str, merged_fastq: str, output_stem: str,
-        genomic_fastq: str, pigz: bool) -> (str, int):
+        platform: str, barcode_fastq: list(str), output_stem: str,
+        genomic_fastq: list(str), pigz: bool) -> (str, int):
     """
     annotates genomic fastq with barcode information; merging the two files.
 
-    :param platform:
-    :param barcode_fastq:
-    :param merged_fastq:
-    :param output_stem:
-    :param genomic_fastq:
-    :param pigz:
+    :param platform: str, name of platform
+    :param barcode_fastq: list of str names of fastq files containing barcode information
+    :param output_stem: str, stem for output files
+    :param genomic_fastq: list of str names of fastq files containing genomic information
+    :param pigz: bool, indicates if pigz is installed
     :returns merged_fastq, fastq_records: (str, int) name of merged fastq file and the
       number of fastq records that were processed.
     """
@@ -885,7 +890,7 @@ def main(args: list=None) -> None:
                 seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
             args.merged_fastq, fastq_records = merge_fastq_files(
-                args.platform, args.barcode_fastq, args.merged_fastq, args.output_stem,
+                args.platform, args.barcode_fastq, args.output_stem,
                 args.genomic_fastq, pigz)
         else:
             fastq_records = None
@@ -897,10 +902,10 @@ def main(args: list=None) -> None:
         else:
             manage_merged = None
 
-        ra, input_data, manage_samfile, sam_records, h5_file = \
-        create_or_download_read_array(
-            process_samfile, args.samfile, output_dir, args.index, args.read_array,
-            args.output_stem, aws_upload_key, input_data)
+        ra, input_data, manage_samfile, sam_records, h5_file = (
+            create_or_download_read_array(
+                process_samfile, args.samfile, output_dir, args.index, args.read_array,
+                args.output_stem, aws_upload_key, input_data))
         args.read_array = h5_file
 
         args.barcode_files = download_barcodes(
@@ -943,25 +948,39 @@ def main(args: list=None) -> None:
         # generate count matrix
         seqc.log.info('Creating sparse count matrices')
         matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
+        molecules = SparseFrame(
+            matrices['molecules']['matrix'],
+            matrices['molecules']['row_ids'],
+            matrices['molecules']['col_ids'])
+        reads = SparseFrame(
+            matrices['reads']['matrix'],
+            matrices['reads']['row_ids'],
+            matrices['reads']['col_ids'])
+
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
         seqc.log.info('Successfully generated sparse count matrix.')
 
         seqc.log.info('filtering, summarizing cell molecule count distribution, and '
                       'generating dense count matrix')
-        e = seqc.core.Experiment.from_count_matrices(
-            args.output_stem + '_read_and_count_matrices.p')
 
-        # todo @ajc speed up this function; is slow
-        gene_id_map = seqc.core.Experiment.create_gene_id_to_official_gene_symbol_map(
+        # todo speed up this function
+        gene_id_map = create_gene_id_to_official_gene_symbol_map(
             args.index + 'annotations.gtf')
-        e = e.ensembl_gene_id_to_official_gene_symbol(gene_id_map=gene_id_map)
+
+        # translate symbols to gene names
+        reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
+        molecules = ensembl_gene_id_to_official_gene_symbol(
+            molecules, gene_id_map=gene_id_map)
+
+        # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
-            e.create_filtered_dense_count_matrix())
-        df = dense.molecules
-        df[df == 0] = np.nan  # for sparse_csv saving
+            create_filtered_dense_count_matrix(molecules, reads))
+
+        # save sparse csv
+        dense[dense == 0] = np.nan  # for sparse_csv saving
         sparse_csv = args.output_stem + '_counts.csv'
-        df.to_csv(sparse_csv)
+        dense.to_csv(sparse_csv)
 
         # gzipping sparse_csv and uploading to S3
         if pigz:

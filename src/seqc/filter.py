@@ -1,10 +1,13 @@
 import warnings
+from collections import OrderedDict
 from seqc.sequence.fastq import Reader
 from math import floor
 import numpy as np
 import pandas as pd
 from sklearn.mixture import GMM
 from sklearn.linear_model import LinearRegression
+from seqc.exceptions import EmptyMatrixError
+from seqc.sparse_frame import SparseFrame
 
 _primer_lengths = dict(
     in_drop=47,
@@ -184,3 +187,84 @@ def low_gene_abundance(molecules, is_invalid):
     is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     return is_invalid
+
+
+def create_filtered_dense_count_matrix(
+        molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2):
+    """
+    filter cells with low molecule counts, low read coverage, high mitochondrial content,
+    and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
+    original number of molecules (int), the number of molecules lost with each filter
+    (dict), and the number of cells lost with each filter (dict).
+
+    :param molecules: SparseFrame
+    :param reads: SparseFrame
+    :param max_mt_content: the maximum percentage of mitochondrial RNA that is
+      considered to constitute a viable cell
+    :return: (pd.DataFrame, int, dict, dict)
+    """
+
+    cells_lost = OrderedDict()
+    molecules_lost = OrderedDict()
+
+    if not molecules.columns.dtype.char == 'U':
+        if molecules.sum().sum() == 0:
+            raise EmptyMatrixError('Matrix is empty, cannot create dense matrix')
+        else:
+            raise RuntimeError(
+                'non-string column names detected. Please convert column names into '
+                'string gene symbols before calling this function.')
+    if not isinstance(max_mt_content, float):
+        raise TypeError('Parameter max_mt_content must be of type float.')
+    if not 0 <= max_mt_content <= 1:
+        raise ValueError('Parameter max_mt_content must be in the interval [0, 1]')
+
+    # set data structures and original molecule counts
+    M = molecules.data
+    R = reads.data
+    G = molecules.columns
+    is_invalid = np.zeros(M.shape[0], np.bool)
+    total_molecules = np.sum(M.sum(axis=1))
+
+    def additional_loss(new_filter, old_filter, D):
+        new_cell_loss = np.sum(new_filter) - np.sum(old_filter)
+        D = D.tocsr()
+        total_molecule_loss = D[new_filter].sum().sum()
+        old_molecule_loss = D[old_filter].sum().sum()
+        new_molecule_loss = total_molecule_loss - old_molecule_loss
+        return new_cell_loss, new_molecule_loss
+
+    # filter low counts
+    count_invalid = low_count(M, is_invalid)
+    cells_lost['low_count'], molecules_lost['low_count'] = additional_loss(
+        count_invalid, is_invalid, M)
+
+    # filter low coverage
+    cov_invalid = low_coverage(M, R, count_invalid)
+    cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
+        cov_invalid, count_invalid, M)
+
+    # filter high_mt_content
+    mt_invalid = high_mitochondrial_rna(M, G, cov_invalid, max_mt_content)
+    cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
+        mt_invalid, cov_invalid, M)
+
+    # filter low gene abundance
+    gene_invalid = low_gene_abundance(M, mt_invalid)
+    cells_lost['low_gene_detection'], molecules_lost[
+        'low_gene_detection'] = additional_loss(
+        gene_invalid, mt_invalid, M)
+
+    # construct dense matrix
+    dense = M.tocsr()[~gene_invalid, :].todense()
+    nonzero_gene_count = np.ravel(dense.sum(axis=0) != 0)
+    dense = dense[:, nonzero_gene_count]
+    dense = pd.DataFrame(
+        dense,
+        index=molecules.index[~gene_invalid],
+        columns=molecules.columns[nonzero_gene_count])
+
+    # describe cells
+    cell_description = dense.molecules.sum(axis=1).describe()
+
+    return dense, total_molecules, molecules_lost, cells_lost, cell_description
