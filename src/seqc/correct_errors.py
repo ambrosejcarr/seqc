@@ -5,7 +5,7 @@ import time
 from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import ThreeBit as BinRep
 import numpy as np
-import seqc
+from seqc import log
 import random
 
 high_value = maxsize  # Used for sorting, needs to be longer than any sequence
@@ -141,7 +141,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     default_error_rate = DEFAULT_BASE_CONVERTION_RATE
     err_rate = dict(zip(errors, [0.0] * len(errors)))
     if sum(error_table.values()) == 0:
-        seqc.log.info('No errors were detected, using %f uniform error chance.' % (
+        log.info('No errors were detected, using %f uniform error chance.' % (
             default_error_rate))
         err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
     for k, v in error_table.items():
@@ -150,12 +150,12 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                                if err_type & 0b111000 == k & 0b111000) +
                                cor_instance_table[(k & 0b111000) >> 3])
         except ZeroDivisionError:
-            seqc.log.info('Warning: too few reads to estimate error rate for %r '
+            log.info('Warning: too few reads to estimate error rate for %r '
                           'setting default rate of %f' % (k, default_error_rate))
             err_rate[k] = default_error_rate
 
     filtered['cb_wrong'] = bc_filter
-    seqc.log.info('Error correction filtering results: total reads: {}; '
+    log.info('Error correction filtering results: total reads: {}; '
                   'did not pass preliminary filters: {}; cell barcodes are wrong: '
                   '{}'.format(tot, sum(filtered.values()), bc_filter))
     # print('error_table: ', error_table, ' cor_instance_table: ', cor_instance_table)
@@ -379,7 +379,7 @@ def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
                 except KeyError:
                     res[cell_header] = {rmt:{(gene,cell):1}}
 
-    seqc.log.info('Error correction filtering results: total reads: {}; did not pass '
+    log.info('Error correction filtering results: total reads: {}; did not pass '
                   'preliminary filters: {}'.format(tot, sum(filtered.values())))
     return res, filtered
 
@@ -468,7 +468,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
                         res_dic[gene, correct_cell] = [
                             1, grouped_ra[cell][rmt][gene, full_cell]]
 
-    seqc.log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
+    log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
     #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
     tot_time=time.process_time()-start
     #print('tot time: {}'.format(tot_time))
@@ -672,7 +672,7 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
 
     # print('\nLikelihood model error_count: ', error_count)
     tot_time=time.process_time()-start
-    # seqc.log.info('total error correction runtime: {}'.format(tot_time))
+    # log.info('total error correction runtime: {}'.format(tot_time))
     # f.close()
     return grouped_res_dic, error_count
 
