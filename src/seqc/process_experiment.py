@@ -9,13 +9,10 @@ import pickle
 import sys
 from subprocess import Popen
 from copy import copy
-
 import numpy as np
 import pandas as pd
-
 import seqc
 from seqc.exceptions import ConfigurationError, ArgumentParserError
-from seqc.io import check_s3links, obtain_size
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -309,30 +306,30 @@ def check_arguments(args, basespace_token: str) -> float:
         if any((merged, samfile, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input = seqc_input + barcode_fastq + genomic_fastq
-        check_s3links(seqc_input)
+        seqc.io.S3.check_links(seqc_input)
 
         # checking size of input file
         input_fastq = barcode_fastq + genomic_fastq
         for item in input_fastq:
-            total += obtain_size(item)
+            total += seqc.io.S3.obtain_size(item)
         total += (total * 14) + cushion
     if samfile:
         if any((merged, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input += [samfile]
-        check_s3links(seqc_input)
+        seqc.io.S3.check_links(seqc_input)
 
         # checking size of input file
-        total += obtain_size(samfile)
+        total += seqc.io.S3.obtain_size(samfile)
         total += (total * 2) + 2e10
     if merged:
         if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input += [merged]
-        check_s3links(seqc_input)
+        seqc.io.S3.check_links(seqc_input)
 
         # checking size of input file
-        total += obtain_size(merged)
+        total += seqc.io.S3.obtain_size(merged)
         total += (total * 13) + cushion
     if basespace:
         if any((samfile, merged, barcode_fastq, genomic_fastq, read_array)):
@@ -342,17 +339,17 @@ def check_arguments(args, basespace_token: str) -> float:
                 'If the --basespace argument is used, the BaseSpace token must be '
                 'specified in the seqc config file.')
         seqc_input += [basespace]
-        check_s3links(seqc_input)
+        seqc.io.S3.check_links(seqc_input)
     if read_array:
         if any((samfile, merged, barcode_fastq, genomic_fastq, basespace)):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
         seqc_input.remove(index_dir)
-        check_s3links(seqc_input)
+        seqc.io.S3.check_links(seqc_input)
 
         # checking size of input
         for item in seqc_input:
-            total += obtain_size(item)
+            total += seqc.io.S3.obtain_size(item)
         total += 1e10
     if basespace:
         seqc.io.BaseSpace.check_sample(basespace, basespace_token)

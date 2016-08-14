@@ -284,6 +284,49 @@ class S3:
         bucket, *key_or_prefix = link_or_prefix.split('/')
         return bucket, '/'.join(key_or_prefix)
 
+    @staticmethod
+    def check_links(input_args: list) -> None:
+        """determine if valid arguments were passed before initiating run,
+        specifically whether s3 links exist
+
+        :param input_args: list of files that should be checked
+        """
+
+        s3 = boto3.resource('s3')
+        for infile in input_args:
+            try:
+                if infile.startswith('s3://'):
+                    if not infile.endswith('/'):  # check that s3 link for file exists
+                        bucket, key = seqc.io.S3.split_link(infile)
+                        s3.meta.client.head_object(Bucket=bucket, Key=key)
+                    else:
+                        cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
+                        res = check_output(cmd.split())
+                        if b'PRE ' in res:  # subdirectories present
+                            raise ValueError
+            except CalledProcessError:
+                seqc.log.notify(
+                    'Failed to access %s with "aws s3 ls", check your link' % infile)
+                sys.exit(2)
+            except ValueError:
+                seqc.log.notify(
+                    'Error: Provided s3 link "%s" does not contain the proper '
+                    'input files to SEQC.' % infile)
+                sys.exit(2)
+
+    @staticmethod
+    def obtain_size(item: str) -> int:
+        """
+        obtains the size of desired item, used to determine how much volume
+        should be allocated for the remote AWS instance
+
+        :param item: str, name of file input
+        """
+
+        cmd = 'aws s3 ls --summarize --recursive ' + item + ' | grep "Total Size"'
+        obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
+        return obj_size
+
 
 class GEO:
     """
@@ -756,42 +799,3 @@ class ProcessManager:
             out = out.decode().strip()
             output.append(out)
         return output
-
-
-def check_s3links(input_args: list):
-    """determine if valid arguments were passed before initiating run,
-    specifically whether s3 links exist
-    :param input_args: list of files that should be checked
-    """
-
-    s3 = boto3.resource('s3')
-    for infile in input_args:
-        try:
-            if infile.startswith('s3://'):
-                if not infile.endswith('/'):  # check that s3 link for file exists
-                    bucket, key = seqc.io.S3.split_link(infile)
-                    s3.meta.client.head_object(Bucket=bucket, Key=key)
-                else:
-                    cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
-                    res = check_output(cmd.split())
-                    if b'PRE ' in res:  # subdirectories present
-                        raise ValueError
-        except CalledProcessError:
-            seqc.log.notify('Failed to access %s with "aws s3 ls", check your link' % infile)
-            sys.exit(2)
-        except ValueError:
-            seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
-                            'input files to SEQC.' % infile)
-            sys.exit(2)
-
-
-def obtain_size(item):
-    """
-    obtains the size of desired item, used to determine how much volume
-    should be allocated for the remote AWS instance
-    :param item: name of file input
-    """
-
-    cmd = 'aws s3 ls --summarize --recursive ' + item + ' | grep "Total Size"'
-    obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
-    return obj_size
