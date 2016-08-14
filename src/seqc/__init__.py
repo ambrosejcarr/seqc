@@ -9,5 +9,6 @@ from . import exceptions
 from . import remote
 from . import correct_errors
 from . import filter
+from . import read_array
 from .h5 import H5
 from .version import __version__

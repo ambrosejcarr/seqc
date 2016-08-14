@@ -12,6 +12,7 @@ from copy import copy
 import numpy as np
 import pandas as pd
 import seqc
+from seqc.read_array import ReadArray
 from seqc.exceptions import ConfigurationError, ArgumentParserError
 
 
@@ -650,7 +651,7 @@ def create_or_download_read_array(
             _, fname = os.path.split(prefix)
             samfile = seqc.io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
             seqc.log.info('Samfile %s successfully installed from S3.' % samfile)
-        ra, sam_records = seqc.core.ReadArray.from_samfile(
+        ra, sam_records = ReadArray.from_samfile(
             samfile, index + 'annotations.gtf')
         read_array = output_stem + '.h5'
         ra.save(read_array)
@@ -679,7 +680,7 @@ def create_or_download_read_array(
                 bucket, prefix, output_dir + '/' + fname)
             seqc.log.info('Read array %s successfully installed from S3.' %
                           read_array)
-        ra = seqc.core.ReadArray.load(read_array)
+        ra = ReadArray.load(read_array)
     return ra, input_data, manage_samfile, sam_records, read_array
 
 
