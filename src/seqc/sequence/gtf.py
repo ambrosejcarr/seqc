@@ -2,7 +2,7 @@ import fileinput
 import string
 from collections import defaultdict
 from intervaltree import IntervalTree
-import seqc
+from seqc import reader
 
 
 def first(iterable):
@@ -194,8 +194,8 @@ class GeneIntervals:
 
     def __init__(self, gtf: str):
         interval_tree = defaultdict(IntervalTree)
-        reader = Reader(gtf)
-        for gene in reader.iter_genes():
+        reader_ = Reader(gtf)
+        for gene in reader_.iter_genes():
             if gene.exons:
                 for start, end in gene.genomic_intervals():
                     try:
@@ -227,7 +227,7 @@ class GeneIntervals:
             return None
 
 
-class Reader(seqc.reader.Reader):
+class Reader(reader.Reader):
     """
     SubClass of reader.Reader, returns an Reader with several specialized iterator
     methods.
@@ -300,7 +300,6 @@ def create_phix_annotation(phix_fasta):
     chromosome = header.split()[0].strip('>')
     source = 'seqc'
     score = '.'
-    strand = '+'
     frame = '.'
     gene_meta = 'gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}";'
     exon_meta = ('gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}"; '
