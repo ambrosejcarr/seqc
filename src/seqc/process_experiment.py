@@ -377,6 +377,8 @@ def read_config(config_file: str=None) -> dict:
 
     if config_file is None:
         config_file = os.path.expanduser('~/.seqc/config')
+    else:
+        config_file = os.path.expanduser(config_file)
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '
@@ -522,8 +524,8 @@ def determine_start_point(args) -> (bool, bool, bool):
 
 
 def merge_fastq_files(
-        platform: str, barcode_fastq: list(str), output_stem: str,
-        genomic_fastq: list(str), pigz: bool) -> (str, int):
+        platform: str, barcode_fastq: [str], output_stem: str,
+        genomic_fastq: [str], pigz: bool) -> (str, int):
     """
     annotates genomic fastq with barcode information; merging the two files.
 
