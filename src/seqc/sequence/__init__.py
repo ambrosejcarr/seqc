@@ -1,7 +1,3 @@
-from . import fastq
-from . import merge_functions
-from . import gtf
-from . import encodings
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
             'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
