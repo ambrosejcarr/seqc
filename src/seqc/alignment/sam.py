@@ -162,6 +162,13 @@ class Reader:
     def __init__(self, samfile: str):
         """
         :param samfile: str, location of a .sam file
+
+        usage:
+        if rd = Reader(samfile)
+        :method __iter__: iterate over the .sam file's records (also usable in for loop)
+        :method __len__: return the number of alignments in the file
+        :method itermultialignments: return tuples of multiple alignments, all from the
+           same fastq record
         """
 
         self._samfile = samfile

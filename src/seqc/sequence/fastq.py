@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import seqc
+from seqc import reader
 
 
 class FastqRecord:
@@ -111,7 +111,7 @@ class FastqRecord:
             .astype(int) - 33
 
 
-class Reader(seqc.reader.Reader):
+class Reader(reader.Reader):
     """
     Fastq Reader, defines some special methods for reading and summarizing fastq data:
 

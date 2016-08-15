@@ -11,8 +11,15 @@ from subprocess import Popen
 from copy import copy
 import numpy as np
 import pandas as pd
-import seqc
-from seqc.exceptions import ConfigurationError, ArgumentParserError
+from seqc import remote, version, log, io, filter, correct_errors
+from seqc.sequence import merge_functions, fastq
+from seqc.alignment import star
+from seqc.read_array import ReadArray
+from seqc.exceptions import ConfigurationError, ArgumentParserError, retry_boto_call
+from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
+                               create_gene_id_to_official_gene_symbol_map)
+from seqc.filter import create_filtered_dense_count_matrix
+from seqc.sparse_frame import SparseFrame
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -24,7 +31,7 @@ class NewArgumentParser(argparse.ArgumentParser):
     def error(self, message):
         # checks to see whether user wants to check remote experiment status
         if '--check-progress' in sys.argv[1:]:
-            seqc.remote.check_progress()
+            remote.check_progress()
         else:
             print(message)
         sys.exit(0)
@@ -139,7 +146,7 @@ def parse_args(args):
                    help='Output log name (default=seqc.log)')
 
     p.add_argument('-v', '--version', action='version',
-                   version='{} {}'.format(p.prog, seqc.__version__))
+                   version='{} {}'.format(p.prog, version.__version__))
 
     try:
         return p.parse_args(args)
@@ -180,20 +187,20 @@ def run_remote(args, volsize):
     :param args: simple namespace object; output of parse_args()
     :param volsize: estimated volume needed for run
     """
-    seqc.log.notify('Beginning remote SEQC run...')
+    log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
     cmd = recreate_command_line_arguments(args)
-    seqc.log.print_exact_command_line(cmd)
+    log.print_exact_command_line(cmd)
     # set up remote cluster
-    cluster = seqc.remote.ClusterServer()
+    cluster = remote.ClusterServer()
     volsize = int(np.ceil(volsize/1e9))
 
     try:  # if anything goes wrong during cluster setup, clean up the instance
         cluster.setup_cluster(volsize, args.instance_type, spot_bid=args.spot_bid)
         cluster.serv.connect()
 
-        seqc.log.notify('Beginning remote run.')
+        log.notify('Beginning remote run.')
         if args.output_stem.endswith('/'):
             args.output_stem = args.output_stem[:-1]
         # writing name of instance in local machine to keep track of instance
@@ -217,15 +224,15 @@ def run_remote(args, volsize):
         res = ' '.join(out)
         if '/usr/local/bin/process_experiment.py' not in res:
             raise ConfigurationError('Error executing SEQC on the cluster!')
-        seqc.log.notify('Terminating local client. Email will be sent when remote run '
-                        'completes. Please use "process_experiment.py --check-progress" '
-                        'to monitor the status of the remote run.')
+        log.notify('Terminating local client. Email will be sent when remote run '
+                   'completes. Please use "process_experiment.py --check-progress" '
+                   'to monitor the status of the remote run.')
     except Exception as e:
-        seqc.log.notify('Error {e} occurred during cluster setup!'.format(e=e))
+        log.notify('Error {e} occurred during cluster setup!'.format(e=e))
         if cluster.is_cluster_running():
-            seqc.log.notify('Cleaning up instance {id} before exiting...'.format(
+            log.notify('Cleaning up instance {id} before exiting...'.format(
                 id=cluster.inst_id.instance_id))
-            seqc.remote.terminate_cluster(cluster.inst_id.instance_id)
+            remote.terminate_cluster(cluster.inst_id.instance_id)
         raise  # re-raise original exception
 
 
@@ -306,30 +313,30 @@ def check_arguments(args, basespace_token: str) -> float:
         if any((merged, samfile, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input = seqc_input + barcode_fastq + genomic_fastq
-        seqc.io.S3.check_links(seqc_input)
+        io.S3.check_links(seqc_input)
 
         # checking size of input file
         input_fastq = barcode_fastq + genomic_fastq
         for item in input_fastq:
-            total += seqc.io.S3.obtain_size(item)
+            total += io.S3.obtain_size(item)
         total += (total * 14) + cushion
     if samfile:
         if any((merged, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input += [samfile]
-        seqc.io.S3.check_links(seqc_input)
+        io.S3.check_links(seqc_input)
 
         # checking size of input file
-        total += seqc.io.S3.obtain_size(samfile)
+        total += io.S3.obtain_size(samfile)
         total += (total * 2) + 2e10
     if merged:
         if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
             raise ValueError(multi_input_error_message)
         seqc_input += [merged]
-        seqc.io.S3.check_links(seqc_input)
+        io.S3.check_links(seqc_input)
 
         # checking size of input file
-        total += seqc.io.S3.obtain_size(merged)
+        total += io.S3.obtain_size(merged)
         total += (total * 13) + cushion
     if basespace:
         if any((samfile, merged, barcode_fastq, genomic_fastq, read_array)):
@@ -339,35 +346,39 @@ def check_arguments(args, basespace_token: str) -> float:
                 'If the --basespace argument is used, the BaseSpace token must be '
                 'specified in the seqc config file.')
         seqc_input += [basespace]
-        seqc.io.S3.check_links(seqc_input)
+        io.S3.check_links(seqc_input)
     if read_array:
         if any((samfile, merged, barcode_fastq, genomic_fastq, basespace)):
             raise ValueError(multi_input_error_message)
         seqc_input += [read_array]
         seqc_input.remove(index_dir)
-        seqc.io.S3.check_links(seqc_input)
+        io.S3.check_links(seqc_input)
 
         # checking size of input
         for item in seqc_input:
-            total += seqc.io.S3.obtain_size(item)
+            total += io.S3.obtain_size(item)
         total += 1e10
     if basespace:
-        seqc.io.BaseSpace.check_sample(basespace, basespace_token)
+        io.BaseSpace.check_sample(basespace, basespace_token)
         # checking size of input file
-        total = seqc.io.BaseSpace.check_size(basespace, basespace_token)
+        total = io.BaseSpace.check_size(basespace, basespace_token)
         total += (total * 14) + cushion
 
     # return total size needed for EBS volume
     return total
 
 
-def read_config(config_file: str) -> dict:
+def read_config(config_file: str=None) -> dict:
     """
     :param config_file: str, location of seqc configuration file
     :returns config: dict, dictionary of arguments and values in the configuration file
     """
     # todo add additional checks to make sure correct parameters are filled in!
-    config_file = os.path.expanduser('~/.seqc/config')
+
+    if config_file is None:
+        config_file = os.path.expanduser('~/.seqc/config')
+    else:
+        config_file = os.path.expanduser(config_file)
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '
@@ -385,8 +396,7 @@ def get_basespace_data(args, output_dir: str, basespace_token: str) -> (str, str
     :param basespace_token: str, OAuth token for BaseSpace authentication
     :return barcode_fastq, genomic_fastq:
     """
-    seqc.log.info('BaseSpace link provided for fastq argument. Downloading '
-                  'input data.')
+    log.info('BaseSpace link provided for fastq argument. Downloading input data.')
 
     # making extra directories for BaseSpace download, changing permissions
     bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
@@ -395,7 +405,7 @@ def get_basespace_data(args, output_dir: str, basespace_token: str) -> (str, str
     if args.aws:  # changing permissions is unnecessary if local run
         bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
         bf2.communicate()
-    barcode_fastq, genomic_fastq = seqc.io.BaseSpace.download(
+    barcode_fastq, genomic_fastq = io.BaseSpace.download(
         args.platform, args.basespace, output_dir, basespace_token)
     return barcode_fastq, genomic_fastq
 
@@ -437,27 +447,27 @@ def get_s3_fastq(fastq_file: list, output_dir: str, ftype: str) -> list:
                                      'neither an s3 link or a valid filepath' %
                                      (ftype, ', '.join(map(str, fastq_file))))
         else:
-            seqc.log.info('Downloading {} fastq files from Amazon s3 link.'.format(ftype))
+            log.info('Downloading {} fastq files from Amazon s3 link.'.format(ftype))
             if fastq_file[0].endswith('/'):
                 # s3 directory specified, download all files recursively
-                bucket, prefix = seqc.io.S3.split_link(fastq_file[0])
+                bucket, prefix = io.S3.split_link(fastq_file[0])
                 cut_dirs = prefix.count('/')
-                fastq_file = seqc.io.S3.download_files(
+                fastq_file = io.S3.download_files(
                     bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
                     cut_dirs=cut_dirs)
             else:
                 # individual s3 links provided, download each fastq file
                 downloaded_files = []
                 for s3link in fastq_file:
-                    bucket, prefix = seqc.io.S3.split_link(s3link)
+                    bucket, prefix = io.S3.split_link(s3link)
                     _, fname = os.path.split(prefix)
                     fname = output_dir + '/' + fname
-                    seqc.io.S3.download_file(bucket, prefix, fname)
+                    io.S3.download_file(bucket, prefix, fname)
                     downloaded_files.append(fname)
                 fastq_file = sorted(downloaded_files)
             # note that this is printed regardless of whether a file is downloaded
-            seqc.log.info('%s fastq files [%s] successfully installed.'
-                          % (ftype, ', '.join(map(str, fastq_file))))
+            log.info('%s fastq files [%s] successfully installed.' %
+                     (ftype, ', '.join(map(str, fastq_file))))
     return fastq_file
 
 
@@ -476,18 +486,17 @@ def get_index(output_dir: str, index: str, read_array: str, samfile: str) -> str
             raise ValueError('Provided index: "%s" is neither an s3 link or a valid '
                              'filepath' % index)
     else:
-        seqc.log.info('AWS s3 link provided for index. Downloading index.')
-        bucket, prefix = seqc.io.S3.split_link(index)
+        log.info('AWS s3 link provided for index. Downloading index.')
+        bucket, prefix = io.S3.split_link(index)
         index = output_dir + '/index/'  # set index  based on s3 download
         cut_dirs = prefix.count('/')
         # install whole index
         if not any([samfile, read_array]):
-            seqc.io.S3.download_files(bucket=bucket, key_prefix=prefix,
-                                      output_prefix=index, cut_dirs=cut_dirs)
+            io.S3.download_files(bucket=bucket, key_prefix=prefix,
+                                 output_prefix=index, cut_dirs=cut_dirs)
         else:  # either samfile or read array provided, only download annotations file
             annotations_file = index + 'annotations.gtf'
-            seqc.io.S3.download_file(bucket, prefix + 'annotations.gtf',
-                                     annotations_file)
+            io.S3.download_file(bucket, prefix + 'annotations.gtf', annotations_file)
     return index
 
 
@@ -515,41 +524,40 @@ def determine_start_point(args) -> (bool, bool, bool):
 
 
 def merge_fastq_files(
-        platform: str, barcode_fastq: str, merged_fastq: str, output_stem: str,
-        genomic_fastq: str, pigz: bool) -> (str, int):
+        platform: str, barcode_fastq: [str], output_stem: str,
+        genomic_fastq: [str], pigz: bool) -> (str, int):
     """
     annotates genomic fastq with barcode information; merging the two files.
 
-    :param platform:
-    :param barcode_fastq:
-    :param merged_fastq:
-    :param output_stem:
-    :param genomic_fastq:
-    :param pigz:
+    :param platform: str, name of platform
+    :param barcode_fastq: list of str names of fastq files containing barcode information
+    :param output_stem: str, stem for output files
+    :param genomic_fastq: list of str names of fastq files containing genomic information
+    :param pigz: bool, indicates if pigz is installed
     :returns merged_fastq, fastq_records: (str, int) name of merged fastq file and the
       number of fastq records that were processed.
     """
 
-    seqc.log.info('Merging genomic reads and barcode annotations.')
-    merge_function = getattr(seqc.sequence.merge_functions, platform)
-    merged_fastq, fastq_records = seqc.sequence.fastq.merge_paired(
+    log.info('Merging genomic reads and barcode annotations.')
+    merge_function = getattr(merge_functions, platform)
+    merged_fastq, fastq_records = fastq.merge_paired(
         merge_function=merge_function,
         fout=output_stem + '_merged.fastq',
         genomic=genomic_fastq,
         barcode=barcode_fastq)
 
     # delete genomic/barcode fastq files after merged.fastq creation
-    seqc.log.info('Removing original fastq file for memory management.')
+    log.info('Removing original fastq file for memory management.')
     delete_fastq = ' '.join(['rm'] + genomic_fastq + barcode_fastq)
-    seqc.io.ProcessManager(delete_fastq).run_all()
+    io.ProcessManager(delete_fastq).run_all()
 
     # zip merged fastq file
-    seqc.log.info('Gzipping merged fastq file.')
+    log.info('Gzipping merged fastq file.')
     if pigz:
         pigz_zip = "pigz --best -k {fname}".format(fname=merged_fastq)
     else:
         pigz_zip = "gzip -kf {fname}".format(fname=merged_fastq)
-    pigz_proc = seqc.io.ProcessManager(pigz_zip)
+    pigz_proc = io.ProcessManager(pigz_zip)
     pigz_proc.run_all()
     pigz_proc.wait_until_complete()  # prevents slowing down STAR alignment
     return merged_fastq, fastq_records
@@ -557,7 +565,7 @@ def merge_fastq_files(
 
 def align_fastq_records(
         merged_fastq, output_dir, output_stem, star_args, index, n_processes,
-        aws_upload_key, pigz) -> (str, str, seqc.io.ProcessManager):
+        aws_upload_key, pigz) -> (str, str, io.ProcessManager):
     """
     Align fastq records.
 
@@ -569,28 +577,27 @@ def align_fastq_records(
     :param n_processes: int, number of STAR processes to initiate
     :param aws_upload_key: str, location to upload files
     :param pigz: bool, True if pigz is installed, else False
-    :return samfile, input_data, manage_merged: (str, str, seqc.io.ProcessManager)
+    :return samfile, input_data, manage_merged: (str, str, io.ProcessManager)
       name of .sam file containing aligned reads, indicator of which data was used as
       input, and a ProcessManager for merged fastq files
     """
     input_data = 'start'
-    seqc.log.info('Aligning merged fastq records.')
+    log.info('Aligning merged fastq records.')
     if merged_fastq.startswith('s3://'):
         input_data = 'merged'
-        bucket, prefix = seqc.io.S3.split_link(merged_fastq)
+        bucket, prefix = io.S3.split_link(merged_fastq)
         _, fname = os.path.split(prefix)
-        merged_fastq = seqc.io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
+        merged_fastq = io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
         if merged_fastq.endswith('.gz'):
             if pigz:
                 cmd = 'pigz -d {fname}'.format(fname=merged_fastq)
             else:
                 cmd = 'gunzip {fname}'.format(fname=merged_fastq)
-            gunzip_proc = seqc.io.ProcessManager(cmd)
+            gunzip_proc = io.ProcessManager(cmd)
             gunzip_proc.run_all()
             gunzip_proc.wait_until_complete()  # finish before STAR alignment
             merged_fastq = merged_fastq.strip('.gz')
-        seqc.log.info('Merged fastq file %s successfully installed from S3.' %
-                      merged_fastq)
+        log.info('Merged fastq file %s successfully installed from S3.' % merged_fastq)
     *base_directory, stem = output_stem.split('/')
     alignment_directory = '/'.join(base_directory) + '/alignments/'
     os.makedirs(alignment_directory, exist_ok=True)
@@ -598,22 +605,22 @@ def align_fastq_records(
         star_kwargs = dict(a.strip().split('=') for a in star_args)
     else:
         star_kwargs = {}
-    samfile = seqc.alignment.star.align(
+    samfile = star.align(
         merged_fastq, index, n_processes, alignment_directory,
         **star_kwargs)
 
     # Removing or uploading the merged fastq file depending on start point
     if input_data == 'merged':
-        seqc.log.info('Removing merged.fastq file for memory management.')
+        log.info('Removing merged.fastq file for memory management.')
         rm_cmd = 'rm {merged_file}'.format(merged_file=merged_fastq)
-        seqc.io.ProcessManager(rm_cmd).run_all()
+        io.ProcessManager(rm_cmd).run_all()
         manage_merged = None
     else:
         if aws_upload_key:
-            seqc.log.info('Uploading gzipped merged fastq file to S3.')
+            log.info('Uploading gzipped merged fastq file to S3.')
             merge_upload = 'aws s3 mv {fname} {s3link}'.format(
                 fname=merged_fastq + '.gz', s3link=aws_upload_key)
-            manage_merged = seqc.io.ProcessManager(merge_upload)
+            manage_merged = io.ProcessManager(merge_upload)
             manage_merged.run_all()
         else:
             manage_merged = None
@@ -622,7 +629,7 @@ def align_fastq_records(
 
 def create_or_download_read_array(
         process_samfile, samfile, output_dir, index, read_array, output_stem,
-        aws_upload_key, input_data) -> (str, str, seqc.io.ProcessManager, int):
+        aws_upload_key, input_data) -> (str, str, io.ProcessManager, int):
     """
     Create or download a ReadArray object.
 
@@ -636,50 +643,49 @@ def create_or_download_read_array(
     :param aws_upload_key: str, key where aws files should be uploaded
     :param input_data: str, indicator variable that contains the identity of the input
       data
-    :returns ra, input_data, manage_samfile: (str, str, seqc.io.ProcessManager, int)
+    :returns ra, input_data, manage_samfile: (str, str, io.ProcessManager, int)
       ReadArray object, indicator object, samfile ProcessManager, and number of processed
       sam records
     """
     manage_samfile = None
     sam_records = None
     if process_samfile:
-        seqc.log.info('Filtering aligned records and constructing record database.')
+        log.info('Filtering aligned records and constructing record database.')
         if samfile.startswith('s3://'):
             input_data = 'samfile'
-            bucket, prefix = seqc.io.S3.split_link(samfile)
+            bucket, prefix = io.S3.split_link(samfile)
             _, fname = os.path.split(prefix)
-            samfile = seqc.io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
-            seqc.log.info('Samfile %s successfully installed from S3.' % samfile)
-        ra, sam_records = seqc.core.ReadArray.from_samfile(
+            samfile = io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
+            log.info('Samfile %s successfully installed from S3.' % samfile)
+        ra, sam_records = ReadArray.from_samfile(
             samfile, index + 'annotations.gtf')
         read_array = output_stem + '.h5'
         ra.save(read_array)
 
         # converting sam to bam and uploading to S3, else removing samfile
         if input_data == 'samfile':
-            seqc.log.info('Removing samfile for memory management.')
+            log.info('Removing samfile for memory management.')
             rm_samfile = 'rm {fname}'.format(fname=samfile)
-            seqc.io.ProcessManager(rm_samfile).run_all()
+            io.ProcessManager(rm_samfile).run_all()
         else:
             if aws_upload_key:
-                seqc.log.info('Converting samfile to bamfile and uploading to S3.')
+                log.info('Converting samfile to bamfile and uploading to S3.')
                 bamfile = output_dir + '/alignments/Aligned.out.bam'
                 convert_sam = 'samtools view -bS -o {bamfile} {samfile}' \
                     .format(bamfile=bamfile, samfile=samfile)
                 upload_bam = 'aws s3 mv {fname} {s3link}'.format(
                     fname=bamfile, s3link=aws_upload_key)
-                manage_samfile = seqc.io.ProcessManager(convert_sam, upload_bam)
+                manage_samfile = io.ProcessManager(convert_sam, upload_bam)
                 manage_samfile.run_all()
     else:
         if read_array.startswith('s3://'):
             input_data = 'readarray'
-            bucket, prefix = seqc.io.S3.split_link(read_array)
+            bucket, prefix = io.S3.split_link(read_array)
             _, fname = os.path.split(prefix)
-            read_array = seqc.io.S3.download_file(
+            read_array = io.S3.download_file(
                 bucket, prefix, output_dir + '/' + fname)
-            seqc.log.info('Read array %s successfully installed from S3.' %
-                          read_array)
-        ra = seqc.core.ReadArray.load(read_array)
+            log.info('Read array %s successfully installed from S3.' % read_array)
+        ra = ReadArray.load(read_array)
     return ra, input_data, manage_samfile, sam_records, read_array
 
 
@@ -700,27 +706,27 @@ def download_barcodes(platform: str, barcode_files: list, output_dir: str) -> li
                                      'an s3 link or a valid filepath' %
                                      ', '.join(map(str, barcode_files)))
         else:
-            seqc.log.info('AWS s3 link provided for barcodes. Downloading files.')
+            log.info('AWS s3 link provided for barcodes. Downloading files.')
             if not barcode_files[0].endswith('/'):
                 barcode_files[0] += '/'
-            bucket, prefix = seqc.io.S3.split_link(barcode_files[0])
+            bucket, prefix = io.S3.split_link(barcode_files[0])
             cut_dirs = prefix.count('/')
-            barcode_files = seqc.io.S3.download_files(
+            barcode_files = io.S3.download_files(
                 bucket=bucket, key_prefix=prefix, output_prefix=output_dir,
                 cut_dirs=cut_dirs)
-            seqc.log.info('Barcode files [%s] successfully downloaded.' %
-                          ', '.join(map(str, barcode_files)))
+            log.info('Barcode files [%s] successfully downloaded.' %
+                     ', '.join(map(str, barcode_files)))
     return barcode_files
 
 
 def upload_data_and_notify_user(
         email_status: str, aws_upload_key: str, align: bool, input_data: str,
-        manage_merged: seqc.io.ProcessManager, process_samfile: bool,
+        manage_merged: io.ProcessManager, process_samfile: bool,
         merged_fastq: str, samfile: str, read_array: str,
-        sparse_proc: seqc.io.ProcessManager, sparse_csv: str,
-        manage_ra: seqc.io.ProcessManager, summary: dict, fastq_records: int,
+        sparse_proc: io.ProcessManager, sparse_csv: str,
+        manage_ra: io.ProcessManager, summary: dict, fastq_records: int,
         sam_records: int, total_molecules: int, mols_lost: int, cells_lost: int,
-        manage_samfile: seqc.io.ProcessManager, cell_description: pd.Series,
+        manage_samfile: io.ProcessManager, cell_description: pd.Series,
         output_stem: str, log_name: str, email: bool) -> None:
     """
     Uploads data and notifies the user of the termination of a run
@@ -729,21 +735,21 @@ def upload_data_and_notify_user(
     :param aws_upload_key: str, location to upload files on aws
     :param align: bool, whether or not alignment occurred
     :param input_data: str, indicator, stores the type of input data
-    :param manage_merged: seqc.io.ProcessManager, an upload manager for merged_fastq
+    :param manage_merged: io.ProcessManager, an upload manager for merged_fastq
     :param process_samfile: bool, whether or not samfile was processed
     :param merged_fastq: str, name of merged fastq file
     :param samfile: str, name of sam file
     :param read_array: str, name of stored ReadArray
-    :param sparse_proc: seqc.io.ProcessManager, an upload manager for sparse counts file
+    :param sparse_proc: io.ProcessManager, an upload manager for sparse counts file
     :param sparse_csv: str, name of sparse_csv file
-    :param manage_ra: seqc.io.ProcessManager, an upload manager for the ReadArray
+    :param manage_ra: io.ProcessManager, an upload manager for the ReadArray
     :param summary: dict, object containing summary statistics
     :param fastq_records: int, number of processed fastq records
     :param sam_records: int, number of processed sam records
     :param total_molecules: int, number of molecules
     :param mols_lost: int, number of molecules lost
     :param cells_lost: int, number of cells lost
-    :param manage_samfile: seqc.io.ProcessManager, an upload manager for the sam file
+    :param manage_samfile: io.ProcessManager, an upload manager for the sam file
     :param cell_description: pd.Series, a summary of cells and cell counts
     :param output_stem: str, stem for file output
     :param log_name: str, name of SEQC.log file
@@ -751,28 +757,28 @@ def upload_data_and_notify_user(
     :return None:
     """
 
-    seqc.log.info('Starting file upload onto %s.' % aws_upload_key)
+    log.info('Starting file upload onto %s.' % aws_upload_key)
 
     if email_status and aws_upload_key is not None:
         # make sure that all other files are uploaded before termination
         if align and input_data != 'merged':
             if manage_merged:
                 manage_merged.wait_until_complete()
-                seqc.log.info('Successfully uploaded %s to the specified S3 '
-                              'location "%s"' % (merged_fastq, aws_upload_key))
+                log.info('Successfully uploaded %s to the specified S3 location "%s"' %
+                         (merged_fastq, aws_upload_key))
         if process_samfile:
             if input_data != 'samfile':
                 if manage_samfile:
                     manage_samfile.wait_until_complete()
-                    seqc.log.info('Successfully uploaded %s to the specified S3 '
-                                  'location "%s"' % (samfile, aws_upload_key))
+                    log.info('Successfully uploaded %s to the specified S3 location "%s"'
+                             % (samfile, aws_upload_key))
             if manage_ra:
                 manage_ra.wait_until_complete()
-                seqc.log.info('Successfully uploaded %s to the specified S3 '
-                              'location "%s"' % (read_array, aws_upload_key))
+                log.info('Successfully uploaded %s to the specified S3 location "%s"' %
+                         (read_array, aws_upload_key))
             sparse_proc.wait_until_complete()
-            seqc.log.info('Successfully uploaded %s to the specified S3 '
-                          'location "%s"' % (sparse_csv + '.gz', aws_upload_key))
+            log.info('Successfully uploaded %s to the specified S3 location "%s"' %
+                     (sparse_csv + '.gz', aws_upload_key))
 
         # upload count matrix and alignment summary at the very end
         if summary:
@@ -790,7 +796,7 @@ def upload_data_and_notify_user(
             summary['cell_desc'] = cell_description
 
         # todo: run summary will not be reported if n_fastq or n_sam = NA
-        seqc.remote.upload_results(
+        remote.upload_results(
             output_stem, email_status, aws_upload_key, input_data,
             summary, log_name, email)
 
@@ -807,17 +813,17 @@ def main(args: list=None) -> None:
     args = parse_args(args)
     if args.aws:
         args.log_name = args.log_name.split('/')[-1]
-        seqc.log.setup_logger('/data/' + args.log_name)
+        log.setup_logger('/data/' + args.log_name)
     else:
-        seqc.log.setup_logger(args.log_name)
+        log.setup_logger(args.log_name)
     try:
-        seqc.log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
+        log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
         err_status = False
         pigz, email = check_executables('pigz', 'mutt')
         if not email and not args.remote:
-            seqc.log.notify('mutt was not found on this machine; an email will not '
-                            'be sent to the user upon termination of SEQC run.')
-        seqc.log.args(args)
+            log.notify('mutt was not found on this machine; an email will not be sent to '
+                       'the user upon termination of SEQC run.')
+        log.args(args)
 
         # read in config file, make sure it exists
         config = read_config('~/.seqc/config')
@@ -848,7 +854,7 @@ def main(args: list=None) -> None:
             if not args.output_stem.startswith('s3://'):
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
-            seqc.remote.cluster_cleanup()
+            remote.cluster_cleanup()
             run_remote(args, total_size)
             sys.exit(0)
 
@@ -879,12 +885,12 @@ def main(args: list=None) -> None:
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
-                args.min_poly_t = seqc.filter.estimate_min_poly_t(
+                args.min_poly_t = filter.estimate_min_poly_t(
                     args.barcode_fastq, args.platform)
-                seqc.log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
+                log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
             args.merged_fastq, fastq_records = merge_fastq_files(
-                args.platform, args.barcode_fastq, args.merged_fastq, args.output_stem,
+                args.platform, args.barcode_fastq, args.output_stem,
                 args.genomic_fastq, pigz)
         else:
             fastq_records = None
@@ -896,10 +902,10 @@ def main(args: list=None) -> None:
         else:
             manage_merged = None
 
-        ra, input_data, manage_samfile, sam_records, h5_file = \
-        create_or_download_read_array(
-            process_samfile, args.samfile, output_dir, args.index, args.read_array,
-            args.output_stem, aws_upload_key, input_data)
+        ra, input_data, manage_samfile, sam_records, h5_file = (
+            create_or_download_read_array(
+                process_samfile, args.samfile, output_dir, args.index, args.read_array,
+                args.output_stem, aws_upload_key, input_data))
         args.read_array = h5_file
 
         args.barcode_files = download_barcodes(
@@ -908,59 +914,72 @@ def main(args: list=None) -> None:
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
             args.min_poly_t = 0
-            seqc.log.notify('Warning: SEQC started from step other than unmerged fastq '
-                            'with empty --min-poly-t parameter. Continuing with '
-                            '--min-poly-t=0.')
+            log.notify('Warning: SEQC started from step other than unmerged fastq with '
+                       'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
         if args.max_dust_score is None:
             args.max_dust_score = 10
-            seqc.log.notify('Warning: --max-dust-score parameter was not supplied, '
-                            'continuing with --max-dust-score=10.')
+            log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
+                       'with --max-dust-score=10.')
 
         # correct errors
-        seqc.log.info('Correcting cell barcode and RMT errors')
-        correct_errors = getattr(seqc.correct_errors, args.platform)
+        log.info('Correcting cell barcode and RMT errors')
+        correct_errors_function = getattr(correct_errors, args.platform)
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts, summary = correct_errors(
+        cell_counts, summary = correct_errors_function(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             max_dust=args.max_dust_score, singleton_weight=args.singleton_weight)
 
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
-            seqc.log.info('Removing .h5 file for memory management.')
+            log.info('Removing .h5 file for memory management.')
             rm_ra = 'rm {fname}'.format(fname=args.read_array)
-            seqc.io.ProcessManager(rm_ra).run_all()
+            io.ProcessManager(rm_ra).run_all()
             manage_ra = None
         else:
             if aws_upload_key:
-                seqc.log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
+                log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
                 upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
                                                                 s3link=aws_upload_key)
-                manage_ra = seqc.io.ProcessManager(upload_ra)
+                manage_ra = io.ProcessManager(upload_ra)
                 manage_ra.run_all()
 
         # generate count matrix
-        seqc.log.info('Creating sparse count matrices')
-        matrices = seqc.correct_errors.convert_to_matrix(cell_counts)
+        log.info('Creating sparse count matrices')
+        matrices = correct_errors.convert_to_matrix(cell_counts)
+        molecules = SparseFrame(
+            matrices['molecules']['matrix'],
+            matrices['molecules']['row_ids'],
+            matrices['molecules']['col_ids'])
+        reads = SparseFrame(
+            matrices['reads']['matrix'],
+            matrices['reads']['row_ids'],
+            matrices['reads']['col_ids'])
+
         with open(args.output_stem + '_read_and_count_matrices.p', 'wb') as f:
             pickle.dump(matrices, f)
-        seqc.log.info('Successfully generated sparse count matrix.')
+        log.info('Successfully generated sparse count matrix.')
 
-        seqc.log.info('filtering, summarizing cell molecule count distribution, and '
-                      'generating dense count matrix')
-        e = seqc.core.Experiment.from_count_matrices(
-            args.output_stem + '_read_and_count_matrices.p')
+        log.info('filtering, summarizing cell molecule count distribution, and '
+                 'generating dense count matrix')
 
-        # todo @ajc speed up this function; is slow
-        gene_id_map = seqc.core.Experiment.create_gene_id_to_official_gene_symbol_map(
+        # todo speed up this function
+        gene_id_map = create_gene_id_to_official_gene_symbol_map(
             args.index + 'annotations.gtf')
-        e = e.ensembl_gene_id_to_official_gene_symbol(gene_id_map=gene_id_map)
+
+        # translate symbols to gene names
+        reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
+        molecules = ensembl_gene_id_to_official_gene_symbol(
+            molecules, gene_id_map=gene_id_map)
+
+        # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
-            e.create_filtered_dense_count_matrix())
-        df = dense.molecules
-        df[df == 0] = np.nan  # for sparse_csv saving
+            create_filtered_dense_count_matrix(molecules, reads))
+
+        # save sparse csv
+        dense[dense == 0] = np.nan  # for sparse_csv saving
         sparse_csv = args.output_stem + '_counts.csv'
-        df.to_csv(sparse_csv)
+        dense.to_csv(sparse_csv)
 
         # gzipping sparse_csv and uploading to S3
         if pigz:
@@ -970,9 +989,9 @@ def main(args: list=None) -> None:
         sparse_upload = 'aws s3 mv {fname} {s3link}'.format(fname=sparse_csv+'.gz',
                                                             s3link=aws_upload_key)
         if aws_upload_key:
-            sparse_proc = seqc.io.ProcessManager(sparse_zip, sparse_upload)
+            sparse_proc = io.ProcessManager(sparse_zip, sparse_upload)
         else:
-            sparse_proc = seqc.io.ProcessManager(sparse_zip)
+            sparse_proc = io.ProcessManager(sparse_zip)
         sparse_proc.run_all()
 
         # in this version, local runs won't be able to upload to S3
@@ -987,7 +1006,7 @@ def main(args: list=None) -> None:
 
     except BaseException as e:
         if not isinstance(e, SystemExit):
-            seqc.log.exception()
+            log.exception()
         err_status = True
         if args.email_status and not args.remote:
             email_body = 'Process interrupted -- see attached error message'
@@ -997,11 +1016,10 @@ def main(args: list=None) -> None:
                 else:
                     attachment = args.log_name
                 if aws_upload_key:
-                    bucket, key = seqc.io.S3.split_link(aws_upload_key)
-                    seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(attachment,
-                                                                            bucket, key)
-                seqc.remote.email_user(attachment=attachment, email_body=email_body,
-                                       email_address=args.email_status)
+                    bucket, key = io.S3.split_link(aws_upload_key)
+                    retry_boto_call(io.S3.upload_file)(attachment, bucket, key)
+                remote.email_user(attachment=attachment, email_body=email_body,
+                                  email_address=args.email_status)
         raise  # re-raise exception
 
     finally:
@@ -1016,11 +1034,11 @@ def main(args: list=None) -> None:
                 if os.path.isfile(fpath):
                     with open(fpath, 'r') as f:
                         inst_id = f.readline().strip('\n')
-                    seqc.remote.terminate_cluster(inst_id)
+                    remote.terminate_cluster(inst_id)
                 else:
-                    seqc.log.info('File containing instance id is unavailable!')
+                    log.info('File containing instance id is unavailable!')
             else:
-                seqc.log.info('Not terminating cluster -- user responsible for cleanup')
+                log.info('Not terminating cluster -- user responsible for cleanup')
 
 
 if __name__ == '__main__':

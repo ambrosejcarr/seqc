@@ -33,7 +33,8 @@ def notify(message):
 
 
 def debug(message):
-    logging.debug(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ':%(module)s:%(funcName)s:' + ': %s' % message)
+    logging.debug(datetime.now().strftime("%Y-%m-%d %H:%M:%S") +
+                  ':%(module)s:%(funcName)s:' + ': %s' % message)
 
 
 def print_exact_command_line(arg_line, remote=False):
@@ -153,7 +154,6 @@ class LogData:
         idx = regex.find(old) + len(old)
         return regex[:idx] + regex[idx:].replace(old, new)
 
-
     @classmethod
     def dictionary_to_dataframe(cls, groupdict, col_label) -> pd.DataFrame:
         """
@@ -270,7 +270,7 @@ class LogData:
         :param log_file: name of the seqc log to extract information from
         :param pattern: str, optional, the value of seqc.stats.ExperimentYield.output.
           useful to parse seqc logs from older versions
-        :return data: dict, argument names and values from seqc.log summary
+        :return match_results: dict, argument names and values from seqc.log summary
         """
         if pattern is None:
             pattern = cls.string_to_regex()
@@ -286,8 +286,8 @@ class LogData:
             with open(log_file, 'r') as f:
                 summary_data = f.read()
                 mo = re.match(pattern_, summary_data, re.M | re.DOTALL)
-                data = mo.groupdict()
-            return data
+                match_results = mo.groupdict()
+            return match_results
 
         try:
             data = get_match_object(pattern)
@@ -307,14 +307,6 @@ class LogData:
         mo = seqc.log.LogData.match_log(logfile)
         return seqc.log.LogData.dictionary_to_dataframe(
             mo, logfile.split('/')[-1].replace('.log', ''))
-
-    @classmethod
-    def add_log(cls, filenames, df=None):
-        if not filenames:
-            return df
-        if df is None:
-            df = cls.parse_log()
-
 
     @classmethod
     def parse_multiple(cls, directory: str, exclude: str='') -> pd.DataFrame:
@@ -344,7 +336,3 @@ class LogData:
         df = pd.concat(frames, 1)
         df.columns = cols
         return df
-
-
-
-

@@ -1,8 +1,12 @@
+import re
 import fileinput
 import string
 from collections import defaultdict
 from intervaltree import IntervalTree
-import seqc
+from copy import deepcopy
+import pandas as pd
+from seqc import reader
+from seqc.sparse_frame import SparseFrame
 
 
 def first(iterable):
@@ -194,8 +198,8 @@ class GeneIntervals:
 
     def __init__(self, gtf: str):
         interval_tree = defaultdict(IntervalTree)
-        reader = Reader(gtf)
-        for gene in reader.iter_genes():
+        reader_ = Reader(gtf)
+        for gene in reader_.iter_genes():
             if gene.exons:
                 for start, end in gene.genomic_intervals():
                     try:
@@ -227,7 +231,7 @@ class GeneIntervals:
             return None
 
 
-class Reader(seqc.reader.Reader):
+class Reader(reader.Reader):
     """
     SubClass of reader.Reader, returns an Reader with several specialized iterator
     methods.
@@ -300,7 +304,6 @@ def create_phix_annotation(phix_fasta):
     chromosome = header.split()[0].strip('>')
     source = 'seqc'
     score = '.'
-    strand = '+'
     frame = '.'
     gene_meta = 'gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}";'
     exon_meta = ('gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}"; '
@@ -333,3 +336,42 @@ def create_phix_annotation(phix_fasta):
             exon = [chromosome, source, 'exon', str(s), str(e), score, '-', frame,
                     exon_meta.format(NUM=str(i + 1) * 9, NAME=i + 1)]
             f.write('\t'.join(exon) + '\n')
+
+
+def create_gene_id_to_official_gene_symbol_map(gtf: str):
+    """
+    create_gene_id_to_official_gene_symbol_map: map integer ENSEMBL ids to
+    official gene symbols.
+
+    :param gtf: str, filename of gtf file from which to create the map.
+    """
+    pattern = re.compile(
+        r'(^.*?gene_id "[^0-9]*)([0-9]*)(\.?.*?gene_name ")(.*?)(".*?$)')
+    gene_id_map = defaultdict(set)
+    with open(gtf, 'r') as f:
+        for line in f:
+            match = re.match(pattern, line)
+            if match:
+                gene_id_map[int(match.group(2))].add(match.group(4).upper())
+    return gene_id_map
+
+
+def ensembl_gene_id_to_official_gene_symbol(
+        data: pd.DataFrame or SparseFrame, gtf=None, gene_id_map=None):
+    """convert data containing ensembl gene ids into an index of gene symbols
+
+    :param data: cells x genes DataFrame or SparseFrame
+    :param gtf: str, filename of a gtf file
+    :param gene_id_map: gene_id_map constructed from
+      Experiment.create_gene_id_to_official_gene_symbol_map. If converting multiple
+      objects, it is much faster to only construct the map a single time.
+    :return: data: pd.DataFrame or SparseFrame object
+    """
+    if gene_id_map is None:
+        if gtf is None:
+            raise ValueError('User must pass either GTF or a gene_id_map object')
+        gene_id_map = create_gene_id_to_official_gene_symbol_map(gtf)
+    data = deepcopy(data)
+    data.columns = ['-'.join(gene_id_map[i]) for i in data.columns]
+
+    return data

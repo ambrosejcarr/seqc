@@ -8,8 +8,11 @@ import shutil
 import paramiko
 import boto3
 from botocore.exceptions import ClientError
-from seqc.exceptions import retry_boto_call
-import seqc
+from seqc.exceptions import (retry_boto_call, SpotBidError, BotoCallError,
+                             VolumeCreationError, EC2RuntimeError)
+from seqc.stats import ExperimentalYield
+from seqc import io
+from seqc import log
 import socket
 import logging
 
@@ -46,7 +49,7 @@ class ClusterServer(object):
         def create_security_group_attempt():
             name = 'SEQC-%07d' % random.randint(1, int(1e7))
             sg = self.ec2.create_security_group(GroupName=name, Description=name)
-            seqc.log.notify('Assigned instance name %s.' % name)
+            log.notify('Assigned instance name %s.' % name)
             sg.authorize_ingress(IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22,
                                  ToPort=22)
             sg.authorize_ingress(SourceSecurityGroupName=name)
@@ -55,10 +58,12 @@ class ClusterServer(object):
             client = boto3.client('ec2')
             client.describe_security_groups(GroupIds=[sg.id])
             self.sg = sg.id
-            seqc.log.notify('Created security group %s (%s).' % (name, sg.id))
+            log.notify('Created security group %s (%s).' % (name, sg.id))
 
-        retry_boto_call(func=create_security_group_attempt, retries=20, exceptions_to_catch=ClientError,
-                        delay_retry=2, exception_to_raise=TimeoutError("Failed to create a security group"))()
+        retry_boto_call(
+            func=create_security_group_attempt, retries=20,
+            exceptions_to_catch=ClientError, delay_retry=2,
+            exception_to_raise=TimeoutError("Failed to create a security group"))()
 
     def configure_cluster(self, config_file, aws_instance, spot_bid=None):
         """
@@ -101,8 +106,8 @@ class ClusterServer(object):
             else:
                 launch_specs['SubnetId'] = self.subnet
         else:
-            raise ValueError('Seq-c is unable to configure the following instance type: %s'
-                             % str(self.inst_type))
+            raise ValueError('Seq-c is unable to configure the following instance type: '
+                             '%s' % str(self.inst_type))
         return launch_specs
 
     def create_spot_cluster(self, volume_size):
@@ -115,8 +120,8 @@ class ClusterServer(object):
         if self.spot_bid is None:
             raise RuntimeError('Cannot create a spot instance without a spot_bid value')
         client = boto3.client('ec2')
-        seqc.log.notify('Launching cluster with volume size {volume_size} GB at spot '
-                        'bid {spot_bid}.'.format(volume_size=volume_size, spot_bid=self.spot_bid))
+        log.notify('Launching cluster with volume size {volume_size} GB at spot bid '
+                   '{spot_bid}.'.format(volume_size=volume_size, spot_bid=self.spot_bid))
         launch_specs = self.generate_launch_specs()
         launch_specs['BlockDeviceMappings'] = [{'DeviceName': '/dev/xvdf',
                                                 'Ebs': {'VolumeSize': volume_size,
@@ -137,20 +142,23 @@ class ClusterServer(object):
                 continue
         idx = sec_groups.index(self.sg)
         request_id = resp['SpotInstanceRequests'][0]['SpotInstanceRequestId']
-        seqc.log.notify("Starting bidding process...")
+        log.notify("Starting bidding process...")
         instance_id = self._make_bid(client, idx, request_id)
         self.inst_id = self.ec2.Instance(instance_id)
         # sleep for 5s just in case boto call needs a bit more time
         time.sleep(5)
-        seqc.exceptions.retry_boto_call(self.wait_for_cluster)(instance_id)
+        retry_boto_call(self.wait_for_cluster)(instance_id)
 
     @staticmethod
     def _make_bid(client, idx, request_id):
         """
-        Manages the bidding process by repeatedly asking for a spot, and handling bid failures
+        Manages the bidding process by repeatedly asking for a spot, and handling bid
+        failures
+
         :param client: Boto3 EC2 client2 client
         :param idx: index of the specific spot request being made
-        :param request_id: Spot request id, used to shut down the bid process in case of problems
+        :param request_id: Spot request id, used to shut down the bid process in case of
+         problems
         :return: ID of instance that is being launched
         """
         bad_status = ['price-too-low', 'capacity-oversubscribed',
@@ -160,25 +168,29 @@ class ClusterServer(object):
                       'bad-parameters', 'system-error', 'canceled-before-fulfillment']
 
         def attempt_bidding():
-            spot_resp = client.describe_spot_instance_requests()['SpotInstanceRequests'][idx]
+            spot_resp = (
+                client.describe_spot_instance_requests()['SpotInstanceRequests'][idx])
             status_code = spot_resp['Status']['Code']
             if status_code in bad_status:
-                raise seqc.exceptions.SpotBidError('Please adjust your spot bid request.')
-            seqc.log.notify('The current status of your request is: {status}'
-                            .format(status=status_code))
+                raise SpotBidError('Please adjust your spot bid request.')
+            log.notify('The current status of your request is: {status}'.format(
+                status=status_code))
             if spot_resp['State'] == 'active':
                 return spot_resp
-            raise seqc.exceptions.BotoCallError()
+            raise BotoCallError()
 
         try:
-            bid_response = retry_boto_call(func=attempt_bidding, retries=40, delay_retry=15,
-                                           exceptions_to_catch=seqc.exceptions.BotoCallError,
-                                           exception_to_raise=seqc.exceptions.SpotBidError('Timeout: spot bid could'\
-                                                                                           'not be fulfilled'))()
-            seqc.log.notify('Spot bid request was successfully fulfilled!')
+            bid_response = retry_boto_call(
+                func=attempt_bidding, retries=40, delay_retry=15,
+                exceptions_to_catch=BotoCallError,
+                exception_to_raise=SpotBidError(
+                    'Timeout: spot bid could not be fulfilled'))()
+
+            log.notify('Spot bid request was successfully fulfilled!')
             return bid_response['InstanceId']
-        except seqc.exceptions.SpotBidError:
-            client.cancel_spot_instance_requests(DryRun=False, SpotInstanceRequestIds=[request_id])
+        except SpotBidError:
+            client.cancel_spot_instance_requests(
+                DryRun=False, SpotInstanceRequestIds=[request_id])
             raise
 
     def create_cluster(self):
@@ -189,11 +201,11 @@ class ClusterServer(object):
         clust = self.ec2.create_instances(**launch_specs)
         instance = clust[0]
         self.inst_id = instance
-        seqc.log.notify('Created new instance %s. Waiting until instance is running' %
-                        instance)
+        log.notify('Created new instance %s. Waiting until instance is running' %
+                   instance)
         # sleep for 5s just in case boto call needs a bit more time
         time.sleep(5)
-        seqc.exceptions.retry_boto_call(self.wait_for_cluster)(instance.id)
+        retry_boto_call(self.wait_for_cluster)(instance.id)
 
     @staticmethod
     def wait_for_cluster(inst_id: str):
@@ -211,17 +223,18 @@ class ClusterServer(object):
         exist_waiter.config.max_attempts = 30
         exist_waiter.wait(InstanceIds=[inst_id])
         run_waiter.wait(InstanceIds=[inst_id])
-        seqc.log.notify('Instance %s now running.' % inst_id)
+        log.notify('Instance %s now running.' % inst_id)
 
     def is_cluster_running(self):
         """checks whether a cluster is running"""
 
         if self.inst_id is None:
-            raise seqc.exceptions.EC2RuntimeError('No inst_id assigned. Instance was not '
-                                                  'successfully created!')
+            raise EC2RuntimeError('No inst_id assigned. Instance was not successfully '
+                                  'created!')
+
         self.inst_id.reload()
-        if self.inst_id.state['Name'] == 'running' or self.inst_id.state['Name'] == \
-                'pending':
+        if (self.inst_id.state['Name'] == 'running' or
+                self.inst_id.state['Name'] == 'pending'):
             return True
         else:
             return False
@@ -232,10 +245,9 @@ class ClusterServer(object):
         if self.inst_id.state['Name'] == 'stopped':
             self.inst_id.start()
             self.inst_id.wait_until_running()
-            seqc.log.notify('Stopped instance %s has restarted.' % self.inst_id.id)
+            log.notify('Stopped instance %s has restarted.' % self.inst_id.id)
         else:
-            seqc.log.notify('Instance %s is not in a stopped state!' %
-                            self.inst_id.id)
+            log.notify('Instance %s is not in a stopped state!' % self.inst_id.id)
 
     def stop_cluster(self):
         """stops a running cluster"""
@@ -243,9 +255,9 @@ class ClusterServer(object):
         if self.is_cluster_running():
             self.inst_id.stop()
             self.inst_id.wait_until_stopped()
-            seqc.log.notify('Instance %s is now stopped.' % self.inst_id)
+            log.notify('Instance %s is now stopped.' % self.inst_id)
         else:
-            seqc.log.notify('Instance %s is not running!' % self.inst_id)
+            log.notify('Instance %s is not running!' % self.inst_id)
 
     def create_and_attach_volume(self, vol_size, dev_id):
         """
@@ -261,25 +273,29 @@ class ClusterServer(object):
         def reload_vol_until(desired_state):
             vol.reload()
             if vol.state != desired_state:
-                raise seqc.exceptions.BotoCallError()
+                raise BotoCallError()
 
         # Create
-        vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone, VolumeType='gp2')
-        retry_boto_call(func=reload_vol_until, retries=40, delay_retry=3,
-                        exception_to_raise=seqc.exceptions.VolumeCreationError('Volume could not be created.'),
-                        exceptions_to_catch=seqc.exceptions.BotoCallError)(desired_state='available')
-        seqc.log.notify('Volume %s created successfully.' % vol.id)
+        vol = self.ec2.create_volume(Size=vol_size, AvailabilityZone=self.zone,
+                                     VolumeType='gp2')
+        retry_boto_call(
+            func=reload_vol_until, retries=40, delay_retry=3,
+            exception_to_raise=VolumeCreationError('Volume could not be created.'),
+            exceptions_to_catch=BotoCallError)(desired_state='available')
+        log.notify('Volume %s created successfully.' % vol.id)
         # Attach
         self.inst_id.attach_volume(VolumeId=vol.id, Device=dev_id)
-        retry_boto_call(func=reload_vol_until, retries=40, delay_retry=.5,
-                        exception_to_raise=seqc.exceptions.VolumeCreationError('Volume could not be attached.'),
-                        exceptions_to_catch=seqc.exceptions.BotoCallError)(desired_state='in-use')
+        retry_boto_call(
+            func=reload_vol_until, retries=40, delay_retry=.5,
+            exception_to_raise=VolumeCreationError('Volume could not be attached.'),
+            exceptions_to_catch=BotoCallError)(desired_state='in-use')
         # Apply changes
         resp = self.inst_id.modify_attribute(
-            BlockDeviceMappings=[{'DeviceName': dev_id,
-                                  'Ebs': {'VolumeId': vol.id, 'DeleteOnTermination': True}}])
+            BlockDeviceMappings=[
+                {'DeviceName': dev_id,
+                 'Ebs': {'VolumeId': vol.id, 'DeleteOnTermination': True}}])
         if resp['ResponseMetadata']['HTTPStatusCode'] != 200:
-            seqc.exceptions.EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
+            EC2RuntimeError('Something went wrong modifying the attribute of the Volume!')
         # Wait for volume to be attached
 
         def query_device_info():
@@ -287,12 +303,13 @@ class ClusterServer(object):
             device_info = self.inst_id.block_device_mappings
             status = device_info[1]['Ebs']['Status']
             if status != 'attached':
-                raise seqc.exceptions.BotoCallError()
+                raise BotoCallError()
 
-        retry_boto_call(func=query_device_info, exceptions_to_catch=(IndexError, seqc.exceptions.BotoCallError),
-                        exception_to_raise=seqc.exceptions.VolumeCreationError('New volume could not be attached'),
-                        retries=40, delay_retry=.5,)()
-        seqc.log.notify('Volume %s attached to %s at %s.' % (vol.id, self.inst_id.id, dev_id))
+        retry_boto_call(
+            func=query_device_info, exceptions_to_catch=(IndexError, BotoCallError),
+            exception_to_raise=VolumeCreationError('New volume could not be attached'),
+            retries=40, delay_retry=.5,)()
+        log.notify('Volume %s attached to %s at %s.' % (vol.id, self.inst_id.id, dev_id))
 
     def connect_server(self):
         """
@@ -301,10 +318,10 @@ class ClusterServer(object):
         """
 
         ssh_server = SSHServer(self.inst_id.id, self.keypath)
-        seqc.log.notify('Connecting to instance %s...' % self.inst_id.id)
+        log.notify('Connecting to instance %s...' % self.inst_id.id)
         ssh_server.connect()
         if ssh_server.is_connected():
-            seqc.log.notify('Connection successful!')
+            log.notify('Connection successful!')
         self.serv = ssh_server
         return self.inst_id.id
 
@@ -317,25 +334,25 @@ class ClusterServer(object):
         """
 
         if not spot:
-            seqc.log.notify("Creating volume of size %d GB..." % vol_size)
-            vol_id = self.create_and_attach_volume(vol_size, dev_id)
-            seqc.log.notify("Successfully attached %d GB in 1 volume." % vol_size)
+            log.notify("Creating volume of size %d GB..." % vol_size)
+            self.create_and_attach_volume(vol_size, dev_id)  # called for side-effect
+            log.notify("Successfully attached %d GB in 1 volume." % vol_size)
 
         if not self.serv or not self.serv.is_connected:
             self.connect_server()
 
-        seqc.log.notify("Formatting and mounting %s" % dev_id)
+        log.notify("Formatting and mounting %s" % dev_id)
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
         self.serv.exec_command("sudo mkdir -p /data")
         self.serv.exec_command("sudo mount %s /data" % dev_id)
-        seqc.log.notify("Successfully mounted new volume onto /data.")
+        log.notify("Successfully mounted new volume onto /data.")
 
     def git_pull(self):
         """installs the SEQC directory in /data/software"""
         # todo: replace this with git clone once seqc repo is public
 
         folder = '/data/software/'
-        seqc.log.notify('Installing SEQC on remote instance.')
+        log.notify('Installing SEQC on remote instance.')
         self.serv.exec_command("sudo mkdir %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
@@ -351,18 +368,20 @@ class ClusterServer(object):
                 location=location, version='master'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
-        seqc.log.notify("Sources are installed and decompressed, setting up seqc")
+        log.notify("Sources are installed and decompressed, setting up seqc")
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
 
         def test_install():
-            out_test_install, _ = self.serv.exec_command('process_experiment.py -h | grep RNA')
+            out_test_install, _ = self.serv.exec_command(
+                'process_experiment.py -h | grep RNA')
             if not out_test_install:
-                raise seqc.exceptions.BotoCallError()
+                raise BotoCallError()
 
-        retry_boto_call(func=test_install,exceptions_to_catch=seqc.exceptions.BotoCallError,
-                        exception_to_raise=seqc.exceptions.EC2RuntimeError('Error installing SEQC on the cluster.'),
-                        retries=30, delay_retry=2)()
-        seqc.log.notify('SEQC successfully installed in %s.' % folder)
+        retry_boto_call(
+            func=test_install, exceptions_to_catch=BotoCallError,
+            exception_to_raise=EC2RuntimeError('Error installing SEQC on the cluster.'),
+            retries=30, delay_retry=2)()
+        log.notify('SEQC successfully installed in %s.' % folder)
 
     def set_credentials(self):
         """sets aws credentials on remote instance from user's local config file"""
@@ -387,17 +406,17 @@ class ClusterServer(object):
         if self.spot_bid is not None:
             self.create_spot_cluster(volsize)
             self.connect_server()
-            self.allocate_space(volsize,True)
+            self.allocate_space(volsize, True)
         else:
             self.create_cluster()
             self.connect_server()
-            self.allocate_space(volsize,False)
-        seqc.log.notify('Use the following command to log in:\t\t ssh -i {rsa_path} '
-                        'ubuntu@{dns_name}'.format(rsa_path=self.keypath,
-                                                   dns_name=self.inst_id.public_dns_name))
+            self.allocate_space(volsize, False)
+        log.notify('Use the following command to log in:\t\t ssh -i {rsa_path} '
+                   'ubuntu@{dns_name}'.format(
+                       rsa_path=self.keypath, dns_name=self.inst_id.public_dns_name))
         self.git_pull()
         self.set_credentials()
-        seqc.log.notify('Remote instance successfully configured.')
+        log.notify('Remote instance successfully configured.')
 
 
 def terminate_cluster(instance_id):
@@ -411,16 +430,16 @@ def terminate_cluster(instance_id):
     try:
         if instance.state['Name'] != 'terminated' and instance.state['Name'] != \
                 'shutting-down':
-            seqc.log.notify('Requesting termination of instance {id}'.format(
+            log.notify('Requesting termination of instance {id}'.format(
                 id=instance_id))
             instance.terminate()
             instance.wait_until_terminated()
-            seqc.log.notify('Termination of instance {id} complete!'.format(
+            log.notify('Termination of instance {id} complete!'.format(
                 id=instance_id))
         else:
-            seqc.log.notify('Instance {id} is not running!'.format(id=instance_id))
+            log.notify('Instance {id} is not running!'.format(id=instance_id))
     except ClientError:
-        seqc.log.notify('Instance {id} does not exist!'.format(id=instance_id))
+        log.notify('Instance {id} does not exist!'.format(id=instance_id))
 
 
 def remove_sg(sg_id):
@@ -434,10 +453,10 @@ def remove_sg(sg_id):
     sg_name = sg.group_name
     try:
         sg.delete()
-        seqc.log.notify('security group %s (%s) successfully removed' % (
+        log.notify('security group %s (%s) successfully removed' % (
             sg_name, sg_id))
     except ClientError:
-        seqc.log.notify('security group %s (%s) is still in use!' % (sg_name, sg_id))
+        log.notify('security group %s (%s) is still in use!' % (sg_name, sg_id))
 
 
 def email_user(attachment: str, email_body: str, email_address: str) -> None:
@@ -473,13 +492,13 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
     prefix, directory = os.path.split(output_stem)
     counts = output_stem + '_read_and_count_matrices.p'
-    log = prefix + '/' + log_name
+    log_text = prefix + '/' + log_name
 
-    # generate a run summary and append to seqc.log + email
-    run_summary = seqc.stats.ExperimentalYield.construct_run_summary(summary)
-    seqc.log.info('A copy of the SEQC run summary can be found below.\nRUN SUMMARY:\n{run_summary}'
-                  .format(run_summary=run_summary))
-    files = [counts, log]  # counts and seqc.log will always be uploaded
+    # generate a run summary and append to log + email
+    run_summary = ExperimentalYield.construct_run_summary(summary)
+    log.info('A copy of the SEQC run summary can be found below.\nRUN SUMMARY:\n'
+             '{run_summary}'.format(run_summary=run_summary))
+    files = [counts, log_text]  # counts and log will always be uploaded
 
     if start_pos == 'start' or start_pos == 'merged':
         alignment_summary = output_stem + '_alignment_summary.txt'
@@ -489,18 +508,18 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
         files.append(alignment_summary)
 
     if aws_upload_key:
-        bucket, key = seqc.io.S3.split_link(aws_upload_key)
+        bucket, key = io.S3.split_link(aws_upload_key)
         for item in files:
             try:
-                seqc.exceptions.retry_boto_call(seqc.io.S3.upload_file)(item, bucket, key)
+                retry_boto_call(io.S3.upload_file)(item, bucket, key)
                 item_name = item.split('/')[-1]
-                seqc.log.info('Successfully uploaded %s to the specified S3 location '
-                              '"%s%s".' % (item, aws_upload_key, item_name))
+                log.info('Successfully uploaded %s to the specified S3 location '
+                         '"%s%s".' % (item, aws_upload_key, item_name))
             except FileNotFoundError:
-                seqc.log.notify('Item %s was not found! Continuing with upload...' % item)
+                log.notify('Item %s was not found! Continuing with upload...' % item)
 
         # get the name of the output file
-        seqc.log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
+        log.info('Upload complete. An e-mail will be sent to %s.' % email_address)
 
     # email results to user
     body = ('<font face="Courier New, Courier, monospace">'
@@ -510,18 +529,18 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
             '</font>' % (aws_upload_key, run_summary))
-    seqc.log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
-                  'flag was specified.')
+    log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
+             'flag was specified.')
     body = body.replace('\n', '<br>')
     body = body.replace('\t', '&emsp;')
     if email:
-        email_user(log, body, email_address)
+        email_user(log_text, body, email_address)
 
 
 def check_progress():
     """
     flag that can be used with process_experiment.py --check-progress
-    to retrieve remote seqc.log and track the progress of the remote run
+    to retrieve remote log and track the progress of the remote run
     """
 
     # reading in configuration file
@@ -543,14 +562,14 @@ def check_progress():
                 inst_id, run_name = entry.split(':')
 
                 # connecting to the remote instance
-                s = seqc.remote.SSHServer(inst_id, rsa_key)
+                s = SSHServer(inst_id, rsa_key)
                 try:
                     inst_state = s.instance.state['Name']
                     if inst_state != 'running':
                         print('Cluster (%s) for run "%s" is currently %s.' %
                               (inst_id, run_name, inst_state))
                         continue
-                except:
+                except:  # todo what should be raised here?
                     print('Cluster (%s) for run "%s" has been terminated.'
                           % (inst_id, run_name))
                     continue
@@ -564,7 +583,8 @@ def check_progress():
                 logfile = out[0]
                 out, err = s.exec_command('cat {fname}'.format(fname='/data/'+logfile))
                 print('-'*80)
-                print('Printing contents of the remote SEQC log file for run "%s":' % run_name)
+                print('Printing contents of the remote SEQC log file for run "%s":'
+                      % run_name)
                 print('-'*80)
                 for x in out:
                     print(x)
@@ -596,7 +616,7 @@ def cluster_cleanup():
         sg_id = sg.decode()
         sg_name = ec2.SecurityGroup(sg_id).group_name
         if 'SEQC-' in sg_name:
-            seqc.remote.remove_sg(sg_id)
+            remove_sg(sg_id)
 
     # check which instances in instances.txt are still running
     inst_file = os.path.expanduser('~/.seqc/instance.txt')
@@ -611,7 +631,8 @@ def cluster_cleanup():
                         entry = seqc_list[i]
                         inst_id = entry.split(':')[0]
                         instance = ec2.Instance(inst_id)
-                        if instance and instance.state and instance.state['Name'] == 'running':
+                        if (instance and instance.state and
+                                instance.state['Name'] == 'running'):
                             f.write('%s\n' % entry)
                     except (ClientError, KeyError):
                         continue
@@ -623,8 +644,9 @@ class SSHServer(object):
     """Class that wraps the newly launched AWS instance to allow for connecting
     and execution of commands remotely"""
 
-    _error_msg = 'You need to specify a valid RSA key to connect to Amazon EC2 instances,' \
-                 'see https://github.com/ambrosejcarr/seqc#create-an-rsa-key-to-allow-you-to-launch-a-cluster'
+    _error_msg = ('You need to specify a valid RSA key to connect to Amazon EC2 '
+                  'instances, see https://github.com/ambrosejcarr/seqc#create-an-rsa-key'
+                  '-to-allow-you-to-launch-a-cluster')
 
     def __init__(self, inst_id, keypath):
         ec2 = boto3.resource('ec2')
@@ -636,19 +658,23 @@ class SSHServer(object):
     def check_key_file(self):
         """Checks the rsa file is present"""
         if not os.path.isfile(self.key):
-            seqc.log.notify('The key %s was not found!' % self.key)
-            raise FileNotFoundError(self._error_msg, "The key file %s does not exist" % self.key)
+            log.notify('The key %s was not found!' % self.key)
+            raise FileNotFoundError(self._error_msg, 'The key file %s does not exist' %
+                                    self.key)
 
     def connect(self):
         """connects to a remote instance"""
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            retry_boto_call(func=self.ssh.connect, retries=25, exceptions_to_catch=socket.error,
-                            exception_to_raise=RuntimeError("Authentication to EC2 failed with key %s." % self.key),
-                            delay_retry=5)(self.instance.public_dns_name, username='ubuntu', key_filename=self.key,
-                                           timeout=3.0)
-        except (paramiko.AuthenticationException, paramiko.SSHException) :
-            seqc.log.notify("Authentication failure using key %s, try to log in manually with ssh" % self.key)
+            retry_boto_call(
+                func=self.ssh.connect, retries=25, exceptions_to_catch=socket.error,
+                exception_to_raise=RuntimeError('Authentication to EC2 failed with key '
+                                                '%s.' % self.key),
+                delay_retry=5)(self.instance.public_dns_name, username='ubuntu',
+                               key_filename=self.key, timeout=3.0)
+        except (paramiko.AuthenticationException, paramiko.SSHException):
+            log.notify('Authentication failure using key %s, try to log in manually with '
+                       'ssh' % self.key)
             raise
 
     def is_connected(self):
@@ -673,7 +699,7 @@ class SSHServer(object):
         """
 
         if not self.is_connected():
-            seqc.log.notify('You are not connected!')
+            log.notify('You are not connected!')
             raise ConnectionError("")
         ftp = self.ssh.open_sftp()
         ftp.get(remote_file, local_file)
@@ -687,11 +713,11 @@ class SSHServer(object):
         """
 
         if not self.is_connected():
-            seqc.log.notify('You are not connected!')
+            log.notify('You are not connected!')
             sys.exit(2)
         ftp = self.ssh.open_sftp()
         ftp.put(local_file, remote_file)
-        seqc.log.info('Successfully placed {local_file} in {remote_file}.'.format(
+        log.info('Successfully placed {local_file} in {remote_file}.'.format(
             local_file=local_file, remote_file=remote_file))
         ftp.close()
 
@@ -703,12 +729,10 @@ class SSHServer(object):
         """
 
         if not self.is_connected():
-            seqc.log.notify('You are not connected!')
+            log.notify('You are not connected!')
             sys.exit(2)
         stdin, stdout, stderr = self.ssh.exec_command(args)
         stdin.flush()
         data = stdout.read().decode().splitlines()  # response in bytes
         errs = stderr.read().decode().splitlines()
         return data, errs
-
-

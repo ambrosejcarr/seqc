@@ -1,7 +1,3 @@
-from . import fastq
-from . import merge_functions
-from . import gtf
-from . import encodings
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
             'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
@@ -30,8 +26,8 @@ def revcomp_bytes(b: bytes) -> bytes:
     """
     returns the reverse-complement of s
 
-    :param b: str; nucleotide sequence to be reverse complemented
-    :return: str; reverse complemented input string s
+    :param b: bytes; nucleotide sequence to be reverse complemented
+    :return: bytes; reverse complemented input string s
     """
     if not isinstance(b, bytes):
         raise TypeError('Nucleotide sequence "s" must be bytes, not %s' % type(b))

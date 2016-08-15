@@ -1,7 +1,6 @@
 import os
 import re
 import glob
-import shutil
 import warnings
 import shlex
 import numpy as np
@@ -37,7 +36,8 @@ class GraphDiffusion:
         https://services.math.duke.edu/~mauro/code.html#DiffusionGeom and was implemented
         by Pooja Kathail
 
-        :param knn: Number of neighbors for graph construction to determine distances between cells
+        :param knn: Number of neighbors for graph construction to determine distances
+          between cells
         :param normalization: method for normalizing the matrix of weights
              'bimarkov'            force row and column sums to be 1
              'markov'              force row sums to be 1
@@ -95,7 +95,7 @@ class GraphDiffusion:
         return V, D
 
     @staticmethod  # todo fix; what is S?
-    def bimarkov(W, max_iters=100, abs_error=0.00001, verbose=False, **kwargs):
+    def bimarkov(W, max_iters=100, abs_error=0.00001, **kwargs):
         """normalization method for GraphDiffusion"""
 
         if W.size == 0:
@@ -184,7 +184,8 @@ class GraphDiffusion:
         T = D.dot(K)
         return T, None
 
-    def sFokkerPlanck(self, D, N, W):
+    @staticmethod
+    def sFokkerPlanck(D, N, W):
         """normalization method for GraphDiffusion"""
         print('(sFokkerPlanck) ... ')
 
@@ -276,7 +277,6 @@ class NormalizeCells:
         Normalize data such that each cell has an identical library size
 
         :param data: n observation x k feature array
-        :param log: if True, log transform the data
         :param percentile: if None, multiply each library by the total number
          of nonzero genes observed across the experiment. If float in [0, 1),
          multiply by the cell size observed at
@@ -287,7 +287,8 @@ class NormalizeCells:
             data = data.div(data.sum(axis=1), axis=0) * data.shape[1]
         else:
             cell_sums = data.sum(axis=1)
-            data = data.div(cell_sums, axis=0).mul(np.percentile(cell_sums, percentile), axis=0)
+            data = data.div(cell_sums, axis=0).mul(np.percentile(cell_sums, percentile),
+                                                   axis=0)
         return data
 
 
@@ -296,7 +297,8 @@ class ScaleFeatures:
     Contains column normalization techniques for equalizing feature sampling
 
     :method unit_size: scale each feature between 0 and 1
-    :method standardize: center the mean of each feature at zero and scale by standard deviation
+    :method standardize: center the mean of each feature at zero and scale by standard
+      deviation
     :method unit_length: scale each feature so that its euclidean length is 1
     """
 
@@ -309,8 +311,8 @@ class ScaleFeatures:
         :param data: n observation x k feature array
         :param copy: bool, if True, creates a copy of data. Otherwise carries out
           standardization in-place
-        :param dtype: optional datatype parameter, options [np.float32, np.float64, float],
-          defaults to np.float32 to save space.
+        :param dtype: optional datatype parameter, options [np.float32, np.float64,
+          float], defaults to np.float32 to save space.
         :return: n x k scaled array
         """
 
@@ -450,8 +452,8 @@ class PCA:
         :param n_components: number of principle components to retain
 
         :property eigenvalues: stores the eigenvalues computed by fit()
-        :property loadings: stores the eigenvectors of the pca decomposition computed by fit()
-
+        :property loadings: stores the eigenvectors of the pca decomposition computed by
+          fit()
         :method fit: fit the model to the data
         :method transform: project the data onto a subset of the principle components
         :method fit_transform: fit and transform the data, returning the projected result
@@ -489,7 +491,7 @@ class PCA:
 
         # Compute covariance matrix
         if X.shape[1] < X.shape[0]:
-            C = np.cov(X, rowvar=0)
+            C = np.cov(X, rowvar=False)
         # if N > D, we better use this matrix for the eigendecomposition
         else:
             C = np.multiply((1 / X.shape[0]), np.dot(X, X.T))
@@ -543,7 +545,8 @@ class PCA:
         else:
             return projected
 
-    def fit_transform(self, data, n_components=None, scale=True) -> np.ndarray or pd.DataFrame:
+    def fit_transform(self, data, n_components=None, scale=True) -> \
+            np.ndarray or pd.DataFrame:
         """
         Fit the model to data and transform the data using the fit model
 
@@ -600,7 +603,6 @@ class correlation:
         y_std = y.std(axis=-1)
         return np.dot(x_diff, y_diff.T) / (n * x_std[:, np.newaxis] * y_std)
 
-
     @staticmethod
     def eigv(evec, data, components=tuple(), knn=10):
         """
@@ -614,10 +616,8 @@ class correlation:
         """
         if isinstance(data, pd.DataFrame):
             D = data.values
-            df = True
         elif isinstance(data, np.ndarray):
             D = data
-            df = False
         else:
             raise TypeError('data must be a pd.DataFrame or np.ndarray')
 
@@ -643,7 +643,7 @@ class correlation:
 
         # this is sorted by order, need it in original order (reverse the sort)
         eigv_corr = eigv_corr[:, components]
-        if df:
+        if isinstance(data, pd.DataFrame):
             eigv_corr = pd.DataFrame(eigv_corr, index=data.columns, columns=components)
         return eigv_corr
 
@@ -778,10 +778,8 @@ class smoothing:
         """
 
         if isinstance(data, pd.DataFrame):
-            df = True
             data_ = data.values
         elif isinstance(data, np.ndarray):
-            df = False
             data_ = data
         else:
             raise TypeError("data must be a pd.DataFrame or np.ndarray")
@@ -809,9 +807,9 @@ class smoothing:
         else:
             res = data_[inds, :].mean(axis=1)
 
-        if df:
-            res = pd.DataFrame(res, index=data.index,
-                               columns=data.columns)
+        if isinstance(data, pd.DataFrame):
+            res = pd.DataFrame(res, index=data.index, columns=data.columns)
+
         return res
 
 
@@ -831,9 +829,10 @@ class JavaGSEA:
         if not isinstance(correlations, pd.Series):
             raise TypeError('correlations must be a pandas series')
         if not ((np.min(correlations) >= -1) & (np.max(correlations) <= 1)):
-            raise RuntimeError('input correlations were not contained within the interval [-1, 1]. '
-                               'Please use JavaGSEA.linear_scale() or JavaGSEA.logistic_scale() to '
-                               'scale values to this interval before running.')
+            raise RuntimeError(
+                'input correlations were not contained within the interval [-1, 1]. '
+                'Please use JavaGSEA.linear_scale() or JavaGSEA.logistic_scale() to '
+                'scale values to this interval before running.')
         self._correlations = correlations.sort_values()
         self._rnk = None
         self._output_stem = os.environ['TMPDIR'] + 'gsea_corr_{!s}'.format(
@@ -863,13 +862,12 @@ class JavaGSEA:
         data -= 1
         return data
 
-    #todo @ajc think about removing non-significant genes before scaling by logistic function
     @staticmethod
     def logistic_scale(data: pd.Series) -> pd.Series:
         """scale input vector to interval [-1, 1] using a sigmoid scaling
         :return correlations: pd.Series, data scaled to the interval [-1, 1]
         """
-        return (expit(data) * 2) - 1
+        return pd.Series((expit(data.values) * 2) - 1, index=data.index)
 
     def _save_rank_file(self) -> None:
         """save the correlations to a .rnk file in TMPDIR
@@ -877,7 +875,8 @@ class JavaGSEA:
         :return: None
         """
         self._rnk = self._output_stem + '.rnk'
-        pd.DataFrame(self._correlations).fillna(0).to_csv(self._rnk, sep='\t', header=False)
+        df = pd.DataFrame(self._correlations).fillna(0)
+        df.to_csv(self._rnk, sep='\t', header=False)
 
     @staticmethod
     def _gmt_options():
@@ -893,13 +892,15 @@ class JavaGSEA:
                 h='\n'.join(human_options)))
         print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
 
-    def run(self, gmt_file: (str, str) = None, output_stem: str = None) -> (pd.DataFrame, pd.DataFrame):
+    def run(self, gmt_file: (str, str) = None, output_stem: str = None) -> (
+            pd.DataFrame, pd.DataFrame):
         """
-        Helper function. Run GSEA on an already-ranked list of corrleations. To see available files,
-          leave gmt_file parameter empty
+        Helper function. Run GSEA on an already-ranked list of corrleations. To see
+        available files, leave gmt_file parameter empty
 
         :param output_stem: location for GSEA output
-        :param gmt_file: (organism: str, filename: str) organism and filename of the gmt file to use
+        :param gmt_file: (organism: str, filename: str) organism and filename of the gmt
+          file to use
         :return: positive, negative: pd.DataFrames containing GSEA enrichment results
         """
 
@@ -951,18 +952,23 @@ class JavaGSEA:
                 if mo:
                     folder = os.environ['TMPDIR'] + mo.group(0)
         if folder is None:
-            raise RuntimeError('seqc.JavaGSEA was not able to recover the output of the Java executable. '
-                               'This likely represents a bug.')
+            raise RuntimeError(
+                'seqc.JavaGSEA was not able to recover the output of the Java '
+                'executable. This likely represents a bug.')
 
         # recover information from run
-        names = ['size', 'es', 'nes', 'p', 'fdr_q', 'fwer_p', 'rank_at_max', 'leading_edge']
-        pos = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*pos*xls')[0], sep='\t').iloc[:, :-1]
+        names = ['size', 'es', 'nes', 'p', 'fdr_q', 'fwer_p', 'rank_at_max',
+                 'leading_edge']
+        pos = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*pos*xls')[0],
+                                    sep='\t').iloc[:, :-1]
         pos.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
-        neg = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*neg*xls')[0], sep='\t').iloc[:, :-1]
+        neg = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*neg*xls')[0],
+                                    sep='\t').iloc[:, :-1]
         neg.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
         pos.columns, neg.columns = names, names
         self._results[gmt_file] = {'positive': pos, 'negative': neg}
         return self._results[gmt_file].values()
+
 
 class GSEA:
 
@@ -992,10 +998,9 @@ class GSEA:
         warnings.warn('Warning: UNTESTED NON-PRODUCTION CODE. Please use JavaGSEA.')
 
         if isinstance(correlations, pd.Series):
-            self.correlations = [correlations,]
+            self.correlations = [correlations]
         elif all(isinstance(obj, pd.Series) for obj in correlations):
             self.correlations = list(correlations)
-            # self.nproc = min((multiprocessing.cpu_count() - 1, len(correlations)))
         else:
             raise ValueError('correlations must be passed as pd.Series objects.')
 
@@ -1015,8 +1020,8 @@ class GSEA:
                 try:
                     getattr(c, 'name')
                 except AttributeError:  # at least one series lacks a name; reset all
-                    for i, c in enumerate(self.correlations):
-                        self.correlations[i] = c.copy()  # don't mutate original vector
+                    for i, corr in enumerate(self.correlations):
+                        self.correlations[i] = corr.copy()  # don't mutate original vector
                         self.correlations[i].name = i
                     break
             if not len(set(c.name for c in self.correlations)) == len(self.correlations):
@@ -1106,7 +1111,7 @@ class GSEA:
             return masks
 
     @staticmethod
-    def _gsea_process(correlations, sets, n_perm, alpha):
+    def _gsea_process(correlations, sets, n_perm):
         """
         Initialize a GSEA process where sets are tested against correlations.
 
@@ -1122,7 +1127,7 @@ class GSEA:
         pos, neg = GSEA.construct_normalized_correlation_matrices(
             correlations, masks)
         p, es = GSEA.calculate_enrichment_significance(
-            pos, neg, n_perm=n_perm, alpha=alpha)
+            pos, neg, n_perm=n_perm)
         return pd.DataFrame({'p': p, 'es': es}, index=set_names)
 
     def test(self, sets, n_perm=500, alpha=0.05):
@@ -1153,8 +1158,8 @@ class GSEA:
             return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
 
         def group(a, n):
-            args = [iter(a)] * n
-            return zip(*args)
+            args_ = [iter(a)] * n
+            return zip(*args_)
 
         def join(a, n):
             return [pd.concat(s, axis=0) for s in group(a, n)]
@@ -1175,8 +1180,7 @@ class GSEA:
             correlations = self.correlations
             sets = [sets]
             p = 1
-        args = list(zip(correlations, sets * ncorr * p, [n_perm] * ncorr * p,
-                        [alpha] * ncorr * p))
+        args = list(zip(correlations, sets * ncorr * p, [n_perm] * ncorr * p))
 
         # adjust nproc in case n * p != nproc
         nproc = min(ncorr * p, nproc)
@@ -1248,14 +1252,13 @@ class GSEA:
             np.random.shuffle(neg_corr_matrix)
 
     @staticmethod
-    def calculate_enrichment_significance(pos, neg, n_perm=1000, alpha=0.05):
+    def calculate_enrichment_significance(pos, neg, n_perm=1000):
         """
         calculate enrichment scores and significance of the enrichment
 
         :param pos: np.ndarray, normalized correlations of genes in set
         :param neg: np.ndarray, normalized correlations of genes not in set
         :param n_perm: int, number of permutations
-        :param alpha: float (0, 1]
         :return: pvals, es
         """
         es = GSEA.calculate_enrichment_score(pos, neg)  # score
@@ -1278,9 +1281,9 @@ def _sampling_function(n_iter, n_molecules, theta, n_cells):
     def online_mean_var(nb, mu_b, var_b, na, mu_a, var_a):
         nx = na + nb
         delta = mu_b - mu_a
-        mu_x = mu_a + delta * nb / nx
-        var_x = (na * (var_a + mu_a ** 2) + nb * (var_b + mu_b ** 2)) / nx - mu_x ** 2
-        return nx, mu_x, var_x
+        mu_x_ = mu_a + delta * nb / nx
+        var_x_ = (na * (var_a + mu_a ** 2) + nb * (var_b + mu_b ** 2)) / nx - mu_x_ ** 2
+        return nx, mu_x_, var_x_
 
     res_mu = np.zeros((n_iter, theta.shape[0]), dtype=np.float32)
     res_var = np.zeros((n_iter, theta.shape[0]), dtype=np.float32)
@@ -1523,9 +1526,6 @@ class ExpressionTree:
 
                 ddata = dendrogram(*args, **kwargs)
 
-                # get left-to-right ordering of nodes
-                # ids = [n.node_id for n in self.dfs() if not (n.left is None or n.right is None)]
-
                 n = len(ddata['dcoord']) + 1
                 if not kwargs.get('no_plot', False):
                     for id_, (i, d) in enumerate(zip(ddata['icoord'], ddata['dcoord'])):
@@ -1544,7 +1544,8 @@ class ExpressionTree:
         """
         hierarchically cluster cluster centroids and store the results as self.tree
 
-        :param method: clustering method; fastcluster default is single, we change this to ward
+        :param method: clustering method; fastcluster default is single, we change this to
+          ward
         :param kwargs: keyword arguments to pass to fastcluster.linkage
         """
         fmean = partial(np.mean, axis=0)
@@ -1556,8 +1557,8 @@ class ExpressionTree:
 
         self._tree = self.Tree(linkage)
 
-
-    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000, **kwargs):
+    def compare_hierarchy(self, n_iter=100, central_value_func=None, n_cells=1000,
+                          **kwargs):
         """
         carry out differential expression at each stage of the Hierarchy.
 
@@ -1593,7 +1594,8 @@ class ExpressionTree:
                 alpha=alpha_adj)
             if self._index is not None:
                 res = pd.Series(res, index=self._index).sort_values(inplace=False)
-            self._results[(self.tree[node.left].node_id, self.tree[node.right].node_id)] = res
+            self._results[(self.tree[node.left].node_id,
+                           self.tree[node.right].node_id)] = res
         return self._results
 
     def plot_hierarchy(self, ax=None, alternate_labels=None):
@@ -1801,7 +1803,6 @@ class DifferentialExpression:
         return marker_genes
 
 
-
 def resampled_t(
         a, b, n_iter=100, n_cells=1000, downsample_value_function='median',
         alpha=0.01):
@@ -1829,8 +1830,8 @@ def resampled_t(
                                                 q=downsample_value_function * 100)
         else:
             raise ValueError(
-                'If using a float value for downsample_value_function, the value must fall in the '
-                'interval (0, 1].')
+                'If using a float value for downsample_value_function, the value must '
+                'fall in the interval (0, 1].')
     elif downsample_value_function is 'mean':
         downsample_value_function = np.mean
     elif downsample_value_function is 'median' or downsample_value_function is None:
@@ -1843,8 +1844,6 @@ def resampled_t(
     # normalize cells and obtain probability vectors
     a_prob = (a / a.sum(axis=1)[:, np.newaxis]).mean(axis=0)
     b_prob = (b / b.sum(axis=1)[:, np.newaxis]).mean(axis=0)
-
-    # todo build null distribution from permuted sample labels
 
     # determine iterations per process
     n_cpu = multiprocessing.cpu_count() - 1
