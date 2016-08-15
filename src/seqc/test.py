@@ -1,9 +1,8 @@
-import random
+# import random
 import os
 import unittest
-
 from seqc import remote, log
-from seqc.sequence.encodings import DNA3Bit, ThreeBit
+# from seqc.sequence.encodings import DNA3Bit, ThreeBit
 from seqc.io import S3
 import pandas as pd
 import numpy as np
@@ -400,111 +399,111 @@ class TestingRemote(unittest.TestCase):
         process_experiment.run_remote(args, volsize=self.vol)
 
 
-class TestThreeBitEquivalence(unittest.TestCase):
-    """
-    Tests that show that the decode and encode functions in
-    seqc.sequence.Encodings.DNA3bit properly regenerate the input value.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        cb1_file = seqc_dir + 'data_test/in_drop/barcodes/cb1.txt'
-        cb2_file = seqc_dir + 'data_test/in_drop/barcodes/cb2.txt'
-
-        with open(cb1_file) as f1, open(cb2_file) as f2:
-            cls.cb1_codes = [c.strip() for c in f1.readlines()]
-            cls.cb2_codes = [c.strip() for c in f2.readlines()]
-
-    def test_three_bit_version_1(self):
-        """
-        :return:
-        """
-
-        # test conversion of single cb1
-        for _ in range(100):
-            case = random.choice(self.cb1_codes).encode()
-            coded = DNA3Bit.encode(case)
-            decoded = DNA3Bit.decode(coded)
-            self.assertEqual(case, decoded)
-
-        # test conversion of single cb2
-        for _ in range(100):
-            case = random.choice(self.cb2_codes).encode()
-            coded = DNA3Bit.encode(case)
-            decoded = DNA3Bit.decode(coded)
-            self.assertEqual(case, decoded)
-
-        # test conversion of merged barcodes
-        for _ in range(100):
-            case1 = random.choice(self.cb1_codes).encode()
-            case2 = random.choice(self.cb2_codes).encode()
-            coded = DNA3Bit.encode(case1 + case2)
-            decoded = DNA3Bit.decode(coded)
-            self.assertEqual(case1 + case2, decoded)
-
-    def test_three_bit_version_2(self):
-        """
-        :return:
-        """
-
-        # test conversion of single cb1
-        for _ in range(100):
-            case = random.choice(self.cb1_codes)
-            coded = ThreeBit.str2bin(case)
-            decoded = ThreeBit.bin2str(coded)
-            self.assertEqual(case, decoded)
-
-        # test conversion of single cb2
-        for _ in range(100):
-            case = random.choice(self.cb2_codes)
-            coded = ThreeBit.str2bin(case)
-            decoded = ThreeBit.bin2str(coded)
-            self.assertEqual(case, decoded)
-
-        # test conversion of merged barcodes
-        for _ in range(100):
-            case1 = random.choice(self.cb1_codes)
-            case2 = random.choice(self.cb2_codes)
-            coded = ThreeBit.str2bin(case1 + case2)
-            decoded = ThreeBit.bin2str(coded)
-            self.assertEqual(case1 + case2, decoded)
-
-    def test_mixed_encoding(self):
-
-        # test conversion of single cb1
-        for _ in range(100):
-            case = random.choice(self.cb1_codes).encode()
-            coded = DNA3Bit.encode(case)
-            decoded = ThreeBit.bin2str(coded).encode()
-            self.assertEqual(case, decoded)
-
-        # test conversion of single cb2
-        for _ in range(100):
-            case = random.choice(self.cb2_codes).encode()
-            coded = DNA3Bit.encode(case)
-            decoded = ThreeBit.bin2str(coded).encode()
-            self.assertEqual(case, decoded)
-
-        # test conversion of merged barcodes
-        for _ in range(100):
-            case1 = random.choice(self.cb1_codes).encode()
-            case2 = random.choice(self.cb2_codes).encode()
-            coded = DNA3Bit.encode(case1 + case2)
-            decoded = ThreeBit.bin2str(coded).encode()
-            self.assertEqual(case1 + case2, decoded)
-
-        # test conversion and extraction of cb1, cb2
-        for _ in range(100):  # todo fails
-            case1 = random.choice(self.cb1_codes)
-            case2 = random.choice(self.cb2_codes)
-            coded = DNA3Bit.encode(
-                    case1.encode() + case2.encode())
-            case1_int = ThreeBit.c1_from_codes(coded)
-            case2_int = ThreeBit.c2_from_codes(coded)
-            case1_decoded = ThreeBit.bin2str(case1_int)
-            case2_decoded = ThreeBit.bin2str(case2_int)
-            self.assertEqual(case1, case1_decoded)
-            self.assertEqual(case2, case2_decoded)
+# class TestThreeBitEquivalence(unittest.TestCase):
+#     """
+#     Tests that show that the decode and encode functions in
+#     seqc.sequence.Encodings.DNA3bit properly regenerate the input value.
+#     """
+#
+#     @classmethod
+#     def setUpClass(cls):
+#         cb1_file = seqc_dir + 'data_test/in_drop/barcodes/cb1.txt'
+#         cb2_file = seqc_dir + 'data_test/in_drop/barcodes/cb2.txt'
+#
+#         with open(cb1_file) as f1, open(cb2_file) as f2:
+#             cls.cb1_codes = [c.strip() for c in f1.readlines()]
+#             cls.cb2_codes = [c.strip() for c in f2.readlines()]
+#
+#     def test_three_bit_version_1(self):
+#         """
+#         :return:
+#         """
+#
+#         # test conversion of single cb1
+#         for _ in range(100):
+#             case = random.choice(self.cb1_codes).encode()
+#             coded = DNA3Bit.encode(case)
+#             decoded = DNA3Bit.decode(coded)
+#             self.assertEqual(case, decoded)
+#
+#         # test conversion of single cb2
+#         for _ in range(100):
+#             case = random.choice(self.cb2_codes).encode()
+#             coded = DNA3Bit.encode(case)
+#             decoded = DNA3Bit.decode(coded)
+#             self.assertEqual(case, decoded)
+#
+#         # test conversion of merged barcodes
+#         for _ in range(100):
+#             case1 = random.choice(self.cb1_codes).encode()
+#             case2 = random.choice(self.cb2_codes).encode()
+#             coded = DNA3Bit.encode(case1 + case2)
+#             decoded = DNA3Bit.decode(coded)
+#             self.assertEqual(case1 + case2, decoded)
+#
+#     def test_three_bit_version_2(self):
+#         """
+#         :return:
+#         """
+#
+#         # test conversion of single cb1
+#         for _ in range(100):
+#             case = random.choice(self.cb1_codes)
+#             coded = ThreeBit.str2bin(case)
+#             decoded = ThreeBit.bin2str(coded)
+#             self.assertEqual(case, decoded)
+#
+#         # test conversion of single cb2
+#         for _ in range(100):
+#             case = random.choice(self.cb2_codes)
+#             coded = ThreeBit.str2bin(case)
+#             decoded = ThreeBit.bin2str(coded)
+#             self.assertEqual(case, decoded)
+#
+#         # test conversion of merged barcodes
+#         for _ in range(100):
+#             case1 = random.choice(self.cb1_codes)
+#             case2 = random.choice(self.cb2_codes)
+#             coded = ThreeBit.str2bin(case1 + case2)
+#             decoded = ThreeBit.bin2str(coded)
+#             self.assertEqual(case1 + case2, decoded)
+#
+#     def test_mixed_encoding(self):
+#
+#         # test conversion of single cb1
+#         for _ in range(100):
+#             case = random.choice(self.cb1_codes).encode()
+#             coded = DNA3Bit.encode(case)
+#             decoded = ThreeBit.bin2str(coded).encode()
+#             self.assertEqual(case, decoded)
+#
+#         # test conversion of single cb2
+#         for _ in range(100):
+#             case = random.choice(self.cb2_codes).encode()
+#             coded = DNA3Bit.encode(case)
+#             decoded = ThreeBit.bin2str(coded).encode()
+#             self.assertEqual(case, decoded)
+#
+#         # test conversion of merged barcodes
+#         for _ in range(100):
+#             case1 = random.choice(self.cb1_codes).encode()
+#             case2 = random.choice(self.cb2_codes).encode()
+#             coded = DNA3Bit.encode(case1 + case2)
+#             decoded = ThreeBit.bin2str(coded).encode()
+#             self.assertEqual(case1 + case2, decoded)
+#
+#         # test conversion and extraction of cb1, cb2
+#         for _ in range(100):  # todo fails
+#             case1 = random.choice(self.cb1_codes)
+#             case2 = random.choice(self.cb2_codes)
+#             coded = DNA3Bit.encode(
+#                     case1.encode() + case2.encode())
+#             case1_int = ThreeBit.c1_from_codes(coded)
+#             case2_int = ThreeBit.c2_from_codes(coded)
+#             case1_decoded = ThreeBit.bin2str(case1_int)
+#             case2_decoded = ThreeBit.bin2str(case2_int)
+#             self.assertEqual(case1, case1_decoded)
+#             self.assertEqual(case2, case2_decoded)
 
 
 class TestLogData(unittest.TestCase):
