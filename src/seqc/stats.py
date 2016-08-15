@@ -1,7 +1,6 @@
 import os
 import re
 import glob
-import shutil
 import warnings
 import shlex
 import numpy as np

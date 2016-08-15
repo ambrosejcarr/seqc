@@ -1,13 +1,17 @@
 import random
 import os
 import unittest
-import seqc
+
+from seqc import remote, log
+from seqc.sequence.encodings import DNA3Bit, ThreeBit
+from seqc.io import S3
 import pandas as pd
 import numpy as np
 import paramiko
 from seqc import process_experiment
 import nose2
 
+import seqc
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
 
@@ -332,11 +336,12 @@ class TestingRemote(unittest.TestCase):
     Testing EC2 management and SSH communications
     Should not be parallelized
     """  # TODO Spot bidding currently unsupported
+    cluster = None
 
     @classmethod
     def setUp(cls):
         cls.vol = 10   # GB
-        cls.cluster = seqc.remote.ClusterServer()
+        cls.cluster = remote.ClusterServer()
         config_file = os.path.expanduser('~/.seqc/config')
         cls.cluster.configure_cluster(config_file, "r3")
 
@@ -345,8 +350,8 @@ class TestingRemote(unittest.TestCase):
         try:
             if cls.cluster.is_cluster_running():
                 inst_id_cluster = cls.cluster.inst_id.id
-                seqc.remote.terminate_cluster(inst_id_cluster)
-            seqc.remote.cluster_cleanup()
+                remote.terminate_cluster(inst_id_cluster)
+            remote.cluster_cleanup()
         except Exception as e:
             print(e)
 
@@ -371,20 +376,24 @@ class TestingRemote(unittest.TestCase):
         self.cluster.create_security_group()
         self.cluster.create_cluster()
         with self.assertRaises(FileNotFoundError):
-            self.cluster.keypath = os.path.expanduser("~/.seqc/config_foo")  # file not found
+            # file not found
+            self.cluster.keypath = os.path.expanduser("~/.seqc/config_foo")
             self.cluster.connect_server()
         try:
-            self.cluster.keypath = os.path.expanduser("~/.ssh/id_rsa_Github")   # another key
+            # another key
+            self.cluster.keypath = os.path.expanduser("~/.ssh/id_rsa_Github")
             self.cluster.connect_server()
         except (paramiko.AuthenticationException, paramiko.SSHException):
             pass
-        except:
+        except:  # todo which exceptions should this catch?
             self.fail("Bad authentication should have been caught")
 
     def test040_primed_for_remote_run(self):
-        # This starts a remote job, but tearDown will kill it as soon as run_remote exits => != from above
+        # This starts a remote job, but tearDown will kill it as soon as run_remote
+        # exits => != from above
         ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
-                          's3://dplab-data/genomes/hg38_phiX/', '--email-status', 'cyril-cros@hotmail.fr', '-b',
+                          's3://dplab-data/genomes/hg38_phiX/', '--email-status',
+                          'cyril-cros@hotmail.fr', '-b',
                           's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
                           's3://dplab-data/seqc/test/drop_seq/genomic/']
         args = process_experiment.parse_args(ready_made_cmd)
@@ -414,23 +423,23 @@ class TestThreeBitEquivalence(unittest.TestCase):
         # test conversion of single cb1
         for _ in range(100):
             case = random.choice(self.cb1_codes).encode()
-            coded = seqc.sequence.encodings.DNA3Bit.encode(case)
-            decoded = seqc.sequence.encodings.DNA3Bit.decode(coded)
+            coded = DNA3Bit.encode(case)
+            decoded = DNA3Bit.decode(coded)
             self.assertEqual(case, decoded)
 
         # test conversion of single cb2
         for _ in range(100):
             case = random.choice(self.cb2_codes).encode()
-            coded = seqc.sequence.encodings.DNA3Bit.encode(case)
-            decoded = seqc.sequence.encodings.DNA3Bit.decode(coded)
+            coded = DNA3Bit.encode(case)
+            decoded = DNA3Bit.decode(coded)
             self.assertEqual(case, decoded)
 
         # test conversion of merged barcodes
         for _ in range(100):
             case1 = random.choice(self.cb1_codes).encode()
             case2 = random.choice(self.cb2_codes).encode()
-            coded = seqc.sequence.encodings.DNA3Bit.encode(case1 + case2)
-            decoded = seqc.sequence.encodings.DNA3Bit.decode(coded)
+            coded = DNA3Bit.encode(case1 + case2)
+            decoded = DNA3Bit.decode(coded)
             self.assertEqual(case1 + case2, decoded)
 
     def test_three_bit_version_2(self):
@@ -441,23 +450,23 @@ class TestThreeBitEquivalence(unittest.TestCase):
         # test conversion of single cb1
         for _ in range(100):
             case = random.choice(self.cb1_codes)
-            coded = seqc.sequence.encodings.ThreeBit.str2bin(case)
-            decoded = seqc.sequence.encodings.ThreeBit.bin2str(coded)
+            coded = ThreeBit.str2bin(case)
+            decoded = ThreeBit.bin2str(coded)
             self.assertEqual(case, decoded)
 
         # test conversion of single cb2
         for _ in range(100):
             case = random.choice(self.cb2_codes)
-            coded = seqc.sequence.encodings.ThreeBit.str2bin(case)
-            decoded = seqc.sequence.encodings.ThreeBit.bin2str(coded)
+            coded = ThreeBit.str2bin(case)
+            decoded = ThreeBit.bin2str(coded)
             self.assertEqual(case, decoded)
 
         # test conversion of merged barcodes
         for _ in range(100):
             case1 = random.choice(self.cb1_codes)
             case2 = random.choice(self.cb2_codes)
-            coded = seqc.sequence.encodings.ThreeBit.str2bin(case1 + case2)
-            decoded = seqc.sequence.encodings.ThreeBit.bin2str(coded)
+            coded = ThreeBit.str2bin(case1 + case2)
+            decoded = ThreeBit.bin2str(coded)
             self.assertEqual(case1 + case2, decoded)
 
     def test_mixed_encoding(self):
@@ -465,35 +474,35 @@ class TestThreeBitEquivalence(unittest.TestCase):
         # test conversion of single cb1
         for _ in range(100):
             case = random.choice(self.cb1_codes).encode()
-            coded = seqc.sequence.encodings.DNA3Bit.encode(case)
-            decoded = seqc.sequence.encodings.ThreeBit.bin2str(coded).encode()
+            coded = DNA3Bit.encode(case)
+            decoded = ThreeBit.bin2str(coded).encode()
             self.assertEqual(case, decoded)
 
         # test conversion of single cb2
         for _ in range(100):
             case = random.choice(self.cb2_codes).encode()
-            coded = seqc.sequence.encodings.DNA3Bit.encode(case)
-            decoded = seqc.sequence.encodings.ThreeBit.bin2str(coded).encode()
+            coded = DNA3Bit.encode(case)
+            decoded = ThreeBit.bin2str(coded).encode()
             self.assertEqual(case, decoded)
 
         # test conversion of merged barcodes
         for _ in range(100):
             case1 = random.choice(self.cb1_codes).encode()
             case2 = random.choice(self.cb2_codes).encode()
-            coded = seqc.sequence.encodings.DNA3Bit.encode(case1 + case2)
-            decoded = seqc.sequence.encodings.ThreeBit.bin2str(coded).encode()
+            coded = DNA3Bit.encode(case1 + case2)
+            decoded = ThreeBit.bin2str(coded).encode()
             self.assertEqual(case1 + case2, decoded)
 
         # test conversion and extraction of cb1, cb2
         for _ in range(100):  # todo fails
             case1 = random.choice(self.cb1_codes)
             case2 = random.choice(self.cb2_codes)
-            coded = seqc.sequence.encodings.DNA3Bit.encode(
+            coded = DNA3Bit.encode(
                     case1.encode() + case2.encode())
-            case1_int = seqc.sequence.encodings.ThreeBit.c1_from_codes(coded)
-            case2_int = seqc.sequence.encodings.ThreeBit.c2_from_codes(coded)
-            case1_decoded = seqc.sequence.encodings.ThreeBit.bin2str(case1_int)
-            case2_decoded = seqc.sequence.encodings.ThreeBit.bin2str(case2_int)
+            case1_int = ThreeBit.c1_from_codes(coded)
+            case2_int = ThreeBit.c2_from_codes(coded)
+            case1_decoded = ThreeBit.bin2str(case1_int)
+            case2_decoded = ThreeBit.bin2str(case2_int)
             self.assertEqual(case1, case1_decoded)
             self.assertEqual(case2, case2_decoded)
 
@@ -504,11 +513,10 @@ class TestLogData(unittest.TestCase):
     def setUpClass(cls):
         test_folder = 'test/TestLogData/'
         os.makedirs(test_folder, exist_ok=True)
-        # cls.logfile = test_folder + 'seqc.log'
+        # cls.logfile = test_folder + 'log'
         cls.logfile = test_folder + 'JE9636_LYMPHNODE2.log'
         if not os.path.isfile(cls.logfile):
-            seqc.io.S3.download_file(
-                'dplab-data', 'seqc/test/in_drop_v2/seqc.log', cls.logfile)
+            S3.download_file('dplab-data', 'seqc/test/in_drop_v2/log', cls.logfile)
         # note that this is a frozen instance of the summary that is printed in the log
         # at v0.1.8rc3
         cls.test_pattern = (
@@ -543,47 +551,47 @@ class TestLogData(unittest.TestCase):
         pattern2 = pattern2.replace(')', '\)')
         pattern2 = pattern2.replace('{', '(?P<')
         pattern2 = pattern2.replace('}', '>.*?)')
-        pattern = seqc.log.LogData.string_to_regex(self.test_pattern)
+        pattern = log.LogData.string_to_regex(self.test_pattern)
         assert pattern == pattern2, '{} != {}'.format(pattern, pattern2)
 
     def test_identify_duplicate_patterns(self):
-        pattern = seqc.log.LogData.string_to_regex(self.test_pattern)
-        d = seqc.log.LogData.identify_duplicate_patterns(pattern)
+        pattern = log.LogData.string_to_regex(self.test_pattern)
+        d = log.LogData.identify_duplicate_patterns(pattern)
         assert dict(d) == {'genomic': 1, 'phi_x': 1}
 
     def test_replace_replicated_patterns(self):
-        pattern = seqc.log.LogData.string_to_regex(self.test_pattern)
-        duplicates = seqc.log.LogData.identify_duplicate_patterns(pattern)
+        pattern = log.LogData.string_to_regex(self.test_pattern)
+        duplicates = log.LogData.identify_duplicate_patterns(pattern)
         for k, v in duplicates.items():
-            pattern = seqc.log.LogData.replace_replicated_patterns(pattern, k)
+            pattern = log.LogData.replace_replicated_patterns(pattern, k)
         # verify that no replicates remain
-        residual = seqc.log.LogData.identify_duplicate_patterns(pattern)
+        residual = log.LogData.identify_duplicate_patterns(pattern)
         assert not residual
 
     def test_match_log(self):
-        mo = seqc.log.LogData.match_log(self.logfile)
+        mo = log.LogData.match_log(self.logfile)
         assert mo
 
     def test_parse_special_fields(self):
-        mo = seqc.log.LogData.match_log(self.logfile)
-        matches = seqc.log.LogData.parse_special_fields(mo)
+        mo = log.LogData.match_log(self.logfile)
+        matches = log.LogData.parse_special_fields(mo)
         assert all(matches)
 
     def test_dictionary_to_dataframe(self):
-        mo = seqc.log.LogData.match_log(self.logfile)
-        df = seqc.log.LogData.dictionary_to_dataframe(mo, 'test')
+        mo = log.LogData.match_log(self.logfile)
+        df = log.LogData.dictionary_to_dataframe(mo, 'test')
         assert isinstance(df, pd.DataFrame)
 
     def test_parse_log(self):
-        df = seqc.log.LogData.parse_log(self.logfile)
+        log.LogData.parse_log(self.logfile)  # called for side-effect
 
     def test_parse_multiple(self):
-        df = seqc.log.LogData.parse_multiple(os.path.expanduser(
+        df = log.LogData.parse_multiple(os.path.expanduser(
             '~/google_drive/manuscripts/breast_cancer_immune/data/'),
-            exclude='.*?seqc.log')
+            exclude='.*?log')
         assert not np.sum(np.isnan(df.values))
 
-###########################################################################################
+#########################################################################################
 
 if __name__ == "__main__":
     # suite_Gen = unittest.makeSuite(TestProcessExperimentGeneral)
@@ -595,7 +603,4 @@ if __name__ == "__main__":
     # runner_all_tests.run(full_suite)
     nose2.main()
 
-###########################################################################################
-
-
-
+#########################################################################################
