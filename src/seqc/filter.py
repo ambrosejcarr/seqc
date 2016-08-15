@@ -269,6 +269,6 @@ def create_filtered_dense_count_matrix(
         columns=molecules.columns[nonzero_gene_count])
 
     # describe cells
-    cell_description = dense.molecules.sum(axis=1).describe()
+    cell_description = dense.sum(axis=1).describe()
 
     return dense, total_molecules, molecules_lost, cells_lost, cell_description
