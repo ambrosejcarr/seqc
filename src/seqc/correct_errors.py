@@ -1,10 +1,8 @@
 from scipy.special import gammainc
 from itertools import permutations
 from sys import maxsize
-import time
 from scipy.sparse import coo_matrix
-# from seqc.sequence.encodings import ThreeBit as BinRep
-from seqc.sequence.encodings import DNA3Bit as BinRep
+from seqc.sequence.encodings import DNA3Bit
 from seqc.sequence import revcomp_bytes
 import numpy as np
 from seqc import log
@@ -39,25 +37,25 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     dynamic_codes_table_c1 = {}
     dynamic_codes_table_c2 = {}
 
-    errors = list(BinRep.ints2int([p[0], p[1]]) for p in permutations(BinRep.bin_nums,
-                                                                      r=2))
+    errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit.bin_nums,
+                                                                       r=2))
     error_table = dict(zip(errors, [0] * len(errors)))
-    cor_instance_table = {BinRep.encode(b'A'): 0,
-                          BinRep.encode(b'C'): 0,
-                          BinRep.encode(b'G'): 0,
-                          BinRep.encode(b'T'): 0}
+    cor_instance_table = {DNA3Bit.encode(b'A'): 0,
+                          DNA3Bit.encode(b'C'): 0,
+                          DNA3Bit.encode(b'G'): 0,
+                          DNA3Bit.encode(b'T'): 0}
 
     # Read the barcodes into lists
     correct_barcodes = []
     if reverse_complement:
         for barcode_file in barcode_files:
             with open(barcode_file, 'rb') as f:
-                correct_barcodes.append(set(BinRep.encode(revcomp_bytes(line.strip()))
+                correct_barcodes.append(set(DNA3Bit.encode(revcomp_bytes(line.strip()))
                                             for line in f.readlines()))
     else:
         for barcode_file in barcode_files:
             with open(barcode_file, 'rb') as f:
-                correct_barcodes.append(set(BinRep.encode(line.strip())
+                correct_barcodes.append(set(DNA3Bit.encode(line.strip())
                                             for line in f.readlines()))
 
     for i, v in enumerate(ra.data):
@@ -68,7 +66,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
         gene = v['gene']
 
         # correct and filter barcodes
-        c1 = BinRep.c1_from_codes(int(v['cell']))
+        c1 = DNA3Bit.c1_from_codes(int(v['cell']))
         try:
             cor_c1, ed_1, err_l_1, seq_err_1 = dynamic_codes_table_c1[c1]
         except KeyError:
@@ -81,7 +79,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                 err_l_1 = list_errors(cor_c1, c1)
             dynamic_codes_table_c1[c1] = (cor_c1, ed_1, err_l_1, seq_err_1)
 
-        c2 = BinRep.c2_from_codes(int(v['cell']))
+        c2 = DNA3Bit.c2_from_codes(int(v['cell']))
         try:
             cor_c2, ed_2, err_l_2, seq_err_2 = dynamic_codes_table_c2[c2]
         except KeyError:
@@ -113,8 +111,8 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                     continue
 
             # count non error bases
-            tmp_c = BinRep.ints2int([c1, c2])
-            tmp_cor = BinRep.ints2int([cor_c1, cor_c2])
+            tmp_c = DNA3Bit.ints2int([c1, c2])
+            tmp_cor = DNA3Bit.ints2int([cor_c1, cor_c2])
             while tmp_c > 0:
                 if tmp_c & 0b111 == tmp_cor & 0b111:
                     cor_instance_table[tmp_c & 0b111] += 1
@@ -122,7 +120,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                 tmp_cor >>= 3
 
         # group according to the correct barcodes and gene
-        cell = BinRep.ints2int([cor_c1, cor_c2])
+        cell = DNA3Bit.ints2int([cor_c1, cor_c2])
         rmt = v['rmt']
         try:
             res[gene, cell][rmt].append(i)
@@ -167,7 +165,7 @@ def hamming_dist_bin(c1, c2):
     :param c2:
     :return:
     """
-    if BinRep.seq_len(c1) != BinRep.seq_len(c2):
+    if DNA3Bit.seq_len(c1) != DNA3Bit.seq_len(c2):
         return maxsize
     d = 0
     while c1 > 0:
@@ -181,7 +179,7 @@ def hamming_dist_bin(c1, c2):
 def count_sequencer_errors(c):
     err = 0
     while c > 0:
-        if BinRep.decode(c & 0b111) == b'N':
+        if DNA3Bit.decode(c & 0b111) == b'N':
             err += 1
         c >>= 3
     return err
@@ -192,14 +190,14 @@ def generate_close_seq(seq):
     :param seq:
     """
     res = []
-    l = BinRep.seq_len(seq)
+    l = DNA3Bit.seq_len(seq)
 
     # generate all sequences that are dist 1
     for i in range(l):
         mask = 0b111 << (i * 3)
         cur_chr = (seq & mask) >> (i * 3)
         res += [seq & (~mask) | (new_chr << (i * 3))
-                for new_chr in BinRep.bin_nums if new_chr != cur_chr]
+                for new_chr in DNA3Bit.bin_nums if new_chr != cur_chr]
     # generate all sequences that are dist 2
     for i in range(l):
         mask_i = 0b111 << (i * 3)
@@ -209,8 +207,8 @@ def generate_close_seq(seq):
             chr_j = (seq & mask_j) >> (j * 3)
             mask = mask_i | mask_j
             res += [seq & (~mask) | (new_chr_i << (i * 3)) | (new_chr_j << (j * 3)) for
-                    new_chr_i in BinRep.bin_nums if new_chr_i != chr_i for
-                    new_chr_j in BinRep.bin_nums if new_chr_j != chr_j]
+                    new_chr_i in DNA3Bit.bin_nums if new_chr_i != chr_i for
+                    new_chr_j in DNA3Bit.bin_nums if new_chr_j != chr_j]
 
     return res
 
@@ -225,13 +223,13 @@ def prob_d_to_r_bin(d_seq, r_seq, err_rate):
     :param d_seq:
     """
 
-    if BinRep.seq_len(d_seq) != BinRep.seq_len(r_seq):
+    if DNA3Bit.seq_len(d_seq) != DNA3Bit.seq_len(r_seq):
         return 1
 
     p = 1.0
     while d_seq > 0:
         if d_seq & 0b111 != r_seq & 0b111:
-            p *= err_rate[BinRep.ints2int([d_seq & 0b111, r_seq & 0b111])]
+            p *= err_rate[DNA3Bit.ints2int([d_seq & 0b111, r_seq & 0b111])]
         d_seq >>= 3
         r_seq >>= 3
     return p
@@ -266,7 +264,7 @@ def list_errors(s1, s2):
     err_list = []
     while s1 > 0:
         if s1 & 0b111 != s2 & 0b111:
-            err_list.append(BinRep.ints2int([s1 & 0b111, s2 & 0b111]))
+            err_list.append(DNA3Bit.ints2int([s1 & 0b111, s2 & 0b111]))
         s1 >>= 3
         s2 >>= 3
     return err_list
@@ -310,7 +308,7 @@ def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     :return: True if a read passes a;; filters.
     """
     phix_genes = np.array(range(1, 7)) * 111111111
-    N = BinRep.encode(b'N')
+    N = DNA3Bit.encode(b'N')
 
     if read['gene'] == 0:
         filters_counter['gene_0'] += 1
@@ -328,7 +326,7 @@ def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     if read['n_poly_t'] < required_poly_t:
         filters_counter['poly_t'] += 1
         return False
-    if BinRep.contains(int(read['rmt']), N):
+    if DNA3Bit.contains(int(read['rmt']), N):
         filters_counter['rmt_N'] += 1
         return False
     if read['dust_score'] > max_dust_score:
@@ -447,7 +445,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
                 for gene, full_cell in grouped_ra[cell][rmt]:
                     if base_shift:
                         # replace the last base of cell with 'N'
-                        correct_cell = BinRep.ints2int([cell, BinRep._str2bindict[b'N']])
+                        correct_cell = DNA3Bit.ints2int([cell, DNA3Bit._str2bindict[b'N']])
                         # todo next line unnecessary now that rmts are not being stored
                         # correct the rmt with the last base of cb, remove the last 'T'
                         # correct_rmt = BinRep.ints2int([full_cell & 0b111, rmt]) >> 3
@@ -477,7 +475,7 @@ def base_count(seq_dic, umi_len=8):
     count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
                  'T': np.zeros(umi_len)}
     for seq in seq_dic:
-        for i, base in enumerate(BinRep.decode(seq).decode()):
+        for i, base in enumerate(DNA3Bit.decode(seq).decode()):
             if base == 'N':
                 continue
             count_mat[base][i] += 1
@@ -595,7 +593,7 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
 
     # tot_feats = len(ra_grouped)
     cur_f = 0
-    N = BinRep.encode(b'N')
+    N = DNA3Bit.encode(b'N')
     # for_removal = []
     for feature, cell in d.keys():
         # sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) +
@@ -608,7 +606,7 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
         retained_reads = 0
 
         for r_seq in d[feature, cell].keys():
-            if BinRep.contains(r_seq, N):  # todo This throws out more than we want?
+            if DNA3Bit.contains(r_seq, N):  # todo This throws out more than we want?
                 continue
 
             gene = feature
