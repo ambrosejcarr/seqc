@@ -119,6 +119,30 @@ class DNA3Bit:
             res += num
         return res
 
+    # todo these methods only work for in-drop
+    @staticmethod
+    def c2_from_int(seq):
+        """Extract barcode2 from a sequence"""
+        return (seq & 0o77777777000000) >> (6 * 3)
+
+    # todo these methods only work for in-drop
+    @staticmethod
+    def c1_from_int(seq):
+        """Extract barcode1 from a sequence"""
+        return seq >> ((8 + 6) * 3)
+
+    # todo these methods only work for in-drop
+    @staticmethod
+    def c2_from_codes(seq):
+        """Extract barcode2 from a sequence of just codes"""
+        return seq & 0o77777777
+
+    # todo these methods only work for in-drop
+    @staticmethod
+    def c1_from_codes(seq):
+        """Extract barcode1 from a sequence of just codes"""
+        return seq >> (8 * 3)
+
 
 class ThreeBit:
     """

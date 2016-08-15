@@ -3,31 +3,26 @@ from itertools import permutations
 from sys import maxsize
 import time
 from scipy.sparse import coo_matrix
-from seqc.sequence.encodings import ThreeBit as BinRep
+# from seqc.sequence.encodings import ThreeBit as BinRep
+from seqc.sequence.encodings import DNA3Bit as BinRep
+from seqc.sequence import revcomp_bytes
 import numpy as np
 from seqc import log
 import random
 
-high_value = maxsize  # Used for sorting, needs to be longer than any sequence
 
-# todo: increase number of error correction methods by 2
 NUM_OF_ERROR_CORRECTION_METHODS = 3
-#ERROR_CORRECTION_AJC = 0
-
 ERROR_CORRECTION_BC_FILTERS = 3
 ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR = 0
-#ERROR_CORRECTION_jaitin = 1
 ERROR_CORRECTION_JAIT_LIKELIHOOD = 2
-
 DEFAULT_BASE_CONVERTION_RATE = 0.02
 
 
 def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True,
-                   max_ed=2, max_dust=10, err_correction_mat=''):
+                   max_ed=2, max_dust=10):
     """
     Prepare the RA for error correction. Apply filters, estimate error correction and
     correct the barcodes
-    :param err_correction_mat:
     :param max_ed:
     :param reverse_complement:
     :param required_poly_t:
@@ -47,22 +42,22 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     errors = list(BinRep.ints2int([p[0], p[1]]) for p in permutations(BinRep.bin_nums,
                                                                       r=2))
     error_table = dict(zip(errors, [0] * len(errors)))
-    cor_instance_table = {BinRep._str2bindict['A']: 0,
-                          BinRep._str2bindict['C']: 0,
-                          BinRep._str2bindict['G']: 0,
-                          BinRep._str2bindict['T']: 0}
+    cor_instance_table = {BinRep.encode(b'A'): 0,
+                          BinRep.encode(b'C'): 0,
+                          BinRep.encode(b'G'): 0,
+                          BinRep.encode(b'T'): 0}
 
     # Read the barcodes into lists
     correct_barcodes = []
     if reverse_complement:
         for barcode_file in barcode_files:
-            with open(barcode_file) as f:
-                correct_barcodes.append(set(BinRep.str2bin(rev_comp(line.strip()))
+            with open(barcode_file, 'rb') as f:
+                correct_barcodes.append(set(BinRep.encode(revcomp_bytes(line.strip()))
                                             for line in f.readlines()))
     else:
         for barcode_file in barcode_files:
-            with open(barcode_file) as f:
-                correct_barcodes.append(set(BinRep.str2bin(line.strip())
+            with open(barcode_file, 'rb') as f:
+                correct_barcodes.append(set(BinRep.encode(line.strip())
                                             for line in f.readlines()))
 
     for i, v in enumerate(ra.data):
@@ -103,17 +98,18 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
         if ed_1 > max_ed or ed_2 > max_ed:
             bc_filter += 1
             # Uncomment for debugging
-#            if err_correction_mat != '':
-#                err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
+            # if err_correction_mat != '':
+            #    err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
             continue
         
-        # For error rate estimation, only reads with at most a single error in both barcodes are counted.
-        # note that only base swicth errors are counted towards this threshold, sequencer errors (that cause an 'N') are ignored for this.
+        # For error rate estimation, only reads with at most a single error in both
+        # barcodes are counted. note that only base swicth errors are counted towards
+        # this threshold, sequencer errors (that cause an 'N') are ignored for this.
         if ed_1 + ed_2 - seq_err_1 - seq_err_2 <= 1:
             for er in err_l_1 + err_l_2:
                 try:
                     error_table[er] += 1
-                except KeyError:    #happens for sequencer errors
+                except KeyError:  # happens for sequencer errors
                     continue
 
             # count non error bases
@@ -151,27 +147,28 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                                cor_instance_table[(k & 0b111000) >> 3])
         except ZeroDivisionError:
             log.info('Warning: too few reads to estimate error rate for %r '
-                          'setting default rate of %f' % (k, default_error_rate))
+                     'setting default rate of %f' % (k, default_error_rate))
             err_rate[k] = default_error_rate
 
     filtered['cb_wrong'] = bc_filter
     log.info('Error correction filtering results: total reads: {}; '
-                  'did not pass preliminary filters: {}; cell barcodes are wrong: '
-                  '{}'.format(tot, sum(filtered.values()), bc_filter))
+             'did not pass preliminary filters: {}; cell barcodes are wrong: '
+             '{}'.format(tot, sum(filtered.values()), bc_filter))
     # print('error_table: ', error_table, ' cor_instance_table: ', cor_instance_table)
 
     return res, err_rate, filtered
 
 
-# Return the hamming distance between two numbers representing a sequence (3 bits / base)
 def hamming_dist_bin(c1, c2):
-    """
+    """Return the hamming distance between two numbers representing a sequence (3 bits
+    per base)
+
     :param c1:
     :param c2:
     :return:
     """
     if BinRep.seq_len(c1) != BinRep.seq_len(c2):
-        return high_value
+        return maxsize
     d = 0
     while c1 > 0:
         if c1 & 0b111 != c2 & 0b111:
@@ -184,7 +181,7 @@ def hamming_dist_bin(c1, c2):
 def count_sequencer_errors(c):
     err = 0
     while c > 0:
-        if BinRep._bin2strdict[c & 0b111] == 'N':
+        if BinRep.decode(c & 0b111) == b'N':
             err += 1
         c >>= 3
     return err
@@ -200,7 +197,7 @@ def generate_close_seq(seq):
     # generate all sequences that are dist 1
     for i in range(l):
         mask = 0b111 << (i * 3)
-        cur_chr = (seq&mask) >> (i * 3)
+        cur_chr = (seq & mask) >> (i * 3)
         res += [seq & (~mask) | (new_chr << (i * 3))
                 for new_chr in BinRep.bin_nums if new_chr != cur_chr]
     # generate all sequences that are dist 2
@@ -240,20 +237,19 @@ def prob_d_to_r_bin(d_seq, r_seq, err_rate):
     return p
 
 
-_complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}  # for reverse complement
+# _complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}  # for reverse complement
 
-
-def rev_comp(s):
-    """Return the reverse complement of an ACGT string s
-
-    :param s:
-    :returns:
-    """
-    ret = []
-    for i in range(len(s)):
-        ret.append(_complement[(s[-1 - i])])
-    return ''.join(ret)
-
+# def rev_comp(s):
+#     """Return the reverse complement of an ACGT string s
+#
+#     :param s:
+#     :returns:
+#     """
+#     ret = []
+#     for i in range(len(s)):
+#         ret.append(_complement[(s[-1 - i])])
+#     return ''.join(ret)
+#
 
 def list_errors(s1, s2):
     """
@@ -290,7 +286,7 @@ def find_correct_barcode(code, barcodes_list):
     if code in barcodes_list:
         return code, 0
 
-    min_ed = high_value
+    min_ed = maxsize
     cor_code = 0
     for bc in barcodes_list:
         hamm_d = hamming_dist_bin(code, bc)
@@ -314,7 +310,7 @@ def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     :return: True if a read passes a;; filters.
     """
     phix_genes = np.array(range(1, 7)) * 111111111
-    N = BinRep._str2bindict['N']
+    N = BinRep.encode(b'N')
 
     if read['gene'] == 0:
         filters_counter['gene_0'] += 1
@@ -344,12 +340,8 @@ def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
 def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
     """
     Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
-    :param err_correction_mat:
-    :param max_ed:
-    :param reverse_complement:
     :param required_poly_t:
     :param max_dust:
-    :param barcode_files:
     :param ra:
     """
     res = {}
@@ -369,18 +361,18 @@ def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
         rmt = v['rmt']
         gene = v['gene']
         try:
-            res[cell_header][rmt][gene,cell] += 1
+            res[cell_header][rmt][gene, cell] += 1
         except KeyError:
             try:
-                res[cell_header][rmt][gene,cell] = 1
+                res[cell_header][rmt][gene, cell] = 1
             except KeyError:
                 try:
-                    res[cell_header][rmt]={(gene,cell):1}
+                    res[cell_header][rmt] = {(gene, cell): 1}
                 except KeyError:
-                    res[cell_header] = {rmt:{(gene,cell):1}}
+                    res[cell_header] = {rmt: {(gene, cell): 1}}
 
     log.info('Error correction filtering results: total reads: {}; did not pass '
-                  'preliminary filters: {}'.format(tot, sum(filtered.values())))
+             'preliminary filters: {}'.format(tot, sum(filtered.values())))
     return res, filtered
 
 
@@ -394,13 +386,14 @@ def drop_seq(alignments_ra, *args, **kwargs):
     :return:
     """
     
-    start = time.process_time()
+    # start = time.process_time()
     pos_filter_threshold = 0.8
     barcode_base_shift_threshold = 0.9
     umi_len = 8
     min_umi_cutoff = 10
     # TODO:
-    # 4. collapse UMI's that are 1 ED from one another (This requires more thought as there are plenty of edge cases)
+    # 4. collapse UMI's that are 1 ED from one another (This requires more thought as
+    # there are plenty of edge cases)
     
     res_dic = {}
     
@@ -416,18 +409,19 @@ def drop_seq(alignments_ra, *args, **kwargs):
     pos_bias_count = 0
     small_cell_groups = 0
     
-    #close_pairs = 0
+    # close_pairs = 0
     
     for cell in grouped_ra:
         retain = True
         base_shift = False
-        correct_cell = cell
+        # correct_cell = cell
         size = len(grouped_ra[cell])
+        # close_pairs += count_close_umi(grouped_ra[cell])
         
-        #close_pairs += count_close_umi(grouped_ra[cell])
-        
-        #Check minimum size of cell group
-        if size < min_umi_cutoff:   #if the number of UMI's for this cell don't meet the threshold, we have to retain them
+        # Check minimum size of cell group
+        # if the number of UMI's for this cell don't meet the threshold, we have to
+        # retain them
+        if size < min_umi_cutoff:
             retain = True
             small_cell_groups += 1
             
@@ -436,7 +430,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
             base_mat = base_count(grouped_ra[cell])
             for pos in range(umi_len-1):
                 for base in base_mat:
-                    if base_mat[base][pos]>pos_filter_threshold:
+                    if base_mat[base][pos] > pos_filter_threshold:
                         retain = False
                         pos_bias_count += 1
                         continue
@@ -452,13 +446,15 @@ def drop_seq(alignments_ra, *args, **kwargs):
             for rmt in grouped_ra[cell]:
                 for gene, full_cell in grouped_ra[cell][rmt]:
                     if base_shift:
-                        correct_cell = BinRep.ints2int([cell, BinRep._str2bindict['N']])    #replace the last base of cell with 'N'
+                        # replace the last base of cell with 'N'
+                        correct_cell = BinRep.ints2int([cell, BinRep._str2bindict[b'N']])
                         # todo next line unnecessary now that rmts are not being stored
-                        correct_rmt = BinRep.ints2int([full_cell&0b111, rmt]) >> 3         # correct the rmt with the last base of the cell, and dump the last 'T'
+                        # correct the rmt with the last base of cb, remove the last 'T'
+                        # correct_rmt = BinRep.ints2int([full_cell & 0b111, rmt]) >> 3
                     else:
                         correct_cell = full_cell
                         # todo next line unnecessary now that rmts are not being stored
-                        correct_rmt = rmt
+                        # correct_rmt = rmt
                     try:
                         res_dic[gene, correct_cell][0] += 1
                         res_dic[gene, correct_cell][1] += (
@@ -468,10 +464,12 @@ def drop_seq(alignments_ra, *args, **kwargs):
                         res_dic[gene, correct_cell] = [
                             1, grouped_ra[cell][rmt][gene, full_cell]]
 
-    log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
-    #print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
-    tot_time=time.process_time()-start
-    #print('tot time: {}'.format(tot_time))
+    log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(
+        base_shift_count, pos_bias_count, small_cell_groups))
+    # print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'
+    #       ''.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
+    # tot_time = time.process_time() - start
+    # print('tot time: {}'.format(tot_time))
     return res_dic, summary
 
 
@@ -479,29 +477,31 @@ def base_count(seq_dic, umi_len=8):
     count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
                  'T': np.zeros(umi_len)}
     for seq in seq_dic:
-        for i, base in enumerate(BinRep.bin2str(seq)):
+        for i, base in enumerate(BinRep.decode(seq).decode()):
             if base == 'N':
                 continue
             count_mat[base][i] += 1
     tot = len(seq_dic)
     for base in count_mat:
-        count_mat[base] = count_mat[base]/tot
+        count_mat[base] /= tot
     return count_mat
 
 
-#Used for research only
+# Used for research only
 def count_close_umi(seq_dic):
     count = 0
     for seq1 in seq_dic:
         for seq2 in seq_dic:
             if hamming_dist_bin(seq1, seq2) <= 1:
                 count += 1
-    return (count-len(seq_dic))/2
+    return (count-len(seq_dic)) / 2
 
 
+# todo this is not going to work because of how c[1|2]_from_int and c[1|2]_from_codes
+# are implemented
 def mars1_seq(*args, **kwargs):
     """very simple pass-through wrapper for mars1_seq error correction, needs to be
-    replaced with the actual error correction method instead of just drop_seq()
+    replaced with the actual error correction method instead of just in_drop()
 
     :param args:  pass any args to in_drop()
     :param kwargs:  pass any kwargs to in_drop()
@@ -509,7 +509,8 @@ def mars1_seq(*args, **kwargs):
     """
     return in_drop(*args, **kwargs)
 
-
+# todo this is not going to work because of how c[1|2]_from_int and c[1|2]_from_codes
+# are implemented
 def mars2_seq(*args, **kwargs):
     """very simple pass-through wrapper for mars1_seq error correction, designed so that
     getattr() on seqc.correct_errors will find the correct error function for mars2_seq
@@ -563,42 +564,39 @@ def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
     :return:
     """
 
-    res_time_cnt = {}
-    err_correction_res = ''#np.zeros((len(alignments_ra), NUM_OF_ERROR_CORRECTION_METHODS))
+    # res_time_cnt = {}
+    # err_correction_res = ''
     ra_grouped, error_rate, summary = prepare_for_ec(
             alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
-            max_dust, err_correction_mat='')
+            max_dust)
     grouped_res_dic, error_count = correct_errors(
-            alignments_ra, ra_grouped, error_rate, err_correction_res='', p_value=alpha,
+            alignments_ra, ra_grouped, error_rate, p_value=alpha,
             singleton_weight=singleton_weight)
 
     return grouped_res_dic, summary
 
 
-def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff=1,
-                   p_value=0.05, apply_likelihood=True, singleton_weight=1, fname=''):
+def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True,
+                   singleton_weight=1):
     """
     Calculate and correct errors in barcode sets
 
     :param ra:
     :param ra_grouped:
     :param err_rate:
-    :param err_correction_res:
-    :param donor_cutoff:
     :param p_value:
     :param apply_likelihood:
-    :param fname:
     :return:
     """
-    start = time.process_time()
+    # start = time.process_time()
     d = ra_grouped
     grouped_res_dic = {}
     error_count = 0
 
-    tot_feats = len(ra_grouped)
+    # tot_feats = len(ra_grouped)
     cur_f = 0
-    N = BinRep._str2bindict['N']
-    for_removal = []
+    N = BinRep.encode(b'N')
+    # for_removal = []
     for feature, cell in d.keys():
         # sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) +
         #                  ' groups processed. (' + str((100 * cur_f) / tot_feats) + '%)')
@@ -619,7 +617,7 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
 
             expected_errors = 0
             # actual_donors = 0
-            p_val_not_err = 0
+            # p_val_not_err = 0
             # P(x<=r_num_occurences) Note: these are different distributions
             # p_val_not_correct = poisson.cdf(r_num_occurences, avg_rmt_size)
             jait = False
@@ -629,7 +627,8 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
                     # actual_donors += d_num_occurences
                 except KeyError:
                     continue
-                # This can cut running time but will have a less accurate likelihood model. It is currently not used.
+                # This can cut running time but will have a less accurate likelihood
+                # model. It is currently not used.
                 # if d_num_occurences<=donor_cutoff:
                 #    continue
 
@@ -640,19 +639,19 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
                 if not jait:
                     d_pos_list = np.hstack(ra.data['position'][d[feature, cell][d_rmt]])
                     if set(r_pos_list).issubset(set(d_pos_list)):
-                        #err_correction_res[ra_grouped[gene, cell][r_seq],
-                        #                   ERROR_CORRECTION_jaitin] = 1
+                        # err_correction_res[ra_grouped[gene, cell][r_seq],
+                        #                    ERROR_CORRECTION_jaitin] = 1
                         jait = True
 
             # P(x>=r_num_occurences)
             p_val_not_err = gammainc(r_num_occurences, expected_errors)
             # Used for error correction methods comparison
-            #if p_val_not_err <= p_value:
-            #    err_correction_res[ra_grouped[gene, cell][r_seq],
-            #                       ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR] = 1
-            #elif jait:
-            #    err_correction_res[ra_grouped[gene, cell][r_seq],
-            #                       ERROR_CORRECTION_JAIT_LIKELIHOOD] = 1
+            # if p_val_not_err <= p_value:
+            #     err_correction_res[ra_grouped[gene, cell][r_seq],
+            #                        ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR] = 1
+            # elif jait:
+            #     err_correction_res[ra_grouped[gene, cell][r_seq],
+            #                        ERROR_CORRECTION_JAIT_LIKELIHOOD] = 1
 
             if apply_likelihood:
                 if not jait or p_val_not_err <= p_value:
@@ -671,7 +670,7 @@ def correct_errors(ra, ra_grouped, err_rate, err_correction_res='', donor_cutoff
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
 
     # print('\nLikelihood model error_count: ', error_count)
-    tot_time=time.process_time()-start
+    # tot_time=time.process_time() - start
     # log.info('total error correction runtime: {}'.format(tot_time))
     # f.close()
     return grouped_res_dic, error_count
