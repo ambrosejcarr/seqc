@@ -946,7 +946,7 @@ def main(args: list=None) -> None:
 
         # generate count matrix
         log.info('Creating sparse count matrices')
-        matrices = correct_errors_function.convert_to_matrix(cell_counts)
+        matrices = correct_errors.convert_to_matrix(cell_counts)
         molecules = SparseFrame(
             matrices['molecules']['matrix'],
             matrices['molecules']['row_ids'],
