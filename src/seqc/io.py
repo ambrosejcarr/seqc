@@ -760,7 +760,6 @@ class ProcessManager:
         Executes processes in proc_list and saves them in self.processes.
         All processes executed in this function are non-blocking.
         :param proc_list: Command to be executed (obtained from format_process).
-        :param wait: return after process has finished executing
         """
 
         for i, cmd in enumerate(proc_list):
