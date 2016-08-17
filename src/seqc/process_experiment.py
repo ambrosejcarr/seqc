@@ -676,7 +676,7 @@ def create_or_download_read_array(
                     .format(bamfile=bamfile, samfile=samfile)
                 upload_bam = 'aws s3 mv {fname} {s3link}'.format(
                     fname=bamfile, s3link=aws_upload_key)
-                manage_samfile = io.ProcessManager(convert_sam, upload_bam)
+                manage_samfile = io.ProcessManager(True, convert_sam, upload_bam)
                 manage_samfile.run_all()
     else:
         if read_array.startswith('s3://'):
