@@ -674,14 +674,9 @@ def create_or_download_read_array(
                 convert_sam = 'samtools view -bS -o {bamfile} {samfile}' \
                     .format(bamfile=bamfile, samfile=samfile)
                 # todo: temporary patch until we fix chaining sam conversion and upload
-                # we wait until sam --> bam conversion is complete, then upload in the
-                # background. this is slower, but works for now
-                convert_proc = io.ProcessManager(convert_sam)
-                convert_proc.run_all()
-                convert_proc.wait_until_complete()
-                upload_bam = 'aws s3 mv {fname} {s3link}'.format(
-                    fname=bamfile, s3link=aws_upload_key)
-                manage_samfile = io.ProcessManager(upload_bam)
+                # we let the sam --> bam conversion happen in the background,
+                # then upload at the very end
+                manage_samfile = io.ProcessManager(convert_sam)
                 manage_samfile.run_all()
     else:
         if read_array.startswith('s3://'):
@@ -775,9 +770,16 @@ def upload_data_and_notify_user(
         if process_samfile:
             if input_data != 'samfile':
                 if manage_samfile:
+                    # wait until bam file has finished converting, then upload
                     manage_samfile.wait_until_complete()
+                    bam = os.path.split(output_stem)[0] + '/alignments/Aligned.out.bam'
+                    upload_bam = 'aws s3 mv {bamfile} {s3link}'.format(
+                        bamfile=bam, s3link=aws_upload_key)
+                    manage_bamfile = io.ProcessManager(upload_bam)
+                    manage_bamfile.run_all()
+                    manage_bamfile.wait_until_complete()
                     log.info('Successfully uploaded %s to the specified S3 location "%s"'
-                             % (samfile, aws_upload_key))
+                             % (bam, aws_upload_key))
             if manage_ra:
                 manage_ra.wait_until_complete()
                 log.info('Successfully uploaded %s to the specified S3 location "%s"' %
