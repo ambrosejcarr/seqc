@@ -759,7 +759,7 @@ class ProcessManager:
         """
         Executes processes in proc_list and saves them in self.processes.
         All processes executed in this function are non-blocking.
-        :param proc_list: Command to be executed (obtained from format_proces).
+        :param proc_list: Command to be executed (obtained from format_process).
         """
 
         for i, cmd in enumerate(proc_list):
@@ -777,6 +777,8 @@ class ProcessManager:
         """
         This function must be called in order for the processes to be executed.
         All processes are non-blocking and executed in the background.
+        They are independent processes and are spawned one after another.
+        :return:
         """
 
         for arg in self.args:
