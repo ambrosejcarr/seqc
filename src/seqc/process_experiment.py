@@ -673,12 +673,12 @@ def create_or_download_read_array(
                 bamfile = output_dir + '/alignments/Aligned.out.bam'
                 convert_sam = 'samtools view -bS -o {bamfile} {samfile}' \
                     .format(bamfile=bamfile, samfile=samfile)
-                # todo: separate out bam conversion and upload to s3
-                # todo: convert to bam first
+                # todo: temporary patch until we fix chaining sam conversion and upload
+                # we wait until sam --> bam conversion is complete, then upload in the
+                # background. this is slower, but works for now
                 convert_proc = io.ProcessManager(convert_sam)
                 convert_proc.run_all()
                 convert_proc.wait_until_complete()
-                # todo: then upload bam
                 upload_bam = 'aws s3 mv {fname} {s3link}'.format(
                     fname=bamfile, s3link=aws_upload_key)
                 manage_samfile = io.ProcessManager(upload_bam)
