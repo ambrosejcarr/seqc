@@ -703,7 +703,7 @@ class ProcessManager:
     or blocked until completion with wait_until_complete().
     """
 
-    def __init__(self, *args):
+    def __init__(self, wait=False, *args):
         """
         For sequential processes, pass individual args
         For piped processes, pass as one
@@ -720,6 +720,7 @@ class ProcessManager:
 
         """
         self.args = args
+        self.wait = wait
         self.nproc = len(args)
         self.processes = []
 
@@ -755,11 +756,12 @@ class ProcessManager:
             else:
                 raise ChildProcessError(error_msg)
 
-    def run_background_processes(self, proc_list: list):
+    def run_background_processes(self, proc_list: list, wait=False):
         """
         Executes processes in proc_list and saves them in self.processes.
         All processes executed in this function are non-blocking.
-        :param proc_list: Command to be executed (obtained from format_proces).
+        :param proc_list: Command to be executed (obtained from format_process).
+        :param wait: return after process has finished executing
         """
 
         for i, cmd in enumerate(proc_list):
@@ -772,11 +774,19 @@ class ProcessManager:
             time.sleep(2)
             self.check_launch(proc)
             self.processes.append(proc)
+            finished = False
+            if self.wait:  # if processes are chained, wait until completion w/o blocking
+                while not finished:
+                    return_code = proc.poll()
+                    if return_code is not None:
+                        finished = True
 
     def run_all(self):
         """
         This function must be called in order for the processes to be executed.
         All processes are non-blocking and executed in the background.
+        They are independent processes and are spawned one after another.
+        :return:
         """
 
         for arg in self.args:
