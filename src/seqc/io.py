@@ -703,7 +703,7 @@ class ProcessManager:
     or blocked until completion with wait_until_complete().
     """
 
-    def __init__(self, wait=False, *args):
+    def __init__(self, *args):
         """
         For sequential processes, pass individual args
         For piped processes, pass as one
@@ -720,7 +720,6 @@ class ProcessManager:
 
         """
         self.args = args
-        self.wait = wait
         self.nproc = len(args)
         self.processes = []
 
@@ -756,7 +755,7 @@ class ProcessManager:
             else:
                 raise ChildProcessError(error_msg)
 
-    def run_background_processes(self, proc_list: list, wait=False):
+    def run_background_processes(self, proc_list: list):
         """
         Executes processes in proc_list and saves them in self.processes.
         All processes executed in this function are non-blocking.
@@ -774,12 +773,6 @@ class ProcessManager:
             time.sleep(2)
             self.check_launch(proc)
             self.processes.append(proc)
-            finished = False
-            if self.wait:  # if processes are chained, wait until completion w/o blocking
-                while not finished:
-                    return_code = proc.poll()
-                    if return_code is not None:
-                        finished = True
 
     def run_all(self):
         """
