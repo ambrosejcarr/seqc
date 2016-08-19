@@ -193,17 +193,19 @@ def low_gene_abundance(molecules, is_invalid):
 
 
 def create_filtered_dense_count_matrix(
-        molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2):
+        molecules: SparseFrame, reads: SparseFrame, no_filter_mitochondrial_rna: bool,
+        max_mt_content=0.2):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
     and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
     original number of molecules (int), the number of molecules lost with each filter
     (dict), and the number of cells lost with each filter (dict).
 
+    :param no_filter_mitochondrial_rna: Do not run the mitochondrial RNA filter.
     :param molecules: SparseFrame
     :param reads: SparseFrame
     :param max_mt_content: the maximum percentage of mitochondrial RNA that is
-      considered to constitute a viable cell
+      considered to constitute a viable cell when running the mitochondrial RNA filter.
     :return: (pd.DataFrame, int, dict, dict)
     """
 
@@ -248,10 +250,13 @@ def create_filtered_dense_count_matrix(
         cov_invalid, count_invalid, molecules_data)
 
     # filter high_mt_content
-    mt_invalid = high_mitochondrial_rna(
-        molecules_data, molecules_columns, cov_invalid, max_mt_content)
-    cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
-        mt_invalid, cov_invalid, molecules_data)
+    if no_filter_mitochondrial_rna:
+        mt_invalid = cov_invalid
+    else:
+        mt_invalid = high_mitochondrial_rna(
+            molecules_data, molecules_columns, cov_invalid, max_mt_content)
+        cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
+            mt_invalid, cov_invalid, molecules_data)
 
     # filter low gene abundance
     gene_invalid = low_gene_abundance(molecules_data, mt_invalid)

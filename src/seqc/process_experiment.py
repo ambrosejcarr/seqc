@@ -113,6 +113,9 @@ def parse_args(args):
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
                    default=1.0, type=float)
+    f.add_argument('--no-filter-mitochondrial-rna', metavar='MT',
+                   help='Do not filter out cells with higher-than-expected mitochondrial '
+                        'RNA content.', default=False, action='store_true')
 
     s = p.add_argument_group('alignment arguments')
     s.add_argument('--star-args', default=None, nargs='*',
@@ -982,7 +985,7 @@ def main(args: list=None) -> None:
 
         # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
-            create_filtered_dense_count_matrix(molecules, reads))
+            create_filtered_dense_count_matrix(molecules, reads, args.no_filter_mitochondrial_rna))
 
         # save sparse csv
         dense[dense == 0] = np.nan  # for sparse_csv saving
