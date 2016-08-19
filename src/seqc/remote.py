@@ -383,6 +383,35 @@ class ClusterServer(object):
             retries=30, delay_retry=2)()
         log.notify('SEQC successfully installed in %s.' % folder)
 
+    def upload_and_install_seqc(self):
+        folder = '/data/software/'
+        location = folder + 'seqc.tar.gz'
+        log.notify('Installing SEQC on remote instance.')
+        self.serv.exec_command("sudo mkdir %s" % folder)
+        self.serv.exec_command("sudo chown -c ubuntu /data")
+        self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
+
+        seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
+        self.serv.put_file(seqc_distribution, location)
+
+        self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
+                               '--strip-components 1' % folder)
+
+        log.notify("Sources are installed and decompressed, setting up seqc")
+        self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
+
+        def test_install():
+            out_test_install, _ = self.serv.exec_command(
+                'process_experiment.py -h | grep RNA')
+            if not out_test_install:
+                raise BotoCallError()
+
+        retry_boto_call(
+            func=test_install, exceptions_to_catch=BotoCallError,
+            exception_to_raise=EC2RuntimeError('Error installing SEQC on the cluster.'),
+            retries=30, delay_retry=2)()
+        log.notify('SEQC successfully installed in %s.' % folder)
+
     def set_credentials(self):
         """sets aws credentials on remote instance from user's local config file"""
 

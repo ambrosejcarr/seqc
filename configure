@@ -3,6 +3,7 @@
 import os
 import configparser
 
+
 # install and configure the config file
 install_dir = os.path.expanduser('~/.seqc') + '/'
 if not os.path.isdir(install_dir):
