@@ -383,7 +383,13 @@ class ClusterServer(object):
             retries=30, delay_retry=2)()
         log.notify('SEQC successfully installed in %s.' % folder)
 
-    def upload_and_install_seqc(self):
+    def upload_and_install_seqc(self) -> None:
+        """upload the local version of seqc to the remote instance for the remote run.
+
+        The archive that is referenced is installed when setup.py is run.
+
+        :return: None
+        """
         folder = '/data/software/'
         location = folder + 'seqc.tar.gz'
         log.notify('Installing SEQC on remote instance.')
