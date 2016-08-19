@@ -72,12 +72,18 @@ if os.path.isdir(seqc_dir):
 
 
 def ignore_test_and_tools(dir_, files):
-    """do not copy the test directory"""
-    return [f for f in files if (f == 'test' or f == 'tools')]
+    """Filter files to be moved by shutil.copytree. Ignore any hidden file and the
+    test and tools directories, which are not needed by the remote instance.
+
+    :param dir_: dummy variable, must be present to be passed to shutil.copytree()
+    :param files: output of os.listdir(), files to be subjected to filtering
+    :return list: list of files that should be filtered, and not copied.
+    """
+    return [f for f in files if (f == 'test' or f == 'tools' or f.startswith('.'))]
 
 # install tools and a local copy of seqc.
 shutil.copytree(setup_dir + '/tools/', tools_dir)
 shutil.copytree(setup_dir, seqc_dir, ignore=ignore_test_and_tools)  # copy seqc repository
-shutil.make_archive(seqc_dir, 'gztar', seqc_dir)
+shutil.make_archive(base_name=seqc_dir, format='gztar', root_dir=seqc_dir)
 shutil.unpack_archive(tools_dir + '/mouse_gene_sets.tar.gz', tools_dir)
 shutil.unpack_archive(tools_dir + '/human_gene_sets.tar.gz', tools_dir)

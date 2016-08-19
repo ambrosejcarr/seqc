@@ -449,7 +449,8 @@ class ClusterServer(object):
         log.notify('Use the following command to log in:\t\t ssh -i {rsa_path} '
                    'ubuntu@{dns_name}'.format(
                        rsa_path=self.keypath, dns_name=self.inst_id.public_dns_name))
-        self.git_pull()
+        # self.git_pull()
+        self.upload_and_install_seqc()
         self.set_credentials()
         log.notify('Remote instance successfully configured.')
 
