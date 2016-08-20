@@ -333,13 +333,18 @@ class ClusterServer(object):
         :param dev_id: location where to attach the volume
         """
 
+        if not self.serv or not self.serv.is_connected:
+            self.connect_server()
+
+        if not vol_size:
+            log.notify("No external volume requested.")
+            self.serv.exec_command("sudo mkdir -p /data")
+            return
+
         if not spot:
             log.notify("Creating volume of size %d GB..." % vol_size)
             self.create_and_attach_volume(vol_size, dev_id)  # called for side-effect
             log.notify("Successfully attached %d GB in 1 volume." % vol_size)
-
-        if not self.serv or not self.serv.is_connected:
-            self.connect_server()
 
         log.notify("Formatting and mounting %s" % dev_id)
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
@@ -368,6 +373,41 @@ class ClusterServer(object):
                 location=location, version='master'))
         self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
+        log.notify("Sources are installed and decompressed, setting up seqc")
+        self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
+
+        def test_install():
+            out_test_install, _ = self.serv.exec_command(
+                'process_experiment.py -h | grep RNA')
+            if not out_test_install:
+                raise BotoCallError()
+
+        retry_boto_call(
+            func=test_install, exceptions_to_catch=BotoCallError,
+            exception_to_raise=EC2RuntimeError('Error installing SEQC on the cluster.'),
+            retries=30, delay_retry=2)()
+        log.notify('SEQC successfully installed in %s.' % folder)
+
+    def upload_and_install_seqc(self) -> None:
+        """upload the local version of seqc to the remote instance for the remote run.
+
+        The archive that is referenced is installed when setup.py is run.
+
+        :return: None
+        """
+        folder = '/data/software/'
+        location = folder + 'seqc.tar.gz'
+        log.notify('Installing SEQC on remote instance.')
+        self.serv.exec_command("sudo mkdir -p %s" % folder)
+        self.serv.exec_command("sudo chown -c ubuntu /data")
+        self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
+
+        seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
+        self.serv.put_file(seqc_distribution, location)
+
+        self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
+                               '--strip-components 1' % folder)
+
         log.notify("Sources are installed and decompressed, setting up seqc")
         self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
 
@@ -414,7 +454,8 @@ class ClusterServer(object):
         log.notify('Use the following command to log in:\t\t ssh -i {rsa_path} '
                    'ubuntu@{dns_name}'.format(
                        rsa_path=self.keypath, dns_name=self.inst_id.public_dns_name))
-        self.git_pull()
+        # self.git_pull()
+        self.upload_and_install_seqc()
         self.set_credentials()
         log.notify('Remote instance successfully configured.')
 
