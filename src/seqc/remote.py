@@ -333,13 +333,18 @@ class ClusterServer(object):
         :param dev_id: location where to attach the volume
         """
 
+        if not self.serv or not self.serv.is_connected:
+            self.connect_server()
+
+        if not vol_size:
+            log.notify("No external volume requested.")
+            self.serv.exec_command("sudo mkdir -p /data")
+            return
+
         if not spot:
             log.notify("Creating volume of size %d GB..." % vol_size)
             self.create_and_attach_volume(vol_size, dev_id)  # called for side-effect
             log.notify("Successfully attached %d GB in 1 volume." % vol_size)
-
-        if not self.serv or not self.serv.is_connected:
-            self.connect_server()
 
         log.notify("Formatting and mounting %s" % dev_id)
         self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
@@ -393,7 +398,7 @@ class ClusterServer(object):
         folder = '/data/software/'
         location = folder + 'seqc.tar.gz'
         log.notify('Installing SEQC on remote instance.')
-        self.serv.exec_command("sudo mkdir %s" % folder)
+        self.serv.exec_command("sudo mkdir -p %s" % folder)
         self.serv.exec_command("sudo chown -c ubuntu /data")
         self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
 
