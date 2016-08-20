@@ -79,7 +79,7 @@ def ignore_test_and_tools(dir_, files):
     :param files: output of os.listdir(), files to be subjected to filtering
     :return list: list of files that should be filtered, and not copied.
     """
-    return [f for f in files if (f == 'test' or f == 'tools' or f.startswith('.'))]
+    return [f for f in files if (f == 'test' or f.startswith('.'))]
 
 # install tools and a local copy of seqc.
 shutil.copytree(setup_dir + '/tools/', tools_dir)
