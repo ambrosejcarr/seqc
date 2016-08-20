@@ -20,6 +20,7 @@ from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
                                create_gene_id_to_official_gene_symbol_map)
 from seqc.filter import create_filtered_dense_count_matrix
 from seqc.sparse_frame import SparseFrame
+from ast import literal_eval
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -113,9 +114,9 @@ def parse_args(args):
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
                    default=1.0, type=float)
-    f.add_argument('--no-filter-mitochondrial-rna', metavar='MT',
-                   help='Do not filter out cells with higher-than-expected mitochondrial '
-                        'RNA content.', default=False, action='store_true')
+    f.add_argument('--filter-mitochondrial-rna', type=literal_eval,
+                   help='If True, filter cells with greater than 20% mitochondrial RNA '
+                        'content.', default=True, choices=[True, False])
 
     s = p.add_argument_group('alignment arguments')
     s.add_argument('--star-args', default=None, nargs='*',
@@ -977,7 +978,8 @@ def main(args: list=None) -> None:
 
         # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
-            create_filtered_dense_count_matrix(molecules, reads, args.no_filter_mitochondrial_rna))
+            create_filtered_dense_count_matrix(molecules, reads,
+                                               args.filter_mitochondrial_rna))
 
         # save sparse csv
         dense[dense == 0] = np.nan  # for sparse_csv saving
