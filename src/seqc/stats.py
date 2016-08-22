@@ -365,7 +365,7 @@ class ScaleFeatures:
         return data
 
 
-class tsne:
+class TSNE:
 
     def __init__(self, n_components: int=2, run_pca: bool=False,
                  n_pca_components: int=20, fillna: float=None, **kwargs):
