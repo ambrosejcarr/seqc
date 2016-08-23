@@ -9,8 +9,8 @@ import pandas as pd
 import multiprocessing
 import fastcluster
 from sklearn.neighbors import NearestNeighbors
-from sklearn.manifold import TSNE
 import time
+import bhtsne
 from scipy.special import expit
 from scipy.sparse import csr_matrix, find
 from scipy.sparse.linalg import eigs
@@ -365,87 +365,68 @@ class ScaleFeatures:
         return data
 
 
-class tSNE:
-    """Barnes-hut tSNE
+class TSNE:
 
-    Carry out t-stochastic neighbor embedding
-
-    :param n_components: number of components to which data should be projected
-    :param normalize: if True, scales features to unit size
-    :param run_pca: if True, runs PCA on the input data and runs tSNE on the
-      components retained by PCA.
-    :param n_pca_components:  Number of components retained by PCA
-    :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
-
-    :method fit_transform: fits the tSNE model to data and returns the transformed
-      result
-
-    """
-
-    def __init__(self, n_components: int=2, scale: bool=True, run_pca: bool=True,
-                 n_pca_components: int=10, **kwargs):
+    def __init__(self, n_components: int=2, run_pca: bool=False,
+                 n_pca_components: int=20, fillna: float=None, **kwargs):
         """
-        Carry out t-stochastic neighbor embedding
+        t-stochastic neighbor embedding
 
-        :param n_components: number of components to which data should be projected
+
         :param normalize: if True, scales features to unit size
         :param run_pca: if True, runs PCA on the input data and runs tSNE on the
           components retained by PCA.
-        :param n_pca_components:  Number of components retained by PCA
-        :param kwargs:  additional keyword arguments to pass sklearn.manifold.TSNE
+        :param n_components: number of tSNE components to return
+        :param n_pca_components: number of components to which data should be projected,
+          if run_pca is True
+        :param fillna: fills np.nan values with this float value
+        :param kwargs:  additional keyword arguments to pass tsne
+
+        :method fit_transform: fits the tSNE model to data and returns the transformed
+          result
+
         """
 
-        warnings.warn('WARNING: Sklearn tSNE does not produce robust results. Please use '
-                      'the bhtsne package until further notice.')
-
-        self.scale = scale
         self.run_pca = run_pca
         self.n_components = n_components
         self.n_pca_components = n_pca_components
         self.kwargs = kwargs
         self.tsne = None
         self.pca = None
+        self.fillna = fillna
 
-    def fit_transform(self, data: np.ndarray or pd.DataFrame, fillna=0) -> None:
+    def fit_transform(self, data: np.ndarray or pd.DataFrame) -> None:
         """
         fit the tSNE model to data given the parameters provided during
          initialization and transform the output
 
         :param data: n observation x k feature data array
-        :param fillna: fill np.NaN values with this value. If None, will not fill.
-        :return: None
+        :return np.ndarray or pd.DataFrame: tsne results
         """
-        if fillna is not None:
-            data[np.where(np.isnan(data))] = fillna
-            data[np.where(np.isinf(data))] = fillna
-        if self.scale:
-            data = ScaleFeatures.unit_size(data, copy=True)
+        if isinstance(data, pd.DataFrame):
+            data_ = data.values
+        else:
+            data_ = data
+
+        if self.fillna is not None:
+            data_[np.where(np.isnan(data_))] = self.fillna
+            data_[np.where(np.isinf(data_))] = self.fillna
         if self.run_pca:
             self.pca = PCA(n_components=self.n_pca_components)
-            data = self.pca.fit_transform(data)
+            data_ = self.pca.fit_transform(data_)
 
-        if not self.kwargs:
-            self.kwargs = dict(angle=0.7, init='pca', random_state=0, n_iter=500,
-                               perplexity=30)
-
-        tsne = TSNE(n_components=self.n_components, method='barnes_hut',
-                    **self.kwargs)
+        res = bhtsne.tsne(data_.astype(float), dimensions=self.n_components, **self.kwargs)
 
         if isinstance(data, pd.DataFrame):
-            res = tsne.fit_transform(data.values)
             self.tsne = pd.DataFrame(res, index=data.index)
         else:
-            res = tsne.fit_transform(data)
             self.tsne = res
         return self.tsne
 
 
 class PCA:
-    """
 
-    """
-
-    def __init__(self, n_components=100):
+    def __init__(self, n_components=30):
         """
         construct a model for Principle Component Analysis
 
@@ -456,19 +437,19 @@ class PCA:
           fit()
         :method fit: fit the model to the data
         :method transform: project the data onto a subset of the principle components
+          (default: all components other than the first)
         :method fit_transform: fit and transform the data, returning the projected result
         """
         self.n_components = n_components
         self.loadings = None
         self.eigenvalues = None
 
-    def fit(self, data, fillna=0, scale=False):
+    def fit(self, data: np.ndarray or pd.DataFrame, fillna=0):
         """
         Fit the model to data
 
         :param data: n observation x k feature data array
         :param fillna: fill np.NaN values with this value. If None, will not fill.
-        :param scale: subtract min and divide by max
         :return: None
         """
 
@@ -482,12 +463,6 @@ class PCA:
         if fillna is not None:
             X[np.where(np.isnan(X))] = fillna
             X[np.where(np.isinf(X))] = fillna
-
-        # Make sure data is zero mean
-        # X = ScaleFeatures.unit_size(X)
-        if scale:
-            X = np.subtract(X, np.amin(X))
-            X = np.divide(X, np.amax(X))
 
         # Compute covariance matrix
         if X.shape[1] < X.shape[0]:
@@ -523,29 +498,26 @@ class PCA:
         self.loadings = M
         self.eigenvalues = l
 
-    def transform(self, data, components=None, scale=True) -> np.ndarray or pd.DataFrame:
+    def transform(self, data, components=None) -> np.ndarray or pd.DataFrame:
         """
         Transform data using the fit PCA model.
 
         :param data:  n observation x k feature data array
         :param components:  components to retain when transforming
-          data, if None, uses all components
+          data, if None, uses all components except for the first
         :return: np.ndarray containing transformed data
         """
 
         if components is None:
-            components = np.arange(self.n_components)
-        if scale:
-            data = np.subtract(data, np.amin(data))
-            data = np.divide(data, np.amax(data))
+            components = np.arange(1, self.n_components)
 
         projected = np.dot(data, self.loadings[:, components])
         if isinstance(data, pd.DataFrame):
-            return pd.DataFrame(projected, index=data.index)
+            return pd.DataFrame(projected, index=data.index, columns=components)
         else:
             return projected
 
-    def fit_transform(self, data, n_components=None, scale=True) -> \
+    def fit_transform(self, data: np.ndarray or pd.DataFrame, n_components=None) -> \
             np.ndarray or pd.DataFrame:
         """
         Fit the model to data and transform the data using the fit model
@@ -553,11 +525,11 @@ class PCA:
         :param data:  n observation x k feature data array
         :param n_components:  number of components to retain when transforming
           data
-        :return: np.ndarray containing transformed data
+        :return np.ndarray or pd.DataFrame: transformed data
         """
 
-        self.fit(data, scale=scale)
-        return self.transform(data, components=n_components, scale=scale)
+        self.fit(data)
+        return self.transform(data, components=n_components)
 
 
 class correlation:
