@@ -5,6 +5,7 @@ import matplotlib
 from matplotlib.colors import hex2color
 from matplotlib import font_manager
 from scipy.stats import gaussian_kde
+from cycler import cycler
 try:
     os.environ['DISPLAY']
 except KeyError:
@@ -19,6 +20,8 @@ fm.findfont('Lato')
 
 dark_gray = '.15'
 
+_colors = ['#4C72B0', '#55A868', '#C44E52',
+           '#8172B2', '#CCB974', '#64B5CD']
 
 style_dictionary = {
     'figure.figsize': (3, 3),
@@ -38,18 +41,19 @@ style_dictionary = {
     'font.monospace': ['Inconsolata', 'Computer Modern Typewriter', 'Monaco'],
     'font.sans-serif': ['Lato', 'sans-serif'],
 
-    'patch.facecolor': 'royalblue',
+    'patch.facecolor': _colors[0],
     # 'patch.edgecolor': 'none',
 
-    "grid.linestyle": "-",
+    'grid.linestyle': "-",
 
-    "axes.labelcolor": dark_gray,
-    "axes.grid": False,
-    "axes.axisbelow": False,
+    'axes.labelcolor': dark_gray,
+    'axes.grid': False,
+    'axes.axisbelow': False,
     'axes.edgecolor': dark_gray,
+    'axes.prop_cycle': cycler('color', _colors),
 
-    "lines.solid_capstyle": "round",
-    'lines.color': 'royalblue',
+    'lines.solid_capstyle': 'round',
+    'lines.color': _colors[0],
     'lines.markersize': 5,
 
     'image.cmap': 'viridis',
@@ -58,12 +62,13 @@ style_dictionary = {
     'xtick.direction': 'in',
     'xtick.major.size': 4,
     'xtick.minor.size': 2,
-    "xtick.color": dark_gray,
+    'xtick.color': dark_gray,
 
     'ytick.direction': 'in',
     'ytick.major.size': 4,
     'ytick.minor.size': 2,
     "ytick.color": dark_gray,
+    
 }
 
 matplotlib.rcParams.update(style_dictionary)
@@ -174,18 +179,18 @@ def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
         ax.spines['left'].set_visible(False)
 
     # set ticks
-    if not (top or bottom):
-        ax.xaxis.set_tick_positions('none')
-    elif not top:
-        ax.xaxis.set_tick_positions('bottom')
-    elif not bottom:
-        ax.xaxis.set_tick_positions('top')
-    if not (left or right):
-        ax.yaxis.set_tick_positions('none')
-    elif not left:
-        ax.yaxis.set_tick_positions('right')
-    elif not right:
-        ax.yaxis.set_tick_positions('left')
+    if top and bottom:
+        ax.xaxis.set_ticks_position('none')
+    elif top:
+        ax.xaxis.set_ticks_position('bottom')
+    elif bottom:
+        ax.xaxis.set_ticks_position('top')
+    if left and right:
+        ax.yaxis.set_ticks_position('none')
+    elif left:
+        ax.yaxis.set_ticks_position('right')
+    elif right:
+        ax.yaxis.set_ticks_position('left')
 
 
 def xtick_vertical(ax):
