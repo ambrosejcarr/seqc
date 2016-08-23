@@ -148,16 +148,20 @@ class FigureGrid:
             filename, pad_inches=pad_inches, bbox_inches=bbox_inches, *args, **kwargs)
 
 
-def detick(ax, x=True, y=True):
+def detick(ax=None, x=True, y=True):
     """helper function for removing tick labels from an axis"""
+    if not ax:
+        ax = plt.gca()
     if x:
         ax.xaxis.set_major_locator(plt.NullLocator())
     if y:
         ax.yaxis.set_major_locator(plt.NullLocator())
 
 
-def despine(ax, top=True, right=True, bottom=False, left=False) -> None:
+def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
     """helper function for removing axis spines"""
+    if not ax:
+        ax = plt.gca()
     if top:
         ax.spines['top'].set_visible(False)
     if right:
