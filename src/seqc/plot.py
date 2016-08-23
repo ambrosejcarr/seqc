@@ -42,7 +42,7 @@ style_dictionary = {
     'font.sans-serif': ['Lato', 'sans-serif'],
 
     'patch.facecolor': _colors[0],
-    # 'patch.edgecolor': 'none',
+    'patch.edgecolor': 'none',
 
     'grid.linestyle': "-",
 
@@ -193,9 +193,13 @@ def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
         ax.yaxis.set_ticks_position('left')
 
 
-def xtick_vertical(ax):
+def xtick_vertical(ax=None):
     """set xticklabels on ax to vertical instead of the horizontal default orientation"""
+    if ax is None:
+        ax = plt.gca()
     xt = ax.get_xticks()
+    if np.all(xt.astype(int) == xt):  # ax.get_xticks() returns floats
+        xt = xt.astype(int)
     ax.set_xticklabels(xt, rotation='vertical')
 
 
@@ -239,7 +243,7 @@ class scatter:
     @staticmethod
     def categorical(
             x, y, c, ax=None, cmap=plt.get_cmap(), legend=True, legend_kwargs=None,
-            randomize=True, remove_ticks=True, *args, **kwargs):
+            randomize=True, remove_ticks=False, *args, **kwargs):
         """
         wrapper for scatter wherein the output should be colored by a categorical vector
         c
@@ -290,7 +294,7 @@ class scatter:
 
     @staticmethod
     def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True,
-                   remove_ticks=True, **kwargs):
+                   remove_ticks=False, **kwargs):
         """
         wrapper for scatter wherein the coordinates x and y are colored according to a
         continuous vector c
