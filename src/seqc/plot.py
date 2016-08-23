@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 import matplotlib
 from matplotlib.colors import hex2color
+from matplotlib import font_manager
 from scipy.stats import gaussian_kde
 try:
     os.environ['DISPLAY']
@@ -13,7 +14,7 @@ with warnings.catch_warnings():
     warnings.simplefilter('ignore')  # catch experimental ipython widget warning
     import seaborn as sns
 
-fm = matplotlib.font_manager.fontManager
+fm = font_manager.fontManager
 fm.findfont('Raleway')
 fm.findfont('Lato')
 
@@ -49,19 +50,19 @@ style_dictionary = {
 
     "lines.solid_capstyle": "round",
     'lines.color': 'royalblue',
-    'lines.markersize': 7,
+    'lines.markersize': 5,
 
     'image.cmap': 'viridis',
     'image.interpolation': 'none',
 
     'xtick.direction': 'out',
-    'xtick.major.size': 5,
-    'xtick.minor.size': 2.5,
+    'xtick.major.size': 4,
+    'xtick.minor.size': 2,
     "xtick.color": dark_gray,
 
     'ytick.direction': 'out',
-    'ytick.major.size': 5,
-    'ytick.minor.size': 2.5,
+    'ytick.major.size': 4,
+    'ytick.minor.size': 2,
     "ytick.color": dark_gray,
 }
 
@@ -202,7 +203,7 @@ class scatter:
     @staticmethod
     def categorical(
             x, y, c, ax=None, cmap=plt.get_cmap(), legend=True, legend_kwargs=None,
-            randomize=True, *args, **kwargs):
+            randomize=True, remove_ticks=True, *args, **kwargs):
         """
         wrapper for scatter wherein the output should be colored by a categorical vector
         c
@@ -214,6 +215,7 @@ class scatter:
         :param legend: bool, if True, plot legend
         :param legend_kwargs: additional kwargs for legend
         :param randomize: if True, randomize order of plotting
+        :param remove_ticks: if True, removes axes ticks and labels
         :param args: additional args for scatter
         :param kwargs: additional kwargs for scatter
         :return: ax
@@ -240,8 +242,9 @@ class scatter:
 
         ax.scatter(np.ravel(x)[ind], np.ravel(y)[ind], c=color_vector[ind], *args,
                    **kwargs)
-        ax.xaxis.set_major_locator(plt.NullLocator())
-        ax.yaxis.set_major_locator(plt.NullLocator())
+        if remove_ticks:
+            ax.xaxis.set_major_locator(plt.NullLocator())
+            ax.yaxis.set_major_locator(plt.NullLocator())
 
         labels, colors = zip(*sorted(category_to_color.items()))
         if legend:
@@ -250,12 +253,14 @@ class scatter:
         return ax
 
     @staticmethod
-    def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True, **kwargs):
+    def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True,
+                   remove_ticks=True, **kwargs):
         """
         wrapper for scatter wherein the coordinates x and y are colored according to a
         continuous vector c
         :param x, y: np.ndarray, coordinate data
         :param c: np.ndarray, continuous vector by which to color data points
+        :param remove_ticks: remove axis ticks and labels
         :param args: additional args for scatter
         :param kwargs: additional kwargs for scatter
         :return: ax
@@ -273,8 +278,9 @@ class scatter:
             ind = np.argsort(c)
 
         sm = ax.scatter(x[ind], y[ind], c=c[ind], **kwargs)
-        ax.xaxis.set_major_locator(plt.NullLocator())
-        ax.yaxis.set_major_locator(plt.NullLocator())
+        if remove_ticks:
+            ax.xaxis.set_major_locator(plt.NullLocator())
+            ax.yaxis.set_major_locator(plt.NullLocator())
         if colorbar:
             cb = plt.colorbar(sm)
             cb.ax.xaxis.set_major_locator(plt.NullLocator())
