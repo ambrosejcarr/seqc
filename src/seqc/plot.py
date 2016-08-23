@@ -181,11 +181,11 @@ def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
     elif not bottom:
         ax.xaxis.set_tick_positions('top')
     if not (left or right):
-        ax.xaxis.set_tick_positions('none')
+        ax.yaxis.set_tick_positions('none')
     elif not left:
         ax.yaxis.set_tick_positions('right')
     elif not right:
-        ax.xaxis.set_tick_positions('left')
+        ax.yaxis.set_tick_positions('left')
 
 
 def xtick_vertical(ax):
