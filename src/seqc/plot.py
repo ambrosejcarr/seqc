@@ -55,12 +55,12 @@ style_dictionary = {
     'image.cmap': 'viridis',
     'image.interpolation': 'none',
 
-    'xtick.direction': 'out',
+    'xtick.direction': 'in',
     'xtick.major.size': 4,
     'xtick.minor.size': 2,
     "xtick.color": dark_gray,
 
-    'ytick.direction': 'out',
+    'ytick.direction': 'in',
     'ytick.major.size': 4,
     'ytick.minor.size': 2,
     "ytick.color": dark_gray,
