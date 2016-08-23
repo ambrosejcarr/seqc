@@ -12,7 +12,6 @@ except KeyError:
 import matplotlib.pyplot as plt
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')  # catch experimental ipython widget warning
-    import seaborn as sns
 
 fm = font_manager.fontManager
 fm.findfont('Raleway')
@@ -119,10 +118,9 @@ class FigureGrid:
         """wrapper for plt.tight_layout"""
         self.gs.tight_layout(self.figure, **kwargs)
 
-    def despine(self, top=True, right=True, **kwargs):
-        """wrapper for seaborn despine, removes right and top spines by default"""
-        for i in range(self.n):
-            sns.despine(ax=self[i], top=top, right=right, **kwargs)
+    def despine(self, top=True, right=True, bottom=False, left=False):
+        """removes axis spines (default=remove top and right)"""
+        despine(ax=self, top=top, right=right, bottom=bottom, left=left)
 
     def detick(self, x=True, y=True):
         """
@@ -156,6 +154,18 @@ def detick(ax, x=True, y=True):
         ax.xaxis.set_major_locator(plt.NullLocator())
     if y:
         ax.yaxis.set_major_locator(plt.NullLocator())
+
+
+def despine(ax, top=True, right=True, bottom=False, left=False) -> None:
+    """helper function for removing axis spines"""
+    if top:
+        ax.spines['top'].set_visible(False)
+    if right:
+        ax.spines['right'].set_visible(False)
+    if bottom:
+        ax.spines['bottom'].set_visible(False)
+    if left:
+        ax.spines['left'].set_visible(False)
 
 
 def xtick_vertical(ax):
