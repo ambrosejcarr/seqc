@@ -162,6 +162,8 @@ def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
     """helper function for removing axis spines"""
     if not ax:
         ax = plt.gca()
+
+    # set spines
     if top:
         ax.spines['top'].set_visible(False)
     if right:
@@ -170,6 +172,20 @@ def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
         ax.spines['bottom'].set_visible(False)
     if left:
         ax.spines['left'].set_visible(False)
+
+    # set ticks
+    if not (top or bottom):
+        ax.xaxis.set_tick_positions('none')
+    elif not top:
+        ax.xaxis.set_tick_positions('bottom')
+    elif not bottom:
+        ax.xaxis.set_tick_positions('top')
+    if not (left or right):
+        ax.xaxis.set_tick_positions('none')
+    elif not left:
+        ax.yaxis.set_tick_positions('right')
+    elif not right:
+        ax.xaxis.set_tick_positions('left')
 
 
 def xtick_vertical(ax):
