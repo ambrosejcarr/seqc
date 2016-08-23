@@ -40,12 +40,13 @@ style_dictionary = {
     'font.sans-serif': ['Lato', 'sans-serif'],
 
     'patch.facecolor': 'royalblue',
-    'patch.edgecolor': 'none',
+    # 'patch.edgecolor': 'none',
 
     "grid.linestyle": "-",
 
     "axes.labelcolor": dark_gray,
-    "axes.axisbelow": True,
+    "axes.grid": False,
+    "axes.axisbelow": False,
     'axes.edgecolor': dark_gray,
 
     "lines.solid_capstyle": "round",
