@@ -974,7 +974,8 @@ def main(args: list=None) -> None:
 
         # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
-            create_filtered_dense_count_matrix(molecules, reads))
+            create_filtered_dense_count_matrix(
+                molecules, reads, plot=True, figname=args.output_stem + '_filters.png'))
 
         # save sparse csv
         dense[dense == 0] = np.nan  # for sparse_csv saving

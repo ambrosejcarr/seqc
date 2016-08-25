@@ -1,11 +1,13 @@
 import os
 import warnings
 import numpy as np
+import pandas as pd
 import matplotlib
 from matplotlib.colors import hex2color
 from matplotlib import font_manager
 from scipy.stats import gaussian_kde
 from cycler import cycler
+
 try:
     os.environ['DISPLAY']
 except KeyError:
@@ -27,8 +29,8 @@ style_dictionary = {
     'figure.figsize': (3, 3),
     'figure.facecolor': 'white',
 
-    'figure.dpi': 150,
-    'savefig.dpi': 150,
+    'figure.dpi': 200,
+    'savefig.dpi': 200,
 
     'text.color': 'k',
 
@@ -54,7 +56,7 @@ style_dictionary = {
 
     'lines.solid_capstyle': 'round',
     'lines.color': _colors[0],
-    'lines.markersize': 5,
+    'lines.markersize': 4,
 
     'image.cmap': 'viridis',
     'image.interpolation': 'none',
@@ -352,3 +354,33 @@ def tatarize(n):
     s[-1] = s[-1].replace('"}', '')
     s = [hex2color(s) for s in s]
     return s[:n]
+
+
+class Diagnostics:
+
+    @staticmethod
+    def mitochondrial_fraction(data: pd.DataFrame, ax=None):
+        """plot the fraction of mRNA that are of mitochondrial origin for each cell.
+
+        :param data: DataFrame of cells x genes containing gene expression information
+        :param ax: matplotlib axis
+        :return: ax
+        """
+
+        mt_genes = data.molecules.columns[data.molecules.columns.str.contains('MT-')]
+        mt_counts = data.molecules[mt_genes].sum(axis=1)
+        library_size = data.molecules.sum(axis=1)
+
+        if ax is None:
+            ax = plt.gca()
+
+        scatter.continuous(library_size, mt_counts / library_size)
+        ax.set_title('Mitochondrial Fraction')
+        ax.set_xlabel('Total Gene Expression')
+        ax.set_ylabel('Mitochondrial Gene Expression')
+        _, xmax = ax.get_xlim()
+        ax.set_xlim((None, xmax))
+        _, ymax = ax.get_ylim()
+        ax.set_ylim((None, ymax))
+        despine(ax)
+        return ax
