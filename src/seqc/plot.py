@@ -1,10 +1,13 @@
 import os
 import warnings
 import numpy as np
+import pandas as pd
 import matplotlib
 from matplotlib.colors import hex2color
 from matplotlib import font_manager
 from scipy.stats import gaussian_kde
+from cycler import cycler
+
 try:
     os.environ['DISPLAY']
 except KeyError:
@@ -12,7 +15,6 @@ except KeyError:
 import matplotlib.pyplot as plt
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')  # catch experimental ipython widget warning
-    import seaborn as sns
 
 fm = font_manager.fontManager
 fm.findfont('Raleway')
@@ -20,13 +22,15 @@ fm.findfont('Lato')
 
 dark_gray = '.15'
 
+_colors = ['#4C72B0', '#55A868', '#C44E52',
+           '#8172B2', '#CCB974', '#64B5CD']
 
 style_dictionary = {
     'figure.figsize': (3, 3),
     'figure.facecolor': 'white',
 
-    'figure.dpi': 150,
-    'savefig.dpi': 150,
+    'figure.dpi': 200,
+    'savefig.dpi': 200,
 
     'text.color': 'k',
 
@@ -39,31 +43,34 @@ style_dictionary = {
     'font.monospace': ['Inconsolata', 'Computer Modern Typewriter', 'Monaco'],
     'font.sans-serif': ['Lato', 'sans-serif'],
 
-    'patch.facecolor': 'royalblue',
+    'patch.facecolor': _colors[0],
     'patch.edgecolor': 'none',
 
-    "grid.linestyle": "-",
+    'grid.linestyle': "-",
 
-    "axes.labelcolor": dark_gray,
-    "axes.axisbelow": True,
+    'axes.labelcolor': dark_gray,
+    'axes.grid': False,
+    'axes.axisbelow': False,
     'axes.edgecolor': dark_gray,
+    'axes.prop_cycle': cycler('color', _colors),
 
-    "lines.solid_capstyle": "round",
-    'lines.color': 'royalblue',
-    'lines.markersize': 5,
+    'lines.solid_capstyle': 'round',
+    'lines.color': _colors[0],
+    'lines.markersize': 4,
 
     'image.cmap': 'viridis',
     'image.interpolation': 'none',
 
-    'xtick.direction': 'out',
+    'xtick.direction': 'in',
     'xtick.major.size': 4,
     'xtick.minor.size': 2,
-    "xtick.color": dark_gray,
+    'xtick.color': dark_gray,
 
-    'ytick.direction': 'out',
+    'ytick.direction': 'in',
     'ytick.major.size': 4,
     'ytick.minor.size': 2,
     "ytick.color": dark_gray,
+    
 }
 
 matplotlib.rcParams.update(style_dictionary)
@@ -118,10 +125,9 @@ class FigureGrid:
         """wrapper for plt.tight_layout"""
         self.gs.tight_layout(self.figure, **kwargs)
 
-    def despine(self, top=True, right=True, **kwargs):
-        """wrapper for seaborn despine, removes right and top spines by default"""
-        for i in range(self.n):
-            sns.despine(ax=self[i], top=top, right=right, **kwargs)
+    def despine(self, top=True, right=True, bottom=False, left=False):
+        """removes axis spines (default=remove top and right)"""
+        despine(ax=self, top=top, right=right, bottom=bottom, left=left)
 
     def detick(self, x=True, y=True):
         """
@@ -149,17 +155,53 @@ class FigureGrid:
             filename, pad_inches=pad_inches, bbox_inches=bbox_inches, *args, **kwargs)
 
 
-def detick(ax, x=True, y=True):
+def detick(ax=None, x=True, y=True):
     """helper function for removing tick labels from an axis"""
+    if not ax:
+        ax = plt.gca()
     if x:
         ax.xaxis.set_major_locator(plt.NullLocator())
     if y:
         ax.yaxis.set_major_locator(plt.NullLocator())
 
 
-def xtick_vertical(ax):
+def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
+    """helper function for removing axis spines"""
+    if not ax:
+        ax = plt.gca()
+
+    # set spines
+    if top:
+        ax.spines['top'].set_visible(False)
+    if right:
+        ax.spines['right'].set_visible(False)
+    if bottom:
+        ax.spines['bottom'].set_visible(False)
+    if left:
+        ax.spines['left'].set_visible(False)
+
+    # set ticks
+    if top and bottom:
+        ax.xaxis.set_ticks_position('none')
+    elif top:
+        ax.xaxis.set_ticks_position('bottom')
+    elif bottom:
+        ax.xaxis.set_ticks_position('top')
+    if left and right:
+        ax.yaxis.set_ticks_position('none')
+    elif left:
+        ax.yaxis.set_ticks_position('right')
+    elif right:
+        ax.yaxis.set_ticks_position('left')
+
+
+def xtick_vertical(ax=None):
     """set xticklabels on ax to vertical instead of the horizontal default orientation"""
+    if ax is None:
+        ax = plt.gca()
     xt = ax.get_xticks()
+    if np.all(xt.astype(int) == xt):  # ax.get_xticks() returns floats
+        xt = xt.astype(int)
     ax.set_xticklabels(xt, rotation='vertical')
 
 
@@ -203,7 +245,7 @@ class scatter:
     @staticmethod
     def categorical(
             x, y, c, ax=None, cmap=plt.get_cmap(), legend=True, legend_kwargs=None,
-            randomize=True, remove_ticks=True, *args, **kwargs):
+            randomize=True, remove_ticks=False, *args, **kwargs):
         """
         wrapper for scatter wherein the output should be colored by a categorical vector
         c
@@ -254,7 +296,7 @@ class scatter:
 
     @staticmethod
     def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True,
-                   remove_ticks=True, **kwargs):
+                   remove_ticks=False, **kwargs):
         """
         wrapper for scatter wherein the coordinates x and y are colored according to a
         continuous vector c
@@ -312,3 +354,33 @@ def tatarize(n):
     s[-1] = s[-1].replace('"}', '')
     s = [hex2color(s) for s in s]
     return s[:n]
+
+
+class Diagnostics:
+
+    @staticmethod
+    def mitochondrial_fraction(data: pd.DataFrame, ax=None):
+        """plot the fraction of mRNA that are of mitochondrial origin for each cell.
+
+        :param data: DataFrame of cells x genes containing gene expression information
+        :param ax: matplotlib axis
+        :return: ax
+        """
+
+        mt_genes = data.molecules.columns[data.molecules.columns.str.contains('MT-')]
+        mt_counts = data.molecules[mt_genes].sum(axis=1)
+        library_size = data.molecules.sum(axis=1)
+
+        if ax is None:
+            ax = plt.gca()
+
+        scatter.continuous(library_size, mt_counts / library_size)
+        ax.set_title('Mitochondrial Fraction')
+        ax.set_xlabel('Total Gene Expression')
+        ax.set_ylabel('Mitochondrial Gene Expression')
+        _, xmax = ax.get_xlim()
+        ax.set_xlim((None, xmax))
+        _, ymax = ax.get_ylim()
+        ax.set_ylim((None, ymax))
+        despine(ax)
+        return ax

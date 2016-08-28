@@ -8,6 +8,8 @@ from sklearn.mixture import GMM
 from sklearn.linear_model import LinearRegression
 from seqc.exceptions import EmptyMatrixError
 from seqc.sparse_frame import SparseFrame
+from numpy.linalg import LinAlgError
+import seqc.plot
 
 _primer_lengths = dict(
     in_drop=47,
@@ -47,7 +49,7 @@ def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
     return min(min_vals)
 
 
-def low_count(molecules, is_invalid):
+def low_count(molecules, is_invalid, plot=False, ax=None):
     """
     updates is_invalid to reflect cells whose molecule counts are below the inflection
     point of an ecdf constructed from cell molecule counts. Typically this reflects cells
@@ -55,6 +57,9 @@ def low_count(molecules, is_invalid):
 
     :param molecules: scipy.stats.coo_matrix, molecule count matrix
     :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :param bool plot: if True, plot a summary of the filter
+    :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
+      summary.
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
 
@@ -63,12 +68,16 @@ def low_count(molecules, is_invalid):
     idx = np.argsort(ms)[::-1]  # largest cells first
     norm_ms = ms[idx] / ms[idx].sum()  # sorted, normalized array
 
-    # identify inflection point form second derivative
+    # identify inflection point from second derivative
     cms = np.cumsum(norm_ms)
     d1 = np.diff(pd.Series(cms).rolling(10).mean()[10:])
     d2 = np.diff(pd.Series(d1).rolling(10).mean()[10:])
     try:
+        # throw out an extra 5% of cells from where the inflection point is found.
+        # these cells are empirically determined to have "transition" library sizes
+        # that confound downstream analysis
         inflection_pt = np.min(np.where(np.abs(d2) == 0)[0])
+        inflection_pt = int(inflection_pt * .9)
     except ValueError as e:
         if e.args[0] == ('zero-size array to reduction operation minimum which has no '
                          'identity'):
@@ -83,10 +92,21 @@ def low_count(molecules, is_invalid):
     is_invalid = is_invalid.copy()
     is_invalid[ms < vcrit] = True
 
+    if plot and ax:
+        cms /= np.max(cms)  # normalize to one
+        ax.plot(np.arange(len(cms))[:inflection_pt], cms[:inflection_pt], c='royalblue')
+        ax.plot(np.arange(len(cms))[inflection_pt:], cms[inflection_pt:], c='indianred')
+        ax.hlines(cms[inflection_pt], *ax.get_xlim(), linestyle='--', colors='indianred')
+        ax.vlines(inflection_pt, *ax.get_ylim(), linestyle='--', colors='indianred')
+        ax.set_xticklabels([])
+        ax.set_xlabel('putative cell')
+        ax.set_ylabel('ECDF (Cell Size)')
+        ax.set_title('Cell Size')
+
     return is_invalid
 
 
-def low_coverage(molecules, reads, is_invalid):
+def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
     """
     Fits a two-component gaussian mixture model to the data. If a component is found
     to fit a low-coverage fraction of the data, this fraction is set as invalid. Not
@@ -97,17 +117,15 @@ def low_coverage(molecules, reads, is_invalid):
     :param molecules: scipy.stats.coo_matrix, molecule count matrix
     :param reads: scipy.stats.coo_matrix, read count matrix
     :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :param bool plot: if True, plot a summary of the filter
+    :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
+      summary.
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
 
-    if len(ms.shape) < 2:
-        warnings.warn(
-            'Low coverage filter passed-through; too few cells to calculate '
-            'mixture model.')
-        return is_invalid
-    elif ms.shape[1] < 2:
+    if ms.shape[0] < 10 or rs.shape[0] < 10:
         warnings.warn(
             'Low coverage filter passed-through; too few cells to calculate '
             'mixture model.')
@@ -124,7 +142,7 @@ def low_coverage(molecules, reads, is_invalid):
     gmm2.fit(col_ratio)
 
     # check if adding a second component is necessary; if not, filter is pass-through
-    if gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.85:
+    if gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95:
         res = gmm2.fit_predict(col_ratio)
         failing = np.where(res == np.argmin(gmm2.means_))[0]
 
@@ -132,10 +150,31 @@ def low_coverage(molecules, reads, is_invalid):
         is_invalid = is_invalid.copy()
         is_invalid[np.where(~is_invalid)[0][failing]] = True
 
+    if plot and ax:
+        logms = np.log10(ms)
+        try:
+            seqc.plot.scatter.continuous(logms, ratio, colorbar=False, ax=ax, s=3)
+        except LinAlgError:
+            warnings.warn('SEQC: Insufficient number of cells to calculate density for '
+                          'coverage plot')
+            ax.scatter(logms, ratio, s=3)
+        ax.set_xlabel('log10(molecules)')
+        ax.set_ylabel('reads / molecule')
+        ax.set_title('Coverage')
+        xmin, xmax = np.min(logms), np.max(logms)
+        ymax = np.max(ratio)
+        ax.set_xlim((xmin, xmax))
+        ax.set_ylim((0, ymax))
+        seqc.plot.xtick_vertical(ax=ax)
+
+        # plot 1d conditional densities of two-component model
+        # todo figure out how to do this!!
+
     return is_invalid
 
 
-def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2):
+def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
+                           plot=False, ax=None):
     """
     Sets any cell with a fraction of mitochondrial mRNA greater than max_mt_content to
     invalid.
@@ -145,6 +184,9 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2):
     :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
     :param max_mt_content: float, maximum percentage of reads that can come from
       mitochondria in a valid cell
+    :param bool plot: if True, plot a summary of the filter
+    :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
+      summary.
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     # identify % genes that are mitochondrial
@@ -158,10 +200,27 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2):
     is_invalid = is_invalid.copy()
     is_invalid[np.where(~is_invalid)[0][failing]] = True
 
+    if plot and ax:
+        if ms.shape[0] and ratios.shape[0]:
+            seqc.plot.scatter.continuous(ms, ratios, colorbar=False, ax=ax, s=3)
+        else:
+            return is_invalid  # nothing else to do here
+        if np.sum(failing) != 0:
+            ax.scatter(ms[failing], ratios[failing], c='indianred', s=3)  # failing cells
+        xmax = np.max(ms)
+        ymax = np.max(ratios)
+        ax.set_xlim((0, xmax))
+        ax.set_ylim((0, ymax))
+        ax.hlines(max_mt_content, *ax.get_xlim(), linestyle='--', colors='indianred')
+        ax.set_xlabel('total molecules')
+        ax.set_ylabel('fraction mitochondrial\nmolecules')
+        ax.set_title('MT-RNA Fraction')
+        seqc.plot.xtick_vertical(ax=ax)
+
     return is_invalid
 
 
-def low_gene_abundance(molecules, is_invalid):
+def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
     """
     Fits a linear model to the relationship between number of genes detected and number
     of molecules detected. Cells with a lower than expected number of detected genes
@@ -169,6 +228,9 @@ def low_gene_abundance(molecules, is_invalid):
 
     :param molecules: scipy.stats.coo_matrix, molecule count matrix
     :param is_invalid:  np.ndarray(dtype=bool), declares valid and invalid cells
+    :param bool plot: if True, plot a summary of the filter
+    :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
+      summary.
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
 
@@ -176,6 +238,9 @@ def low_gene_abundance(molecules, is_invalid):
     genes = np.ravel(molecules.tocsr()[~is_invalid, :].getnnz(axis=1))
     x = np.log10(ms)[:, np.newaxis]
     y = np.log10(genes)
+
+    if not (x.shape[0] or y.shape[0]):
+        return is_invalid
 
     # get line of best fit
     regr = LinearRegression()
@@ -189,11 +254,28 @@ def low_gene_abundance(molecules, is_invalid):
     is_invalid = is_invalid.copy()
     is_invalid[np.where(~is_invalid)[0][failing]] = True
 
+    if plot and ax:
+        m, b = regr.coef_, regr.intercept_
+        seqc.plot.scatter.continuous(x, y, ax=ax, colorbar=False, s=3)
+        xmin, xmax = np.min(x), np.max(x)
+        ymin, ymax = np.min(y), np.max(y)
+        lx = np.linspace(xmin, xmax, 200)
+        ly = m * lx + b
+        ax.plot(lx, np.ravel(ly), linestyle='--', c='indianred')
+        ax.scatter(x[failing], y[failing], c='indianred', s=3)
+        ax.set_ylim((ymin, ymax))
+        ax.set_xlim((xmin, xmax))
+        ax.set_xlabel('molecules (cell)')
+        ax.set_ylabel('genes (cell)')
+        ax.set_title('Low Complexity')
+        seqc.plot.xtick_vertical(ax=ax)
+
     return is_invalid
 
 
 def create_filtered_dense_count_matrix(
-        molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2):
+        molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2, plot=False,
+        figname=None):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
     and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
@@ -204,6 +286,8 @@ def create_filtered_dense_count_matrix(
     :param reads: SparseFrame
     :param max_mt_content: the maximum percentage of mitochondrial RNA that is
       considered to constitute a viable cell
+    :param plot: if True, plot filtering summaries.
+    :param figname: if plot is True, name of the figure to save.
     :return: (pd.DataFrame, int, dict, dict)
     """
 
@@ -237,24 +321,30 @@ def create_filtered_dense_count_matrix(
         new_molecule_loss = total_molecule_loss - old_molecule_loss
         return new_cell_loss, new_molecule_loss
 
+    if plot:
+        fig = seqc.plot.FigureGrid(4, max_cols=2)
+        ax_count, ax_cov, ax_mt, ax_gene = iter(fig)  # get axes
+    else:
+        fig, ax_count, ax_cov, ax_mt, ax_gene = [None] * 5  # dummy figure
+
     # filter low counts
-    count_invalid = low_count(molecules_data, is_invalid)
+    count_invalid = low_count(molecules_data, is_invalid, plot, ax_count)
     cells_lost['low_count'], molecules_lost['low_count'] = additional_loss(
         count_invalid, is_invalid, molecules_data)
 
     # filter low coverage
-    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid)
+    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov)
     cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
         cov_invalid, count_invalid, molecules_data)
 
     # filter high_mt_content
     mt_invalid = high_mitochondrial_rna(
-        molecules_data, molecules_columns, cov_invalid, max_mt_content)
+        molecules_data, molecules_columns, cov_invalid, max_mt_content, plot, ax_mt)
     cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
         mt_invalid, cov_invalid, molecules_data)
 
     # filter low gene abundance
-    gene_invalid = low_gene_abundance(molecules_data, mt_invalid)
+    gene_invalid = low_gene_abundance(molecules_data, mt_invalid, plot, ax_gene)
     cells_lost['low_gene_detection'], molecules_lost[
         'low_gene_detection'] = additional_loss(
         gene_invalid, mt_invalid, molecules_data)
@@ -270,5 +360,9 @@ def create_filtered_dense_count_matrix(
 
     # describe cells
     cell_description = dense.sum(axis=1).describe()
+
+    if plot:
+        fig.tight_layout()
+        fig.savefig(figname)
 
     return dense, total_molecules, molecules_lost, cells_lost, cell_description
