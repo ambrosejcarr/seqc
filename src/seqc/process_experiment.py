@@ -154,7 +154,7 @@ def parse_args(args):
         raise
 
 
-def recreate_command_line_arguments(args):
+def recreate_command_line_arguments_old(args):
     """
     Helper function to recreate command line arguments for passing to the remote run that
     is often called by the local process. This function is aware that 'platform' is
@@ -179,7 +179,12 @@ def recreate_command_line_arguments(args):
     return cmd
 
 
-def run_remote(args, volsize):
+def recreate_command_line_arguments(args):
+    print(args)
+    return 'process_experiment.py ' + ' '.join(args) + ' --local --aws'
+
+
+def run_remote(args, argv, volsize):
     """
     Mirror the local arguments to an AWS server and execute the run there. When complete,
     terminates the local process.
@@ -190,7 +195,7 @@ def run_remote(args, volsize):
     log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = recreate_command_line_arguments(args)
+    cmd = recreate_command_line_arguments(argv)
     log.print_exact_command_line(cmd)
     # set up remote cluster
     cluster = remote.ClusterServer()
@@ -801,7 +806,7 @@ def upload_data_and_notify_user(
             summary, log_name, email)
 
 
-def main(args: list=None) -> None:
+def main(argv: list=None) -> None:
     """
     Execute a SEQC run.
 
@@ -809,15 +814,14 @@ def main(args: list=None) -> None:
       a list from a testing function.
     :return: None
     """
-    args_old = args
-    args = parse_args(args)
+    args = parse_args(argv)
     if args.aws:
         args.log_name = args.log_name.split('/')[-1]
         log.setup_logger('/data/' + args.log_name)
     else:
         log.setup_logger(args.log_name)
     try:
-        log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
+        log.print_exact_command_line('process_experiment.py '+" ".join(argv))
         err_status = False
         pigz, email = check_executables('pigz', 'mutt')
         if not email and not args.remote:
@@ -855,7 +859,7 @@ def main(args: list=None) -> None:
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             remote.cluster_cleanup()
-            run_remote(args, total_size)
+            run_remote(args, argv, total_size)
             sys.exit(0)
 
         if args.aws:
