@@ -8,6 +8,7 @@ from sklearn.mixture import GMM
 from sklearn.linear_model import LinearRegression
 from seqc.exceptions import EmptyMatrixError
 from seqc.sparse_frame import SparseFrame
+from numpy.linalg import LinAlgError
 import seqc.plot
 
 _primer_lengths = dict(
@@ -151,7 +152,12 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
 
     if plot and ax:
         logms = np.log10(ms)
-        seqc.plot.scatter.continuous(logms, ratio, colorbar=False, ax=ax, s=3)
+        try:
+            seqc.plot.scatter.continuous(logms, ratio, colorbar=False, ax=ax, s=3)
+        except LinAlgError:
+            warnings.warn('SEQC: Insufficient number of cells to calculate density for '
+                          'coverage plot')
+            ax.scatter(logms, ratio, s=3)
         ax.set_xlabel('log10(molecules)')
         ax.set_ylabel('reads / molecule')
         ax.set_title('Coverage')
@@ -195,8 +201,12 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
     is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     if plot and ax:
-        seqc.plot.scatter.continuous(ms, ratios, colorbar=False, ax=ax, s=3)
-        ax.scatter(ms[failing], ratios[failing], c='indianred', s=3)  # failing cells
+        if ms.shape[0] and ratios.shape[0]:
+            seqc.plot.scatter.continuous(ms, ratios, colorbar=False, ax=ax, s=3)
+        else:
+            return is_invalid  # nothing else to do here
+        if np.sum(failing) != 0:
+            ax.scatter(ms[failing], ratios[failing], c='indianred', s=3)  # failing cells
         xmax = np.max(ms)
         ymax = np.max(ratios)
         ax.set_xlim((0, xmax))
@@ -228,6 +238,9 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
     genes = np.ravel(molecules.tocsr()[~is_invalid, :].getnnz(axis=1))
     x = np.log10(ms)[:, np.newaxis]
     y = np.log10(genes)
+
+    if not (x.shape[0] or y.shape[0]):
+        return is_invalid
 
     # get line of best fit
     regr = LinearRegression()

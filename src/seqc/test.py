@@ -42,6 +42,7 @@ class TestProcessExperimentGeneral(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
             '--log-name', self.log_name.format(platform),
+            '--no-terminate', 'on-success',
         ]
         return args
 
@@ -78,7 +79,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
-            '--log-name', self.log_name.format(platform)
+            '--log-name', self.log_name.format(platform),
+            '--no-terminate', 'on-success'
         ]
         try:
             process_experiment.main(args)
@@ -96,6 +98,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success'
         ]
         try:
             process_experiment.main(args)
@@ -114,6 +117,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success'
         ]
         try:
             process_experiment.main(args)
@@ -130,6 +134,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
+            '--no-terminate', 'on-success'
         ]
         try:
             print(args)
@@ -148,7 +153,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
-            '--barcode-files', self.barcode_files.format(platform)
+            '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success'
         ]
         try:
             process_experiment.main(args)
@@ -166,7 +172,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
-            '--barcode-files', self.barcode_files.format(platform)
+            '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success'
         ]
         try:
             process_experiment.main(args)
