@@ -14,11 +14,10 @@ except KeyError:
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 with warnings.catch_warnings():
-    warnings.simplefilter('ignore')  # catch experimental ipython widget warning
-
-fm = font_manager.fontManager
-fm.findfont('Raleway')
-fm.findfont('Lato')
+    warnings.simplefilter('ignore')  # catch warnings that system can't find fonts
+    fm = font_manager.fontManager
+    fm.findfont('Raleway')
+    fm.findfont('Lato')
 
 dark_gray = '.15'
 
