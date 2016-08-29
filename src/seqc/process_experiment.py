@@ -20,6 +20,7 @@ from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
                                create_gene_id_to_official_gene_symbol_map)
 from seqc.filter import create_filtered_dense_count_matrix
 from seqc.sparse_frame import SparseFrame
+from ast import literal_eval
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -113,6 +114,10 @@ def parse_args(args):
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
                    default=1.0, type=float)
+    f.set_defaults(filter_mitochondrial_rna=True)
+    f.add_argument('--no-filter-mitochondrial-rna', action='store_false',
+                   dest='filter_mitochondrial_rna',
+                   help='Do not filter cells with greater than 20% mitochondrial RNA ')
 
     s = p.add_argument_group('alignment arguments')
     s.add_argument('--star-args', default=None, nargs='*',
@@ -190,6 +195,8 @@ def run_remote(args, argv, volsize):
     terminates the local process.
 
     :param args: simple namespace object; output of parse_args()
+    :param argv: original argument list as received from sys.argv or passed to a main()
+      object
     :param volsize: estimated volume needed for run
     """
     log.notify('Beginning remote SEQC run...')
@@ -810,7 +817,7 @@ def main(argv: list=None) -> None:
     """
     Execute a SEQC run.
 
-    :param args: list of arguments. Normally either extracted from sys.argv or passed as
+    :param argv: list of arguments. Normally either extracted from sys.argv or passed as
       a list from a testing function.
     :return: None
     """
@@ -979,7 +986,8 @@ def main(argv: list=None) -> None:
         # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
             create_filtered_dense_count_matrix(
-                molecules, reads, plot=True, figname=args.output_stem + '_filters.png'))
+                molecules, reads, plot=True, figname=args.output_stem + '_filters.png',
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna))
 
         # save sparse csv
         dense[dense == 0] = np.nan  # for sparse_csv saving
