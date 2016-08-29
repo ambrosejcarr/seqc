@@ -20,7 +20,6 @@ from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
                                create_gene_id_to_official_gene_symbol_map)
 from seqc.filter import create_filtered_dense_count_matrix
 from seqc.sparse_frame import SparseFrame
-from ast import literal_eval
 
 
 class NewArgumentParser(argparse.ArgumentParser):
@@ -117,7 +116,8 @@ def parse_args(args):
     f.set_defaults(filter_mitochondrial_rna=True)
     f.add_argument('--no-filter-mitochondrial-rna', action='store_false',
                    dest='filter_mitochondrial_rna',
-                   help='Do not filter cells with greater than 20% mitochondrial RNA ')
+                   help='Do not filter cells with greater than 20 percent mitochondrial '
+                        'RNA ')
 
     s = p.add_argument_group('alignment arguments')
     s.add_argument('--star-args', default=None, nargs='*',
