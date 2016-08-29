@@ -159,31 +159,6 @@ def parse_args(args):
         raise
 
 
-def recreate_command_line_arguments_old(args):
-    """
-    Helper function to recreate command line arguments for passing to the remote run that
-    is often called by the local process. This function is aware that 'platform' is
-    a positional argument, and '--remote' is a flag; otherwise arguments are
-    reconstructed from the dictionary.
-
-    This function may require adjustment when new flags or positional arguments are added
-    to process_experiment.py
-    """
-    args = copy(args)  # don't break original object
-    platform = args.platform
-    del args.platform  # we explicitly create a positional parameter
-    del args.remote  # this is set by --local (or default)
-    cmd = 'process_experiment.py {} '.format(platform)
-    for key, value in vars(args).items():
-        if value:
-            if isinstance(value, list):
-                value = ' '.join(value)
-            key = key.replace('_', '-')
-            cmd += '--{} {} '.format(key, str(value))
-    cmd += '--local --aws'
-    return cmd
-
-
 def recreate_command_line_arguments(argv: list) -> str:
     """recreate the command line arguments for a remote run, appending --local and --aws
 
