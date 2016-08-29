@@ -189,6 +189,7 @@ def recreate_command_line_arguments(argv: list) -> str:
 
     :param argv: the output of sys.argv[1:], in other words, all parameters passed to
       the script, omitting the script name (process_experiment.py)
+    :return str: command line arguments for a remote run
     """
     return 'process_experiment.py ' + ' '.join(argv) + ' --local --aws'
 
