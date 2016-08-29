@@ -116,7 +116,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
-            '--filter-mitochondrial-rna', 'False'
+            '--no-terminate', 'on-success',
+            '--no-filter-mitochondrial-rna',
         ]
         try:
             process_experiment.main(args)
