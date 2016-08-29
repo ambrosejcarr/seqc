@@ -113,6 +113,11 @@ def parse_args(args):
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
                    default=1.0, type=float)
+    f.set_defaults(filter_mitochondrial_rna=True)
+    f.add_argument('--no-filter-mitochondrial-rna', action='store_false',
+                   dest='filter_mitochondrial_rna',
+                   help='Do not filter cells with greater than 20 percent mitochondrial '
+                        'RNA ')
 
     s = p.add_argument_group('alignment arguments')
     s.add_argument('--star-args', default=None, nargs='*',
@@ -154,43 +159,30 @@ def parse_args(args):
         raise
 
 
-def recreate_command_line_arguments(args):
+def recreate_command_line_arguments(argv: list) -> str:
+    """recreate the command line arguments for a remote run, appending --local and --aws
+
+    :param argv: the output of sys.argv[1:], in other words, all parameters passed to
+      the script, omitting the script name (process_experiment.py)
+    :return str: command line arguments for a remote run
     """
-    Helper function to recreate command line arguments for passing to the remote run that
-    is often called by the local process. This function is aware that 'platform' is
-    a positional argument, and '--remote' is a flag; otherwise arguments are
-    reconstructed from the dictionary.
-
-    This function may require adjustment when new flags or positional arguments are added
-    to process_experiment.py
-    """
-    args = copy(args)  # don't break original object
-    platform = args.platform
-    del args.platform  # we explicitly create a positional parameter
-    del args.remote  # this is set by --local (or default)
-    cmd = 'process_experiment.py {} '.format(platform)
-    for key, value in vars(args).items():
-        if value:
-            if isinstance(value, list):
-                value = ' '.join(value)
-            key = key.replace('_', '-')
-            cmd += '--{} {} '.format(key, str(value))
-    cmd += '--local --aws'
-    return cmd
+    return 'process_experiment.py ' + ' '.join(argv) + ' --local --aws'
 
 
-def run_remote(args, volsize):
+def run_remote(args, argv, volsize):
     """
     Mirror the local arguments to an AWS server and execute the run there. When complete,
     terminates the local process.
 
     :param args: simple namespace object; output of parse_args()
+    :param argv: original argument list as received from sys.argv or passed to a main()
+      object
     :param volsize: estimated volume needed for run
     """
     log.notify('Beginning remote SEQC run...')
 
     # recreate remote command, but instruct it to run locally on the server.
-    cmd = recreate_command_line_arguments(args)
+    cmd = recreate_command_line_arguments(argv)
     log.print_exact_command_line(cmd)
     # set up remote cluster
     cluster = remote.ClusterServer()
@@ -801,23 +793,22 @@ def upload_data_and_notify_user(
             summary, log_name, email)
 
 
-def main(args: list=None) -> None:
+def main(argv: list=None) -> None:
     """
     Execute a SEQC run.
 
-    :param args: list of arguments. Normally either extracted from sys.argv or passed as
+    :param argv: list of arguments. Normally either extracted from sys.argv or passed as
       a list from a testing function.
     :return: None
     """
-    args_old = args
-    args = parse_args(args)
+    args = parse_args(argv)
     if args.aws:
         args.log_name = args.log_name.split('/')[-1]
         log.setup_logger('/data/' + args.log_name)
     else:
         log.setup_logger(args.log_name)
     try:
-        log.print_exact_command_line('process_experiment.py '+" ".join(args_old))
+        log.print_exact_command_line('process_experiment.py '+" ".join(argv))
         err_status = False
         pigz, email = check_executables('pigz', 'mutt')
         if not email and not args.remote:
@@ -855,7 +846,7 @@ def main(args: list=None) -> None:
                 raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
                                  'runs.')
             remote.cluster_cleanup()
-            run_remote(args, total_size)
+            run_remote(args, argv, total_size)
             sys.exit(0)
 
         if args.aws:
@@ -975,7 +966,8 @@ def main(args: list=None) -> None:
         # get dense molecules
         dense, total_molecules, mols_lost, cells_lost, cell_description = (
             create_filtered_dense_count_matrix(
-                molecules, reads, plot=True, figname=args.output_stem + '_filters.png'))
+                molecules, reads, plot=True, figname=args.output_stem + '_filters.png',
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna))
 
         # save sparse csv
         dense[dense == 0] = np.nan  # for sparse_csv saving

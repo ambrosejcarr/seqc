@@ -106,6 +106,25 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
+    def test_in_drop_v2_no_mt(self):
+        platform = 'in_drop_v2'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success',
+            '--no-filter-mitochondrial-rna',
+        ]
+        try:
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
     @unittest.skip("Not currently stable")
     def test_in_drop_v3(self):
         platform = 'in_drop_v3'

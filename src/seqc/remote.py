@@ -352,42 +352,6 @@ class ClusterServer(object):
         self.serv.exec_command("sudo mount %s /data" % dev_id)
         log.notify("Successfully mounted new volume onto /data.")
 
-    def git_pull(self):
-        """installs the SEQC directory in /data/software"""
-        # todo: replace this with git clone once seqc repo is public
-
-        folder = '/data/software/'
-        log.notify('Installing SEQC on remote instance.')
-        self.serv.exec_command("sudo mkdir %s" % folder)
-        self.serv.exec_command("sudo chown -c ubuntu /data")
-        self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
-
-        location = folder + 'seqc.tar.gz'
-        # todo: this currently pulls from the develop branch of SEQC.
-        # to install a specific version, change version='develop' to the tag (ex: 0.1.6)
-        # or seqc.__version__
-        self.serv.exec_command(
-            'curl -H "Authorization: token a22b2dc21f902a9a97883bcd136d9e1047d6d076" -L '
-            'https://api.github.com/repos/ambrosejcarr/seqc/tarball/{version} | '
-            'sudo tee {location} > /dev/null'.format(
-                location=location, version='master'))
-        self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
-                               '--strip-components 1' % folder)
-        log.notify("Sources are installed and decompressed, setting up seqc")
-        self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
-
-        def test_install():
-            out_test_install, _ = self.serv.exec_command(
-                'process_experiment.py -h | grep RNA')
-            if not out_test_install:
-                raise BotoCallError()
-
-        retry_boto_call(
-            func=test_install, exceptions_to_catch=BotoCallError,
-            exception_to_raise=EC2RuntimeError('Error installing SEQC on the cluster.'),
-            retries=30, delay_retry=2)()
-        log.notify('SEQC successfully installed in %s.' % folder)
-
     def upload_and_install_seqc(self) -> None:
         """upload the local version of seqc to the remote instance for the remote run.
 
