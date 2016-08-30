@@ -378,7 +378,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     """pass-through function that groups the read_array for count matrix construction but
     does not perform any error correction. To be replaced by Ashley's function.
 
-    :param alignments_ra: seqc.core.ReadArray object
+    :param alignments_ra: seqc.read_array.ReadArray object
     :param args:
     :param kwargs:
     :return:

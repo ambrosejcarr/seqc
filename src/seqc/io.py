@@ -307,12 +307,12 @@ class S3:
             except CalledProcessError:
                 log.notify(
                     'Failed to access %s with "aws s3 ls", check your link' % infile)
-                sys.exit(2)
+                raise
             except ValueError:
                 log.notify(
                     'Error: Provided s3 link "%s" does not contain the proper '
                     'input files to SEQC.' % infile)
-                sys.exit(2)
+                raise
 
     @staticmethod
     def obtain_size(item: str) -> int:

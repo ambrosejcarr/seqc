@@ -302,7 +302,7 @@ def create_phix_annotation(phix_fasta):
 
     # get chromosome
     chromosome = header.split()[0].strip('>')
-    source = 'seqc'
+    source = 'core'
     score = '.'
     frame = '.'
     gene_meta = 'gene_id "PHIXG00{NUM}"; gene_name "PHIX{NAME!s}";'
