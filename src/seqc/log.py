@@ -46,7 +46,7 @@ def print_exact_command_line(arg_line, remote=False):
     remote_line = "The following command line will be run on the remote server"
     local_line = "Executing the following command line"
     line = remote_line if remote else local_line
-    notify(line + ":\n\t> " + arg_line)
+    notify(line + ":\n> " + arg_line)
 
 
 def args(arguments):
@@ -304,8 +304,8 @@ class LogData:
         :param logfile: str, path to log file
         :returns df: pd.DataFrame, dataframe containing log information
         """
-        mo = seqc.log.LogData.match_log(logfile)
-        return seqc.log.LogData.dictionary_to_dataframe(
+        mo = LogData.match_log(logfile)
+        return LogData.dictionary_to_dataframe(
             mo, logfile.split('/')[-1].replace('.log', ''))
 
     @classmethod

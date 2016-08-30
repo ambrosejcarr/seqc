@@ -1,13 +1,14 @@
 # import random
 import os
 import unittest
+
 from seqc import remote, log
 # from seqc.sequence.encodings import DNA3Bit, ThreeBit
 from seqc.io import S3
 import pandas as pd
 import numpy as np
 import paramiko
-from seqc import process_experiment
+from seqc.core import process_experiment
 import nose2
 
 import seqc

@@ -23,7 +23,7 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      packages=['seqc', 'seqc.sequence', 'seqc.alignment'],
+      packages=['seqc', 'seqc.sequence', 'seqc.alignment', 'seqc.core'],
       install_requires=[
           'numpy>=1.10.0',
           'bhtsne',
@@ -46,7 +46,7 @@ setup(name='seqc',
           'ecdsa',
           'pycrypto',
           'scikit_learn>=0.17'],
-      scripts=['src/seqc/process_experiment.py'],
+      scripts=['src/seqc/core/process_experiment.py'],
       extras_require={
           'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
       }
