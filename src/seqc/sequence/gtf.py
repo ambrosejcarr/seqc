@@ -1,12 +1,18 @@
 import re
+import os
+import ftplib
+import gzip
 import fileinput
 import string
+from contextlib import closing
+from multiprocessing import Pool
 from collections import defaultdict
 from intervaltree import IntervalTree
 from copy import deepcopy
 import pandas as pd
 from seqc import reader
 from seqc.sparse_frame import SparseFrame
+from collections import ChainMap
 
 
 def first(iterable):
@@ -375,3 +381,108 @@ def ensembl_gene_id_to_official_gene_symbol(
     data.columns = ['-'.join(gene_id_map[i]) for i in data.columns]
 
     return data
+
+
+def parse_gbff(filename):
+    """fast but memory-inefficient reader for gbff files; typically ~ 1G per process
+    :param filename:
+    :return:
+    """
+    with gzip.open(filename, 'rb') as f:  # if not working, use 'rt'
+        data = f.read()
+
+    records = data.split('LOCUS')
+
+    for record in records:
+        record = record.split('\n')
+
+
+def get_geneid_to_summary_data(
+        link='ftp://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/RefSeqGene/'):
+    """map gene ids to summary information that is found in the RefSeqGene database.
+
+    :param str link: folder on NCBI ftp containing refseq.gbff files to be downloaded
+      and parsed. At the time of implementation, the human link is:
+      ftp://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/RefSeqGene/
+    """
+
+    # parse the link for relevant ftp information
+    server = link.replace('ftp://', '').split('/')[0]
+    folder = '/' + '/'.join(link.replace('ftp://', '').split('/')[1:])
+    username = 'anonymous'
+    password = ''  # todo get from ncbi
+    download_dir = os.environ['TMPDIR']
+
+    # start ftp; todo make contextmanaged with 'with'
+    ftp = ftplib.FTP(server)
+    ftp.login(username, password)
+    ftp.cwd(folder)
+    files = ftp.dir()
+
+    # parse file list, only download gbff files
+    files = [f.split()[-1] for f in files if '.gbff.gz' in f]
+
+    # download the files
+    downloaded_files = [download_dir + f for f in files]
+    for fin, fout in zip(files, downloaded_files):
+        with open(download_dir + fin, 'wb') as open_file:
+            ftp.retrbinary('RETR %s' % fin, open_file.write)
+    ftp.close()
+
+    # parse the files in parallel
+    with closing(Pool()) as pool:
+        dicts = pool.map(parse_gbff, downloaded_files)
+
+    # merge and return
+    return dict(ChainMap(*dicts))
+
+
+def parse_refseq_gene_gbff(filepath):
+    with gzip.open(filepath, 'rb') as f:
+        locus2comment = {}
+        in_comment = False
+        first_time_symbol = False
+        first_time_entrez = False
+        real_gene = False
+        for line in f:
+            if line[0:5] == "LOCUS":
+                real_gene = False
+                first_time_symbol = True
+                first_time_entrez = True
+                locus = line.split()[1]
+                comment = ""
+            elif line[0:7] == "COMMENT":
+                in_comment = True
+                comment += line.split("    ")[1].replace("\n", " ")
+            elif line[0:7] == "PRIMARY":
+                in_comment = False
+                try:
+                    locus2comment[locus] = comment.split("Summary:")[1]
+                except:
+                    locus2comment[locus] = "Remove Me"
+            elif line[0:9] == '     gene' and 'complement' not in line:
+                real_gene = True
+            elif line[0:27] == '                     /gene=':
+                if first_time_symbol and real_gene:
+                    locus2comment[locus] += \
+                        '\t' + line.strip().split('/gene=\"')[1][:-1]
+                    first_time_symbol = False
+            elif b'/db_xref="GeneID:' in line:
+                if first_time_entrez and real_gene:
+                    locus2comment[locus] += \
+                        '\t' + line.strip().split('GeneID:')[1][:-1]
+                    first_time_entrez = False
+            elif in_comment:
+                comment += line.split("            ")[1].replace("\n", " ")
+
+    for locus in sorted(locus2comment):
+        if "Remove Me" in locus2comment[locus]:
+            del locus2comment[locus]
+
+    with gzip.open(filepath[:-8] + '.tsv.gz', 'wb') as outfile:
+        for locus in sorted(locus2comment):
+            if locus2comment[locus] == "Remove Me":
+                continue
+            outfile.write(locus + '\t' + locus2comment[locus] + '\n')
+
+    return locus2comment
