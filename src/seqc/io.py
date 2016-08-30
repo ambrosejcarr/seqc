@@ -1,12 +1,12 @@
-import sys
 import os
 import ftplib
 import shlex
 from glob import glob
+from contextlib import closing
 from functools import partial
-from multiprocessing import Process, Pool
+from multiprocessing import Process, Pool, cpu_count
 from queue import Queue, Empty
-from subprocess import Popen, check_output, PIPE, CalledProcessError
+from subprocess import Popen, check_output, PIPE, CalledProcessError, call
 from itertools import zip_longest
 import fcntl
 import boto3
@@ -14,6 +14,9 @@ import logging
 import requests
 import time
 from seqc import log
+import pandas as pd
+import numpy as np
+
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
@@ -798,3 +801,87 @@ class ProcessManager:
             out = out.decode().strip()
             output.append(out)
         return output
+
+
+def _iter_loadtxt(filename, delimiter='\t', skiprows=0, skipcols=0, dtype=np.float32):
+    """badly written function that relies upon some bad scoping practices to iterate over lines of a text file
+
+    :param str filename: name of file to read
+    :param str delimiter: text delimiter to separate tokens
+    :param int skiprows: number of rows to skip at head of this section
+    :param int skipcols: number of columns to skip at head of this section
+    :param dtype: numpy datatype to apply to each token
+    :return np.ndarray: data matrix
+    """
+    def iter_func():
+        with open(filename, 'r') as infile:
+            for _ in range(skiprows):
+                next(infile)
+            for line in infile:
+                line = line.rstrip().strip(delimiter).split(delimiter)
+                for item in line[skipcols:]:
+                    yield dtype(item)
+        _iter_loadtxt.rowlength = len(line) - skipcols
+
+    data = np.fromiter(iter_func(), dtype=dtype)
+    data = data.reshape((-1, _iter_loadtxt.rowlength))
+    return data
+
+
+def read_biscuit_experiment(data_file, col_label_file, row_label_file, delimiter='\t', skiprows=0, skipcols=0,
+                            dtype=np.float32) -> pd.DataFrame:
+    """function to read the results of biscuit imputation on scRNAseq data
+
+    :param str data_file: data file to read
+    :param str col_label_file: file containing column ids
+    :param str row_label_file: file containing row ids
+    :param str delimiter: text delimiter that separates tokens
+    :param int skiprows: number of lines to skip in each section (dangerous, applied at split points)
+    :param int skipcols: number of columns to skip in each section
+    :param dtype: numpy datatype to apply to the data
+    :return pd.DataFrame: transposed dataframe of cells x genes containing appropriate indexes
+    """
+
+    # todo should be robust to different numbers of columns
+    # read column labels containing sample, cellid and cluster. Convert to integers where appropriate.
+    with open(col_label_file, 'r') as f:
+        sample, cellid, cluster = (l.strip().split()[1:] for l in f.readlines())
+        cellid = list(map(int, cellid))
+        cluster = list(map(int, cluster))
+
+    # read row labels containing gene information
+    with open(row_label_file, 'r') as f:
+        gene = f.read().strip().split()
+
+    # create index
+    index = pd.MultiIndex.from_tuples(list(zip(sample, cellid, cluster)))
+    columns = pd.Index(gene)
+
+    # get approximate number of lines in the data file; set some variables
+    nlines = int(check_output('wc -l {}'.format(data_file), shell=True).strip().split()[0].decode())
+    lines_per_process = int(np.ceil(nlines / cpu_count()))
+    tmpdir = os.environ['TMPDIR']
+
+    # split the file and recover the parts
+    split_res = check_output('split -l {lines!s} {filename} {tmpdir}til_'.format(
+        lines=lines_per_process, filename=data_file, tmpdir=tmpdir), shell=True)
+    split_files = [tmpdir + f for f in os.listdir(tmpdir) if f.startswith('til_')]
+
+    # create a function to map data
+    partial(_iter_loadtxt, delimiter=delimiter, skiprows=skiprows, skipcols=skipcols, dtype=dtype)
+
+    # multiprocess the files
+    with closing(Pool()) as pool:
+        raw_mats = pool.map(_iter_loadtxt, split_files)
+
+    # construct the new matrix
+    m = np.vstack(raw_mats).T  # stack and transpose to cells x genes
+    df = pd.DataFrame(m, index=index, columns=columns)
+
+    # clear out the tmpdir
+    for f in os.listdir(tmpdir):
+        if f.startswith('til_'):
+            os.remove(tmpdir + f)
+    print('files removed from tmpdir {}'.format(tmpdir))
+
+    return df
