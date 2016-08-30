@@ -103,8 +103,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         ]
         try:
             process_experiment.main(args)
-        except SystemExit as e:
-            print(e.__traceback__)
+        except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
