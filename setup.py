@@ -27,6 +27,7 @@ setup(name='seqc',
       install_requires=[
           'numpy>=1.10.0',
           'bhtsne',
+          'wikipedia',
           'awscli',
           'cython>0.14',
           'numexpr>=2.4',
