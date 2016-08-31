@@ -119,6 +119,7 @@ class DNA3Bit:
             res += num
         return res
 
+    # todo fix this by using factory methods to generate the correct function
     # todo these methods only work for in-drop
     @staticmethod
     def c2_from_int(seq):
