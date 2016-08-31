@@ -583,7 +583,7 @@ class GeneInfo:
                 desc = []
                 for id_ in ids:
                     try:
-                        desc.append(getattr(self._data[ids[0]], attr_name))
+                        desc.append(getattr(self._data[id_], attr_name))
                     except KeyError:
                         desc.append(None)
                 return pd.Series(desc, index=ids)
