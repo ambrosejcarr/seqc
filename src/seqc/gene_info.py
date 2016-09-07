@@ -85,7 +85,6 @@ class GeneSummary:
         return self._long
 
 
-# todo fill in way to get different description types
 class NCBIGeneSummary:
 
     def __init__(self, id_type: str, ids: list=None, summaries: dict=None,
@@ -99,6 +98,7 @@ class NCBIGeneSummary:
         Once the object has been created, gene ids can be individually described with the
         method:
         :method describe: returns descriptions of one or more ids.
+        :method all: returns descriptions of all contained gene ids.
 
         GeneDescription objects are simple containers, they can be printed in multiple
         ways, e.g.:
@@ -144,7 +144,8 @@ class NCBIGeneSummary:
     def id_type(self):
         return self._id_type
 
-    def _filter_ids(self, ids, converter):
+    @staticmethod
+    def _filter_ids(ids, converter):
         """given a converter, filter any genes which lack a mapping between their existing
         ids and EntrezGene ids
 
@@ -281,24 +282,28 @@ class NCBIGeneSummary:
     def __len__(self):
         return len(self._summaries)
 
-    def __getitem__(self, identifiers):
+    def __getitem__(self, identifier):
+        """return the GeneSummar(y/ies) associated with uid(s)
+
+        :param identifier: the identifiers to display summaries for
+        :return GeneSummary for the provided identifier
+        """
+        return self._summaries[identifier]
+
+    def describe(self, identifiers, attr=None):
         """return the GeneSummar(y/ies) associated with uid(s)
 
         :param identifiers: the identifiers to display summaries for
-        :return GeneSummary or pd.Series: the summary associated with a single identifier,
-          or a series mapping identifiers to summary objects
+        :param attr: the GeneSummary attribute to return (e.g. short, long, or chromosome)
+          if None, returns the complete GeneSummary object.
+        :return pd.Series: a series mapping identifiers to summary objects
         """
-        if isinstance(identifiers, Iterable) and not isinstance(identifiers, str):
-            return pd.Series([self._summaries[id_] for id_ in identifiers],
-                             index=identifiers)
-        else:
-            return self._summaries[identifiers]
+        if isinstance(identifiers, str):
+            identifiers = [identifiers]
+        gs = [self._summaries[id_] for id_ in identifiers]
+        if attr:
+            # call getattr
 
-    def describe(self, identifiers):
-        """return the GeneSummar(y/ies) associated with uid(s)
 
-        :param identifiers: the identifiers to display summaries for
-        :return GeneSummary or pd.Series: the summary associated with a single identifier,
-          or a series mapping identifiers to summary objects
-        """
-        return self[identifiers]
+    def all(self):
+        return self[self._summaries.keys()]
