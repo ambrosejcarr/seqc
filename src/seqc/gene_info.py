@@ -3,7 +3,10 @@ import requests
 import pickle
 import numpy as np
 import pandas as pd
-from collections.abc import Iterable
+from pandas.util.terminal import get_terminal_size
+from contextlib import closing
+from multiprocessing import Pool
+from functools import partial
 
 
 def index_end(b: str, subsequence: str):
@@ -31,6 +34,24 @@ def extract_xml_field(b: str, field_name: str):
     start = index_end(b, '<%s>' % field_name)
     end = b.index('</%s>' % field_name)
     return b[start:end]
+
+
+class GeneSummarySeries(pd.Series):
+    """simple pd.Series wrapper with a modified line width for better viewing"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __unicode__(self):
+        """prints a summary limited to the size of the terminal window"""
+        width, _ = get_terminal_size()
+        with pd.option_context('display.max_colwidth', width - 15):
+            return super().__unicode__()
+
+    def full(self):
+        """prints a complete summary of the object"""
+        with pd.option_context('display.max_colwidth', -1):
+            print(super().__unicode__())
 
 
 class GeneSummary:
@@ -84,6 +105,51 @@ class GeneSummary:
     def long(self):
         return self._long
 
+    @property
+    def full(self):
+        return '{} (Chr {}): {}\n{}'.format(
+            self.name, self._chromosome, self.short, self.long)
+
+
+def _parse_summary(uids: list, inv_converter: pd.Series):
+    """obtain and parse DocSummaries for a list of uids
+
+    :param uids: list
+    :param inv_converter:
+    :return dict: dictionary mapping gene UIDs to their summaries
+    """
+    # split by document returned, eliminating the headers (first record)
+    string_uids = ','.join(map(str, uids))
+    summary = requests.get(
+        'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?'
+        'db=gene&id=%s' % string_uids).content.decode()
+
+    records = summary.split('<DocumentSummary uid=')[1:]
+
+    summaries = {}
+    for r in records:
+
+        # get uid
+        uid = int(r[:r.index('>')].strip('"'))  # in DocumentSummary header
+
+        # get gene name
+        name = extract_xml_field(r, 'Name')
+        chromosome = extract_xml_field(r, 'Chromosome')
+        synonyms = extract_xml_field(r, 'OtherDesignations')
+        short = extract_xml_field(r, 'Description')
+        long = extract_xml_field(r, 'Summary')
+        if not long:
+            long = short
+
+        gs = GeneSummary(uid, name, chromosome, synonyms, short, long)
+        try:
+            summaries[inv_converter[uid]] = gs
+        except TypeError:  # uid had multiple mappings
+            for id_ in inv_converter[uid]:
+                summaries[id_] = gs
+
+    return summaries
+
 
 class NCBIGeneSummary:
 
@@ -127,6 +193,7 @@ class NCBIGeneSummary:
                     ids, id_type, file_location=conversion_file)
             else:
                 converter = pd.Series(ids, index=ids)  # pass through conversion
+
             filtered_ids = self._filter_ids(ids, converter)
             if len(filtered_ids) == 0:
                 raise ValueError('No ids could be mapped to entrez gene ids with the '
@@ -167,33 +234,10 @@ class NCBIGeneSummary:
         :param converter: mapping of ids to uids
         """
 
-        def parse_summary(summary: str):
-            """extract gene summary from the NCBI DocSummary for a set of (potentially
-            multiple) genes
-
-            :param str summary: summaries for genes
-            :return dict: dictionary mapping gene UIDs to their summaries
-            """
-            # split by document returned, eliminating the headers (first record)
-            records = summary.split('<DocumentSummary uid=')[1:]
-
-            summaries = {}
-            for r in records:
-
-                # get uid
-                uid = int(r[:r.index('>')].strip('"'))  # in DocumentSummary header
-
-                # get gene name
-                name = extract_xml_field(r, 'Name')
-                chromosome = extract_xml_field(r, 'Chromosome')
-                synonyms = extract_xml_field(r, 'OtherDesignations')
-                short = extract_xml_field(r, 'Description')
-                long = extract_xml_field(r, 'Summary')
-
-                gs = GeneSummary(uid, name, chromosome, synonyms, short, long)
-                summaries[inv_converter[uid]] = gs  # converter comes from outer scope
-
-            return summaries
+        def chunks(l, n):
+            """Yield successive n-sized chunks from l."""
+            for i in range(0, len(l), n):
+                yield l[i:i + n]
 
         # convert ids to uids
         uids = list(map(int, converter[ids].values))
@@ -201,15 +245,15 @@ class NCBIGeneSummary:
         # invert converter to get ids back from uids, used to create summary keys
         inv_converter = pd.Series(converter.index, converter.values)
 
-        # download and parse over uids in sets of 500
-        gene_summaries = {}
-        while uids:
-            current_uids = ','.join(map(str, uids[:500]))
-            document_summaries = requests.get(
-                'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?'
-                'db=gene&id=%s' % current_uids).content
-            gene_summaries.update(parse_summary(document_summaries.decode()))
-            uids = uids[500:]  # remove processed uids from the list prior to next loop
+        # parallelize the above loop
+        uid_groups = list(chunks(uids, 500))
+
+        # create parsing function
+        pfunc = partial(_parse_summary, inv_converter=inv_converter)
+
+        with closing(Pool()) as pool:
+            res = pool.map(pfunc, uid_groups)
+        gene_summaries = {k: v for d in res for k, v in d.items()}  # merge dictionaries
 
         return gene_summaries
 
@@ -290,7 +334,7 @@ class NCBIGeneSummary:
         """
         return self._summaries[identifier]
 
-    def describe(self, identifiers, attr=None):
+    def describe(self, identifiers, attr='long'):
         """return the GeneSummar(y/ies) associated with uid(s)
 
         :param identifiers: the identifiers to display summaries for
@@ -300,10 +344,12 @@ class NCBIGeneSummary:
         """
         if isinstance(identifiers, str):
             identifiers = [identifiers]
-        gs = [self._summaries[id_] for id_ in identifiers]
+        gs = list(map(lambda i: self._summaries[i], identifiers))
         if attr:
-            # call getattr
+            gs = list(map(lambda i: getattr(i, attr), gs))
+        return GeneSummarySeries(gs, index=identifiers)
 
-
-    def all(self):
-        return self[self._summaries.keys()]
+    def all(self, attr='long'):
+        return self.describe(identifiers=list(self._summaries.keys()), attr=attr)
+        # keys = list(self._summaries.keys())
+        # return pd.Series([self[k] for k in keys], index=keys)
