@@ -48,10 +48,16 @@ class GeneSummarySeries(pd.Series):
         with pd.option_context('display.max_colwidth', width - 15):
             return super().__unicode__()
 
-    def full(self):
+    def full_length(self):
         """prints a complete summary of the object"""
         with pd.option_context('display.max_colwidth', -1):
             print(super().__unicode__())
+
+    def short(self):
+        print(GeneSummarySeries(data=[v.short for v in self.values], index=self.index))
+
+    def long(self):
+        print(GeneSummarySeries(data=[v.long for v in self.values], index=self.index))
 
 
 class GeneSummary:
