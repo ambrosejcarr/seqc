@@ -17,7 +17,8 @@ _primer_lengths = dict(
     in_drop_v3=16,
     drop_seq=20,
     mars1_seq=None,  # mars1-seq has not been provided to us as pre-demultiplexed data
-    mars2_seq=15
+    mars2_seq=15,
+    ten_x=10
 )
 
 
