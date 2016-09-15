@@ -168,7 +168,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         args = [
             platform,
             '-o', self.output.format(platform),
-            '-i', self.human,
+            '-i', self.mouse,
             '--email-status', self.email,
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
