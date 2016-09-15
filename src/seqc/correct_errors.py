@@ -543,7 +543,7 @@ def in_drop_v3(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 
-def ten_x(alignments_ra, required_poly_t=0, max_dust=10):
+def ten_x(alignments_ra, required_poly_t=0, max_dust=10, *args, **kwargs):
     # todo: implement error correction here
     """very simple pass-through wrapper for ten_x error correction, designed so that
     getattr() on seqc.correct_errors will find the correct error function for ten_x
