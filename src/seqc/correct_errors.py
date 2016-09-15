@@ -4,6 +4,7 @@ from sys import maxsize
 from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sequence import revcomp_bytes
+from collections import defaultdict
 import numpy as np
 from seqc import log
 import random
@@ -542,15 +543,42 @@ def in_drop_v3(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 
-def ten_x(*args, **kwargs):
+def ten_x(alignments_ra, required_poly_t=0, max_dust=10):
+    # todo: implement error correction here
     """very simple pass-through wrapper for ten_x error correction, designed so that
     getattr() on seqc.correct_errors will find the correct error function for ten_x
 
-    :param args: pass any args to pass through function
-    :param kwargs: pass any kwargs to pass through function
+    :param alignments_ra: read array
+    :param required_poly_t: min poly t (estimated by seqc)
+    :param max_dust: max dust score (default=10)
     :return:
     """
-    return pass_through(*args, **kwargs)
+    tot = 0
+    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
+                'rmt_N': 0, 'cell_N': 0, 'dust': 0}
+
+    molecules = defaultdict(set)
+    reads = defaultdict(int)
+
+    for i, v in enumerate(alignments_ra.data):
+        tot += 1
+        if not pass_filter(v, filtered, required_poly_t, max_dust):
+            continue
+
+        cell = v['cell']
+        rmt = v['rmt']
+        gene = v['gene']
+
+        molecules[(gene, cell)].add(rmt)
+        reads[(gene, cell)] += 1
+
+    grouped_res_dic = {}
+    for k in molecules:
+        grouped_res_dic[k] = (molecules[k], reads[k])
+
+    log.info('Error correction filtering results: total reads: {}; did not pass '
+             'preliminary filters: {}'.format(tot, sum(filtered.values())))
+    return grouped_res_dic, filtered
 
 
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
