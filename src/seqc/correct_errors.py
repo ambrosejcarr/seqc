@@ -4,7 +4,6 @@ from sys import maxsize
 from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sequence import revcomp_bytes
-from collections import defaultdict
 import numpy as np
 from seqc import log
 import random
@@ -554,13 +553,12 @@ def ten_x(alignments_ra, barcode_files=list(), reverse_complement=False,
     :param max_dust: max dust score (default=10)
     :return:
     """
+    res = {}
     tot = 0
     filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
                 'rmt_N': 0, 'cell_N': 0, 'dust': 0}
 
-    molecules = defaultdict(set)
-    reads = defaultdict(int)
-
+    # filtering ("prepare_for_ec")
     for i, v in enumerate(alignments_ra.data):
         tot += 1
         if not pass_filter(v, filtered, required_poly_t, max_dust):
@@ -570,12 +568,32 @@ def ten_x(alignments_ra, barcode_files=list(), reverse_complement=False,
         rmt = v['rmt']
         gene = v['gene']
 
-        molecules[(gene, cell)].add(rmt)
-        reads[(gene, cell)] += 1
+        try:
+            res[gene, cell][rmt].append(i)
+        except KeyError:
+            try:
+                res[gene, cell][rmt] = [i]
+            except KeyError:
+                res[gene, cell] = {}
+                res[gene, cell][rmt] = [i]
 
+    # create data structure for creating count matrix
     grouped_res_dic = {}
-    for k in molecules:
-        grouped_res_dic[k] = (molecules[k], reads[k])
+
+    for gene, cell in res:
+        retained_molecules = 0.0
+        retained_reads = 0
+
+        for rmt in res[gene, cell]:
+            n_rmts = len(res[gene, cell][rmt])
+
+            if n_rmts == 1:
+                retained_molecules += singleton_weight
+            else:
+                retained_molecules += 1
+            retained_reads += n_rmts
+
+        grouped_res_dic[gene, cell] = retained_molecules, retained_reads
 
     log.info('Error correction filtering results: total reads: {}; did not pass '
              'preliminary filters: {}'.format(tot, sum(filtered.values())))
