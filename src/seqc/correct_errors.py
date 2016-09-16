@@ -542,9 +542,20 @@ def in_drop_v3(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 
+def ten_x(*args, **kwargs):
+    """very simple pass-through wrapper for ten_x error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for ten_x
+
+    :param args:  pass any args to pass_through()
+    :param kwargs:  pass any kwargs to pass_through()
+    :return:
+    """
+    return pass_through(*args, **kwargs)
+
+
 # todo: implement error correction properly with barcodes
-def ten_x(alignments_ra, barcode_files=list(), reverse_complement=False,
-          required_poly_t=0, max_ed=2, max_dust=10, singleton_weight=1):
+def pass_through(alignments_ra, barcode_files=list(), reverse_complement=False,
+                 required_poly_t=0, max_ed=2, max_dust=10, singleton_weight=1):
     """very simple pass-through wrapper for ten_x error correction, designed so that
     getattr() on seqc.correct_errors will find the correct error function for ten_x
 
