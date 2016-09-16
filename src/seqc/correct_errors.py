@@ -555,6 +555,7 @@ def ten_x(alignments_ra, barcode_files=list(), reverse_complement=False,
     """
     res = {}
     tot = 0
+    N = DNA3Bit.encode(b'N')
     filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
                 'rmt_N': 0, 'cell_N': 0, 'dust': 0}
 
@@ -565,6 +566,9 @@ def ten_x(alignments_ra, barcode_files=list(), reverse_complement=False,
             continue
 
         cell = v['cell']
+        if DNA3Bit.contains(cell, N):  # todo This throws out more than we want?
+            filtered['cell_N'] += 1
+            continue
         rmt = v['rmt']
         gene = v['gene']
 
