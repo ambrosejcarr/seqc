@@ -16,6 +16,8 @@ class Reader:
             self._files = files_
         elif isinstance(files_, str):
             self._files = [files_]
+        else:
+            raise TypeError('files_ must be a string filename or a list of such names.')
 
     @property
     def filenames(self):
