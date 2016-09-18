@@ -75,6 +75,11 @@ style_dictionary = {
 matplotlib.rcParams.update(style_dictionary)
 
 
+def refresh_rc():
+    matplotlib.rcParams.update(style_dictionary)
+    print('rcParams updated')
+
+
 class FigureGrid:
     """
     Generates a grid of axes for plotting
