@@ -106,7 +106,8 @@ def merge_fastq_files(
     """
     annotates genomic fastq with barcode information; merging the two files.
 
-    :param platform:
+    :param platform: class from platforms.py that defines the characteristics of the
+      data being processed
     :param barcode_fastq: list of str names of fastq files containing barcode information
     :param output_stem: str, stem for output files
     :param genomic_fastq: list of str names of fastq files containing genomic information
