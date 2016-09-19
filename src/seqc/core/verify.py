@@ -1,5 +1,6 @@
-from seqc import io
+from seqc import io, platforms
 import shutil
+import inspect
 
 
 def arguments(args, basespace_token: str) -> float:
@@ -132,3 +133,12 @@ def executables(*execs):
     :returns : Tuple of boolean (True if a specific executable is installed).
     """
     return tuple(map(lambda exe: shutil.which(exe) is not None, execs))
+
+
+def platform_name(name: str):
+    choices = [x[0] for x in inspect.getmembers(platforms, inspect.isclass) if
+               issubclass(x[1], platforms.AbstractPlatform)][1:]
+    if name not in choices:
+        raise ValueError('Please specify a valid platform name for SEQC. The available '
+                         'options are: {}'.format(choices))
+    return name

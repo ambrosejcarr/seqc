@@ -215,8 +215,8 @@ class mars1_seq(AbstractPlatform):
     # todo: we don't have pre-demultiplexed data for mars1-seq
 
     def primer_length(self):
-        # return None
-        raise NotImplementedError
+        return None
+        # raise NotImplementedError
 
     def merge_function(self, g, b):
         """
