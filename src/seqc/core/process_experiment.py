@@ -5,8 +5,8 @@ import os
 import pickle
 import sys
 import numpy as np
-from seqc import remote, log, io, filter, correct_errors
-from seqc.sequence import merge_functions, fastq
+from seqc import remote, log, io, filter, correct_errors, platforms
+from seqc.sequence import fastq
 from seqc.alignment import star
 from seqc.read_array import ReadArray
 from seqc.exceptions import ConfigurationError, retry_boto_call
@@ -101,12 +101,12 @@ def determine_start_point(args) -> (bool, bool, bool):
 
 
 def merge_fastq_files(
-        platform: str, barcode_fastq: [str], output_stem: str,
+        platform, barcode_fastq: [str], output_stem: str,
         genomic_fastq: [str], pigz: bool) -> (str, int):
     """
     annotates genomic fastq with barcode information; merging the two files.
 
-    :param platform: str, name of platform
+    :param platform:
     :param barcode_fastq: list of str names of fastq files containing barcode information
     :param output_stem: str, stem for output files
     :param genomic_fastq: list of str names of fastq files containing genomic information
@@ -116,9 +116,8 @@ def merge_fastq_files(
     """
 
     log.info('Merging genomic reads and barcode annotations.')
-    merge_function = getattr(merge_functions, platform)
     merged_fastq, fastq_records = fastq.merge_paired(
-        merge_function=merge_function,
+        merge_function=platform.merge_function,
         fout=output_stem + '_merged.fastq',
         genomic=genomic_fastq,
         barcode=barcode_fastq)
@@ -410,14 +409,18 @@ def main(argv: list=None) -> None:
         # determine where the script should start:
         merge, align, process_samfile = determine_start_point(args)
 
+        # check if the platform name provided is supported by seqc
+        platform_name = verify.platform_name(args.platform)
+        platform = getattr(platforms, platform_name)()  # returns platform class
+
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
                 args.min_poly_t = filter.estimate_min_poly_t(
-                    args.barcode_fastq, args.platform)
+                    args.barcode_fastq, platform)
                 log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
             args.merged_fastq, fastq_records = merge_fastq_files(
-                args.platform, args.barcode_fastq, args.output_stem,
+                platform, args.barcode_fastq, args.output_stem,
                 args.genomic_fastq, pigz)
         else:
             fastq_records = None
@@ -436,7 +439,7 @@ def main(argv: list=None) -> None:
         args.read_array = h5_file
 
         args.barcode_files = download.barcodes(
-            args.platform, args.barcode_files, output_dir)
+            platform_name, args.barcode_files, output_dir)
 
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
@@ -450,9 +453,8 @@ def main(argv: list=None) -> None:
 
         # correct errors
         log.info('Correcting cell barcode and RMT errors')
-        correct_errors_function = getattr(correct_errors, args.platform)
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts, summary = correct_errors_function(
+        cell_counts, summary = platform.correct_errors(
             ra, args.barcode_files, reverse_complement=False,
             required_poly_t=args.min_poly_t, max_ed=args.max_ed,
             max_dust=args.max_dust_score, singleton_weight=args.singleton_weight)
