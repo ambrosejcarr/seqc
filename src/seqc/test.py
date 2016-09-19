@@ -163,6 +163,25 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
+    def test_ten_x(self):
+        platform = 'ten_x'
+        args = [
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.mouse,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--no-terminate', 'on-success'
+        ]
+        try:
+            print(args)
+            process_experiment.main(args)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
     @unittest.skip("Not currently stable")
     def test_mars1_seq(self):
         platform = 'mars1_seq'

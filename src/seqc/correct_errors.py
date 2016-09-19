@@ -542,6 +542,79 @@ def in_drop_v3(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 
+def ten_x(*args, **kwargs):
+    """very simple pass-through wrapper for ten_x error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for ten_x
+
+    :param args:  pass any args to pass_through()
+    :param kwargs:  pass any kwargs to pass_through()
+    :return:
+    """
+    return pass_through(*args, **kwargs)
+
+
+# todo: implement error correction properly with barcodes
+def pass_through(alignments_ra, barcode_files=list(), reverse_complement=False,
+                 required_poly_t=0, max_ed=2, max_dust=10, singleton_weight=1):
+    """very simple pass-through wrapper for ten_x error correction, designed so that
+    getattr() on seqc.correct_errors will find the correct error function for ten_x
+
+    :param alignments_ra: read array
+    :param required_poly_t: min poly t (estimated by seqc)
+    :param max_dust: max dust score (default=10)
+    :return:
+    """
+    res = {}
+    tot = 0
+    N = DNA3Bit.encode(b'N')
+    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
+                'rmt_N': 0, 'cell_N': 0, 'dust': 0}
+
+    # filtering ("prepare_for_ec")
+    for i, v in enumerate(alignments_ra.data):
+        tot += 1
+        if not pass_filter(v, filtered, required_poly_t, max_dust):
+            continue
+
+        cell = v['cell']
+        if DNA3Bit.contains(cell, N):  # todo This throws out more than we want?
+            filtered['cell_N'] += 1
+            continue
+        rmt = v['rmt']
+        gene = v['gene']
+
+        try:
+            res[gene, cell][rmt].append(i)
+        except KeyError:
+            try:
+                res[gene, cell][rmt] = [i]
+            except KeyError:
+                res[gene, cell] = {}
+                res[gene, cell][rmt] = [i]
+
+    # create data structure for creating count matrix
+    grouped_res_dic = {}
+
+    for gene, cell in res:
+        retained_molecules = 0.0
+        retained_reads = 0
+
+        for rmt in res[gene, cell]:
+            n_rmts = len(res[gene, cell][rmt])
+
+            if n_rmts == 1:
+                retained_molecules += singleton_weight
+            else:
+                retained_molecules += 1
+            retained_reads += n_rmts
+
+        grouped_res_dic[gene, cell] = retained_molecules, retained_reads
+
+    log.info('Error correction filtering results: total reads: {}; did not pass '
+             'preliminary filters: {}'.format(tot, sum(filtered.values())))
+    return grouped_res_dic, filtered
+
+
 # TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
 def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
             reverse_complement=True, donor_cutoff=1, alpha=0.05,

@@ -141,6 +141,26 @@ def in_drop_v3(g, b):
     return g
 
 
+def ten_x(g, b):
+    """
+    merge forward and reverse 10x reads, annotating the reverse read
+    (containing genomic information) with the rmt from the forward read.
+    Pool is left empty, and the cell barcode is obtained from the
+    name field of the forward read.
+
+    Please note that R1 is genomic, and R2 is RMT, unlike previous iterations
+
+    :param g: genomic fastq sequence data
+    :param b: barcode fastq sequence data
+    :return: annotated genomic sequence.
+    """
+    rmt = b.sequence.strip()
+    # bc is in a fixed position in the name; assumes 10bp indices.
+    cell = g.name.strip()[-23:-9]
+    g.add_annotation((b'', cell, rmt, b''))
+    return g
+
+
 def drop_seq(g, b):
     """
     merge forward and reverse drop-seq reads, annotating the reverse read (containing
