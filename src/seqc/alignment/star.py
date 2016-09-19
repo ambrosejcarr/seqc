@@ -1,4 +1,6 @@
 from subprocess import Popen, PIPE
+from multiprocessing import cpu_count
+from os import makedirs
 
 
 def default_alignment_args(
@@ -79,3 +81,51 @@ def align(fastq_file: str, index: str, n_threads: int, alignment_dir: str,
         raise ChildProcessError(err)
 
     return alignment_dir + 'Aligned.out.sam'
+
+
+def create_index(
+        fasta: str,
+        gtf: str,
+        genome_dir: str,
+        read_length: int=75, **kwargs) -> None:
+    """Create a new STAR index
+
+    :param fasta: complete filepath to fasta file
+    :param gtf: complete filepath to gtf file
+    :param genome_dir: directory in which new index should be constructed
+    :param read_length: length of reads that will be aligned against this index
+    :param kwargs: additional keyword arguments to pass to the genome construction call.
+      to pass --sjdbFileChrStartEnd filename, pass sjdbFileChrStartEnd=filename (no --)
+    :return: None
+    """
+    ncpu = str(cpu_count())
+    makedirs(genome_dir, exist_ok=True)
+    overhang = str(read_length - 1)
+
+    cmd = (
+        'STAR '
+        '--runMode genomeGenerate '
+        '--runThreadN {ncpu} '
+        '--genomeDir {genome_dir} '
+        '--genomeFastaFiles {fasta} '
+        '--sjdbGTFfile {gtf} '
+        '--sjdbOverhang {overhang} '.format(
+            ncpu=ncpu, genome_dir=genome_dir, fasta=fasta, gtf=gtf, overhang=overhang)
+    )
+
+    for k, v in kwargs.items():
+        cmd += '--{k} {v} '.format(k=k, v=v)
+
+    p = Popen(cmd, stderr=PIPE, stdout=PIPE)
+    out, err = p.communicate()
+    if err:
+        raise ChildProcessError(err)
+
+
+
+
+
+
+
+
+
