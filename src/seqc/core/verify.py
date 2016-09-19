@@ -136,9 +136,18 @@ def executables(*execs):
 
 
 def platform_name(name: str):
+    """
+    checks whether the platform name supplied by the user is supported by the current
+    iteration of seqc.
+    :param name: string of platform name to check
+    :return: name (if supported by seqc).
+    """
     choices = [x[0] for x in inspect.getmembers(platforms, inspect.isclass) if
                issubclass(x[1], platforms.AbstractPlatform)][1:]
     if name not in choices:
         raise ValueError('Please specify a valid platform name for SEQC. The available '
                          'options are: {}'.format(choices))
+    # throw error for mars1_seq since we don't have the appropriate primer length yet
+    if name == 'mars1_seq':
+        raise ValueError('Mars1-seq is currently not stable in this version of SEQC.')
     return name

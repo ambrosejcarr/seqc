@@ -6,7 +6,6 @@ import pickle
 import sys
 import numpy as np
 from seqc import remote, log, io, filter, correct_errors, platforms
-# from seqc.sequence import merge_functions, fastq
 from seqc.sequence import fastq
 from seqc.alignment import star
 from seqc.read_array import ReadArray
@@ -102,7 +101,6 @@ def determine_start_point(args) -> (bool, bool, bool):
 
 
 def merge_fastq_files(
-        # todo: incorporate platform class
         platform, barcode_fastq: [str], output_stem: str,
         genomic_fastq: [str], pigz: bool) -> (str, int):
     """
@@ -118,7 +116,6 @@ def merge_fastq_files(
     """
 
     log.info('Merging genomic reads and barcode annotations.')
-    # merge_function = getattr(merge_functions, platform)
     merged_fastq, fastq_records = fastq.merge_paired(
         merge_function=platform.merge_function,
         fout=output_stem + '_merged.fastq',
@@ -412,22 +409,19 @@ def main(argv: list=None) -> None:
         # determine where the script should start:
         merge, align, process_samfile = determine_start_point(args)
 
-        #######################################################################
-        # todo: incorporate platforms.py here
+        # check if the platform name provided is supported by seqc
         platform_name = verify.platform_name(args.platform)
         platform = getattr(platforms, platform_name)()  # returns platform class
-        ########################################################################
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
                 args.min_poly_t = filter.estimate_min_poly_t(
-                    args.barcode_fastq, platform)  # todo: args.platform
+                    args.barcode_fastq, platform)
                 log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
             args.merged_fastq, fastq_records = merge_fastq_files(
                 platform, args.barcode_fastq, args.output_stem,
                 args.genomic_fastq, pigz)
-                # todo: args.platform
         else:
             fastq_records = None
 
@@ -445,7 +439,7 @@ def main(argv: list=None) -> None:
         args.read_array = h5_file
 
         args.barcode_files = download.barcodes(
-            args.platform, args.barcode_files, output_dir)
+            platform_name, args.barcode_files, output_dir)
 
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
@@ -459,10 +453,6 @@ def main(argv: list=None) -> None:
 
         # correct errors
         log.info('Correcting cell barcode and RMT errors')
-        # todo: got rid of this
-        # correct_errors_function = getattr(correct_errors, args.platform)
-        # cell_counts, summary = correct_errors_function(
-
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
         cell_counts, summary = platform.correct_errors(
             ra, args.barcode_files, reverse_complement=False,

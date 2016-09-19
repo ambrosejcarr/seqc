@@ -22,17 +22,32 @@ class AbstractPlatform:
         """
         return self._correct_errors
 
-    # @property
-    # todo: pass-through method not implemented yet, otherwise same as correct_errors
-    # def resolve_alignments(self):
-    #     raise NotImplementedError
+    @property
+    def resolve_alignments(self):
+        """Gets the resolve_alignments function sharing the same name as the platform.
+        If self.name matches no resolve alignments function, it is assumed that there is
+        no function implemented and calls pass_through(), which does not resolve any
+        alignments
+
+        :return function:
+        """
+        # todo: pass-through method for resolve_alignments not implemented yet
+        raise NotImplementedError
 
     @abstractmethod
     def merge_function(self, g, b):
+        """Defines an abstract method for the merge function, which is specific to each
+        platform. The merge function must be implemented separately for each instance
+        of the AbstractPlatform class.
+        """
         pass
 
     @abstractmethod
     def primer_length(self):
+        """Defines an abstract method for the primer length, which is specific to each
+        platform. This value must be defined for each instance of the AbstractPlatform
+        class to be used for estimating the min_poly_t value at each SEQC run.
+        """
         pass
 
 
@@ -73,13 +88,16 @@ class in_drop(AbstractPlatform):
         return cell, rmt, poly_t
 
     def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for in_drop_v1
+        """
         return 47
 
     def merge_function(self, g, b):
         """
-        merge forward and reverse in-drop v1 reads, annotating the reverse read (containing
-        genomic information) with the cell barcode, rmt, and number of poly_t. Pool is left
-        empty.
+        merge forward and reverse in-drop v1 reads, annotating the reverse read
+        (containing genomic information) with the cell barcode, rmt, and number of
+        poly_t. Pool is left empty.
 
         :param g: genomic fastq sequence data
         :param b: barcode fastq sequence data
@@ -135,6 +153,9 @@ class in_drop_v2(AbstractPlatform):
         return cell, rmt, poly_t
 
     def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for in_drop_v2
+        """
         return 49
 
     def merge_function(self, g, b):
@@ -163,6 +184,9 @@ class in_drop_v2(AbstractPlatform):
 class in_drop_v3(AbstractPlatform):
 
     def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for in_drop_v3
+        """
         return 16
 
     def merge_function(self, g, b):
@@ -191,6 +215,9 @@ class in_drop_v3(AbstractPlatform):
 class drop_seq(AbstractPlatform):
 
     def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for drop_seq.
+        """
         return 20
 
     def merge_function(self, g, b):
@@ -212,11 +239,13 @@ class drop_seq(AbstractPlatform):
 
 class mars1_seq(AbstractPlatform):
 
-    # todo: we don't have pre-demultiplexed data for mars1-seq
-
     def primer_length(self):
-        return None
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for mars1_seq.
+        """
+        # todo: we don't have pre-demultiplexed data for mars1-seq
         # raise NotImplementedError
+        return None
 
     def merge_function(self, g, b):
         """
@@ -238,6 +267,9 @@ class mars1_seq(AbstractPlatform):
 class mars2_seq(AbstractPlatform):
 
     def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for mars2_seq.
+        """
         return 15
 
     def merge_function(self, g, b):
@@ -262,6 +294,9 @@ class mars2_seq(AbstractPlatform):
 class ten_x(AbstractPlatform):
 
     def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for 10X
+        """
         return 10
 
     def merge_function(self, g, b):
