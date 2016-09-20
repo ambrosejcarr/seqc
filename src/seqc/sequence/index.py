@@ -119,29 +119,27 @@ class Index:
         newest = max(int(r[r.find('-') + 1:]) for r in releases)
         return newest
 
-    @classmethod
-    def _download_fasta_file(cls, ftp: FTP, download_name: str) -> None:
+    def _download_fasta_file(self, ftp: FTP, download_name: str) -> None:
         """download the fasta file for cls.organism from ftp, an open Ensembl FTP server
 
         :param FTP ftp: open FTP link to ENSEMBL
         :param str download_name: filename for downloaded fasta file
         """
-        newest = cls._identify_newest_release(ftp)
-        ftp.cwd('/pub/release-%d/fasta/%s/dna' % (newest, cls.organism))
-        ensembl_fasta_filename = cls._identify_genome_file(ftp.nlst())
+        newest = self._identify_newest_release(ftp)
+        ftp.cwd('/pub/release-%d/fasta/%s/dna' % (newest, self.organism))
+        ensembl_fasta_filename = self._identify_genome_file(ftp.nlst())
         with open(download_name, 'wb') as f:
             ftp.retrbinary('RETR %s' % ensembl_fasta_filename, f.write)
 
-    @classmethod
-    def _download_gtf_file(cls, ftp, download_name) -> None:
+    def _download_gtf_file(self, ftp, download_name) -> None:
         """download the gtf file for cls.organism from ftp, an open Ensembl FTP server
 
         :param FTP ftp: open FTP link to ENSEMBL
         :param str download_name: filename for downloaded gtf file
         """
-        newest = cls._identify_newest_release(ftp)
-        ftp.cwd('/pub/release-%d/gtf/%s/' % (newest, cls.organism))
-        ensembl_gtf_filename = cls._identify_gtf_file(ftp.nlst(), newest)
+        newest = self._identify_newest_release(ftp)
+        ftp.cwd('/pub/release-%d/gtf/%s/' % (newest, self.organism))
+        ensembl_gtf_filename = self._identify_gtf_file(ftp.nlst(), newest)
         with open(download_name, 'wb') as f:
             ftp.retrbinary('RETR %s' % ensembl_gtf_filename, f.write)
 

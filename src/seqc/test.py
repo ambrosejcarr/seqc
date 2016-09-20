@@ -1,13 +1,14 @@
 # import random
 import os
 import unittest
+import gzip
 from seqc import remote, log
 from seqc.io import S3
 import pandas as pd
 import numpy as np
 import paramiko
 from seqc.core import process_experiment
-from seqc.sequence import index
+from seqc.sequence import index, gtf
 import ftplib
 import nose2
 
@@ -535,16 +536,31 @@ class TestIndexCreation(unittest.TestCase):
         idx = index.Index('ciona_intestinalis', ['entrezgene'])
         with ftplib.FTP(host='ftp.ensembl.org') as ftp:
             ftp.login()
-            filename = self.outdir + 'ci.fa'
+            filename = self.outdir + 'ci.fa.gz'
             idx._download_fasta_file(ftp, filename)
-        with open(filename) as f:
+        with gzip.open(filename, 'rt') as f:
             self.assertIs(f.readline()[0], '>')  # starting character for genome fa record
+        os.remove(filename)
 
+    def test_identify_annotation_file_finds_a_gtf_file(self):
+        idx = index.Index('ciona_intestinalis', ['entrezgene'])
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+            newest = idx._identify_newest_release(ftp)
+            ftp.cwd('/pub/release-%d/gtf/%s/' % (newest, idx.organism))
+            filename = idx._identify_gtf_file(ftp.nlst(), newest)
+        self.assertIsNotNone(filename)
 
-
-
-
-
+    def test_download_gtf_file_gets_a_file_readable_by_seqc_gtf_reader(self):
+        idx = index.Index('ciona_intestinalis', ['entrezgene'])
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+            filename = self.outdir + 'ci.gtf.gz'
+            idx._download_gtf_file(ftp, filename)
+        rd = gtf.Reader(filename)
+        rc = next(rd.iter_genes())
+        self.assertIsInstance(rc, gtf.Gene)
+        os.remove(filename)
 
     @classmethod
     def tearDownClass(cls):
