@@ -1,14 +1,14 @@
 # import random
 import os
 import unittest
-
 from seqc import remote, log
-# from seqc.sequence.encodings import DNA3Bit, ThreeBit
 from seqc.io import S3
 import pandas as pd
 import numpy as np
 import paramiko
 from seqc.core import process_experiment
+from seqc.sequence import index
+import ftplib
 import nose2
 
 import seqc
@@ -445,111 +445,110 @@ class TestingRemote(unittest.TestCase):
         process_experiment.run_remote(args, volsize=self.vol)
 
 
-# class TestThreeBitEquivalence(unittest.TestCase):
-#     """
-#     Tests that show that the decode and encode functions in
-#     seqc.sequence.Encodings.DNA3bit properly regenerate the input value.
-#     """
-#
-#     @classmethod
-#     def setUpClass(cls):
-#         cb1_file = seqc_dir + 'data_test/in_drop/barcodes/cb1.txt'
-#         cb2_file = seqc_dir + 'data_test/in_drop/barcodes/cb2.txt'
-#
-#         with open(cb1_file) as f1, open(cb2_file) as f2:
-#             cls.cb1_codes = [c.strip() for c in f1.readlines()]
-#             cls.cb2_codes = [c.strip() for c in f2.readlines()]
-#
-#     def test_three_bit_version_1(self):
-#         """
-#         :return:
-#         """
-#
-#         # test conversion of single cb1
-#         for _ in range(100):
-#             case = random.choice(self.cb1_codes).encode()
-#             coded = DNA3Bit.encode(case)
-#             decoded = DNA3Bit.decode(coded)
-#             self.assertEqual(case, decoded)
-#
-#         # test conversion of single cb2
-#         for _ in range(100):
-#             case = random.choice(self.cb2_codes).encode()
-#             coded = DNA3Bit.encode(case)
-#             decoded = DNA3Bit.decode(coded)
-#             self.assertEqual(case, decoded)
-#
-#         # test conversion of merged barcodes
-#         for _ in range(100):
-#             case1 = random.choice(self.cb1_codes).encode()
-#             case2 = random.choice(self.cb2_codes).encode()
-#             coded = DNA3Bit.encode(case1 + case2)
-#             decoded = DNA3Bit.decode(coded)
-#             self.assertEqual(case1 + case2, decoded)
-#
-#     def test_three_bit_version_2(self):
-#         """
-#         :return:
-#         """
-#
-#         # test conversion of single cb1
-#         for _ in range(100):
-#             case = random.choice(self.cb1_codes)
-#             coded = ThreeBit.str2bin(case)
-#             decoded = ThreeBit.bin2str(coded)
-#             self.assertEqual(case, decoded)
-#
-#         # test conversion of single cb2
-#         for _ in range(100):
-#             case = random.choice(self.cb2_codes)
-#             coded = ThreeBit.str2bin(case)
-#             decoded = ThreeBit.bin2str(coded)
-#             self.assertEqual(case, decoded)
-#
-#         # test conversion of merged barcodes
-#         for _ in range(100):
-#             case1 = random.choice(self.cb1_codes)
-#             case2 = random.choice(self.cb2_codes)
-#             coded = ThreeBit.str2bin(case1 + case2)
-#             decoded = ThreeBit.bin2str(coded)
-#             self.assertEqual(case1 + case2, decoded)
-#
-#     def test_mixed_encoding(self):
-#
-#         # test conversion of single cb1
-#         for _ in range(100):
-#             case = random.choice(self.cb1_codes).encode()
-#             coded = DNA3Bit.encode(case)
-#             decoded = ThreeBit.bin2str(coded).encode()
-#             self.assertEqual(case, decoded)
-#
-#         # test conversion of single cb2
-#         for _ in range(100):
-#             case = random.choice(self.cb2_codes).encode()
-#             coded = DNA3Bit.encode(case)
-#             decoded = ThreeBit.bin2str(coded).encode()
-#             self.assertEqual(case, decoded)
-#
-#         # test conversion of merged barcodes
-#         for _ in range(100):
-#             case1 = random.choice(self.cb1_codes).encode()
-#             case2 = random.choice(self.cb2_codes).encode()
-#             coded = DNA3Bit.encode(case1 + case2)
-#             decoded = ThreeBit.bin2str(coded).encode()
-#             self.assertEqual(case1 + case2, decoded)
-#
-#         # test conversion and extraction of cb1, cb2
-#         for _ in range(100):  # todo fails
-#             case1 = random.choice(self.cb1_codes)
-#             case2 = random.choice(self.cb2_codes)
-#             coded = DNA3Bit.encode(
-#                     case1.encode() + case2.encode())
-#             case1_int = ThreeBit.c1_from_codes(coded)
-#             case2_int = ThreeBit.c2_from_codes(coded)
-#             case1_decoded = ThreeBit.bin2str(case1_int)
-#             case2_decoded = ThreeBit.bin2str(case2_int)
-#             self.assertEqual(case1, case1_decoded)
-#             self.assertEqual(case2, case2_decoded)
+class TestIndexCreation(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.outdir = os.environ['TMPDIR']
+        # cls.ftp = ftplib.FTP('ftp.ensembl.org')
+
+    def test_Index_raises_ValueError_when_organism_is_not_provided(self):
+        self.assertRaises(ValueError, index.Index, organism='', additional_id_fields=[])
+
+    def test_Index_raises_ValueError_when_organism_isnt_lower_case(self):
+        self.assertRaises(ValueError, index.Index, organism='Homo_sapiens',
+                          additional_id_fields=[])
+        self.assertRaises(ValueError, index.Index, organism='Homo_Sapiens',
+                          additional_id_fields=[])
+        self.assertRaises(ValueError, index.Index, organism='hoMO_Sapiens',
+                          additional_id_fields=[])
+
+    def test_Index_raises_ValueError_when_organism_has_no_underscore(self):
+        self.assertRaises(ValueError, index.Index, organism='homosapiens',
+                          additional_id_fields=[])
+
+    def test_Index_raises_TypeError_when_additional_id_fields_is_not_correct_type(self):
+        self.assertRaises(TypeError, index.Index, organism='homo_sapiens',
+                          additional_id_fields='not_an_array_tuple_or_list')
+        self.assertRaises(TypeError, index.Index, organism='homo_sapiens',
+                          additional_id_fields='')
+
+    def test_False_evaluating_additional_id_fields_are_accepted_but_set_empty_list(self):
+        idx = index.Index('homo_sapiens', [])
+        self.assertEqual(idx.additional_id_fields, [])
+        idx = index.Index('homo_sapiens', tuple())
+        self.assertEqual(idx.additional_id_fields, [])
+        idx = index.Index('homo_sapiens', np.array([]))
+        self.assertEqual(idx.additional_id_fields, [])
+
+    def test_converter_xml_contains_one_attribute_line_per_gene_list(self):
+        idx = index.Index('homo_sapiens', ['hgnc_symbol', 'mgi_symbol'])
+        self.assertEqual(idx._converter_xml.count('Attribute name'), 3)
+        idx = index.Index('homo_sapiens', [])
+        self.assertEqual(idx._converter_xml.count('Attribute name'), 1)
+
+    def test_converter_xml_formats_genome_as_first_initial_plus_species(self):
+        idx = index.Index('homo_sapiens', ['hgnc_symbol', 'mgi_symbol'])
+        self.assertIn('hsapiens', idx._converter_xml)
+        idx = index.Index('mus_musculus')
+        self.assertIn('mmusculus', idx._converter_xml)
+
+    def test_can_login_to_ftp_ensembl(self):
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+
+    def test_download_converter_gets_output_and_is_pandas_loadable(self):
+        idx = index.Index('ciona_intestinalis', ['entrezgene'])
+        filename = self.outdir + 'ci.csv'
+        idx._download_conversion_file(filename)
+        converter = pd.read_csv(filename, index_col=0)
+        self.assertGreaterEqual(len(converter), 10)
+        self.assertEqual(converter.shape[1], 1)
+        os.remove(filename)  # cleanup
+
+    def test_identify_newest_release_finds_a_release_which_is_gt_eq_85(self):
+        idx = index.Index('ciona_intestinalis', ['entrezgene'])
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+            newest = idx._identify_newest_release(ftp)
+        self.assertGreaterEqual(int(newest), 85)  # current=85, they only get bigger
+
+    def test_identify_genome_file_finds_primary_assembly_when_present(self):
+        idx = index.Index('homo_sapiens', ['entrezgene'])
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+            newest = idx._identify_newest_release(ftp)
+            ftp.cwd('/pub/release-%d/fasta/%s/dna' % (newest, idx.organism))
+            filename = idx._identify_genome_file(ftp.nlst())
+        self.assertIn('primary_assembly', filename)
+
+    def test_identify_genome_file_defaults_to_toplevel_when_no_primary_assembly(self):
+        idx = index.Index('ciona_intestinalis', ['entrezgene'])
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+            newest = idx._identify_newest_release(ftp)
+            ftp.cwd('/pub/release-%d/fasta/%s/dna' % (newest, idx.organism))
+            filename = idx._identify_genome_file(ftp.nlst())
+        self.assertIn('toplevel', filename)
+
+    def test_download_fasta_file_gets_a_properly_formatted_file(self):
+        idx = index.Index('ciona_intestinalis', ['entrezgene'])
+        with ftplib.FTP(host='ftp.ensembl.org') as ftp:
+            ftp.login()
+            filename = self.outdir + 'ci.fa'
+            idx._download_fasta_file(ftp, filename)
+        with open(filename) as f:
+            self.assertIs(f.readline()[0], '>')  # starting character for genome fa record
+
+
+
+
+
+
+
+    @classmethod
+    def tearDownClass(cls):
+        pass
 
 
 class TestLogData(unittest.TestCase):
