@@ -562,6 +562,78 @@ class TestIndexCreation(unittest.TestCase):
         self.assertIsInstance(rc, gtf.Gene)
         os.remove(filename)
 
+    def test_subset_genes_does_nothing_if_no_additional_fields_or_valid_biotypes(self):
+        idx = index.Index('ciona_intestinalis')
+        fasta_name = self.outdir + 'ci.fa.gz'
+        gtf_name = self.outdir + 'ci.gtf.gz'
+        conversion_name = self.outdir + 'ci_ids.csv'
+        idx._download_ensembl_files(fasta_name, gtf_name, conversion_name)
+        idx._subset_genes(conversion_name, gtf_name, self.outdir + 'test.csv',
+                          valid_biotypes=None)
+        self.assertFalse(os.path.isfile(self.outdir))
+
+    def test_subset_genes_produces_a_reduced_annotation_file_when_passed_fields(self):
+        organism = 'ciona_intestinalis'
+        idx = index.Index(organism, ['entrezgene'])
+        os.chdir(self.outdir)
+        idx._download_ensembl_files()
+        self.assertTrue(os.path.isfile('%s.fa.gz' % organism), 'fasta file not found')
+        self.assertTrue(os.path.isfile('%s.gtf.gz' % organism), 'gtf file not found')
+        self.assertTrue(os.path.isfile('%s_ids.csv' % organism), 'id file not found')
+
+        idx._subset_genes()
+        self.assertTrue(os.path.isfile('%s_multiconsortia.gtf' % organism))
+        gr_subset = gtf.Reader('%s_multiconsortia.gtf' % organism)
+        gr_complete = gtf.Reader('%s.gtf.gz' % organism)
+        self.assertLess(
+            len(gr_subset), len(gr_complete),
+            'Subset annotation was not smaller than the complete annotation')
+
+        # make sure only valid biotypes are returned
+        complete_invalid = False
+        valid_biotypes = {b'protein_coding', b'lincRNA'}
+        for r in gr_complete.iter_genes():
+            if r.attribute(b'gene_biotype') not in valid_biotypes:
+                complete_invalid = True
+                break
+        self.assertTrue(complete_invalid)
+        subset_invalid = False
+        for r in gr_subset.iter_genes():
+            if r.attribute(b'gene_biotype') not in valid_biotypes:
+                subset_invalid = True
+                break
+        self.assertFalse(subset_invalid)
+        self.assertGreater(len(gr_subset), 0)
+
+    def test_create_star_index_produces_an_index(self):
+        organism = 'ciona_intestinalis'
+        idx = index.Index(organism, ['entrezgene'])
+        os.chdir(self.outdir)
+        idx._download_ensembl_files()
+        idx._subset_genes()
+        print(os.getcwd())
+        idx._create_star_index()
+        self.assertTrue(os.path.isfile('{outdir}/{organism}/SAindex'.format(
+            outdir=self.outdir, organism=organism)))
+
+    def test_upload_star_index_correctly_places_index_on_s3(self):
+        os.chdir(self.outdir)
+        organism = 'ciona_intestinalis'
+        idx = index.Index(organism, ['entrezgene'])
+        index_directory = organism + '/'
+        idx._download_ensembl_files()
+        idx._subset_genes()
+        idx._create_star_index()
+        idx._upload_index(index_directory, 's3://dplab-data/genomes/ciona_intestinalis/')
+        # watch output for success; will list uploads
+
+    def test_create_index_produces_and_uploads_an_index(self):
+        os.chdir(self.outdir)
+        organism = 'ciona_intestinalis'
+        idx = index.Index(organism, ['entrezgene'])
+        idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
+
+
     @classmethod
     def tearDownClass(cls):
         pass
