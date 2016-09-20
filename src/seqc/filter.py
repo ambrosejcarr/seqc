@@ -327,7 +327,7 @@ def create_filtered_dense_count_matrix(
     # filter high_mt_content if requested
     if filter_mitochondrial_rna:
         mt_invalid = high_mitochondrial_rna(
-            molecules_data, molecules_columns, cov_invalid, max_mt_content, plot)
+            molecules_data, molecules_columns, cov_invalid, max_mt_content, plot, ax_mt)
         cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
             mt_invalid, cov_invalid, molecules_data)
     else:
