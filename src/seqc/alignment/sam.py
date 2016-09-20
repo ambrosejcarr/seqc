@@ -127,11 +127,11 @@ class SamRecord:
 
     @property
     def is_multimapped(self):
-        return True if self.optional_fields['NH'] != 1 else False
+        return True if self.optional_fields['NH'] > 1 else False
 
     @property
     def is_uniquely_mapped(self):
-        return not self.is_multimapped
+        return True if self.optional_fields['NH'] == 1 else False
 
     @property
     def strand(self):
