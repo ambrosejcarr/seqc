@@ -127,7 +127,7 @@ class SamRecord:
 
     @property
     def is_multimapped(self):
-        return True if self.optional_fields['NH'] == 1 else False
+        return True if self.optional_fields['NH'] != 1 else False
 
     @property
     def is_uniquely_mapped(self):
