@@ -67,7 +67,7 @@ class SamRecord:
     def optional_fields(self):
         flags_ = {}
         for f in self._record[1:]:
-            k, _, v = f.split(':')
+            k, _, v = f.split(b':')
             flags_[k] = int(v)
         return flags_
 
@@ -127,11 +127,11 @@ class SamRecord:
 
     @property
     def is_multimapped(self):
-        return True if self.optional_fields['NH'] > 1 else False
+        return True if self.optional_fields[b'NH'] > 1 else False
 
     @property
     def is_uniquely_mapped(self):
-        return True if self.optional_fields['NH'] == 1 else False
+        return True if self.optional_fields[b'NH'] == 1 else False
 
     @property
     def strand(self):
