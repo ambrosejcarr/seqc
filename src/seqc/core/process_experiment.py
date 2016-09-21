@@ -297,10 +297,10 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     gene_id_map = create_gene_id_to_official_gene_symbol_map(
         args.index + 'annotations.gtf')
 
-    # translate symbols to gene names
-    reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
-    molecules = ensembl_gene_id_to_official_gene_symbol(
-        molecules, gene_id_map=gene_id_map)
+    # # translate symbols to gene names
+    # reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
+    # molecules = ensembl_gene_id_to_official_gene_symbol(
+    #     molecules, gene_id_map=gene_id_map)
 
     # get dense molecules
     dense, total_molecules, mols_lost, cells_lost, cell_description = (
