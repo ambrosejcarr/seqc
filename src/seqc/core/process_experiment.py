@@ -10,8 +10,6 @@ from seqc.sequence import fastq
 from seqc.alignment import star
 from seqc.read_array import ReadArray
 from seqc.exceptions import ConfigurationError, retry_boto_call
-from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
-                               create_gene_id_to_official_gene_symbol_map)
 from seqc.filter import create_filtered_dense_count_matrix
 from seqc.sparse_frame import SparseFrame
 from seqc.core import parser, verify, config, download, upload, execution_control
@@ -294,8 +292,8 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
              'generating dense count matrix')
 
     # todo speed up this function
-    gene_id_map = create_gene_id_to_official_gene_symbol_map(
-        args.index + 'annotations.gtf')
+    # gene_id_map = create_gene_id_to_official_gene_symbol_map(
+    #     args.index + 'annotations.gtf')
 
     # # translate symbols to gene names
     # reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
