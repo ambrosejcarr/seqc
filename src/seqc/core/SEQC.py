@@ -327,7 +327,8 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
 
 
 def run(argv: list, args) -> None:
-    """
+    """Run SEQC on the files provided in args, given specifications provided on the
+    command line
 
     :param argv: command-line arguments passed to SEQC. Omits the first argument
       (argv[1:]), which is the program name
