@@ -501,11 +501,22 @@ def create_index(args):
     idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
 
 
-if __name__ == '__main__':
-    arguments = parser.parse_args(sys.argv[1:])
+def main(argv):
+    """Function to determine which submodule to execute.
+
+    Created to allow the main pipeline to be tested from the earliest entry point
+    (command-line arguments).
+
+    :param argv: output of sys.argv[1:]
+    """
+    arguments = parser.parse_args(argv)
     if arguments.subparser_name == 'run':
-        run(sys.argv[1:], arguments)
+        run(argv, arguments)
     elif arguments.subparser_name == 'progress':
         remote.check_progress()
     elif arguments.subparser_name == 'index':
         create_index(arguments)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

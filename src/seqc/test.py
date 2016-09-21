@@ -89,15 +89,15 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            arguments = parser.parse_args(argv)
-            SEQC.run(argv, arguments)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -108,14 +108,15 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2_no_mt(self):
         platform = 'in_drop_v2'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -127,7 +128,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-filter-mitochondrial-rna',
         ]
         try:
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -135,7 +136,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @unittest.skip("Not currently stable")
     def test_in_drop_v3(self):
         platform = 'in_drop_v3'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -146,14 +148,15 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_drop_seq(self):
         platform = 'drop_seq'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -163,15 +166,15 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            print(args)
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_ten_x(self):
         platform = 'ten_x'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.mouse,
@@ -182,8 +185,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            print(args)
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -191,7 +193,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @unittest.skip("Not currently stable")
     def test_mars1_seq(self):
         platform = 'mars1_seq'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -202,7 +205,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -210,7 +213,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @unittest.skip("Not currently stable")
     def test_mars2_seq(self):
         platform = 'mars2_seq'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -221,7 +225,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.run(args)
+            SEQC.main(argv)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -247,7 +251,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'in_drop'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -257,14 +262,15 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -274,7 +280,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local'
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -282,7 +288,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'in_drop_v3'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -292,14 +299,15 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_drop_seq(self):
         platform = 'drop_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -308,7 +316,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
             '--local',
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -316,7 +324,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'mars1_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -326,7 +335,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -334,7 +343,8 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'mars2_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -344,7 +354,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
@@ -367,7 +377,8 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
         platform = 'in_drop_v2'
         os.makedirs(seqc_dir + 'test/TestRemoteSpeciesMixExperiment/{}'.format(platform),
                     exist_ok=True)
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output,
             '-i', self.index,
@@ -378,7 +389,7 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
             '--instance-type', 'r3',
             '--spot-bid', '1.0',
         ]
-        SEQC.run(args)
+        SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
@@ -442,13 +453,13 @@ class TestingRemote(unittest.TestCase):
     def test040_primed_for_remote_run(self):
         # This starts a remote job, but tearDown will kill it as soon as run_remote
         # exits => != from above
-        ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
-                          's3://dplab-data/genomes/hg38_phiX/', '--email-status',
+        ready_made_cmd = ['run', 'drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/',
+                          '-i', 's3://dplab-data/genomes/hg38_phiX/', '--email-status',
                           'cyril-cros@hotmail.fr', '-b',
                           's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
                           's3://dplab-data/seqc/test/drop_seq/genomic/']
-        args = SEQC.parse_args(ready_made_cmd)
-        SEQC.run_remote(args, volsize=self.vol)
+        args = parser.parse_args(ready_made_cmd)
+        SEQC.run_remote(args, ready_made_cmd, volsize=self.vol)
 
 
 class TestIndexCreation(unittest.TestCase):
