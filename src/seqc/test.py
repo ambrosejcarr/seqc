@@ -4,6 +4,7 @@ import unittest
 import gzip
 from seqc import remote, log
 from seqc.io import S3
+from seqc.core import parser
 import pandas as pd
 import numpy as np
 import paramiko
@@ -34,8 +35,9 @@ class TestProcessExperimentGeneral(unittest.TestCase):
         cls.log_name = seqc_dir + 'test/test_remote/seqc_{}.log'
 
     def format_args(self, platform):
-        """Added for further input validation"""    # TODO implement said validation
+        """Added for further input validation"""
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -49,8 +51,10 @@ class TestProcessExperimentGeneral(unittest.TestCase):
         return args
 
     def test_recreate_command(self):
-        parsed_args = process_experiment.parse_args(self.format_args('in_drop'))
-        print(process_experiment.recreate_command_line_arguments(parsed_args))
+        parsed_args = parser.parse_args(self.format_args('in_drop'))
+        print(parsed_args)
+        print(parser.generate_remote_cmdline_args(self.format_args('in_drop')))
+        print(parser.recreate_cmdline_args(self.format_args('in_drop')))
 
 
 class TestRemoteProcessExperiment(unittest.TestCase):
@@ -63,7 +67,6 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         os.makedirs(seqc_dir + 'test/TestRemoteProcessExperiment', exist_ok=True)
         cls.human = 's3://dplab-data/genomes/hg38_phiX/'
         cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
-        # cls.email = 'cyril-cros@hotmail.fr'
         cls.email = input('provide an email address to receive test results: ')
         cls.output = 's3://dplab-data/seqc/test/{}/'
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
@@ -73,7 +76,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
 
     def test_in_drop(self):
         platform = 'in_drop'
-        args = [
+        argv = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -85,7 +89,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.main(args)
+            arguments = parser.parse_args(argv)
+            process_experiment.run(argv, arguments)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -103,7 +108,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -122,7 +127,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-filter-mitochondrial-rna',
         ]
         try:
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -141,7 +146,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -159,7 +164,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         ]
         try:
             print(args)
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -178,7 +183,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         ]
         try:
             print(args)
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -197,7 +202,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -216,7 +221,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.main(args)
+            process_experiment.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -252,7 +257,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2(self):
@@ -269,7 +274,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local'
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -287,7 +292,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_drop_seq(self):
@@ -303,7 +308,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
             '--local',
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -321,7 +326,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -339,7 +344,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
@@ -373,7 +378,7 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
             '--instance-type', 'r3',
             '--spot-bid', '1.0',
         ]
-        process_experiment.main(args)
+        process_experiment.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 

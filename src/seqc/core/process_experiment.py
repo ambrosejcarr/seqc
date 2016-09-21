@@ -328,9 +328,14 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
             cell_description)
 
 
-def main(argv: list=None) -> None:
+def run(argv: list, args) -> None:
+    """
 
-    args = parser.parse_args(argv)
+    :param argv:
+    :param args:
+    :return:
+    """
+
     if args.aws:
         args.log_name = args.log_name.split('/')[-1]
         log.setup_logger('/data/' + args.log_name)
@@ -487,4 +492,10 @@ def main(argv: list=None) -> None:
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    arguments = parser.parse_args(sys.argv[1:])
+    if arguments.subparser_name == 'run':
+        run(sys.argv[1:], arguments)
+    elif arguments.subparser_name == 'progress':
+        pass
+    elif arguments.subparser_name == 'index':
+        pass
