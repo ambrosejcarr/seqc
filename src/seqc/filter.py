@@ -11,18 +11,8 @@ from seqc.sparse_frame import SparseFrame
 from numpy.linalg import LinAlgError
 import seqc.plot
 
-_primer_lengths = dict(
-    in_drop=47,
-    in_drop_v2=49,
-    in_drop_v3=16,
-    drop_seq=20,
-    mars1_seq=None,  # mars1-seq has not been provided to us as pre-demultiplexed data
-    mars2_seq=15,
-    ten_x=10
-)
 
-
-def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
+def estimate_min_poly_t(fastq_files: list, platform) -> int:
     """
     estimate the minimum size of poly-t tail that should be present on a properly captured
     molecule's forward read. If multiple fastq files are passed, the minimum value across
@@ -33,11 +23,7 @@ def estimate_min_poly_t(fastq_files: list, platform: str) -> int:
     :return: int minimum number of poly-t expected from a valid capture primer
     """
     min_vals = []
-    try:
-        primer_length = _primer_lengths[platform]
-    except KeyError:
-        raise ValueError('provided value {} is not a valid argument for platform.'.format(
-            platform))
+    primer_length = platform.primer_length()
     if primer_length is None:
         raise RuntimeError(
             'provided platform does not have a defined primer length, and thus the '
@@ -341,7 +327,7 @@ def create_filtered_dense_count_matrix(
     # filter high_mt_content if requested
     if filter_mitochondrial_rna:
         mt_invalid = high_mitochondrial_rna(
-            molecules_data, molecules_columns, cov_invalid, max_mt_content)
+            molecules_data, molecules_columns, cov_invalid, max_mt_content, plot, ax_mt)
         cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
             mt_invalid, cov_invalid, molecules_data)
     else:
