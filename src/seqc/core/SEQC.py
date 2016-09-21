@@ -267,11 +267,17 @@ def create_or_download_read_array(
 
 def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     """generate sparse count matrix, filter, and generate dense count matrix
-    :param args:
-    :param cell_counts:
-    :param pigz:
-    :param aws_upload_key:
-    :return:
+    :param args:  parsed command-line arguments
+    :param dict cell_counts: error correction results
+    :param bool pigz: True if pigz is installed, else False
+    :param aws_upload_key: location on aws to upload results
+    :return tuple:
+      ProcessManager sparse_proc: manager for uploading SparseMatrix results
+      str sparse_csv: filtered count matrix, saved in sparse csv format
+      int total_molecules: number of molecules recovered pre-filtering
+      int mols_lost: number of molecules removed by filters
+      int cells_lost: number of cells removed by filters
+      pd.Series cell_description: descriptive statistics of the retained data
     """
 
     log.info('Creating sparse count matrices')
@@ -291,15 +297,6 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
 
     log.info('filtering, summarizing cell molecule count distribution, and '
              'generating dense count matrix')
-
-    # todo speed up this function
-    # gene_id_map = create_gene_id_to_official_gene_symbol_map(
-    #     args.index + 'annotations.gtf')
-
-    # # translate symbols to gene names
-    # reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
-    # molecules = ensembl_gene_id_to_official_gene_symbol(
-    #     molecules, gene_id_map=gene_id_map)
 
     # get dense molecules
     dense, total_molecules, mols_lost, cells_lost, cell_description = (
@@ -332,9 +329,10 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
 def run(argv: list, args) -> None:
     """
 
-    :param argv:
-    :param args:
-    :return:
+    :param argv: command-line arguments passed to SEQC. Omits the first argument
+      (argv[1:]), which is the program name
+    :param args: parsed argv, produced by seqc.parser(). This function is only called
+      when args.subprocess_name is "run".
     """
 
     if args.aws:
@@ -495,7 +493,8 @@ def run(argv: list, args) -> None:
 def create_index(args):
     """create an index for SEQC.
 
-    :return:
+    :param args: parsed arguments. This function is only called if subprocess_name is
+      'index'
     """
     idx = Index(args.organism, args.additional_id_types)
     idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
