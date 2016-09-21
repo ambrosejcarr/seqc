@@ -9,10 +9,11 @@ from seqc import remote, log, io, filter, correct_errors, platforms
 from seqc.sequence import fastq
 from seqc.alignment import star
 from seqc.read_array import ReadArray
-from seqc.exceptions import ConfigurationError, retry_boto_call
+from seqc.exceptions import ConfigurationError
 from seqc.filter import create_filtered_dense_count_matrix
 from seqc.sparse_frame import SparseFrame
 from seqc.core import parser, verify, config, download, upload, execution_control
+from seqc.sequence.index import Index
 
 
 def run_remote(args, argv, volsize) -> None:
@@ -58,13 +59,13 @@ def run_remote(args, argv, volsize) -> None:
         cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
                                   ''.format(cmd=cmd))
 
-        # check that process_experiment.py is actually running on the cluster
-        out, err = cluster.serv.exec_command('ps aux | grep process_experiment.py')
+        # check that SEQC.py is actually running on the cluster
+        out, err = cluster.serv.exec_command('ps aux | grep SEQC.py')
         res = ' '.join(out)
-        if '/usr/local/bin/process_experiment.py' not in res:
+        if '/usr/local/bin/SEQC.py' not in res:
             raise ConfigurationError('Error executing SEQC on the cluster!')
         log.notify('Terminating local client. Email will be sent when remote run '
-                   'completes. Please use "process_experiment.py --check-progress" '
+                   'completes. Please use "SEQC.py --check-progress" '
                    'to monitor the status of the remote run.')
     except Exception as e:
         log.notify('Error {e} occurred during cluster setup!'.format(e=e))
@@ -345,7 +346,7 @@ def run(argv: list, args) -> None:
     print('beginning execution_control')
     with execution_control.cleanup(args):
         print('in_execution_control')
-        log.print_exact_command_line('process_experiment.py ' + " ".join(argv))
+        log.print_exact_command_line('SEQC.py ' + " ".join(argv))
         pigz, email = verify.executables('pigz', 'mutt')
         if not email and not args.remote:
             log.notify('mutt was not found on this machine; an email will not be sent to '
@@ -491,11 +492,20 @@ def run(argv: list, args) -> None:
                 args.output_stem, args.log_name, email)
 
 
+def create_index(args):
+    """create an index for SEQC.
+
+    :return:
+    """
+    idx = Index(args.organism, args.additional_id_types)
+    idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
+
+
 if __name__ == '__main__':
     arguments = parser.parse_args(sys.argv[1:])
     if arguments.subparser_name == 'run':
         run(sys.argv[1:], arguments)
     elif arguments.subparser_name == 'progress':
-        pass
+        remote.check_progress()
     elif arguments.subparser_name == 'index':
-        pass
+        create_index(arguments)

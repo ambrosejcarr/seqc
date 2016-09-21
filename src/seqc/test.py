@@ -8,7 +8,7 @@ from seqc.core import parser
 import pandas as pd
 import numpy as np
 import paramiko
-from seqc.core import process_experiment
+from seqc.core import SEQC
 from seqc.sequence import index, gtf
 import ftplib
 import nose2
@@ -59,7 +59,7 @@ class TestProcessExperimentGeneral(unittest.TestCase):
 
 class TestRemoteProcessExperiment(unittest.TestCase):
     """
-    Complete tests for the remote running of process_experiment.py
+    Complete tests for the remote running of SEQC.py
     """
 
     @classmethod
@@ -90,7 +90,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         ]
         try:
             arguments = parser.parse_args(argv)
-            process_experiment.run(argv, arguments)
+            SEQC.run(argv, arguments)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -108,7 +108,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -127,7 +127,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-filter-mitochondrial-rna',
         ]
         try:
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -146,7 +146,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -164,7 +164,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         ]
         try:
             print(args)
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -183,7 +183,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         ]
         try:
             print(args)
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -202,7 +202,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -221,7 +221,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            process_experiment.run(args)
+            SEQC.run(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -229,7 +229,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
 
 class TestLocalProcessExperiment(unittest.TestCase):
     """
-    Complete tests for local running of process_experiment.py
+    Complete tests for local running of SEQC.py
     """
 
     @classmethod
@@ -257,7 +257,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2(self):
@@ -274,7 +274,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local'
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -292,7 +292,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_drop_seq(self):
@@ -308,7 +308,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
             '--local',
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -326,7 +326,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -344,13 +344,13 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
 class TestRemoteSpeciesMixExperiment(unittest.TestCase):
     """
-    Complete tests for local running of process_experiment.py
+    Complete tests for local running of SEQC.py
     """
 
     @classmethod
@@ -378,7 +378,7 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
             '--instance-type', 'r3',
             '--spot-bid', '1.0',
         ]
-        process_experiment.run(args)
+        SEQC.run(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
@@ -447,8 +447,8 @@ class TestingRemote(unittest.TestCase):
                           'cyril-cros@hotmail.fr', '-b',
                           's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
                           's3://dplab-data/seqc/test/drop_seq/genomic/']
-        args = process_experiment.parse_args(ready_made_cmd)
-        process_experiment.run_remote(args, volsize=self.vol)
+        args = SEQC.parse_args(ready_made_cmd)
+        SEQC.run_remote(args, volsize=self.vol)
 
 
 class TestIndexCreation(unittest.TestCase):
@@ -481,11 +481,11 @@ class TestIndexCreation(unittest.TestCase):
 
     def test_False_evaluating_additional_id_fields_are_accepted_but_set_empty_list(self):
         idx = index.Index('homo_sapiens', [])
-        self.assertEqual(idx.additional_id_fields, [])
+        self.assertEqual(idx.additional_id_types, [])
         idx = index.Index('homo_sapiens', tuple())
-        self.assertEqual(idx.additional_id_fields, [])
+        self.assertEqual(idx.additional_id_types, [])
         idx = index.Index('homo_sapiens', np.array([]))
-        self.assertEqual(idx.additional_id_fields, [])
+        self.assertEqual(idx.additional_id_types, [])
 
     def test_converter_xml_contains_one_attribute_line_per_gene_list(self):
         idx = index.Index('homo_sapiens', ['hgnc_symbol', 'mgi_symbol'])

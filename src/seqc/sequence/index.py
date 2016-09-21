@@ -10,14 +10,14 @@ from seqc.io import S3
 
 class Index:
 
-    def __init__(self, organism, additional_id_fields=None):
+    def __init__(self, organism, additional_id_types=None):
         """Create an Index object for organism, requiring that a valid annotation have
         both an ENSEMBL id and at least one additional id provided by an
         additional_id_field (if provided)
 
         :param organism: name of the organism. Must be lower-case genus_species. For
           example, human=homo_sapiens, mouse=mus_musculus, etc.
-        :param additional_id_fields: (default: None) Names of additional ID fields whose
+        :param additional_id_types: (default: None) Names of additional ID types whose
           presence declares the associated ENSEMBL gene id a valid identifier. If multiple
           such fields are passed, a gene can be defined in any of the provided fields, and
           it will be declared valid. If no fields are passed, no ID filtering will be
@@ -51,23 +51,23 @@ class Index:
         self._organism = organism
 
         # check additional_id_fields argument
-        if not (isinstance(additional_id_fields, (list, tuple, np.ndarray)) or
-                additional_id_fields is None):
+        if not (isinstance(additional_id_types, (list, tuple, np.ndarray)) or
+                additional_id_types is None):
             raise TypeError(
                 'if provided, additional id fields must be a list, tuple, or numpy '
                 'array')
-        if additional_id_fields:
-            self._additional_id_fields = additional_id_fields
+        if additional_id_types:
+            self._additional_id_types = additional_id_types
         else:
-            self._additional_id_fields = []
+            self._additional_id_types = []
 
     @property
     def organism(self) -> str:
         return self._organism
 
     @property
-    def additional_id_fields(self) -> list:
-        return self._additional_id_fields
+    def additional_id_types(self) -> list:
+        return self._additional_id_types
 
     @property
     def _converter_xml(self) -> str:
@@ -75,7 +75,7 @@ class Index:
         ENSEMBL gene ids to any identifiers implemented in self.additional_id_fields
         """
         attributes = ''.join(
-            '<Attribute name = "%s" />' % f for f in self.additional_id_fields)
+            '<Attribute name = "%s" />' % f for f in self.additional_id_types)
         genus, species = self.organism.split('_')
         genome_name = genus[0] + species
         xml = (
@@ -214,7 +214,7 @@ class Index:
         :param truncated_annotation: name for the generated output file
         :param list(bytes) valid_biotypes: only accept genes of this biotype.
         """
-        if not (self.additional_id_fields or valid_biotypes):  # nothing to be done
+        if not (self.additional_id_types or valid_biotypes):  # nothing to be done
             return
 
         # change to set for efficiency
@@ -286,12 +286,18 @@ class Index:
         key_prefix = '/'.join(dirs)
         S3.upload_files(file_prefix=index_directory, bucket=bucket, key_prefix=key_prefix)
 
-    def create_index(self, index_folder_name: str=None, s3_location: str=None):
+    def create_index(
+            self,
+            index_folder_name: str=None,
+            valid_biotypes=('protein_coding', 'lincRNA'),
+            s3_location: str=None):
         """create an optionally upload an index
 
         :param index_folder_name: name of the folder in which to create the index. If not
           provided, an index will be created that is named after the organism, and will
           be placed in the current directory
+        :param valid_biotypes: gene biotypes that do not match values in this list will
+          be discarded from the annotation and will not appear in final count matrices
         :param s3_location: optional, s3 location to upload the index to.
         :return:
         """
@@ -301,7 +307,7 @@ class Index:
         os.makedirs(index_folder_name, exist_ok=True)
         os.chdir(index_folder_name)
         self._download_ensembl_files()
-        self._subset_genes()
+        self._subset_genes(valid_biotypes=valid_biotypes)
         self._create_star_index()
         if s3_location:
             self._upload_index('./', s3_location)

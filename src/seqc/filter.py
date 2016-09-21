@@ -28,7 +28,7 @@ def estimate_min_poly_t(fastq_files: list, platform) -> int:
         raise RuntimeError(
             'provided platform does not have a defined primer length, and thus the '
             'min_poly_t parameter cannot be estimated. Please provide --min-poly-t '
-            'explicitly in process_experiment.py.')
+            'explicitly in SEQC.py.')
     for f in fastq_files:
         mean = Reader(f).estimate_sequence_length()[0]
         available_nucleotides = max(0, mean - primer_length)
