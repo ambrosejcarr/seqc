@@ -302,7 +302,7 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     dense, total_molecules, mols_lost, cells_lost, cell_description = (
         create_filtered_dense_count_matrix(
             molecules, reads, plot=True, figname=args.output_stem + '_filters.png',
-            filter_mitochondrial_rna=args.filter_mitochondrial_rna))
+            filter_mitochondrial_rna=False))  # todo fix hardcoding False for filter
 
     # save sparse csv
     dense[dense == 0] = np.nan  # for sparse_csv saving
