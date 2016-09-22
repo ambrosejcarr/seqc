@@ -5,19 +5,17 @@ from math import ceil
 from warnings import warn
 
 
-class cleanup:
+class local_instance_cleanup:
 
     def __init__(self, args):
-        """Execute the seqc code with defined cleanup practices"""
+        """Execute the seqc code on an instance with defined cleanup practices"""
         self.args = args
         self.err_status = False
         self.email = verify.executables('mutt')[0]  # unpacking necessary for singleton
         self.aws_upload_key = args.output_stem
-        print('initialized cleanup execution context')
 
     def __enter__(self):
         """No entrance behavior is necessary to wrap the main function"""
-        print('entering cleanup execution context')
         return
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -93,10 +91,15 @@ class remote_execute:
 
     def __enter__(self):
         """create a cluster and make it accessible within the context"""
-        cluster = remote.ClusterServer()
-        cluster.setup_cluster(self.volsize, self.instance_type, spot_bid=self.spot_bid)
-        cluster.serv.connect()
-        self.cluster = cluster
+        try:
+            cluster = remote.ClusterServer()
+            cluster.setup_cluster(
+                self.volsize, self.instance_type, spot_bid=self.spot_bid)
+            cluster.serv.connect()
+            self.cluster = cluster
+        except Exception as e:
+            log.notify('Exception {e} occurred during cluster setup!'.format(e=e))
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -115,13 +118,26 @@ class remote_execute:
             raise ChildProcessError(errs)
         return data
 
-    # could send a signal from the async_process to indicate exit. (?)
     def async_execute(self, command_string):
-        """run the remote function on the server"""
+        """run the remote function on the server, signaling to remote_execute that there
+        may be a process that remains running in the background after this function
+        returns.
+
+        If an async_execute function returns without error, instance termination is
+        halted, and the user must manually terminate the instance with
+        "SEQC.py instance terminate -i <instance id>"
+
+        :param command_string: command to be remote executed. Assumed to be called with
+          nohup, to prevent hangup when the ssh shell is disconnected, and to be placed
+          in the background with "&", so that async_execute() returns immediately. If
+          these requirements are not met, there may be undefined results, and the
+          process will warn the user.
+        """
         if not all((s in command_string for s in ['nohup', '&'])):
             warn('Excecuting command that may not be asynchronous. User is '
                  'responsible for including commands that place the called function '
-                 'into the background. Missing "nohup" or "&".')
+                 'into the background. Missing "nohup" or "&". If a synchronous command '
+                 'is desired, please use the execute() method.')
         self.cluster.serv.exec_command(command_string)
         self.async_process = True
 

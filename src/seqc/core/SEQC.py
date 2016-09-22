@@ -16,13 +16,13 @@ from seqc.core import parser, verify, config, download, upload, execution_contro
 from seqc.sequence.index import Index
 
 
-def run_remote_simplified(args, argv, volsize) -> None:
+def run_remote(args, argv, volsize) -> None:
     """run remote using the execution context manager"""
 
     # do some final checking on args
-    log.notify('beginning remote run')
+    log.notify('Beginning remote run')
     if args.output_stem.endswith('/'):
-        args.output_stem = args.output_stem[:-1]
+        args.output_stem = args.output_stem[:-1]  # todo remove this req. if possible
     cmd = parser.generate_remote_cmdline_args(argv)
     log.print_exact_command_line(cmd)
 
@@ -44,7 +44,7 @@ def remote_index():
     raise NotImplementedError
 
 
-def run_remote(args, argv, volsize) -> None:
+def run_remote_old(args, argv, volsize) -> None:
     """
     Mirror the local arguments from a seqc.core.process_experiment call to an AWS server
     and execute the run there. When complete, terminates the local process unless
@@ -370,9 +370,7 @@ def run(argv: list, args) -> None:
     else:
         log.setup_logger(args.log_name)
 
-    print('beginning execution_control')
-    with execution_control.cleanup(args):
-        print('in_execution_control')
+    with execution_control.local_instance_cleanup(args):
         log.print_exact_command_line('SEQC.py ' + " ".join(argv))
         pigz, email = verify.executables('pigz', 'mutt')
         if not email and not args.remote:
