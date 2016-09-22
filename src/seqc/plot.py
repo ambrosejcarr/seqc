@@ -80,6 +80,34 @@ def refresh_rc():
     print('rcParams updated')
 
 
+def equalize_axes(ax, set_max=True):
+    """equalize the size of the axes.
+
+    :param ax: axes to equalize
+    :param set_max: if True, set both axes equal to the size of the largest axis (x, y)
+    """
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+    if set_max:
+        ax.set_xlim((
+            min(xmin, ymin),
+            max(xmax, ymax),
+        ))
+        ax.set_ylim((
+            min(xmin, ymin),
+            max(xmax, ymax),
+        ))
+    else:
+        ax.set_xlim((
+            max(xmin, ymin),
+            min(xmax, ymax),
+        ))
+        ax.set_ylim((
+            max(xmin, ymin),
+            min(xmax, ymax),
+        ))
+
+
 class FigureGrid:
     """
     Generates a grid of axes for plotting

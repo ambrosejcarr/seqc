@@ -1,6 +1,7 @@
 import os
 from seqc import log, io, exceptions, remote
 from seqc.core import verify
+from math import ceil
 
 
 class cleanup:
@@ -71,3 +72,49 @@ class cleanup:
                      'clean-up'.format(self.args.no_terminate))
 
         return True  # signals successful cleanup for contextmanager
+
+
+class remote_execute:
+
+    def __init__(self, instance_type=None, spot_bid=None, volsize=None):
+        """Create a temporary cluster for the remote execution of passed command strings
+
+        :param instance_type:
+        :param spot_bid:
+        :param volsize:
+        """
+
+        self.instance_type = instance_type
+        self.spot_bid = spot_bid
+        self.volsize = int(ceil(volsize / 1e9))
+        self.cluster = None
+
+    def __enter__(self):
+        """create a cluster and make it accessible within the context"""
+        cluster = remote.ClusterServer()
+        cluster.setup_cluster(self.volsize, self.instance_type, spot_bid=self.spot_bid)
+        cluster.serv.connect()
+        self.cluster = cluster
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """terminate the instance"""
+        self.cluster.serv.disconnect()
+        remote.terminate_cluster(self.cluster.inst_id.instance_id)
+        if exc_type is not None:  # todo check if this is how it works
+            log.notify('%s: %s\n%s' % (exc_type, exc_val, exc_tb))  # todo check this too
+        else:
+            return True  # signal clean exit
+
+    def execute(self, command_string):
+        """run the remote function on the server, capturing output and errors"""
+        data, errs = self.cluster.serv.exec_command(command_string)
+        if errs:
+            raise ChildProcessError(errs)
+        return data
+
+    def put_file(self, local_file, remote_file):
+        self.cluster.serv.put_file(local_file, remote_file)
+
+    def get_file(self, remote_file, local_file):
+        self.cluster.serv.get_file(remote_file, local_file)

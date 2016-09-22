@@ -16,6 +16,34 @@ from seqc.core import parser, verify, config, download, upload, execution_contro
 from seqc.sequence.index import Index
 
 
+def run_remote_simplified(args, argv, volsize) -> None:
+    """run remote using the execution context manager"""
+
+    # do some final checking on args
+    log.notify('beginning remote run')
+    if args.output_stem.endswith('/'):
+        args.output_stem = args.output_stem[:-1]
+    cmd = parser.generate_remote_cmdline_args(argv)
+    log.print_exact_command_line(cmd)
+
+    with execution_control.remote_execute(
+            args.instance_type, args.spot_bid, volsize) as s:
+        s.execute('sudo chown -R ubuntu /home/ubuntu/.seqc/')
+        s.put_file(os.path.expanduser('~/.seqc/config'), '/home/ubuntu/.seqc/config')
+        s.execute('cd /data; nohup {cmd} > /dev/null 2>&1 &'.format(cmd=cmd))
+        out = ' '.join(s.execute('ps aux | grep SEQC.py'))
+        if '/usr/local/bin/SEQC.py' not in out:
+            raise ConfigurationError('Error executing SEQC on the cluster!')
+
+    log.notify(
+        'Terminating local client. Email will be sent when remote run completes. Please '
+        'use "SEQC.py progress" to monitor the status of the remote run.')
+
+
+def remote_index():
+    raise NotImplementedError
+
+
 def run_remote(args, argv, volsize) -> None:
     """
     Mirror the local arguments from a seqc.core.process_experiment call to an AWS server
