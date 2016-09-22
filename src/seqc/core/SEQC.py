@@ -30,7 +30,7 @@ def run_remote_simplified(args, argv, volsize) -> None:
             args.instance_type, args.spot_bid, volsize) as s:
         s.execute('sudo chown -R ubuntu /home/ubuntu/.seqc/')
         s.put_file(os.path.expanduser('~/.seqc/config'), '/home/ubuntu/.seqc/config')
-        s.execute('cd /data; nohup {cmd} > /dev/null 2>&1 &'.format(cmd=cmd))
+        s.async_execute('cd /data; nohup {cmd} > /dev/null 2>&1 &'.format(cmd=cmd))
         out = ' '.join(s.execute('ps aux | grep SEQC.py'))
         if '/usr/local/bin/SEQC.py' not in out:
             raise ConfigurationError('Error executing SEQC on the cluster!')

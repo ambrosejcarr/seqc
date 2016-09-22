@@ -2,6 +2,7 @@ import os
 from seqc import log, io, exceptions, remote
 from seqc.core import verify
 from math import ceil
+from warnings import warn
 
 
 class cleanup:
@@ -88,6 +89,7 @@ class remote_execute:
         self.spot_bid = spot_bid
         self.volsize = int(ceil(volsize / 1e9))
         self.cluster = None
+        self.async_process = False
 
     def __enter__(self):
         """create a cluster and make it accessible within the context"""
@@ -98,13 +100,13 @@ class remote_execute:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """terminate the instance"""
-        self.cluster.serv.disconnect()
-        remote.terminate_cluster(self.cluster.inst_id.instance_id)
-        if exc_type is not None:  # todo check if this is how it works
-            log.notify('%s: %s\n%s' % (exc_type, exc_val, exc_tb))  # todo check this too
-        else:
-            return True  # signal clean exit
+        """terminate the instance unless a clean asynchronous call was made"""
+
+        if exc_type or not self.async_process:
+            log.notify('%s: %s\n%s' % (exc_type, exc_val, exc_tb))
+            self.cluster.serv.disconnect()
+            remote.terminate_cluster(self.cluster.inst_id.instance_id)
+        return True  # signal clean exit
 
     def execute(self, command_string):
         """run the remote function on the server, capturing output and errors"""
@@ -112,6 +114,16 @@ class remote_execute:
         if errs:
             raise ChildProcessError(errs)
         return data
+
+    # could send a signal from the async_process to indicate exit. (?)
+    def async_execute(self, command_string):
+        """run the remote function on the server"""
+        if not all((s in command_string for s in ['nohup', '&'])):
+            warn('Excecuting command that may not be asynchronous. User is '
+                 'responsible for including commands that place the called function '
+                 'into the background. Missing "nohup" or "&".')
+        self.cluster.serv.exec_command(command_string)
+        self.async_process = True
 
     def put_file(self, local_file, remote_file):
         self.cluster.serv.put_file(local_file, remote_file)
