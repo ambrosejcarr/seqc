@@ -40,70 +40,6 @@ def run_remote(args, argv, volsize) -> None:
         'use "SEQC.py progress" to monitor the status of the remote run.')
 
 
-def remote_index():
-    raise NotImplementedError
-
-
-def run_remote_old(args, argv, volsize) -> None:
-    """
-    Mirror the local arguments from a seqc.core.process_experiment call to an AWS server
-    and execute the run there. When complete, terminates the local process unless
-    otherwise specified by the args.no_terminate argument.
-
-    :param argv: original argument list as received from sys.argv or passed to a main()
-      object
-    :param args: simple namespace object; output of parse_args()
-    :param volsize: estimated volume needed for run
-    """
-    log.notify('Beginning remote SEQC run...')
-
-    # recreate remote command, but instruct it to run locally on the server.
-    cmd = parser.generate_remote_cmdline_args(argv)
-    log.print_exact_command_line(cmd)
-    # set up remote cluster
-    cluster = remote.ClusterServer()
-    volsize = int(np.ceil(volsize/1e9))
-
-    try:  # if anything goes wrong during cluster setup, clean up the instance
-        cluster.setup_cluster(volsize, args.instance_type, spot_bid=args.spot_bid)
-        cluster.serv.connect()
-
-        log.notify('Beginning remote run.')
-        if args.output_stem.endswith('/'):
-            args.output_stem = args.output_stem[:-1]
-        # writing name of instance in local machine to keep track of instance
-        with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
-            _, run_name = os.path.split(args.output_stem)
-            f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
-
-        # writing name of instance in /data/instance.txt for clean up
-        inst_path = '/data/instance.txt'
-        cluster.serv.exec_command(
-            'echo {instance_id} > {inst_path}'.format(
-                inst_path=inst_path, instance_id=str(cluster.inst_id.instance_id)))
-        cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
-        cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
-                              '/home/ubuntu/.seqc/config')
-        cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
-                                  ''.format(cmd=cmd))
-
-        # check that SEQC.py is actually running on the cluster
-        out, err = cluster.serv.exec_command('ps aux | grep SEQC.py')
-        res = ' '.join(out)
-        if '/usr/local/bin/SEQC.py' not in res:
-            raise ConfigurationError('Error executing SEQC on the cluster!')
-        log.notify('Terminating local client. Email will be sent when remote run '
-                   'completes. Please use "SEQC.py --check-progress" '
-                   'to monitor the status of the remote run.')
-    except Exception as e:
-        log.notify('Error {e} occurred during cluster setup!'.format(e=e))
-        if cluster.is_cluster_running():
-            log.notify('Cleaning up instance {id} before exiting...'.format(
-                id=cluster.inst_id.instance_id))
-            remote.terminate_cluster(cluster.inst_id.instance_id)
-        raise  # re-raise original exception
-
-
 def determine_start_point(args) -> (bool, bool, bool):
     """
     determine where seqc should start based on which parameters were passed.
@@ -387,7 +323,7 @@ def run(argv: list, args) -> None:
             args.index += '/'
 
         # check arguments if aws flag is not set (arguments would already be checked)
-        if not args.aws:
+        if not args.aws:  # todo should this be renamed to reflect its purpose?
             total_size = verify.arguments(args, basespace_token)
         else:
             total_size = None
@@ -409,7 +345,7 @@ def run(argv: list, args) -> None:
                                  'runs.')
             remote.cluster_cleanup()
             run_remote(args, argv, total_size)
-            sys.exit(0)
+            sys.exit(0)  # todo should this just return (?)
 
         if args.aws:
             aws_upload_key, args.output_stem, output_dir, output_prefix = (
@@ -517,14 +453,25 @@ def run(argv: list, args) -> None:
                 args.output_stem, args.log_name, email)
 
 
-def create_index(args):
+def create_index(args, argv, volsize=1e9, remote=True):
     """create an index for SEQC.
 
     :param args: parsed arguments. This function is only called if subprocess_name is
       'index'
     """
-    idx = Index(args.organism, args.additional_id_types)
-    idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
+
+    if args.remote:
+        if not args.upload_location.startswith('s3://'):
+            raise ValueError('-u/--output-location must be an s3 link for remote SEQC '
+                             'runs.')
+        remote.cluster_cleanup()
+        with execution_control.remote_execute(args.instance_type, args.spot_bid, volsize):
+            parser.generate_remote_cmdline_args(argv)
+            create_index(args, argv, remote=False)
+    else:
+        with execution_control.local_instance_cleanup(args):
+            idx = Index(args.organism, args.additional_id_types)
+            idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
 
 
 def main(argv):

@@ -1,5 +1,8 @@
 import os
+import pickle
+import types
 from seqc import log, io, exceptions, remote
+from functools import wraps
 from seqc.core import verify
 from math import ceil
 from warnings import warn
@@ -146,3 +149,236 @@ class remote_execute:
 
     def get_file(self, remote_file, local_file):
         self.cluster.serv.get_file(remote_file, local_file)
+
+""" list of requirements for a remote execution method/decorator/execution context:
+
+must:
+1. initiate a logger locally or remotely
+2. call the function locally if remote is false
+3. call the function remotely if remote is true
+4. catch errors and email user if executing remotely
+5. shut down instance if errors occur remotely
+6. shut down instance if errors occur locally
+7. be able to execute synchronously or asynchronously
+8. track (with locked access!!!!) the instance ids in a local file such that the
+   security group can later be cleaned up.
+9. others?
+
+a function decorator @remote could handle some of the above. It could:
+
+1. initialize a logger when @remote is called
+2. check if remote is True. If true, re-call the function with remote=False. if false,
+   execute the function
+3. The function itself could be called within an execution_context wherein errors are
+   caught, and dealt with depending whether the function is executing locally or remotely
+
+   if remote, start an instance, initiate the remote instance, call the function remotely
+   using MPI/pickle somehow?
+
+   problem: how to pickle a local function (and environment) and execute it in a remote
+   context?
+   - if possible to check imports, could pickle the function and all the arguments, then
+     write a file which imports all the imports and calls the pickled function with the
+     pickled arguments.
+
+"""
+
+# needs to not be used as a decorator, but rather as a function wrapping another function
+# defined at the module level. THAT should work.
+
+class Remote:
+
+    def __init__(self, instance_type, volsize, spot_bid, retrieve=False,
+                 logname='seqc.log'):
+        """
+        1. sets up a logger
+        2. pickles the passed function
+
+        :param instance_type:
+        :param volsize:
+        :param spot_bid:
+        :param retrieve:
+        :param logname:
+        """
+        self.instance_type = instance_type
+        self.volsize = volsize
+        self.spot_bid = spot_bid
+        self.retrieve = retrieve
+        self.logname = logname
+
+    @staticmethod
+    def pickle_function(function: object, args, kwargs) -> str:
+        """ pickle and function and its arguments
+
+        :param object function: function to be pickled
+        :param tuple args: positional arguments for the function
+        :param dict kwargs: keyword arguments for the function
+        :return str: filename of the pickled function
+        """
+        filename = '{}{}.p'.format(os.environ['TMPDIR'], function.__name__)
+        with open(filename, 'wb') as f:
+            pickle.dump(dict(function=function, args=args, kwargs=kwargs), f)
+        return filename
+
+    @staticmethod
+    def get_imports():
+        for alias, val in globals().items():
+            if isinstance(val, types.ModuleType):
+                yield (val.__name__, alias)
+
+    @classmethod
+    def format_importlist(cls):
+        importlist = ''
+        for name, alias in cls.get_imports():
+            if name != alias:
+                importlist += 'import {name} as {alias}\n'.format(name=name, alias=alias)
+            else:
+                importlist += 'import {name}\n'.format(name=name)
+        return importlist
+
+    @classmethod
+    def write_script(cls, function) -> str:
+        """generate a python script that calls function after importing required modules
+
+        :param object function: function to be called
+        :param list args: positional arguments for the function
+        :param dict kwargs: keyword arguments for the function
+        :return str: filename of the python script
+        """
+        script_name = '{}{}.py'.format(os.environ['TMPDIR'], function.__name__)
+        script_body = (
+            '{imports}'
+            'with open("/data/func.p", "rb") as fin:\n'
+            '    data = pickle.load(fin)\n'
+            'results = data["function"](*data["args"], **data["kwargs"])\n'
+            'with open("/data/results.p", "wb") as f:\n'
+            '    pickle.dump(results, f)\n'
+        )
+        script_body.format(imports=cls.format_importlist())
+
+        with open(script_name, 'w') as f:
+            f.write(script_body)
+        return script_name
+
+    def __call__(self, function):
+
+        log.setup_logger(self.logname)
+
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            script = self.write_script(function)
+            func = self.pickle_function(function, args, kwargs)
+            with remote_execute(self.instance_type, self.volsize, self.spot_bid) as s:
+                s.put_file(script, '/data/script.py')
+                s.put_file(func, '/data/func.p')
+                s.execute('python3 /data/script.py')
+                if self.retrieve:
+                    results_name = os.environ['TMPDIR'] + function.__name__ + '_results.p'
+                    s.get_file('/data/results.p', results_name)
+                    with open(results_name, 'rb') as f:
+                        return pickle.load(f)
+        return wrapped
+
+
+# class asyncRemote(Remote):
+#
+#     @classmethod
+#     def write_script(cls, function) -> str:
+#         """generate a python script that calls function after importing required modules
+#
+#         :param object function: function to be called
+#         :param list args: positional arguments for the function
+#         :param dict kwargs: keyword arguments for the function
+#         :return str: filename of the python script
+#         """
+#         script_name = '{}{}.py'.format(os.environ['TMPDIR'], function.__name__)
+#         script_body = (
+#             '{imports}'
+#             'with open("/data/func.p", "rb") as fin:\n'
+#             '    data = pickle.load(fin)\n'
+#             'results = data["function"](*data["args"], **data["kwargs"])\n'
+#             'with open("results.p", "wb") as f:\n'
+#             '    pickle.dump(results, f)\n'
+ #         )
+#         script_body.format(imports=cls.format_importlist())
+#
+#         with open(script_name, 'w') as f:
+#             f.write(script_body)
+#         return script_name
+#
+#     def __call__(self, f):
+#         def wrapped(*args, **kwargs):
+#             script = self.write_script(f)
+#             func = self.pickle_function(f, args, kwargs)
+#             with remote_execute(self.instance_type, self.volsize, self.spot_bid) as s:
+#                 s.put_file(script, '/data/script.py')
+#                 s.put_file(func, '/data/func.p')
+#                 if self.asynchronous:
+#                     s.async_execute('python3 /data/script.py')
+#
+#
+#             pass
+#         return wrapped_f
+
+
+
+# write a test before proceeding that tests:
+
+# def wrapper(function):
+#     pickle.dump(function)
+#
+# def function(x):
+#     return x
+#
+# p = wrapper(function)
+# p()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
