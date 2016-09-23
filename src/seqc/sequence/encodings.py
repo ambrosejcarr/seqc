@@ -1,14 +1,14 @@
 
 class DNA3Bit(object):
-	"""
+    """
     Compact 3-bit encoding scheme for sequence data.
     """
 
     _str2bindict = {65: 0b100, 67: 0b110, 71: 0b101, 84: 0b011, 78: 0b111,
                     97: 0b100, 99: 0b110, 103: 0b101, 116: 0b011, 110: 0b111}
     _bin2strdict = {0b100: b'A', 0b110: b'C', 0b101: b'G', 0b011: b'T', 0b111: b'N'}
-	
-	@staticmethod
+    
+    @staticmethod
     def encode(b: bytes) -> int:
         """
         Convert string nucleotide sequence into binary, note: string is stored so
@@ -21,7 +21,7 @@ class DNA3Bit(object):
             res <<= 3
             res += cls._str2bindict[c]
         return res
-		
+        
     @staticmethod
     def decode(i: int) -> bytes:
         """
@@ -37,9 +37,9 @@ class DNA3Bit(object):
             r = cls._bin2strdict[i & 0b111] + r
             i >>= 3
         return r
-		
-	#TODO: another ooption is to use i.bit_length and take into account preceding 0's
-	@staticmethod
+        
+    #TODO: another ooption is to use i.bit_length and take into account preceding 0's
+    @staticmethod
     def seq_len(i: int) -> int:
         """
         Return the length of an encoded sequence based on its binary representation
@@ -51,8 +51,8 @@ class DNA3Bit(object):
             l += 1
             i >>= 3
         return l
-		
-	@staticmethod
+        
+    @staticmethod
     def contains(s: int, char: int) -> bool:
         """
         return true if the char (bin representation) is contained in seq (binary
@@ -66,8 +66,8 @@ class DNA3Bit(object):
                 return True
             s >>= 3
         return False
-	
-	@staticmethod
+    
+    @staticmethod
     def ints2int(ints):
         """
         convert an iterable of sequences [i1, i2, i3] into a concatenated single integer
@@ -88,10 +88,10 @@ class DNA3Bit(object):
                 tmp >>= 3
             res += num
         return res
-	
+    
 
 #TODO: this was written for ome tests, not sure it's being used anymore
-#	@staticmethod
+#   @staticmethod
 #    def gc_content(i: int) -> float:
 #        """
 #        calculates percentage of nucleotides in i that is G or C#
