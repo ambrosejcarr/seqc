@@ -353,5 +353,5 @@ class ReadArray:
     def __len__(self):
         return len(self.data)
         
-    def to_count_matrix(self):
+#    def to_count_matrix(self):
         #TODO - write this
