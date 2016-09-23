@@ -14,7 +14,7 @@ availability_zone = us-east-1c
 
 [c4]
 cluster_size = 1
-node_image_id = ami-3c2e972b
+node_image_id = ami-e0671cf7
 node_instance_type = c4.8xlarge
 subnet_id = subnet-70d7ec36
 availability_zone = us-east-1c
