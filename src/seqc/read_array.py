@@ -7,12 +7,12 @@ import os
 import seqc.correct_errors
 import seqc.multialignment as mm
 import pickle
-	
+    
 
 class ReadArray:
 
     _dtype = [
-		('status', np.uint16),
+        ('status', np.uint16),
         ('cell', np.int64),
         ('rmt', np.int32),
         ('n_poly_t', np.uint8),
@@ -20,15 +20,15 @@ class ReadArray:
         ('gene', np.uint32),
         ('position', np.uint64),
         ('ma_genes', np.dtype(object))]
-	
-	# Some constants
-	PASS_FILTERS	= 0
-	NO_ALIGNMENT 	= 1
-    GENE_0	 		= 2
-    CELL_0 			= 3
-    RMT_0 			= 4
-    POLY_T_0 		= 5
-	SCAFFOLD		= 6
+    
+    # Some constants
+    PASS_FILTERS    = 0
+    NO_ALIGNMENT    = 1
+    GENE_0          = 2
+    CELL_0          = 3
+    RMT_0           = 4
+    POLY_T_0        = 5
+    SCAFFOLD        = 6
 
     def __init__(self, data):
         """
@@ -47,34 +47,34 @@ class ReadArray:
           rmt)
         """
         self._data = data
-		
-		#some stats
-		self._total_alignments 	= 0
-		self._total_reads		= 0
-		self._no_alignment		= 0
-		self._non_unique_align	= 0
-		self._filtered 			= {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0}
+        
+        #some stats
+        self._total_alignments  = 0
+        self._total_reads       = 0
+        self._no_alignment      = 0
+        self._non_unique_align  = 0
+        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0}
 
-	
+    
     @property
     def data(self):
         return self._data
 
-	# Toggle active flag on (byte 15)
-	@staticmethod
-	def set_status_active(r):
-		r['status'] |= 0b1
-	
-	def set_status_inactive(r):
-		r['status'] &= 0b1111111111111110
+    # Toggle active flag on (byte 15)
+    @staticmethod
+    def set_status_active(r):
+        r['status'] |= 0b1
+    
+    def set_status_inactive(r):
+        r['status'] &= 0b1111111111111110
 
-	@staticmethod
-	def set_filt_fail(r, filt):
-		if filt > 0b1111:
-			raise ValueError('Filter value must be 4 bits. value given: {}'.format(filt))
-		r['status'] &= 0b1111111111100001
-		r['status'] |= filt<<1
-		
+    @staticmethod
+    def set_filt_fail(r, filt):
+        if filt > 0b1111:
+            raise ValueError('Filter value must be 4 bits. value given: {}'.format(filt))
+        r['status'] &= 0b1111111111100001
+        r['status'] |= filt<<1
+        
     @classmethod
     def from_samfile(cls, samfile: str, gtf_f: str):
         """
@@ -94,7 +94,7 @@ class ReadArray:
                 num_reads +=1
                 prev_alignment_name = alignment.qname       
         
-		translator = GeneIntervals(gtf_f)    
+        translator = GeneIntervals(gtf_f)    
         
         data = np.recarray((num_reads,), cls._dtype)
         prev_alignment_name=''
@@ -104,7 +104,7 @@ class ReadArray:
             if alignment.qname != prev_alignment_name:
                 if read_idx>0:
                     data[read_idx-1] = (cell, rmt, n_poly_t, dust_score, 0, pos, genes, 0)
-					cls.set_status_active(data[read_idx-1])
+                    cls.set_status_active(data[read_idx-1])
                 prev_alignment_name = alignment.qname
                 read_idx+=1
                 genes = translator.translate(alignment.rname, alignment.strand, alignment.pos)
@@ -129,59 +129,59 @@ class ReadArray:
             
         seqc.log.info('non unique alignments count: {}'.format(self._non_unique_align))
         #seqc.log.info('focus gene {}. Total alignmens: {}, total reads: {}, total uniquely aligned reads: {}'.format(focus_gene, fgene_tot_reads, fgene_tot_reads, fgene_tot_uniq))
-		
-		res_ra = cls(data)
-		res_ra._total_alignments = len(reader)
-		res_ra._total_reads = num_reads
+        
+        res_ra = cls(data)
+        res_ra._total_alignments = len(reader)
+        res_ra._total_reads = num_reads
 
-        return res_ra, res_ra._total_alignments	#TODO: It might be nicer to return just the RA and take the total alignments from it
+        return res_ra, res_ra._total_alignments #TODO: It might be nicer to return just the RA and take the total alignments from it
 
-	def apply_filters(self, required_poly_t = 1):
-	"""
-	Apply different filters to the read array.
-	If a read fails a filter, it is not passed to the others and so the counts
-	for each filter is the number of reads that failed that one but passed all previous ones
-	Filters are not ordered in any particular way.
-	"""
+    def apply_filters(self, required_poly_t = 1):
+    """
+    Apply different filters to the read array.
+    If a read fails a filter, it is not passed to the others and so the counts
+    for each filter is the number of reads that failed that one but passed all previous ones
+    Filters are not ordered in any particular way.
+    """
         for r in self.data:
-			if len(r['ma_genes']) == 0:
-				self.set_filt_fail(r, self.NO_ALIGNMENT)
-				self._filtered[NO_ALIGNMENT] += 1
-				self.set_status_inactive(r)
-				continue
-			if r['ma_genes'] == -1:
-				self.set_filt_fail(r, self.SCAFFOLD)
-				self._filtered[SCAFFOLD] += 1
-				self.set_status_inactive(r)
-				continue
-			if r['cell'] == 0:
-				self.set_filt_fail(r, self.NO_CELL)
-				self._filtered[NO_CELL] += 1
-				self.set_status_inactive(r)
-				continue
-			if r['rmt'] == 0:
-				self.set_filt_fail(r, self.NO_RMT)
-				self._filtered[NO_RMT] += 1
-				self.set_status_inactive(r)
-				continue
-			if r['n_poly_t'] < required_poly_t:
-				self.set_filt_fail(r, self.POLY_T)
-				self._filtered[POLY_T] += 1
-				self.set_status_inactive(r)
-				continue
-			if 0 in r['ma_genes']:
-				self.set_filt_fail(r, self.GENE_0)
-				self._filtered[GENE_0] += 1
-				self.set_status_inactive(r)
-				continue
-				
-		seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}'.
-		format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0])
-		return
-		
-			
-				
-		
+            if len(r['ma_genes']) == 0:
+                self.set_filt_fail(r, self.NO_ALIGNMENT)
+                self._filtered[NO_ALIGNMENT] += 1
+                self.set_status_inactive(r)
+                continue
+            if r['ma_genes'] == -1:
+                self.set_filt_fail(r, self.SCAFFOLD)
+                self._filtered[SCAFFOLD] += 1
+                self.set_status_inactive(r)
+                continue
+            if r['cell'] == 0:
+                self.set_filt_fail(r, self.NO_CELL)
+                self._filtered[NO_CELL] += 1
+                self.set_status_inactive(r)
+                continue
+            if r['rmt'] == 0:
+                self.set_filt_fail(r, self.NO_RMT)
+                self._filtered[NO_RMT] += 1
+                self.set_status_inactive(r)
+                continue
+            if r['n_poly_t'] < required_poly_t:
+                self.set_filt_fail(r, self.POLY_T)
+                self._filtered[POLY_T] += 1
+                self.set_status_inactive(r)
+                continue
+            if 0 in r['ma_genes']:
+                self.set_filt_fail(r, self.GENE_0)
+                self._filtered[GENE_0] += 1
+                self.set_status_inactive(r)
+                continue
+                
+        seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}'.
+        format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0])
+        return
+        
+            
+                
+        
     def reads_passing_filters(self, min_poly_t: int, max_dust_score: int):
         """
         Subset the ReadArray returning a new ReadArray containing eads that passed all
@@ -353,6 +353,6 @@ class ReadArray:
 
     def __len__(self):
         return len(self.data)
-		
-	def to_count_matrix(self):
-		#TODO - write this
+        
+    def to_count_matrix(self):
+        #TODO - write this
