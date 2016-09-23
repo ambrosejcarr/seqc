@@ -411,7 +411,7 @@ def main(argv: list=None) -> None:
 
         # check if the platform name provided is supported by seqc
         platform_name = verify.platform_name(args.platform)
-        platform = AbstractPlatform.factory(platform_name)  # returns platform class
+        platform = platforms.AbstractPlatform.factory(platform_name)  # returns platform class
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
