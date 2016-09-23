@@ -150,12 +150,12 @@ class in_drop(AbstractPlatform):
         return g
         
     def extract_barcodes(self, seq):
-    """
-    Return the two barcodes from the encoded cell field.
-    from left to right:
-    cb1 - the first 8 bases
-    cb2 - the last 8 bases
-    """
+		"""
+		Return the two barcodes from the encoded cell field.
+		from left to right:
+		cb1 - the first 8 bases
+		cb2 - the last 8 bases
+		"""
         return [seq >> (8 * 3), seq & 0o77777777]
 
 
