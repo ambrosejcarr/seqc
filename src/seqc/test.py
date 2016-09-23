@@ -12,6 +12,7 @@ from seqc.core import SEQC
 from seqc.sequence import index, gtf
 import ftplib
 import nose2
+from seqc.core import execution_control
 
 import seqc
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -650,9 +651,14 @@ class TestIndexCreation(unittest.TestCase):
         idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
 
 
-    @classmethod
-    def tearDownClass(cls):
-        pass
+class TestRemoteExecution(unittest.TestCase):
+
+    def test_remote_execution_dummy_function(self):
+        @execution_control.Remote('c4', 5, None, True)
+        def test_function_prints_10(*args, **kwargs):
+            return list(args) + [10]
+
+        self.assertEqual(test_function_prints_10(20, '50'), [20, '50', 10])
 
 
 class TestLogData(unittest.TestCase):

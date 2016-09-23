@@ -26,7 +26,7 @@ def run_remote(args, argv, volsize) -> None:
     cmd = parser.generate_remote_cmdline_args(argv)
     log.print_exact_command_line(cmd)
 
-    with execution_control.remote_execute(
+    with execution_control.aws_setup(
             args.instance_type, args.spot_bid, volsize) as s:
         s.execute('sudo chown -R ubuntu /home/ubuntu/.seqc/')
         s.put_file(os.path.expanduser('~/.seqc/config'), '/home/ubuntu/.seqc/config')
@@ -306,7 +306,7 @@ def run(argv: list, args) -> None:
     else:
         log.setup_logger(args.log_name)
 
-    with execution_control.local_instance_cleanup(args):
+    with execution_control.aws_execute(args):
         log.print_exact_command_line('SEQC.py ' + " ".join(argv))
         pigz, email = verify.executables('pigz', 'mutt')
         if not email and not args.remote:
@@ -453,26 +453,20 @@ def run(argv: list, args) -> None:
                 args.output_stem, args.log_name, email)
 
 
-def create_index(args, argv, volsize=1e9):
+def create_index(args, volsize=1e9):
     """create an index for SEQC.
 
     :param args: parsed arguments. This function is only called if subprocess_name is
       'index'
     """
 
-    if args.remote:
-        if not args.upload_location.startswith('s3://'):
-            raise ValueError('-u/--output-location must be an s3 link for remote SEQC '
-                             'runs.')
-        remote.cluster_cleanup()
-        with execution_control.remote_execute(args.instance_type, args.spot_bid, volsize):
-            parser.generate_remote_cmdline_args(argv)
-            args.remote = False
-            create_index(args, argv)
-    else:
-        with execution_control.local_instance_cleanup(args):
+    @execution_control.Remote(args.instance_type, volsize, args.spot_bid, retrieve=False)
+    def _create_index():
+        with execution_control.aws_execute(args):
             idx = Index(args.organism, args.additional_id_types)
             idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
+
+    _create_index()
 
 
 def main(argv):
