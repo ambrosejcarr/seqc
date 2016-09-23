@@ -453,7 +453,7 @@ def run(argv: list, args) -> None:
                 args.output_stem, args.log_name, email)
 
 
-def create_index(args, argv, volsize=1e9, remote=True):
+def create_index(args, argv, volsize=1e9):
     """create an index for SEQC.
 
     :param args: parsed arguments. This function is only called if subprocess_name is
@@ -467,7 +467,8 @@ def create_index(args, argv, volsize=1e9, remote=True):
         remote.cluster_cleanup()
         with execution_control.remote_execute(args.instance_type, args.spot_bid, volsize):
             parser.generate_remote_cmdline_args(argv)
-            create_index(args, argv, remote=False)
+            args.remote = False
+            create_index(args, argv)
     else:
         with execution_control.local_instance_cleanup(args):
             idx = Index(args.organism, args.additional_id_types)
@@ -488,7 +489,7 @@ def main(argv):
     elif arguments.subparser_name == 'progress':
         remote.check_progress()
     elif arguments.subparser_name == 'index':
-        create_index(arguments)
+        create_index(arguments, argv)
 
 
 if __name__ == '__main__':

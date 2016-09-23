@@ -188,7 +188,7 @@ a function decorator @remote could handle some of the above. It could:
 
 class Remote:
 
-    def __init__(self, instance_type, volsize, spot_bid, retrieve=False,
+    def __init__(self, instance_type='c4', volsize=100e9, spot_bid=None, retrieve=False,
                  logname='seqc.log'):
         """
         1. sets up a logger
@@ -268,7 +268,7 @@ class Remote:
         def wrapped(*args, **kwargs):
             script = self.write_script(function)
             func = self.pickle_function(function, args, kwargs)
-            with remote_execute(self.instance_type, self.volsize, self.spot_bid) as s:
+            with remote_execute(self.instance_type, self.spot_bid, self.volsize) as s:
                 s.put_file(script, '/data/script.py')
                 s.put_file(func, '/data/func.p')
                 s.execute('python3 /data/script.py')
