@@ -1,5 +1,5 @@
 import os
-import pickle
+import dill  # can pickle lambdas
 import types
 from seqc import log, io, exceptions, remote
 from functools import wraps
@@ -217,7 +217,7 @@ class Remote:
         """
         filename = '{}{}.p'.format(os.environ['TMPDIR'], function.__name__)
         with open(filename, 'wb') as f:
-            pickle.dump(dict(function=function, args=args, kwargs=kwargs), f)
+            dill.dump(dict(function=function, args=args, kwargs=kwargs), f)
         return filename
 
     @staticmethod
@@ -249,10 +249,10 @@ class Remote:
         script_body = (
             '{imports}'
             'with open("/data/func.p", "rb") as fin:\n'
-            '    data = pickle.load(fin)\n'
+            '    data = dill.load(fin)\n'
             'results = data["function"](*data["args"], **data["kwargs"])\n'
             'with open("/data/results.p", "wb") as f:\n'
-            '    pickle.dump(results, f)\n'
+            '    dill.dump(results, f)\n'
         )
         script_body.format(imports=cls.format_importlist())
 
@@ -276,7 +276,7 @@ class Remote:
                     results_name = os.environ['TMPDIR'] + function.__name__ + '_results.p'
                     s.get_file('/data/results.p', results_name)
                     with open(results_name, 'rb') as f:
-                        return pickle.load(f)
+                        return dill.load(f)
         return wrapped
 
 
@@ -336,49 +336,18 @@ class Remote:
 
 
 
+class Wrapper:
 
+    def __init__(self, arg1, arg2):
+        self.arg1 = arg1
+        self.arg2 = arg2
 
+    def __call__(self, f):
+        with open('test_dill.p', 'wb') as fout:
+            dill.dump(f, fout)
 
+        def wrapper(f):
+            print(f)
+            return 10
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return wrapper
