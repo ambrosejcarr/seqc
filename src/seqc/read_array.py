@@ -137,12 +137,12 @@ class ReadArray:
         return res_ra, res_ra._total_alignments #TODO: It might be nicer to return just the RA and take the total alignments from it
 
     def apply_filters(self, required_poly_t = 1):
-    """
-    Apply different filters to the read array.
-    If a read fails a filter, it is not passed to the others and so the counts
-    for each filter is the number of reads that failed that one but passed all previous ones
-    Filters are not ordered in any particular way.
-    """
+        """
+        Apply different filters to the read array.
+        If a read fails a filter, it is not passed to the others and so the counts
+        for each filter is the number of reads that failed that one but passed all previous ones
+        Filters are not ordered in any particular way.
+        """
         for r in self.data:
             if len(r['ma_genes']) == 0:
                 self.set_filt_fail(r, self.NO_ALIGNMENT)
