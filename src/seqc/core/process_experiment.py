@@ -451,12 +451,12 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
-		# Apply filters
-		ra.apply_filters(required_poly_t=args.min_poly_t)
-		# Correct barcodes
-		
-		return
-		
+        # Apply filters
+        ra.apply_filters(required_poly_t=args.min_poly_t)
+        # Correct barcodes
+        
+        return
+        
         # correct errors
         log.info('Correcting cell barcode and RMT errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
