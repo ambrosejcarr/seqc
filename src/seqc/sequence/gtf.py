@@ -10,14 +10,18 @@ from wikipedia import PageError
 from contextlib import closing
 from multiprocessing import Pool
 from collections import defaultdict
-from intervaltree import IntervalTree
 from copy import deepcopy
 import pandas as pd
 import numpy as np
 from seqc import reader
 from seqc.sparse_frame import SparseFrame
 from collections import ChainMap
+import time
+import intervaltree
+import seqc
 
+
+#TODO: remove unused classes and files.
 
 def first(iterable):
     return next(iter(iterable))
@@ -196,7 +200,6 @@ class Gene(Record):
                 saved[1] = en
         yield tuple(saved)
 
-
 class GeneIntervals:
     """
     Encodes genomic ranges in an Intervaltree
@@ -207,39 +210,132 @@ class GeneIntervals:
     """
 
     def __init__(self, gtf: str):
-        interval_tree = defaultdict(IntervalTree)
-        reader_ = Reader(gtf)
-        for gene in reader_.iter_genes():
-            if gene.exons:
-                for start, end in gene.genomic_intervals():
-                    try:
-                        interval_tree[(gene.chromosome, gene.strand)].addi(
-                                start, end, gene.integer_gene_id)
-                    except ValueError:
-                        if start == end:  # ensure this is the reason the error was raised
-                            continue
-                        else:
-                            raise
+        self._pos_scid_dic = self.build_pos_scid_dic(gtf)
+        
+    
+    def build_pos_scid_dic(self, fname):
+        print('using function ver 2')
+        start = time.process_time()
+        exons = {'-':[],'+':[]}
+        res_dic = {} #The resulting dictionary holding two lists. the first is of positions sorted, the second is a list of scids relevant for that position onwards
+        new_exons=False
 
-        self._interval_tree = interval_tree
+        with open(fname) as infile:
+            for line in infile:
+                if line[0]=='#':
+                    continue
+                line_sp = line.split('\t')
+                chr = self.strip_chr(line.split('\t')[0])
+                if chr==-1:
+                    continue
+                if chr not in res_dic:
+                    res_dic[chr] = {}
+                    res_dic[chr]['-'] = intervaltree.IntervalTree()
+                    res_dic[chr]['+'] = intervaltree.IntervalTree()
+                type = line_sp[2]
+                strand = line_sp[6]
+                if type not in ['gene','exon','transcript']:
+                    continue
+                
+                if type=='exon':    #Go over all exxons in a transcript and save them for later
+                    new_exons = True
+                    ex_start = int(line_sp[3])
+                    ex_end = int(line_sp[4])                    
+                    gene_id = self.strip_gene_num(line_sp[8])
+                    if strand == '+':
+                        exons[strand].append((ex_start, ex_end, gene_id))
+                    elif strand == '-':
+                        exons[strand].insert(0,(ex_start, ex_end, gene_id))
+                    else:
+                        raise ValueError('strand must be - or +')
+                else:
+                    if new_exons:  #we finished going over the tx, we need to calculate the actual 1000 bases from its end, and log the coordinates of the exons
+                        chr = tx_chr  #If we're here we already read the chr and strand of the new tx or gene, these hold the values of the previous tx which are relevant to the current exons list
+                        strand = tx_strand
+                        tx_end = self.calc_tx_1k_end(exons[strand])
+                        
+                        for ex_start, ex_end, gene_id in exons[strand]:
+                            if ex_end < tx_end:     #The exon ends before the relevant tx part starts - ignore it
+                                continue
+                            if ex_start < tx_end:   #the exon starts before the 1000 limit but ends after
+                                ex_start = tx_end
+                            
+                            if ex_start==ex_end:    #this can happen sometimes, we don't add empty values to the tree.
+                                continue
+                                
+                            res_dic[chr][strand].addi(ex_start, ex_end, gene_id)
+                            
+                        exons[strand] = []
+                        new_exons = False
+                    if type=='transcript':
+                        #Keep track of the chr and strand
+                        tx_strand = strand
+                        tx_chr = chr
+                        
+        tot_time=time.process_time()-start
+        seqc.log.info('Translator completed in {} seconds.'.format(tot_time))
+        return res_dic
 
-    def translate(self, chromosome: bytes, strand: bytes, position: int):
-        """
-        translates a genomic coordinate on a stranded chromosome into the gene identifier
-        that occupies that location. If no gene ids or an ambiguous location with more
-        than one gene id is identified, returns None.
+                    
 
-        :param chromosome: bytes, chromosome id
-        :param strand: bytes, [b'+', b'-'], the strand
-        :param position: int, position on the chromosome
-        :return: int, gene id.
-        """
-        ivs = self._interval_tree[(chromosome, strand)].search(position)
-        if len(ivs) == 1:
-            return first(ivs).data
-        else:
-            return None
+    def calc_tx_1k_end(self, ex_list):
+    # find where is the actual position that's 1k bases from the tx end ()
+        remaining_len = 1000
+        for (ex_start, ex_end, scid) in reversed(ex_list):
+            len = ex_end - ex_start
+            if len >= remaining_len:
+                return ex_end - remaining_len
+            remaining_len -= len
+        # If we're here - tx is shorter than 1000 - return the start of the first exxon
+        return ex_list[0][0]
+    
+    
+    def translate(self, chr, strand, pos):
+        if type(chr) is bytes:
+            chr = chr.decode('utf-8')
+        int_chr = self.strip_chr(chr)
+        if int_chr == -1:   #this happens when it's a scaffold
+            return -1
+        if type(strand) is bytes:
+            strand = strand.decode('utf-8')
+            
+    # return a list of all scids for the input position
+        return [x.data for x in self._pos_scid_dic[int_chr][strand][pos]]
+    
+    @staticmethod
+    def strip_chr(s):
+        chr_dic = {'X':23,'Y':24,'MT':25,'M':25}
+        if 'chr' in s:
+            s=s[3:]
+        try:
+            int_chr = int(s)
+        except ValueError:
+            try:
+                int_chr = chr_dic[s]
+            except KeyError:
+                return -1   #this happens when it's a scaffold
+        return int_chr
 
+    @staticmethod
+    def strip_gene_num(attribute_str):
+        gene_start = attribute_str.find('gene_id')
+        if gene_start==-1:
+            raise ValueError('Gene_id field is missing in annotations file: {}'.format(attribute_str))
+        
+        gene_end = attribute_str.find(';',gene_start)
+        if gene_end==-1:
+            raise ValueError('no ; in gene_id attribute, gtf file might be corrupted: {}'.format(attribute_str))
+        
+        id_start = attribute_str.find('0', gene_start)
+        if id_start == -1:
+            raise ValueError('Corrupt gene_id field in annotations file - {}'.format(attribute_str))
+            
+        # ignore the gene version if it's stored as part of the gene id after a decimal point
+        id_end = attribute_str.find('.', id_start, gene_end)
+        if id_end == -1:
+            id_end = gene_end-1 #ignore the "
+            
+        return int(attribute_str[id_start:id_end])
 
 class Reader(reader.Reader):
     """

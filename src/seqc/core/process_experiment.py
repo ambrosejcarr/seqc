@@ -227,15 +227,14 @@ def create_or_download_read_array(
     manage_samfile = None
     sam_records = None
     if process_samfile:
-        log.info('Filtering aligned records and constructing record database.')
+        log.info('Constructing record database.')
         if samfile.startswith('s3://'):
             input_data = 'samfile'
             bucket, prefix = io.S3.split_link(samfile)
             _, fname = os.path.split(prefix)
             samfile = io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
             log.info('Samfile %s successfully installed from S3.' % samfile)
-        ra, sam_records = ReadArray.from_samfile(
-            samfile, index + 'annotations.gtf')
+        ra, sam_records = ReadArray.from_samfile(samfile, index + 'annotations.gtf')
         read_array = output_stem + '.h5'
         ra.save(read_array)
 
@@ -412,7 +411,7 @@ def main(argv: list=None) -> None:
 
         # check if the platform name provided is supported by seqc
         platform_name = verify.platform_name(args.platform)
-        platform = getattr(platforms, platform_name)()  # returns platform class
+        platform = AbstractPlatform.factory(platform_name)  # returns platform class
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
@@ -452,6 +451,12 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
+		# Apply filters
+		ra.apply_filters(required_poly_t=args.min_poly_t)
+		# Correct barcodes
+		
+		return
+		
         # correct errors
         log.info('Correcting cell barcode and RMT errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None

@@ -7,10 +7,27 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self):
+    def __init__(self, barcodes_len):
         self._correct_errors = getattr(
             correct_errors, type(self).__name__, correct_errors.pass_through)
+		self._barcodes_lengths = barcodes_len
 
+	def factory(type):
+		if type == "in_drop":
+			return in_drop()
+		if type == "in_drop_v2":
+			return in_drop_v2()
+		if type == "in_drop_v3":
+			return in_drop_v3()
+		if type == "drop_seq":
+			return drop_seq()
+		if type == "mars1_seq":
+			return mars1_seq()
+		if type == "mars2_seq":
+			return mars2_seq()
+		if type == "ten_x":
+			return ten_x()
+	
     @property
     def correct_errors(self):
         """Gets the error correction function sharing the same name as the platform.
@@ -49,10 +66,27 @@ class AbstractPlatform:
         class to be used for estimating the min_poly_t value at each SEQC run.
         """
         pass
+	
+	@abstractmethod
+	def extract_barcodes(self, seq):
+		"""
+		Return a list of barcodes from the sequence. The number of barcodes and the way they are stored in 'cell' is platform dependant.
+		"""
+		res = []
+		for bc_len in reversed(self._barcodes_lengths):
+			if bc_len == -1:	#Return the rest of the MSb's
+				res.insert(0,seq)
+				return res
+			res.insert(0,seq&((1<<bc_len)-1))
+			seq<<=bc_len
+			
 
 
 class in_drop(AbstractPlatform):
 
+	def __init__(self):
+		AbstractPlatform.__init__(self, [-1,8])
+		
     @classmethod
     def check_spacer(cls, sequence):
         """a fast, in-drop-v1 specific command to find a spacer sequence and cb length
@@ -114,10 +148,22 @@ class in_drop(AbstractPlatform):
                 cell, rmt, poly_t = b'', b'', b''
         g.add_annotation((b'', cell, rmt, poly_t))
         return g
+		
+	def extract_barcodes(self, seq):
+	"""
+	Return the two barcodes from the encoded cell field.
+	from left to right:
+	cb1 - the first 8 bases
+	cb2 - the last 8 bases
+	"""
+		return [seq >> (8 * 3), seq & 0o77777777]
 
 
 class in_drop_v2(AbstractPlatform):
 
+	def __init__(self):
+		AbstractPlatform.__init__(self, [-1,8])
+		
     @classmethod
     def check_spacer(cls, sequence):
         """a fast, in-drop-v2 specific command to find a spacer sequence and cb length
@@ -182,6 +228,9 @@ class in_drop_v2(AbstractPlatform):
 
 
 class in_drop_v3(AbstractPlatform):
+	
+	def __init__(self):
+		AbstractPlatform.__init__(self, [-1,8])
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -214,6 +263,9 @@ class in_drop_v3(AbstractPlatform):
 
 class drop_seq(AbstractPlatform):
 
+	def __init__(self):
+		AbstractPlatform.__init__(self, [12])
+
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for drop_seq.
@@ -239,6 +291,9 @@ class drop_seq(AbstractPlatform):
 
 class mars1_seq(AbstractPlatform):
 
+	def __init__(self):
+		AbstractPlatform.__init__(self, [4,8])
+		
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for mars1_seq.
@@ -266,6 +321,9 @@ class mars1_seq(AbstractPlatform):
 
 class mars2_seq(AbstractPlatform):
 
+	def __init__(self):
+		AbstractPlatform.__init__(self, [4,8])
+		
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for mars2_seq.
@@ -293,6 +351,9 @@ class mars2_seq(AbstractPlatform):
 
 class ten_x(AbstractPlatform):
 
+	def __init__(self):
+		AbstractPlatform.__init__(self, [14])
+		
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for 10X
