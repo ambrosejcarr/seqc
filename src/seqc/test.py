@@ -660,6 +660,18 @@ class TestRemoteExecution(unittest.TestCase):
 
         self.assertEqual(test_function_prints_10(20, '50'), [20, '50', 10])
 
+    def test_remote_execution_create_simple_index(self):
+        @execution_control.Remote('c4', 10, None, False)
+        def test_create_simple_index():
+            organism = 'ciona_intestinalis'
+            idx = index.Index(organism, ['entrezgene'])
+            idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
+        test_create_simple_index()
+
+
+class TestExecutionContext(unittest.TestCase):
+    pass
+
 
 class TestLogData(unittest.TestCase):
 
