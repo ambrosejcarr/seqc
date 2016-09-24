@@ -117,12 +117,15 @@ class Index:
     def _identify_newest_release(open_ftp: FTP) -> int:
         """Identify the most recent genome release given an open link to ftp.ensembl.org
 
+        This returns the second-to-last release, which is typically the last
+        reliable/stable ENSEMBL release.
+
         :param FTP open_ftp: open FTP link to ftp.ensembl.org
         """
         open_ftp.cwd('/pub')
         releases = [f for f in open_ftp.nlst() if 'release' in f]
         newest = max(int(r[r.find('-') + 1:]) for r in releases)
-        return newest
+        return newest - 1
 
     def _download_fasta_file(self, ftp: FTP, download_name: str) -> None:
         """download the fasta file for cls.organism from ftp, an open Ensembl FTP server
@@ -155,9 +158,9 @@ class Index:
 
         :param download_name: name for the downloaded file
         """
-        cmd = 'wget -O %s \'http://www.ensembl.org/biomart/martservice?query=%s' % (
-            download_name, self._converter_xml
-        )
+        cmd = ('wget -O %s \'http://www.ensembl.org/biomart/martservice?query=%s > '
+               '/dev/null 2>&1' % (download_name, self._converter_xml))
+
         err = check_call(cmd, shell=True)
         if err:
             raise ChildProcessError('conversion file download failed: %s' % err)

@@ -668,6 +668,11 @@ class TestRemoteExecution(unittest.TestCase):
             idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
         test_create_simple_index()
 
+    def test_local_execution_create_simple_index(self):
+        organism = 'ciona_intestinalis'
+        idx = index.Index(organism, ['entrezgene'])
+        idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
+
 
 class TestExecutionContext(unittest.TestCase):
     pass

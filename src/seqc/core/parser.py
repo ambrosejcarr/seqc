@@ -100,57 +100,58 @@ def parse_args(args):
                         '--star-args outFilterMultimapNmax=20. Additional arguments can '
                         'be provided as a white-space separated list.')
 
-    r = p.add_argument_group('remote run arguments')
-    r.set_defaults(remote=True)
-    r.set_defaults(check=False)
-    r.add_argument('--local', dest="remote", action="store_false",
-                   help='Run SEQC locally instead of initiating on AWS EC2 servers.')
-    r.add_argument('--aws', default=False, action='store_true',
-                   help='Automatic flag; no need for user specification.')
-    r.add_argument('--no-terminate', default='False',
-                   help='Do not terminate the EC2 instance after program completes. If '
-                        '"on-success" is specified, the EC2 instance does not terminate '
-                        'in case the SEQC run throws an error.')
-    r.add_argument('--check-progress', dest="check", action="store_true",
-                   help='Check progress of all currently running remote SEQC runs.')
-    r.add_argument('--instance-type', default='c4',
-                   help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
-    r.add_argument('--spot-bid', type=float, default=None,
-                   help='float, Amount to bid for a spot instance. Default=None (will '
-                        'reserve a non-spot instance). WARNING: using spot instances '
-                        'will cause your instance to terminate if instance prices exceed '
-                        'your spot bid during runtime.')
-    r.add_argument('--log-name', type=str, default='seqc.log',
-                   help='Output log name (default=seqc.log)')
-
     # add subparser to check progress
     progress = subparsers.add_parser('progress', help='check SEQC run progress')
 
     # add subparser to create index
-    index = subparsers.add_parser('index', help='create a SEQC index')
+    pindex = subparsers.add_parser('index', help='create a SEQC index')
 
-    index.add_argument(
+    pindex.add_argument(
         '-o', '--organism', required=True,
         help='organism to create index for. Must be formatted as genus_species in all '
              'lower-case. e.g. human is homo_sapiens.')
-    index.add_argument(
+    pindex.add_argument(
         '-f', '--folder', default=None,
         help='folder in which to create the index. Defaults to the name of the organism, '
              'which is created in the current directory.')
-    index.add_argument('-u', '--upload-location', default=None,
+    pindex.add_argument('-u', '--upload-location', default=None,
                        help='if provided, the index will be uploaded to this aws s3 '
                             'prefix')
-    index.add_argument('--ids', '--additional-id-types',
+    pindex.add_argument('--ids', '--additional-id-types',
                        help='names of additional ids from other consortia to check '
                             'against. If provided, each ENSEMBL gene id must also be '
                             'annotated by at least one of these consortia to be '
                             'considered valid and appear in the final SEQC count matrix.')
-    index.add_argument('-b', '--valid-biotypes',
+    pindex.add_argument('-b', '--valid-biotypes',
                        help='list of gene biotypes that are considered valid. Defaults '
                             'are protein_coding and lincRNA. In most cases, other '
                             'biotypes are not expected to be captured by SEQC, and '
                             'should be excluded',
                        default=('protein_coding', 'lincRNA'))
+
+    for parser in [pindex, p]:
+        r = parser.add_argument_group('Amazon Web Services arguments')
+        r.set_defaults(remote=True)
+        r.set_defaults(check=False)
+        r.add_argument('--local', dest="remote", action="store_false",
+                       help='Run SEQC locally instead of initiating on AWS EC2 servers.')
+        r.add_argument('--aws', default=False, action='store_true',
+                       help='Automatic flag; no need for user specification.')
+        r.add_argument('--no-terminate', default='False',
+                       help='Do not terminate the EC2 instance after program completes. If '
+                            '"on-success" is specified, the EC2 instance does not terminate '
+                            'in case the SEQC run throws an error.')
+        r.add_argument('--check-progress', dest="check", action="store_true",
+                       help='Check progress of all currently running remote SEQC runs.')
+        r.add_argument('--instance-type', default='c4',
+                       help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
+        r.add_argument('--spot-bid', type=float, default=None,
+                       help='float, Amount to bid for a spot instance. Default=None (will '
+                            'reserve a non-spot instance). WARNING: using spot instances '
+                            'will cause your instance to terminate if instance prices exceed '
+                            'your spot bid during runtime.')
+        r.add_argument('--log-name', type=str, default='seqc.log',
+                       help='Output log name (default=seqc.log)')
 
     try:
         return meta.parse_args(args)

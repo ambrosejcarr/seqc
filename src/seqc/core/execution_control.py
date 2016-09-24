@@ -2,6 +2,7 @@ import os
 import dill  # can pickle lambdas
 import types
 import boto3
+import traceback
 from subprocess import check_output
 from seqc import log, io, exceptions, remote
 from functools import wraps
@@ -37,6 +38,7 @@ class aws_execute:
 
     def __enter__(self):
         log.setup_logger(self.log_name)
+        log.notify('Beginning remote execution')
 
     @staticmethod
     def _get_instance_id():
@@ -72,18 +74,24 @@ class aws_execute:
 
         # email user if possible
         if self.email and self.mutt:
+            log.notify('Emailing user.')
             remote.email_user(attachment=self.log_name, email_body=email_body,
                               email_address=self.email)
 
         # upload data if requested
         if self.aws_upload_key:
+            log.notify('Uploading data to {}'.format(self.aws_upload_key))
             bucket, key = io.S3.split_link(self.aws_upload_key)
             exceptions.retry_boto_call(io.S3.upload_file)(
                 self.log_name, bucket, key)
 
         # terminate if requested and no errors
         if self.terminate and exc_type:
-            remote.terminate_cluster(self._get_instance_id())
+            instance_id = self._get_instance_id()
+            remote.terminate_cluster(instance_id)
+            log.notify('Instance %s terminated' % instance_id)
+
+        log.notify('Exiting remote execution context.')
 
 
 class aws_setup:
@@ -152,7 +160,8 @@ class aws_setup:
         """run the remote function on the server, capturing output and errors"""
         data, errs = self.cluster.serv.exec_command(command_string)
         if errs:
-            raise ChildProcessError('Error captured from remote execution: %s' % errs)
+            raise ChildProcessError('Error captured from remote execution: %s'
+                                    % '\n'.join(errs))
         return data
 
     def put_file(self, local_file, remote_file):
