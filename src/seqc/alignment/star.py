@@ -1,8 +1,6 @@
-import shlex
-from subprocess import Popen, PIPE, call
+from subprocess import Popen, PIPE
 from multiprocessing import cpu_count
-import os
-from math import log2
+from os import makedirs
 
 
 def default_alignment_args(
@@ -92,9 +90,6 @@ def create_index(
         read_length: int=75, **kwargs) -> None:
     """Create a new STAR index
 
-    Note that genome size is automatically estimated, there is no need to pass
-    --genomeSAindexNbases for small genomes
-
     :param fasta: complete filepath to fasta file
     :param gtf: complete filepath to gtf file
     :param genome_dir: directory in which new index should be constructed
@@ -103,24 +98,14 @@ def create_index(
       to pass --sjdbFileChrStartEnd filename, pass sjdbFileChrStartEnd=filename (no --)
     :return: None
     """
-    ncpu = cpu_count()
-    os.makedirs(genome_dir, exist_ok=True)
-    if not genome_dir.endswith('/'):
-        genome_dir += '/'
+    ncpu = str(cpu_count())
+    makedirs(genome_dir, exist_ok=True)
     overhang = str(read_length - 1)
-
-    if gtf.endswith('.gz'):  # gzipped gtf is not supported
-        call(['gunzip', '-f', gtf])
-        gtf = gtf.replace('.gz', '')
-
-    if fasta.endswith('.gz'):  # gzipped fasta is not supported for index creation
-        call(['gunzip', '-f', fasta])
-        fasta = fasta.replace('.gz', '')
 
     cmd = (
         'STAR '
         '--runMode genomeGenerate '
-        '--runThreadN {ncpu!s} '
+        '--runThreadN {ncpu} '
         '--genomeDir {genome_dir} '
         '--genomeFastaFiles {fasta} '
         '--sjdbGTFfile {gtf} '
@@ -128,20 +113,10 @@ def create_index(
             ncpu=ncpu, genome_dir=genome_dir, fasta=fasta, gtf=gtf, overhang=overhang)
     )
 
-    size = os.path.getsize(fasta)
-
-    # if genome is small, let star know
-    genome_sa_index_nbases = min(14, int(log2(size) / 2 - 1))
-    if genome_sa_index_nbases < 14:
-        cmd += '--genomeSAindexNbases {sa!s} '.format(sa=genome_sa_index_nbases)
-
-    # add any additional kwargs
     for k, v in kwargs.items():
-        if k not in cmd:  # todo no overriding defaults in this version, fix later
-            cmd += '--{k} {v} '.format(k=k, v=v)
+        cmd += '--{k} {v} '.format(k=k, v=v)
 
-    # call star
-    p = Popen(shlex.split(cmd.strip()), stderr=PIPE, stdout=PIPE)
+    p = Popen(cmd, stderr=PIPE, stdout=PIPE)
     out, err = p.communicate()
     if err:
         raise ChildProcessError(err)

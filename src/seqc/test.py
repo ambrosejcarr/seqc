@@ -4,15 +4,13 @@ import unittest
 import gzip
 from seqc import remote, log
 from seqc.io import S3
-from seqc.core import parser
 import pandas as pd
 import numpy as np
 import paramiko
-from seqc.core import SEQC
+from seqc.core import process_experiment
 from seqc.sequence import index, gtf
 import ftplib
 import nose2
-from seqc.core import execution_control
 
 import seqc
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -36,9 +34,8 @@ class TestProcessExperimentGeneral(unittest.TestCase):
         cls.log_name = seqc_dir + 'test/test_remote/seqc_{}.log'
 
     def format_args(self, platform):
-        """Added for further input validation"""
+        """Added for further input validation"""    # TODO implement said validation
         args = [
-            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -52,15 +49,13 @@ class TestProcessExperimentGeneral(unittest.TestCase):
         return args
 
     def test_recreate_command(self):
-        parsed_args = parser.parse_args(self.format_args('in_drop'))
-        print(parsed_args)
-        print(parser.generate_remote_cmdline_args(self.format_args('in_drop')))
-        print(parser.recreate_cmdline_args(self.format_args('in_drop')))
+        parsed_args = process_experiment.parse_args(self.format_args('in_drop'))
+        print(process_experiment.recreate_command_line_arguments(parsed_args))
 
 
 class TestRemoteProcessExperiment(unittest.TestCase):
     """
-    Complete tests for the remote running of SEQC.py
+    Complete tests for the remote running of process_experiment.py
     """
 
     @classmethod
@@ -68,6 +63,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
         os.makedirs(seqc_dir + 'test/TestRemoteProcessExperiment', exist_ok=True)
         cls.human = 's3://dplab-data/genomes/hg38_phiX/'
         cls.mouse = 's3://dplab-data/genomes/mm38_phiX/'
+        # cls.email = 'cyril-cros@hotmail.fr'
         cls.email = input('provide an email address to receive test results: ')
         cls.output = 's3://dplab-data/seqc/test/{}/'
         cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
@@ -77,8 +73,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
 
     def test_in_drop(self):
         platform = 'in_drop'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -90,15 +85,14 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -109,15 +103,14 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2_no_mt(self):
         platform = 'in_drop_v2'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -129,7 +122,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-filter-mitochondrial-rna',
         ]
         try:
-            SEQC.main(argv)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -137,8 +130,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @unittest.skip("Not currently stable")
     def test_in_drop_v3(self):
         platform = 'in_drop_v3'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -149,15 +141,14 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_drop_seq(self):
         platform = 'drop_seq'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -167,15 +158,15 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            print(args)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_ten_x(self):
         platform = 'ten_x'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.mouse,
@@ -186,7 +177,8 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            print(args)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -194,8 +186,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @unittest.skip("Not currently stable")
     def test_mars1_seq(self):
         platform = 'mars1_seq'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -206,7 +197,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -214,8 +205,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     @unittest.skip("Not currently stable")
     def test_mars2_seq(self):
         platform = 'mars2_seq'
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -226,7 +216,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             '--no-terminate', 'on-success'
         ]
         try:
-            SEQC.main(argv)
+            process_experiment.main(args)
         except SystemExit:
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -234,7 +224,7 @@ class TestRemoteProcessExperiment(unittest.TestCase):
 
 class TestLocalProcessExperiment(unittest.TestCase):
     """
-    Complete tests for local running of SEQC.py
+    Complete tests for local running of process_experiment.py
     """
 
     @classmethod
@@ -252,8 +242,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'in_drop'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -263,15 +252,14 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -281,7 +269,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local'
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -289,8 +277,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'in_drop_v3'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -300,15 +287,14 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     def test_drop_seq(self):
         platform = 'drop_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -317,7 +303,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
             '--local',
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -325,8 +311,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'mars1_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -336,7 +321,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
     @unittest.skip("Not currently stable")
@@ -344,8 +329,7 @@ class TestLocalProcessExperiment(unittest.TestCase):
         platform = 'mars2_seq'
         os.makedirs(seqc_dir + 'test/TestLocalProcessExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -355,13 +339,13 @@ class TestLocalProcessExperiment(unittest.TestCase):
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
 class TestRemoteSpeciesMixExperiment(unittest.TestCase):
     """
-    Complete tests for local running of SEQC.py
+    Complete tests for local running of process_experiment.py
     """
 
     @classmethod
@@ -378,8 +362,7 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
         platform = 'in_drop_v2'
         os.makedirs(seqc_dir + 'test/TestRemoteSpeciesMixExperiment/{}'.format(platform),
                     exist_ok=True)
-        argv = [
-            'run',
+        args = [
             platform,
             '-o', self.output,
             '-i', self.index,
@@ -390,7 +373,7 @@ class TestRemoteSpeciesMixExperiment(unittest.TestCase):
             '--instance-type', 'r3',
             '--spot-bid', '1.0',
         ]
-        SEQC.main(argv)
+        process_experiment.main(args)
         print("Initialization succeeded, wait for email to evaluate test results.")
 
 
@@ -454,13 +437,13 @@ class TestingRemote(unittest.TestCase):
     def test040_primed_for_remote_run(self):
         # This starts a remote job, but tearDown will kill it as soon as run_remote
         # exits => != from above
-        ready_made_cmd = ['run', 'drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/',
-                          '-i', 's3://dplab-data/genomes/hg38_phiX/', '--email-status',
+        ready_made_cmd = ['drop_seq', '-o', 's3://dplab-data/seqc/test/drop_seq/', '-i',
+                          's3://dplab-data/genomes/hg38_phiX/', '--email-status',
                           'cyril-cros@hotmail.fr', '-b',
                           's3://dplab-data/seqc/test/drop_seq/barcode/', '-g',
                           's3://dplab-data/seqc/test/drop_seq/genomic/']
-        args = parser.parse_args(ready_made_cmd)
-        SEQC.run_remote(args, ready_made_cmd, volsize=self.vol)
+        args = process_experiment.parse_args(ready_made_cmd)
+        process_experiment.run_remote(args, volsize=self.vol)
 
 
 class TestIndexCreation(unittest.TestCase):
@@ -493,11 +476,11 @@ class TestIndexCreation(unittest.TestCase):
 
     def test_False_evaluating_additional_id_fields_are_accepted_but_set_empty_list(self):
         idx = index.Index('homo_sapiens', [])
-        self.assertEqual(idx.additional_id_types, [])
+        self.assertEqual(idx.additional_id_fields, [])
         idx = index.Index('homo_sapiens', tuple())
-        self.assertEqual(idx.additional_id_types, [])
+        self.assertEqual(idx.additional_id_fields, [])
         idx = index.Index('homo_sapiens', np.array([]))
-        self.assertEqual(idx.additional_id_types, [])
+        self.assertEqual(idx.additional_id_fields, [])
 
     def test_converter_xml_contains_one_attribute_line_per_gene_list(self):
         idx = index.Index('homo_sapiens', ['hgnc_symbol', 'mgi_symbol'])
@@ -579,86 +562,9 @@ class TestIndexCreation(unittest.TestCase):
         self.assertIsInstance(rc, gtf.Gene)
         os.remove(filename)
 
-    def test_subset_genes_does_nothing_if_no_additional_fields_or_valid_biotypes(self):
-        idx = index.Index('ciona_intestinalis')
-        fasta_name = self.outdir + 'ci.fa.gz'
-        gtf_name = self.outdir + 'ci.gtf.gz'
-        conversion_name = self.outdir + 'ci_ids.csv'
-        idx._download_ensembl_files(fasta_name, gtf_name, conversion_name)
-        idx._subset_genes(conversion_name, gtf_name, self.outdir + 'test.csv',
-                          valid_biotypes=None)
-        self.assertFalse(os.path.isfile(self.outdir))
-
-    def test_subset_genes_produces_a_reduced_annotation_file_when_passed_fields(self):
-        organism = 'ciona_intestinalis'
-        idx = index.Index(organism, ['entrezgene'])
-        os.chdir(self.outdir)
-        idx._download_ensembl_files()
-        self.assertTrue(os.path.isfile('%s.fa.gz' % organism), 'fasta file not found')
-        self.assertTrue(os.path.isfile('%s.gtf.gz' % organism), 'gtf file not found')
-        self.assertTrue(os.path.isfile('%s_ids.csv' % organism), 'id file not found')
-
-        idx._subset_genes()
-        self.assertTrue(os.path.isfile('%s_multiconsortia.gtf' % organism))
-        gr_subset = gtf.Reader('%s_multiconsortia.gtf' % organism)
-        gr_complete = gtf.Reader('%s.gtf.gz' % organism)
-        self.assertLess(
-            len(gr_subset), len(gr_complete),
-            'Subset annotation was not smaller than the complete annotation')
-
-        # make sure only valid biotypes are returned
-        complete_invalid = False
-        valid_biotypes = {b'protein_coding', b'lincRNA'}
-        for r in gr_complete.iter_genes():
-            if r.attribute(b'gene_biotype') not in valid_biotypes:
-                complete_invalid = True
-                break
-        self.assertTrue(complete_invalid)
-        subset_invalid = False
-        for r in gr_subset.iter_genes():
-            if r.attribute(b'gene_biotype') not in valid_biotypes:
-                subset_invalid = True
-                break
-        self.assertFalse(subset_invalid)
-        self.assertGreater(len(gr_subset), 0)
-
-    def test_create_star_index_produces_an_index(self):
-        organism = 'ciona_intestinalis'
-        idx = index.Index(organism, ['entrezgene'])
-        os.chdir(self.outdir)
-        idx._download_ensembl_files()
-        idx._subset_genes()
-        print(os.getcwd())
-        idx._create_star_index()
-        self.assertTrue(os.path.isfile('{outdir}/{organism}/SAindex'.format(
-            outdir=self.outdir, organism=organism)))
-
-    def test_upload_star_index_correctly_places_index_on_s3(self):
-        os.chdir(self.outdir)
-        organism = 'ciona_intestinalis'
-        idx = index.Index(organism, ['entrezgene'])
-        index_directory = organism + '/'
-        idx._download_ensembl_files()
-        idx._subset_genes()
-        idx._create_star_index()
-        idx._upload_index(index_directory, 's3://dplab-data/genomes/ciona_intestinalis/')
-        # watch output for success; will list uploads
-
-    def test_create_index_produces_and_uploads_an_index(self):
-        os.chdir(self.outdir)
-        organism = 'ciona_intestinalis'
-        idx = index.Index(organism, ['entrezgene'])
-        idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
-
-
-class TestRemoteExecution(unittest.TestCase):
-
-    def test_remote_execution_dummy_function(self):
-        @execution_control.Remote('c4', 5, None, True)
-        def test_function_prints_10(*args, **kwargs):
-            return list(args) + [10]
-
-        self.assertEqual(test_function_prints_10(20, '50'), [20, '50', 10])
+    @classmethod
+    def tearDownClass(cls):
+        pass
 
 
 class TestLogData(unittest.TestCase):

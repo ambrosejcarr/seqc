@@ -9,35 +9,72 @@ from seqc import remote, log, io, filter, correct_errors, platforms
 from seqc.sequence import fastq
 from seqc.alignment import star
 from seqc.read_array import ReadArray
-from seqc.exceptions import ConfigurationError
+from seqc.exceptions import ConfigurationError, retry_boto_call
+from seqc.sequence.gtf import (ensembl_gene_id_to_official_gene_symbol,
+                               create_gene_id_to_official_gene_symbol_map)
 from seqc.filter import create_filtered_dense_count_matrix
 from seqc.sparse_frame import SparseFrame
 from seqc.core import parser, verify, config, download, upload, execution_control
-from seqc.sequence.index import Index
 
 
 def run_remote(args, argv, volsize) -> None:
-    """run remote using the execution context manager"""
+    """
+    Mirror the local arguments from a seqc.core.process_experiment call to an AWS server
+    and execute the run there. When complete, terminates the local process unless
+    otherwise specified by the args.no_terminate argument.
 
-    # do some final checking on args
-    log.notify('Beginning remote run')
-    if args.output_stem.endswith('/'):
-        args.output_stem = args.output_stem[:-1]  # todo remove this req. if possible
+    :param argv: original argument list as received from sys.argv or passed to a main()
+      object
+    :param args: simple namespace object; output of parse_args()
+    :param volsize: estimated volume needed for run
+    """
+    log.notify('Beginning remote SEQC run...')
+
+    # recreate remote command, but instruct it to run locally on the server.
     cmd = parser.generate_remote_cmdline_args(argv)
     log.print_exact_command_line(cmd)
+    # set up remote cluster
+    cluster = remote.ClusterServer()
+    volsize = int(np.ceil(volsize/1e9))
 
-    with execution_control.aws_setup(
-            args.instance_type, args.spot_bid, volsize) as s:
-        s.execute('sudo chown -R ubuntu /home/ubuntu/.seqc/')
-        s.put_file(os.path.expanduser('~/.seqc/config'), '/home/ubuntu/.seqc/config')
-        s.async_execute('cd /data; nohup {cmd} > /dev/null 2>&1 &'.format(cmd=cmd))
-        out = ' '.join(s.execute('ps aux | grep SEQC.py'))
-        if '/usr/local/bin/SEQC.py' not in out:
+    try:  # if anything goes wrong during cluster setup, clean up the instance
+        cluster.setup_cluster(volsize, args.instance_type, spot_bid=args.spot_bid)
+        cluster.serv.connect()
+
+        log.notify('Beginning remote run.')
+        if args.output_stem.endswith('/'):
+            args.output_stem = args.output_stem[:-1]
+        # writing name of instance in local machine to keep track of instance
+        with open(os.path.expanduser('~/.seqc/instance.txt'), 'a') as f:
+            _, run_name = os.path.split(args.output_stem)
+            f.write('%s:%s\n' % (cluster.inst_id.instance_id, run_name))
+
+        # writing name of instance in /data/instance.txt for clean up
+        inst_path = '/data/instance.txt'
+        cluster.serv.exec_command(
+            'echo {instance_id} > {inst_path}'.format(
+                inst_path=inst_path, instance_id=str(cluster.inst_id.instance_id)))
+        cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
+        cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
+                              '/home/ubuntu/.seqc/config')
+        cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
+                                  ''.format(cmd=cmd))
+
+        # check that process_experiment.py is actually running on the cluster
+        out, err = cluster.serv.exec_command('ps aux | grep process_experiment.py')
+        res = ' '.join(out)
+        if '/usr/local/bin/process_experiment.py' not in res:
             raise ConfigurationError('Error executing SEQC on the cluster!')
-
-    log.notify(
-        'Terminating local client. Email will be sent when remote run completes. Please '
-        'use "SEQC.py progress" to monitor the status of the remote run.')
+        log.notify('Terminating local client. Email will be sent when remote run '
+                   'completes. Please use "process_experiment.py --check-progress" '
+                   'to monitor the status of the remote run.')
+    except Exception as e:
+        log.notify('Error {e} occurred during cluster setup!'.format(e=e))
+        if cluster.is_cluster_running():
+            log.notify('Cleaning up instance {id} before exiting...'.format(
+                id=cluster.inst_id.instance_id))
+            remote.terminate_cluster(cluster.inst_id.instance_id)
+        raise  # re-raise original exception
 
 
 def determine_start_point(args) -> (bool, bool, bool):
@@ -231,17 +268,11 @@ def create_or_download_read_array(
 
 def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     """generate sparse count matrix, filter, and generate dense count matrix
-    :param args:  parsed command-line arguments
-    :param dict cell_counts: error correction results
-    :param bool pigz: True if pigz is installed, else False
-    :param aws_upload_key: location on aws to upload results
-    :return tuple:
-      ProcessManager sparse_proc: manager for uploading SparseMatrix results
-      str sparse_csv: filtered count matrix, saved in sparse csv format
-      int total_molecules: number of molecules recovered pre-filtering
-      int mols_lost: number of molecules removed by filters
-      int cells_lost: number of cells removed by filters
-      pd.Series cell_description: descriptive statistics of the retained data
+    :param args:
+    :param cell_counts:
+    :param pigz:
+    :param aws_upload_key:
+    :return:
     """
 
     log.info('Creating sparse count matrices')
@@ -262,11 +293,20 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     log.info('filtering, summarizing cell molecule count distribution, and '
              'generating dense count matrix')
 
+    # todo speed up this function
+    gene_id_map = create_gene_id_to_official_gene_symbol_map(
+        args.index + 'annotations.gtf')
+
+    # translate symbols to gene names
+    reads = ensembl_gene_id_to_official_gene_symbol(reads, gene_id_map=gene_id_map)
+    molecules = ensembl_gene_id_to_official_gene_symbol(
+        molecules, gene_id_map=gene_id_map)
+
     # get dense molecules
     dense, total_molecules, mols_lost, cells_lost, cell_description = (
         create_filtered_dense_count_matrix(
             molecules, reads, plot=True, figname=args.output_stem + '_filters.png',
-            filter_mitochondrial_rna=False))  # todo fix hardcoding False for filter
+            filter_mitochondrial_rna=args.filter_mitochondrial_rna))
 
     # save sparse csv
     dense[dense == 0] = np.nan  # for sparse_csv saving
@@ -290,24 +330,19 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
             cell_description)
 
 
-def run(argv: list, args) -> None:
-    """Run SEQC on the files provided in args, given specifications provided on the
-    command line
+def main(argv: list=None) -> None:
 
-    :param argv: command-line arguments passed to SEQC. Omits the first argument
-      (argv[1:]), which is the program name
-    :param args: parsed argv, produced by seqc.parser(). This function is only called
-      when args.subprocess_name is "run".
-    """
-
+    args = parser.parse_args(argv)
     if args.aws:
         args.log_name = args.log_name.split('/')[-1]
         log.setup_logger('/data/' + args.log_name)
     else:
         log.setup_logger(args.log_name)
 
-    with execution_control.aws_execute(args):
-        log.print_exact_command_line('SEQC.py ' + " ".join(argv))
+    print('beginning execution_control')
+    with execution_control.cleanup(args):
+        print('in_execution_control')
+        log.print_exact_command_line('process_experiment.py ' + " ".join(argv))
         pigz, email = verify.executables('pigz', 'mutt')
         if not email and not args.remote:
             log.notify('mutt was not found on this machine; an email will not be sent to '
@@ -323,7 +358,7 @@ def run(argv: list, args) -> None:
             args.index += '/'
 
         # check arguments if aws flag is not set (arguments would already be checked)
-        if not args.aws:  # todo should this be renamed to reflect its purpose?
+        if not args.aws:
             total_size = verify.arguments(args, basespace_token)
         else:
             total_size = None
@@ -345,7 +380,7 @@ def run(argv: list, args) -> None:
                                  'runs.')
             remote.cluster_cleanup()
             run_remote(args, argv, total_size)
-            sys.exit(0)  # todo should this just return (?)
+            sys.exit(0)
 
         if args.aws:
             aws_upload_key, args.output_stem, output_dir, output_prefix = (
@@ -451,39 +486,6 @@ def run(argv: list, args) -> None:
                 sparse_proc, sparse_csv, manage_ra, summary, fastq_records, sam_records,
                 total_mols, mols_lost, cells_lost, manage_samfile, cell_descr,
                 args.output_stem, args.log_name, email)
-
-
-def create_index(args, volsize=1e9):
-    """create an index for SEQC.
-
-    :param args: parsed arguments. This function is only called if subprocess_name is
-      'index'
-    """
-
-    @execution_control.Remote(args.instance_type, volsize, args.spot_bid, retrieve=False)
-    def _create_index():
-        with execution_control.aws_execute(args):
-            idx = Index(args.organism, args.additional_id_types)
-            idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
-
-    _create_index()
-
-
-def main(argv):
-    """Function to determine which submodule to execute.
-
-    Created to allow the main pipeline to be tested from the earliest entry point
-    (command-line arguments).
-
-    :param argv: output of sys.argv[1:]
-    """
-    arguments = parser.parse_args(argv)
-    if arguments.subparser_name == 'run':
-        run(argv, arguments)
-    elif arguments.subparser_name == 'progress':
-        remote.check_progress()
-    elif arguments.subparser_name == 'index':
-        create_index(arguments, argv)
 
 
 if __name__ == '__main__':

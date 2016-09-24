@@ -377,7 +377,7 @@ class ClusterServer(object):
 
         def test_install():
             out_test_install, _ = self.serv.exec_command(
-                'SEQC.py -h | grep RNA')
+                'process_experiment.py -h | grep RNA')
             if not out_test_install:
                 raise BotoCallError()
 
@@ -544,7 +544,7 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
 
 def check_progress():
     """
-    flag that can be used with SEQC.py --check-progress
+    flag that can be used with process_experiment.py --check-progress
     to retrieve remote log and track the progress of the remote run
     """
 
@@ -553,7 +553,7 @@ def check_progress():
     config = configparser.ConfigParser()
     if not config.read(config_file):
         raise ValueError('Please run ./configure (found in the seqc directory) before '
-                         'attempting to run SEQC.py.')
+                         'attempting to run process_experiment.py.')
 
     # obtaining rsa key from configuration file
     rsa_key = os.path.expanduser(config['key']['path_to_rsa_key'])

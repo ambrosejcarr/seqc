@@ -1,6 +1,23 @@
 import argparse
+import sys
+from seqc import remote
 from seqc import version
 from seqc.exceptions import ArgumentParserError
+
+
+class NewArgumentParser(argparse.ArgumentParser):
+    """
+    Simple wrapper for ArgumentParser that allows flags to be caught before the presence
+    of 'required' arguments are tested. Allows us to add flags, for example, for
+    checking the progress of existing SEQC runs.
+    """
+    def error(self, message):
+        # checks to see whether user wants to check remote experiment status
+        if '--check-progress' in sys.argv[1:]:
+            remote.check_progress()
+        else:
+            print(message)
+        sys.exit(0)
 
 
 def parse_args(args):
@@ -11,14 +28,7 @@ def parse_args(args):
       from sys.argv.
     :returns: args, namespace object, output of ArgumentParser.parse_args()
     """
-    meta = argparse.ArgumentParser(
-        description='Processing Tools for scRNA-seq Experiments')
-    meta.add_argument('-v', '--version', action='version',
-                      version='{} {}'.format(meta.prog, version.__version__))
-    subparsers = meta.add_subparsers(help='sub-command help', dest='subparser_name')
-
-    # subparser for running experiments
-    p = subparsers.add_parser('run', help='run help')
+    p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2', 'in_drop_v3', 'ten_x'],
@@ -123,37 +133,11 @@ def parse_args(args):
     r.add_argument('--log-name', type=str, default='seqc.log',
                    help='Output log name (default=seqc.log)')
 
-    # add subparser to check progress
-    progress = subparsers.add_parser('progress', help='check SEQC run progress')
-
-    # add subparser to create index
-    index = subparsers.add_parser('index', help='create a SEQC index')
-
-    index.add_argument(
-        '-o', '--organism', required=True,
-        help='organism to create index for. Must be formatted as genus_species in all '
-             'lower-case. e.g. human is homo_sapiens.')
-    index.add_argument(
-        '-f', '--folder', default=None,
-        help='folder in which to create the index. Defaults to the name of the organism, '
-             'which is created in the current directory.')
-    index.add_argument('-u', '--upload-location', default=None,
-                       help='if provided, the index will be uploaded to this aws s3 '
-                            'prefix')
-    index.add_argument('--ids', '--additional-id-types',
-                       help='names of additional ids from other consortia to check '
-                            'against. If provided, each ENSEMBL gene id must also be '
-                            'annotated by at least one of these consortia to be '
-                            'considered valid and appear in the final SEQC count matrix.')
-    index.add_argument('-b', '--valid-biotypes',
-                       help='list of gene biotypes that are considered valid. Defaults '
-                            'are protein_coding and lincRNA. In most cases, other '
-                            'biotypes are not expected to be captured by SEQC, and '
-                            'should be excluded',
-                       default=('protein_coding', 'lincRNA'))
+    p.add_argument('-v', '--version', action='version',
+                   version='{} {}'.format(p.prog, version.__version__))
 
     try:
-        return meta.parse_args(args)
+        return p.parse_args(args)
     except ArgumentParserError:
         raise
 
@@ -162,17 +146,7 @@ def generate_remote_cmdline_args(argv: list) -> str:
     """recreate the command line arguments for a remote run, appending --local and --aws
 
     :param argv: the output of sys.argv[1:], in other words, all parameters passed to
-      the script, omitting the script name (SEQC.py)
+      the script, omitting the script name (process_experiment.py)
     :return str: command line arguments for a remote run
     """
-    return 'SEQC.py ' + ' '.join(argv) + ' --local --aws'
-
-
-def recreate_cmdline_args(argv: list) -> str:
-    """recreate the command line arguments for a remote run, appending --local and --aws
-
-    :param argv: the output of sys.argv[1:], in other words, all parameters passed to
-      the script, omitting the script name (SEQC.py)
-    :return str: command line arguments for a remote run
-    """
-    return 'SEQC.py ' + ' '.join(argv)
+    return 'process_experiment.py ' + ' '.join(argv) + ' --local --aws'

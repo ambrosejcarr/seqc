@@ -10,14 +10,14 @@ from seqc.io import S3
 
 class Index:
 
-    def __init__(self, organism, additional_id_types=None):
+    def __init__(self, organism, additional_id_fields=None):
         """Create an Index object for organism, requiring that a valid annotation have
         both an ENSEMBL id and at least one additional id provided by an
         additional_id_field (if provided)
 
         :param organism: name of the organism. Must be lower-case genus_species. For
           example, human=homo_sapiens, mouse=mus_musculus, etc.
-        :param additional_id_types: (default: None) Names of additional ID types whose
+        :param additional_id_fields: (default: None) Names of additional ID fields whose
           presence declares the associated ENSEMBL gene id a valid identifier. If multiple
           such fields are passed, a gene can be defined in any of the provided fields, and
           it will be declared valid. If no fields are passed, no ID filtering will be
@@ -32,11 +32,6 @@ class Index:
 
           example fields for human are ['hgnc_symbol', 'entrezgene'], example fields for
           mouse are ['mgi_symbol', 'entrezgene']
-
-          to find out the specific spelling and case of different id fields you may want
-          to use, you will need to generate sample XML queries from ENSEMBL BioMART.
-          This README describes how to accomplish this:
-          http://useast.ensembl.org/info/data/biomart/biomart_restful.html
         """
 
         # check organism input
@@ -51,23 +46,23 @@ class Index:
         self._organism = organism
 
         # check additional_id_fields argument
-        if not (isinstance(additional_id_types, (list, tuple, np.ndarray)) or
-                additional_id_types is None):
+        if not (isinstance(additional_id_fields, (list, tuple, np.ndarray)) or
+                additional_id_fields is None):
             raise TypeError(
                 'if provided, additional id fields must be a list, tuple, or numpy '
                 'array')
-        if additional_id_types:
-            self._additional_id_types = additional_id_types
+        if additional_id_fields:
+            self._additional_id_fields = additional_id_fields
         else:
-            self._additional_id_types = []
+            self._additional_id_fields = []
 
     @property
     def organism(self) -> str:
         return self._organism
 
     @property
-    def additional_id_types(self) -> list:
-        return self._additional_id_types
+    def additional_id_fields(self) -> list:
+        return self._additional_id_fields
 
     @property
     def _converter_xml(self) -> str:
@@ -75,7 +70,7 @@ class Index:
         ENSEMBL gene ids to any identifiers implemented in self.additional_id_fields
         """
         attributes = ''.join(
-            '<Attribute name = "%s" />' % f for f in self.additional_id_types)
+            '<Attribute name = "%s" />' % f for f in self.additional_id_fields)
         genus, species = self.organism.split('_')
         genome_name = genus[0] + species
         xml = (
@@ -175,12 +170,11 @@ class Index:
         if fasta_name is None:
             fasta_name = './%s.fa.gz' % self.organism
         if gtf_name is None:
-            gtf_name = './%s.gtf.gz' % self.organism
+            gtf_name = './%s.fa.gz' % self.organism
         if conversion_name is None:
             conversion_name = './%s_ids.csv' % self.organism
 
         with FTP(host='ftp.ensembl.org') as ftp:
-            ftp.login()
             self._download_fasta_file(ftp, fasta_name)
             self._download_gtf_file(ftp, gtf_name)
 
@@ -190,8 +184,7 @@ class Index:
             self,
             conversion_file: str=None,
             gtf_file: str=None,
-            truncated_annotation: str=None,
-            valid_biotypes=(b'protein_coding', b'lincRNA')):
+            truncated_annotation: str=None):
         """
         Remove any annotation from the annotation_file that is not also defined by at
         least one additional identifer present in conversion file.
@@ -203,31 +196,12 @@ class Index:
         more importantly, any associated biological information. These such genes are
         often uninformative as a result, and are better excluded from the index.
 
-        valid_biotypes removes genes that are of biotypes that single-cell sequencing
-        is unlikely to detect. For example, miRNA are rarely poly-adenylated, and are
-        of a size that they are often removed with primers. In our experience, the only
-        biotypes that are worth considering are protein coding genes and lincRNA, the
-        defaults for this function.
-
         :param conversion_file: file location of the conversion file
         :param gtf_file: file location of the annotation file
         :param truncated_annotation: name for the generated output file
-        :param list(bytes) valid_biotypes: only accept genes of this biotype.
         """
-        if not (self.additional_id_types or valid_biotypes):  # nothing to be done
-            return
-
-        # change to set for efficiency
-        if all(isinstance(t, str) for t in valid_biotypes):
-            valid_biotypes = set((t.encode() for t in valid_biotypes))
-        elif all(isinstance(t, bytes) for t in valid_biotypes):
-            valid_biotypes = set(valid_biotypes)
-        else:
-            raise TypeError('mixed-type biotypes detected. Please pass valid_biotypes '
-                            'as strings or bytes objects (but not both).')
-
         if gtf_file is None:
-            gtf_file = './%s.gtf.gz' % self.organism
+            gtf_file = './%s.fa.gz' % self.organism
         if conversion_file is None:
             conversion_file = './%s_ids.csv' % self.organism
         if truncated_annotation is None:
@@ -242,8 +216,7 @@ class Index:
         with open(truncated_annotation, 'wb') as f:
             for line_fields in gr:
                 record = gtf.Record(line_fields)
-                if (record.attribute(b'gene_id').decode() in valid_ensembl_ids and
-                        record.attribute(b'gene_biotype') in valid_biotypes):
+                if record.attribute(b'gene_id').decode() in valid_ensembl_ids:
                     f.write(bytes(record))
 
     def _create_star_index(
@@ -261,12 +234,9 @@ class Index:
         :return:
         """
         if fasta_file is None:
-            fasta_file = '%s.fa.gz' % self.organism
+            fasta_file = './%s.fa.gz' % self.organism
         if gtf_file is None:
-            if os.path.isfile('%s_multiconsortia.gtf' % self.organism):
-                gtf_file = '%s_multiconsortia.gtf' % self.organism
-            else:
-                gtf_file = '%s.gtf.gz' % self.organism
+            gtf_file = './%s_multiconsortia.gtf' % self.organism
         if genome_dir is None:
             genome_dir = self.organism
         star.create_index(fasta_file, gtf_file, genome_dir, read_length)
@@ -286,28 +256,18 @@ class Index:
         key_prefix = '/'.join(dirs)
         S3.upload_files(file_prefix=index_directory, bucket=bucket, key_prefix=key_prefix)
 
-    def create_index(
-            self,
-            index_folder_name: str=None,
-            valid_biotypes=('protein_coding', 'lincRNA'),
-            s3_location: str=None):
+    def create_index(self, index_folder_name, s3_location: str=None):
         """create an optionally upload an index
 
-        :param index_folder_name: name of the folder in which to create the index. If not
-          provided, an index will be created that is named after the organism, and will
-          be placed in the current directory
-        :param valid_biotypes: gene biotypes that do not match values in this list will
-          be discarded from the annotation and will not appear in final count matrices
+        :param index_folder_name: name of the folder in which to create the index
         :param s3_location: optional, s3 location to upload the index to.
         :return:
         """
-        if not index_folder_name:
-            index_folder_name = self.organism
-
-        os.makedirs(index_folder_name, exist_ok=True)
+        assert(self.organism and self.additional_id_fields)  # ensure class is implemented
+        os.makedirs(index_folder_name)
         os.chdir(index_folder_name)
         self._download_ensembl_files()
-        self._subset_genes(valid_biotypes=valid_biotypes)
         self._create_star_index()
+        self._subset_genes()
         if s3_location:
             self._upload_index('./', s3_location)

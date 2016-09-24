@@ -18,5 +18,5 @@ def read_config(config_file: str=None) -> dict:
     if not config.read(config_file):
         raise ConfigurationError('Please run ./configure (found in the seqc '
                                  'directory) before attempting to run '
-                                 'SEQC.py.')
+                                 'process_experiment.py.')
     return config
