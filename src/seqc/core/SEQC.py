@@ -290,6 +290,169 @@ def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
             cell_description)
 
 
+def run_old(argv: list, args) -> None:
+    """Run SEQC on the files provided in args, given specifications provided on the
+    command line
+
+    :param argv: command-line arguments passed to SEQC. Omits the first argument
+      (argv[1:]), which is the program name
+    :param args: parsed argv, produced by seqc.parser(). This function is only called
+      when args.subprocess_name is "run".
+    """
+
+    if args.aws:
+        args.log_name = args.log_name.split('/')[-1]
+        log.setup_logger('/data/' + args.log_name)
+    else:
+        log.setup_logger(args.log_name)
+
+    with execution_control.aws_execute(args):
+        log.print_exact_command_line('SEQC.py ' + " ".join(argv))
+        pigz, email = verify.executables('pigz', 'mutt')
+        if not email and not args.remote:
+            log.notify('mutt was not found on this machine; an email will not be sent to '
+                       'the user upon termination of SEQC run.')
+        log.args(args)
+
+        # read in config file, make sure it exists
+        configuration = config.read_config('~/.seqc/config')
+
+        # extract basespace token and make sure args.index is a directory
+        basespace_token = configuration['BaseSpaceToken']['base_space_token']
+        if not args.index.endswith('/'):
+            args.index += '/'
+
+        # check arguments if aws flag is not set (arguments would already be checked)
+        if not args.aws:  # todo should this be renamed to reflect its purpose?
+            total_size = verify.arguments(args, basespace_token)
+        else:
+            total_size = None
+
+        # check whether output is an s3 or local directory, split output_stem
+        if args.output_stem.endswith('/'):
+            if args.output_stem.startswith('s3://'):
+                output_dir, output_prefix = os.path.split(args.output_stem[:-1])
+            else:
+                raise ValueError('-o/--output-stem should not be a directory for local '
+                                 'SEQC runs.')
+        else:
+            output_dir, output_prefix = os.path.split(args.output_stem)
+
+        # check output directory if remote run
+        if args.remote:
+            if not args.output_stem.startswith('s3://'):
+                raise ValueError('-o/--output-stem must be an s3 link for remote SEQC '
+                                 'runs.')
+            remote.cluster_cleanup()
+            run_remote(args, argv, total_size)
+            sys.exit(0)  # todo should this just return (?)
+
+        if args.aws:
+            aws_upload_key, args.output_stem, output_dir, output_prefix = (
+                upload.update_directories_for_aws(args.output_stem, output_prefix))
+        else:
+            aws_upload_key = None
+
+        # download data if necessary
+        if args.basespace:
+            args.barcode_fastq, args.genomic_fastq = download.basespace(
+                args, output_dir, basespace_token)
+
+        # check for remote fastq file links
+        args.genomic_fastq = download.s3_fastq(
+            args.genomic_fastq, output_dir, 'genomic')
+        args.barcode_fastq = download.s3_fastq(
+            args.barcode_fastq, output_dir, 'barcode')
+
+        # check if the index must be downloaded
+        args.index = download.index(
+            output_dir, args.index, args.read_array, args.samfile)
+
+        n_processes = multiprocessing.cpu_count() - 1  # get number of processors
+
+        input_data = 'start'  # which data was used as input?
+
+        # determine where the script should start:
+        merge, align, process_samfile = determine_start_point(args)
+
+        # check if the platform name provided is supported by seqc
+        platform_name = verify.platform_name(args.platform)
+        platform = getattr(platforms, platform_name)()  # returns platform class
+
+        if merge:
+            if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
+                args.min_poly_t = filter.estimate_min_poly_t(
+                    args.barcode_fastq, platform)
+                log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
+
+            args.merged_fastq, fastq_records = merge_fastq_files(
+                platform, args.barcode_fastq, args.output_stem,
+                args.genomic_fastq, pigz)
+        else:
+            fastq_records = None
+
+        if align:
+            args.samfile, input_data, manage_merged = align_fastq_records(
+                args.merged_fastq, output_dir, args.output_stem, args.star_args,
+                args.index, n_processes, aws_upload_key, pigz)
+        else:
+            manage_merged = None
+
+        ra, input_data, manage_samfile, sam_records, h5_file = (
+            create_or_download_read_array(
+                process_samfile, args.samfile, output_dir, args.index, args.read_array,
+                args.output_stem, aws_upload_key, input_data))
+        args.read_array = h5_file
+
+        args.barcode_files = download.barcodes(
+            platform_name, args.barcode_files, output_dir)
+
+        # SEQC was started from input other than fastq files
+        if args.min_poly_t is None:
+            args.min_poly_t = 0
+            log.notify('Warning: SEQC started from step other than unmerged fastq with '
+                       'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
+        if args.max_dust_score is None:
+            args.max_dust_score = 10
+            log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
+                       'with --max-dust-score=10.')
+
+        # correct errors
+        log.info('Correcting cell barcode and RMT errors')
+        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
+        cell_counts, summary = platform.correct_errors(
+            ra, args.barcode_files, reverse_complement=False,
+            required_poly_t=args.min_poly_t, max_ed=args.max_ed,
+            max_dust=args.max_dust_score, singleton_weight=args.singleton_weight)
+
+        # uploading read array to S3 if created, else removing read array
+        if input_data == 'readarray':
+            log.info('Removing .h5 file for memory management.')
+            rm_ra = 'rm {fname}'.format(fname=args.read_array)
+            io.ProcessManager(rm_ra).run_all()
+            manage_ra = None
+        else:
+            if aws_upload_key:
+                log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
+                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+                                                                s3link=aws_upload_key)
+                manage_ra = io.ProcessManager(upload_ra)
+                manage_ra.run_all()
+
+        sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
+            generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
+
+        # in this version, local runs won't be able to upload to S3
+        # and also won't get an e-mail notification.
+        if args.aws:
+            upload.data_and_notify(
+                args.email_status, aws_upload_key, align, input_data, manage_merged,
+                process_samfile, args.merged_fastq, args.samfile, args.read_array,
+                sparse_proc, sparse_csv, manage_ra, summary, fastq_records, sam_records,
+                total_mols, mols_lost, cells_lost, manage_samfile, cell_descr,
+                args.output_stem, args.log_name, email)
+
+
 def run(argv: list, args) -> None:
     """Run SEQC on the files provided in args, given specifications provided on the
     command line
@@ -460,14 +623,19 @@ def create_index(args, volsize=1e9):
       'index'
     """
 
-    @execution_control.Remote(args.instance_type, volsize, args.spot_bid, retrieve=False)
+    # todo think about what to do about directory localization (e.g. /data/ prefix)
+    # define the function
     def _create_index():
         with execution_control.aws_execute(args):
             idx = Index(args.organism, args.additional_id_types)
             idx.create_index(args.folder, args.valid_biotypes, args.upload_location)
 
-    _create_index()
+    # if remote is needed, wrap it
+    if args.remote:
+        _create_index = execution_control.Remote(
+            args.instance_type, volsize, args.spot_bid, retrieve=False)(_create_index)
 
+    _create_index()  # call the function
 
 def main(argv):
     """Function to determine which submodule to execute.
