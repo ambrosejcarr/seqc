@@ -117,7 +117,8 @@ def parse_args(args):
     pindex.add_argument('-u', '--upload-location', default=None,
                        help='if provided, the index will be uploaded to this aws s3 '
                             'prefix')
-    pindex.add_argument('--ids', '--additional-id-types',
+
+    pindex.add_argument('--ids', '--additional-id-types', nargs='*',
                        help='names of additional ids from other consortia to check '
                             'against. If provided, each ENSEMBL gene id must also be '
                             'annotated by at least one of these consortia to be '
