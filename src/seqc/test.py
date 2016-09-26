@@ -231,6 +231,24 @@ class TestRemoteProcessExperiment(unittest.TestCase):
             pass  # designed to exit when complete
         print("Initialization succeeded, wait for email to evaluate test results.")
 
+    def test_remote_seqc_simple_index(self):
+        organism = 'cionia_intestinalis'
+        argv = [
+            'index',
+            '-o', organism,
+            '-f', os.environ['TMPDIR'] + organism + '/'
+            '-u', 's3://dplab-data/genomes/cionia_intestinalis/'
+            '--ids', 'entrezgene',
+            '--email-status', self.email,
+            '--instance-type', 'c4'
+            '--log-name', 'test_cionia_intestinalis.log'
+        ]
+        try:
+            SEQC.main(argv)
+        except SystemExit:
+            pass  # designed to exit when complete
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
 
 class TestLocalProcessExperiment(unittest.TestCase):
     """
@@ -655,7 +673,7 @@ class TestRemoteExecution(unittest.TestCase):
 
     def test_remote_execution_dummy_function(self):
         @execution_control.Remote('c4', 5, None, True)
-        def test_function_prints_10(*args, **kwargs):
+        def test_function_prints_10(*args):
             return list(args) + [10]
 
         self.assertEqual(test_function_prints_10(20, '50'), [20, '50', 10])
