@@ -11,7 +11,6 @@ import seqc.sequence.barcodes
 import pickle
 from itertools import permutations
     
-
 class ReadArray:
 
     _dtype = [
@@ -124,7 +123,7 @@ class ReadArray:
             #new read
             if alignment.qname != prev_alignment_name:
                 if read_idx>0:
-                    data[read_idx-1] = (cell, rmt, n_poly_t, dust_score, 0, pos, genes, 0)
+                    data[read_idx-1] = (0, cell, rmt, n_poly_t, dust_score, 0, pos, genes)
                     cls.set_status_active(data[read_idx-1])
                 prev_alignment_name = alignment.qname
                 read_idx+=1
