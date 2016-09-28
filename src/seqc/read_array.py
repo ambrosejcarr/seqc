@@ -10,6 +10,19 @@ import seqc.multialignment as mm
 import seqc.sequence.barcodes
 import pickle
 from itertools import permutations
+
+# Some constants
+PASS_FILTERS    = 0
+NO_ALIGNMENT    = 1
+GENE_0          = 2
+CELL_0          = 3
+RMT_0           = 4
+POLY_T_0        = 5
+SCAFFOLD        = 6
+
+BC_OK           = 0
+BC_FIXED        = 1
+BC_BAD          = 2
     
 class ReadArray:
 
@@ -22,19 +35,6 @@ class ReadArray:
         ('gene', np.uint32),
         ('position', np.uint64),
         ('ma_genes', np.dtype(object))]
-    
-    # Some constants
-    PASS_FILTERS    = 0
-    NO_ALIGNMENT    = 1
-    GENE_0          = 2
-    CELL_0          = 3
-    RMT_0           = 4
-    POLY_T_0        = 5
-    SCAFFOLD        = 6
-    
-    BC_OK           = 0
-    BC_FIXED        = 1
-    BC_BAD          = 2
 
     def __init__(self, data, non_unique_alignments=-1):
         """
