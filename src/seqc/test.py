@@ -789,7 +789,7 @@ class TestEC2(unittest.TestCase):
     def test_retry_catches_errors(self):
         """test function throws RuntimeError, ensure that BotoCallError is thrown"""
 
-        @ec2.retry(catch=RuntimeError, delay=0.1, verbose=False)
+        @ec2.Retry(catch=RuntimeError, delay=0.1, verbose=False)
         def function(raise_if_true):
             if raise_if_true:
                 raise RuntimeError('Test exception.')
@@ -803,6 +803,20 @@ class TestEC2(unittest.TestCase):
         ec2.AWSInstance.verify_security_group(sg)
         ec2.AWSInstance.enable_ssh(sg)
         ec2.AWSInstance.remove_security_group(sg)
+
+    def test_create_and_terminate_instance(self):
+        instance = ec2.AWSInstance('c3', volume_size=1100)
+        self.assertIsNone(instance.instance)
+        instance.create_instance()  # instance should be None
+        self.assertIsNotNone(instance.instance)
+        instance.terminate()
+
+    def test_create_spot_bid(self):
+        instance = ec2.AWSInstance('c3', volume_size=1100, spot_bid=0.1)
+        result = instance.create_spot_bid()
+        print(result)
+        print(result.items())
+
 
 #########################################################################################
 

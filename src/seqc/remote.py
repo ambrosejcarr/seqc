@@ -338,7 +338,7 @@ class ClusterServer(object):
 
         if not vol_size:
             log.notify("No external volume requested.")
-            self.serv.exec_command("sudo mkdir -p /data")
+            self.serv.execute("sudo mkdir -p /data")
             return
 
         if not spot:
@@ -347,9 +347,9 @@ class ClusterServer(object):
             log.notify("Successfully attached %d GB in 1 volume." % vol_size)
 
         log.notify("Formatting and mounting %s" % dev_id)
-        self.serv.exec_command("sudo mkfs -t ext4 %s" % dev_id)
-        self.serv.exec_command("sudo mkdir -p /data")
-        self.serv.exec_command("sudo mount %s /data" % dev_id)
+        self.serv.execute("sudo mkfs -t ext4 %s" % dev_id)
+        self.serv.execute("sudo mkdir -p /data")
+        self.serv.execute("sudo mount %s /data" % dev_id)
         log.notify("Successfully mounted new volume onto /data.")
 
     def upload_and_install_seqc(self) -> None:
@@ -362,21 +362,21 @@ class ClusterServer(object):
         folder = '/data/software/'
         location = folder + 'seqc.tar.gz'
         log.notify('Installing SEQC on remote instance.')
-        self.serv.exec_command("sudo mkdir -p %s" % folder)
-        self.serv.exec_command("sudo chown -c ubuntu /data")
-        self.serv.exec_command("sudo chown -c ubuntu %s" % folder)
+        self.serv.execute("sudo mkdir -p %s" % folder)
+        self.serv.execute("sudo chown -c ubuntu /data")
+        self.serv.execute("sudo chown -c ubuntu %s" % folder)
 
         seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
         self.serv.put_file(seqc_distribution, location)
 
-        self.serv.exec_command('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
+        self.serv.execute('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
                                '--strip-components 1' % folder)
 
         log.notify("Sources are installed and decompressed, setting up seqc")
-        self.serv.exec_command('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
+        self.serv.execute('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
 
         def test_install():
-            out_test_install, _ = self.serv.exec_command(
+            out_test_install, _ = self.serv.execute(
                 'SEQC.py -h | grep RNA')
             if not out_test_install:
                 raise BotoCallError()
@@ -390,10 +390,10 @@ class ClusterServer(object):
     def set_credentials(self):
         """sets aws credentials on remote instance from user's local config file"""
 
-        self.serv.exec_command('aws configure set aws_access_key_id %s' % self.aws_id)
-        self.serv.exec_command(
+        self.serv.execute('aws configure set aws_access_key_id %s' % self.aws_id)
+        self.serv.execute(
             'aws configure set aws_secret_access_key %s' % self.aws_key)
-        self.serv.exec_command('aws configure set region %s' % self.zone[:-1])
+        self.serv.execute('aws configure set region %s' % self.zone[:-1])
 
     def setup_cluster(self, volsize, aws_instance, spot_bid=None):
         """

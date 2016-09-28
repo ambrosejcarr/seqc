@@ -158,7 +158,7 @@ class aws_setup:
 
     def execute(self, command_string):
         """run the remote function on the server, capturing output and errors"""
-        data, errs = self.cluster.serv.exec_command(command_string)
+        data, errs = self.cluster.serv.execute(command_string)
         if errs:
             raise ChildProcessError('Error captured from remote execution: %s'
                                     % '\n'.join(errs))
