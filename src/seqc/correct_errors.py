@@ -3,7 +3,7 @@ from itertools import permutations
 from sys import maxsize
 from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import DNA3Bit
-from seqc.sequence import revcomp_bytes
+from seqc.sequence.barcodes import revcomp_bytes
 import numpy as np
 from seqc import log
 import random
