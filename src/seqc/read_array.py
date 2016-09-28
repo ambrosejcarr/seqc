@@ -36,7 +36,7 @@ class ReadArray:
     BC_FIXED        = 1
     BC_BAD          = 2
 
-    def __init__(self, data):
+    def __init__(self, data, non_unique_alignments=-1):
         """
         Enhanced np.ndarray (structured array) with several companion functions to hold
         filter, sort, and access compressed fastq read information.
@@ -63,6 +63,9 @@ class ReadArray:
         self._bad_barcodes      = 0
         self._fix_barcodes      = 0
         self._ok_barcodes       = 0
+        
+        if non_unique_alignments != -1:
+            self._non_unique_align = non_unique_alignments
 
     
     @property
@@ -105,6 +108,7 @@ class ReadArray:
         :param samfile: str, filename of alignment file.
         :return:
         """
+        non_unique_align = 0
         reader = sam.Reader(samfile)
         #go over the file to find how many unique reads there are
         num_reads=0
@@ -130,7 +134,7 @@ class ReadArray:
                 genes = translator.translate(alignment.rname, alignment.strand, alignment.pos)
                 if genes != -1:
                     if len(genes) > 1:
-                        self._non_unique_align+=1
+                        non_unique_align+=1
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
                 rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
@@ -141,16 +145,16 @@ class ReadArray:
                 genes_l = translator.translate(alignment.rname, alignment.strand, alignment.pos)
                 if genes_l != -1:
                     if len(genes_l) > 1:
-                        self._non_unique_align+=1
+                        non_unique_align+=1
                     if genes == -1:
                         genes = genes_l
                     else:
                         genes+=genes_l
             
-        seqc.log.info('non unique alignments count: {}'.format(self._non_unique_align))
+        seqc.log.info('non unique alignments count: {}'.format(non_unique_align))
         #seqc.log.info('focus gene {}. Total alignmens: {}, total reads: {}, total uniquely aligned reads: {}'.format(focus_gene, fgene_tot_reads, fgene_tot_reads, fgene_tot_uniq))
         
-        res_ra = cls(data)
+        res_ra = cls(data, non_unique_align)
         res_ra._total_alignments = len(reader)
         res_ra._total_reads = num_reads
 
