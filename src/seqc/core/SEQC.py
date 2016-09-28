@@ -616,7 +616,7 @@ def run(argv: list, args) -> None:
                 args.output_stem, args.log_name, email)
 
 
-def create_index(args, volsize=1e9):
+def create_index(args, volsize=100):
     """create an index for SEQC.
 
     :param args: parsed arguments. This function is only called if subprocess_name is

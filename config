@@ -1,29 +1,25 @@
-[aws_info]
-aws_access_key_id = None
+[security]
+aws_public_access_key = None
 aws_secret_access_key = None
-aws_region_name = us-east-1c
-
-[key]
-path_to_rsa_key = None
+availability_zone = us-east-1c
+rsa_key_path = None
+subnet_id = subnet-70d7ec36
 
 [c3]
 cluster_size = 1
-node_image_id = ami-6e239a79
-node_instance_type = c3.8xlarge
-availability_zone = us-east-1c
+image_id = ami-6e239a79
+instance_type = c3.8xlarge
 
 [c4]
 cluster_size = 1
-node_image_id = ami-e0671cf7
-node_instance_type = c4.8xlarge
-subnet_id = subnet-70d7ec36
-availability_zone = us-east-1c
+image_id = ami-e0671cf7
+instance_type = c4.8xlarge
 
 [r3]
 cluster_size = 1
-node_image_id = ami-772e9760
-node_instance_type = r3.8xlarge
-availability_zone = us-east-1c
+image_id = ami-772e9760
+instance_type = r3.8xlarge
 
-[BaseSpaceToken]
+
+[BaseSpaceToken]  # todo change this to BaseSpace
 base_space_token = None

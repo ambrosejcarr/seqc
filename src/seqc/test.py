@@ -1,4 +1,3 @@
-# import random
 import os
 import unittest
 import gzip
@@ -8,11 +7,11 @@ from seqc.core import parser
 import pandas as pd
 import numpy as np
 import paramiko
-from seqc.core import SEQC
-from seqc.sequence import index, gtf
 import ftplib
 import nose2
-from seqc.core import execution_control
+from seqc.sequence import index, gtf
+from seqc.core import execution_control, SEQC
+from seqc import ec2
 
 import seqc
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -779,6 +778,31 @@ class TestLogData(unittest.TestCase):
             '~/google_drive/manuscripts/breast_cancer_immune/data/'),
             exclude='.*?log')
         assert not np.sum(np.isnan(df.values))
+
+class TestEC2(unittest.TestCase):
+
+    def test_instantiation_config(self):
+        """test that constructor completes without error when receiving arguments from a
+        config file"""
+        instance = ec2.AWSInstance('c4')
+
+    def test_retry_catches_errors(self):
+        """test function throws RuntimeError, ensure that BotoCallError is thrown"""
+
+        @ec2.retry(catch=RuntimeError, delay=0.1, verbose=False)
+        def function(raise_if_true):
+            if raise_if_true:
+                raise RuntimeError('Test exception.')
+            else:
+                return 1
+
+        self.assertRaises(ec2.RetryLimitExceeded, function, True)
+
+    def test_create_verify_remove_security_group(self):
+        sg = ec2.AWSInstance.create_security_group()
+        ec2.AWSInstance.verify_security_group(sg)
+        ec2.AWSInstance.enable_ssh(sg)
+        ec2.AWSInstance.remove_security_group(sg)
 
 #########################################################################################
 

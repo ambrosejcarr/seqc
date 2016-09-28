@@ -3,6 +3,14 @@ import time
 from functools import wraps
 
 
+class RetryLimitExceeded(Exception):
+    pass
+
+
+class InstanceNotRunningError(Exception):
+    pass
+
+
 class EC2RuntimeError(Exception):
     pass
 
@@ -76,3 +84,53 @@ def retry_boto_call(
                     raise real_exception
                 time.sleep(delay_retry)
     return wrapper
+
+
+class retry_boto:
+
+    def __init__(
+            self,
+            retries: int=3,
+            exceptions_to_catch=Exception,
+            exception_to_raise: Exception=None,
+            delay_retry: int=5,
+            verbose=False):
+        self.retries = retries
+        self.exceptions_to_catch = exceptions_to_catch
+        self.exception_to_raise = exception_to_raise
+        self.delay_retry = delay_retry
+        self.verbose = verbose
+
+    def __call__(self, function):
+
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            for _ in range(self.retries):
+                try: return function(*args, **kwargs)
+                except self.exceptions_to_catch as e:
+                    if self.verbose:
+                        log.notify(
+                            'Non fatal error in function {} --> {} | retrying in {!s}s'
+                            ''.format(function.__qualname__, str(e), self.delay_retry))
+                time.sleep(self.delay_retry)
+            exc = (
+                BotoCallError(
+                    'Boto3 failed {} times at {}s interval'.format(
+                        self.retries, self.delay_retry))
+                if not self.exception_to_raise else self.exception_to_raise)
+            log.notify(
+                'Encountered {} failures at {}s spacing while executing {method}'.format(
+                    (self.retries, self.delay_retry, function.__qualname__)))
+
+            return wrapper
+
+
+
+
+
+
+
+
+
+
+
