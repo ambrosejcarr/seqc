@@ -19,7 +19,7 @@ class DNA3Bit(object):
         res = 0
         for c in b:
             res <<= 3
-            res += cls._str2bindict[c]
+            res += DNA3Bit._str2bindict[c]
         return res
         
     @staticmethod
@@ -34,7 +34,7 @@ class DNA3Bit(object):
             raise ValueError(message)
         r = b''
         while i > 0:
-            r = cls._bin2strdict[i & 0b111] + r
+            r = DNA3Bit._bin2strdict[i & 0b111] + r
             i >>= 3
         return r
         
