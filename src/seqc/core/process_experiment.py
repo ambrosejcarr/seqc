@@ -454,7 +454,10 @@ def main(argv: list=None) -> None:
         # Apply filters
         ra.apply_filters(required_poly_t=args.min_poly_t)
         # Correct barcodes
+        error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
+        # Resolve multimapping
         
+        #TODO: add,commit,push,run,test,fix problems
         return
         
         # correct errors

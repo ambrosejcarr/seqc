@@ -7,10 +7,15 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, barcodes_len):
-        self._correct_errors = getattr(
-            correct_errors, type(self).__name__, correct_errors.pass_through)
+    def __init__(self, barcodes_len, check_barcodes, correct_errors_func):
+        """
+        Ctor for the abstract class. barcodes_len is a list of barcodes lengths, 
+        check_barcodes is a flag signalling wether or not the barcodes are known apriori and so can be filtered and corrected
+        correct_errors_func points to the correct function for error correction
+        """
+        self._correct_errors = correct_errors_func
         self._barcodes_lengths = barcodes_len
+        self._check_barcodes = check_barcodes
 
     def factory(type):
         if type == "in_drop":
@@ -27,6 +32,14 @@ class AbstractPlatform:
             return mars2_seq()
         if type == "ten_x":
             return ten_x()
+    
+    @property
+    def num_barcodes(self):
+        """
+        return the number of barcodes used by this platform
+        """
+        return len(self._barcodes_lengths)
+    
     
     @property
     def correct_errors(self):
@@ -78,14 +91,14 @@ class AbstractPlatform:
                 res.insert(0,seq)
                 return res
             res.insert(0,seq&((1<<bc_len)-1))
-            seq<<=bc_len
+            seq>>=bc_len
             
 
 
 class in_drop(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1,8])
+        AbstractPlatform.__init__(self, [-1,8], True, correct_errors.in_drop)
         
     @classmethod
     def check_spacer(cls, sequence):
@@ -162,7 +175,7 @@ class in_drop(AbstractPlatform):
 class in_drop_v2(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1,8])
+        AbstractPlatform.__init__(self, [-1,8], True, correct_errors.in_drop)
         
     @classmethod
     def check_spacer(cls, sequence):
@@ -230,7 +243,7 @@ class in_drop_v2(AbstractPlatform):
 class in_drop_v3(AbstractPlatform):
     
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1,8])
+        AbstractPlatform.__init__(self, [-1,8], True, correct_errors.in_drop)
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -264,7 +277,7 @@ class in_drop_v3(AbstractPlatform):
 class drop_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [12])
+        AbstractPlatform.__init__(self, [12], False, correct_errors.drop_seq)
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -292,7 +305,7 @@ class drop_seq(AbstractPlatform):
 class mars1_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4,8])
+        AbstractPlatform.__init__(self, [4,8], True, correct_errors.in_drop)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -322,7 +335,7 @@ class mars1_seq(AbstractPlatform):
 class mars2_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4,8])
+        AbstractPlatform.__init__(self, [4,8], True, correct_errors.in_drop)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -352,7 +365,7 @@ class mars2_seq(AbstractPlatform):
 class ten_x(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [14])
+        AbstractPlatform.__init__(self, [14], True, correct_errors.in_drop)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.

@@ -168,7 +168,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     dynamic_codes_table_c1 = {}
     dynamic_codes_table_c2 = {}
 
-    errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit.bin_nums,
+    errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit._bin2strdict.keys(),
                                                                        r=2))
     error_table = dict(zip(errors, [0] * len(errors)))
     cor_instance_table = {DNA3Bit.encode(b'A'): 0,
@@ -202,7 +202,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c1, ed_1, err_l_1, seq_err_1 = dynamic_codes_table_c1[c1]
         except KeyError:
             cor_c1, ed_1 = find_correct_barcode(c1, correct_barcodes[0])
-            seq_err_1 = count_sequencer_errors(c1)
+            seq_err_1 = count(c1, DNA3Bit.encode(b'N'))
             # No point calculating errors on codes with more errors than allowed
             if ed_1 > max_ed:
                 err_l_1 = None
@@ -215,7 +215,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
             cor_c2, ed_2, err_l_2, seq_err_2 = dynamic_codes_table_c2[c2]
         except KeyError:
             cor_c2, ed_2 = find_correct_barcode(c2, correct_barcodes[1])
-            seq_err_2 = count_sequencer_errors(c2)
+            seq_err_2 = count(c2, DNA3Bit.encode(b'N'))
             # No point calculating errors on codes with more errors than allowed
             if ed_2 > max_ed:
                 err_l_2 = None
@@ -288,23 +288,6 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
     return res, err_rate, filtered
 
 
-def hamming_dist_bin(c1, c2):
-    """Return the hamming distance between two numbers representing a sequence (3 bits
-    per base)
-
-    :param c1:
-    :param c2:
-    :return:
-    """
-    if DNA3Bit.seq_len(c1) != DNA3Bit.seq_len(c2):
-        return maxsize
-    d = 0
-    while c1 > 0:
-        if c1 & 0b111 != c2 & 0b111:
-            d += 1
-        c1 >>= 3
-        c2 >>= 3
-    return d
 
 
 def count_sequencer_errors(c):
@@ -328,7 +311,7 @@ def generate_close_seq(seq):
         mask = 0b111 << (i * 3)
         cur_chr = (seq & mask) >> (i * 3)
         res += [seq & (~mask) | (new_chr << (i * 3))
-                for new_chr in DNA3Bit.bin_nums if new_chr != cur_chr]
+                for new_chr in DNA3Bit._bin2strdict.keys() if new_chr != cur_chr]
     # generate all sequences that are dist 2
     for i in range(l):
         mask_i = 0b111 << (i * 3)
@@ -338,8 +321,8 @@ def generate_close_seq(seq):
             chr_j = (seq & mask_j) >> (j * 3)
             mask = mask_i | mask_j
             res += [seq & (~mask) | (new_chr_i << (i * 3)) | (new_chr_j << (j * 3)) for
-                    new_chr_i in DNA3Bit.bin_nums if new_chr_i != chr_i for
-                    new_chr_j in DNA3Bit.bin_nums if new_chr_j != chr_j]
+                    new_chr_i in DNA3Bit._bin2strdict.keys() if new_chr_i != chr_i for
+                    new_chr_j in DNA3Bit._bin2strdict.keys() if new_chr_j != chr_j]
 
     return res
 
@@ -401,34 +384,7 @@ def list_errors(s1, s2):
     return err_list
 
 
-def find_correct_barcode(code, barcodes_list):
-    """
-    For a given barcode find the closest correct barcode to it from the list (limited to
-    one ED), a string representing the error and the edit distance
-    NOTE: for now this function looks for a barcode with ED==1 and does not bother
-    looking for the minimum
 
-    :param barcodes_list:
-    :param code:
-    :returns:
-    """
-    if code in barcodes_list:
-        return code, 0
-
-    min_ed = maxsize
-    cor_code = 0
-    for bc in barcodes_list:
-        hamm_d = hamming_dist_bin(code, bc)
-        if hamm_d == 1:
-            min_ed = 1
-            cor_code = bc
-            break
-        if hamm_d < min_ed:
-            min_ed = hamm_d
-            cor_code = bc
-
-    return cor_code, min_ed
-        
 
 def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     """
