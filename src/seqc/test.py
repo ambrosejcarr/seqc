@@ -817,6 +817,10 @@ class TestEC2(unittest.TestCase):
         instance.create_spot_instance()
         self.assertIsNotNone(instance.instance)
 
+    def test_setup_seqc(self):
+        instance = ec2.AWSInstance('c3', volume_size=1100, spot_bid=1.0,
+                                   instance='i-0a580c1c')
+        instance.setup_seqc()
 
 
 #########################################################################################

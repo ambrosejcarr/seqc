@@ -176,7 +176,7 @@ class AWSInstance(object):
         if isinstance(instance, str):
             instance = cls.ec2.Instance(instance)
             try:
-                instance.description
+                instance.state
             except ClientError:
                 raise ValueError(
                     'provided instance id does not map to an existing instance')
@@ -291,6 +291,7 @@ class AWSInstance(object):
                 self.instance = self.ec2.create_instances(**specification)[0]
                 log.notify('instance %s created' % self.instance.id)
                 self.instance.wait_until_running()
+                log.notify('instance %s in running state' % self.instance.id)
 
     def setup_seqc(self):
         if self.instance is None:
@@ -306,7 +307,7 @@ class AWSInstance(object):
                 'cd /data/software/; '
                 'mkdir seqc && tar -xvf seqc.tar.gz -C seqc --strip-components 1')
 
-            log.notify("Sources are installed and decompressed, setting up seqc")
+            log.notify("Sources are uploaded and decompressed, installing seqc.")
             ssh.execute('sudo pip3 install -e data/software/seqc/')
 
             # test the installation
@@ -317,6 +318,7 @@ class AWSInstance(object):
                 log.exception()
                 raise
             log.notify('SEQC setup complete.')
+            log.notify('instance login: %s' % ssh.login_command())
 
     def start(self):
         self.setup_seqc()
@@ -326,7 +328,8 @@ class AWSInstance(object):
         """stops a running instance"""
         if self.instance is None:
             raise RuntimeError('Instance not yet created, nothing to be stopped.')
-        elif self.instance.state['Name'] not in ('stopped', 'terminated', 'shutting-down'):
+        elif self.instance.state['Name'] not in (
+                'stopped', 'terminated', 'shutting-down'):
             iid = self.instance.id
             log.notify('requesting termination of instance {id}'.format(id=iid))
             self.instance.stop()
@@ -383,17 +386,14 @@ class AWSInstance(object):
         sir_id = response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
         log.notify(
             'spot instance requested (%s), waiting for bid to be accepted.' % sir_id)
-        instance = self.verify_spot_bid_fulfilled(sir_id)
-        if instance is None:
+        self.instance = self.verify_spot_bid_fulfilled(sir_id)
+        if self.instance is None:
             raise InstanceNotRunningError(
                 'spot bid of %f was not fulfilled, please try a higher bid or ')
-        log.notify('spot bid accepted, waiting for instance to attain running state.')
-        self.instance = instance
+        log.notify('spot bid accepted, waiting for instance (id=%s) to attain running '
+                   'state.' % self.instance.id)
         self.instance.wait_until_running()
         log.notify('spot instance (id=%s) in running state' % self.instance.id)
-        # self.verify_instance_running(instance)
-
-
 
     def __enter__(self):
         self.setup_seqc()
@@ -483,7 +483,7 @@ class AWSInstance(object):
                     results = None
 
             if self.terminate_on_complete:
-                self.terminate(self.instance)
+                self.terminate()
 
             return results
 
@@ -498,9 +498,11 @@ class SSHConnection:
     ec2 = boto3.resource('ec2')
 
     def __init__(self, instance, rsa_key_path=None):
-        self._instance = self.ec2.Instance(instance)
+        if isinstance(instance, str):
+            self._instance = self.ec2.Instance(instance)
+        self._instance = instance
         if rsa_key_path is None:
-            self.rsa_key_path = _get_default_ec2_parameter('rsa_key_path')
+            self.rsa_key_path = _get_default_ec2_parameter('security', 'rsa_key_path')
         self.check_key_file()
         self.ssh = paramiko.SSHClient()
 
@@ -511,14 +513,10 @@ class SSHConnection:
         return self._instance
 
     @instance.setter
-    def instance(self, item):
-        if isinstance(item, str):
-            self._instance = self.ec2.Instance(item)
-        elif isinstance(item, boto3.resources.factory.ec2.Instance):
-            self._instance = item
-        else:
-            raise TypeError('instance must either be a Boto3 instance object or a string '
-                            'instance id')
+    def instance(self, value):
+        if isinstance(value, str):
+            self._instance = self.ec2.Instance(value)
+        self._instance = value
 
     def check_key_file(self):
         """Checks the rsa file is present"""
