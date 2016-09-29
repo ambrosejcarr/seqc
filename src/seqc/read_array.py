@@ -15,9 +15,9 @@ from itertools import permutations
 PASS_FILTERS    = 0
 NO_ALIGNMENT    = 1
 GENE_0          = 2
-CELL_0          = 3
-RMT_0           = 4
-POLY_T_0        = 5
+NO_CELL         = 3
+NO_RMT          = 4
+POLY_T          = 5
 SCAFFOLD        = 6
 
 BC_OK           = 0
