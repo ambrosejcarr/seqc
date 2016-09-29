@@ -176,14 +176,14 @@ class ReadArray:
         Filters are not ordered in any particular way.
         """
         for r in self.data:
-            if len(r['ma_genes']) == 0:
-                ReadArray.set_filt_fail(r, NO_ALIGNMENT)
-                self._filtered[NO_ALIGNMENT] += 1
-                set_status_inactive(r)
-                continue
             if r['ma_genes'] == -1:
                 ReadArray.set_filt_fail(r, SCAFFOLD)
                 self._filtered[SCAFFOLD] += 1
+                set_status_inactive(r)
+                continue
+            if len(r['ma_genes']) == 0:
+                ReadArray.set_filt_fail(r, NO_ALIGNMENT)
+                self._filtered[NO_ALIGNMENT] += 1
                 set_status_inactive(r)
                 continue
             if r['cell'] == 0:
