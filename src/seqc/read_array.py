@@ -74,10 +74,10 @@ class ReadArray:
 
     # Toggle active flag on (byte 15)
     @staticmethod
-    def set_status_active(self, r):
+    def set_status_active(r):
         r['status'] |= 0b1
     staticmethod
-    def set_status_inactive(self, r):
+    def set_status_inactive(r):
         r['status'] &= 0b1111111111111110
 
     @staticmethod
