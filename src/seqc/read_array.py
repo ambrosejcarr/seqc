@@ -102,7 +102,7 @@ class ReadArray:
     def count_active_reads(self):
         res = 0
         for r in self.data:
-            if is_active_read(r):
+            if ReadArray.is_active_read(r):
                 res+=1
         return res
         
