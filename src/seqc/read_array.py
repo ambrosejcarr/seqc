@@ -74,10 +74,10 @@ class ReadArray:
 
     # Toggle active flag on (byte 15)
     @staticmethod
-    def set_status_active(r):
+    def set_status_active(self, r):
         r['status'] |= 0b1
-    
-    def set_status_inactive(r):
+    staticmethod
+    def set_status_inactive(self, r):
         r['status'] &= 0b1111111111111110
 
     @staticmethod
@@ -97,6 +97,14 @@ class ReadArray:
     @staticmethod
     def is_active_read(r):
         return (r['status']&0b1)==0b1
+		
+	#for testing#
+	def count_active_reads(self):
+		res = 0
+		for r in self.data:
+			if is_active_read(r):
+				res+=1
+		return res
         
     @classmethod
     def from_samfile(cls, samfile: str, gtf_f: str):
@@ -169,34 +177,34 @@ class ReadArray:
         """
         for r in self.data:
             if len(r['ma_genes']) == 0:
-                self.set_filt_fail(r, NO_ALIGNMENT)
+                set_filt_fail(r, NO_ALIGNMENT)
                 self._filtered[NO_ALIGNMENT] += 1
-                self.set_status_inactive(r)
+                set_status_inactive(r)
                 continue
             if r['ma_genes'] == -1:
-                self.set_filt_fail(r, SCAFFOLD)
+                set_filt_fail(r, SCAFFOLD)
                 self._filtered[SCAFFOLD] += 1
-                self.set_status_inactive(r)
+                set_status_inactive(r)
                 continue
             if r['cell'] == 0:
-                self.set_filt_fail(r, NO_CELL)
+                set_filt_fail(r, NO_CELL)
                 self._filtered[NO_CELL] += 1
-                self.set_status_inactive(r)
+                set_status_inactive(r)
                 continue
             if r['rmt'] == 0:
-                self.set_filt_fail(r, NO_RMT)
+                set_filt_fail(r, NO_RMT)
                 self._filtered[NO_RMT] += 1
-                self.set_status_inactive(r)
+                set_status_inactive(r)
                 continue
             if r['n_poly_t'] < required_poly_t:
-                self.set_filt_fail(r, POLY_T)
+                set_filt_fail(r, POLY_T)
                 self._filtered[POLY_T] += 1
-                self.set_status_inactive(r)
+                set_status_inactive(r)
                 continue
             if 0 in r['ma_genes']:
-                self.set_filt_fail(r, GENE_0)
+                set_filt_fail(r, GENE_0)
                 self._filtered[GENE_0] += 1
-                self.set_status_inactive(r)
+                set_status_inactive(r)
                 continue
                 
         seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}'.
