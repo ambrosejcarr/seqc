@@ -97,14 +97,14 @@ class ReadArray:
     @staticmethod
     def is_active_read(r):
         return (r['status']&0b1)==0b1
-		
-	#for testing#
-	def count_active_reads(self):
-		res = 0
-		for r in self.data:
-			if is_active_read(r):
-				res+=1
-		return res
+        
+    #for testing#
+    def count_active_reads(self):
+        res = 0
+        for r in self.data:
+            if is_active_read(r):
+                res+=1
+        return res
         
     @classmethod
     def from_samfile(cls, samfile: str, gtf_f: str):

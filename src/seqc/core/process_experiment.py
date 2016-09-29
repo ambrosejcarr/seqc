@@ -451,13 +451,13 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
-		log.info('Total active reads before filters: {}'.format(ra.count_active_reads()))
+        log.info('Total active reads before filters: {}'.format(ra.count_active_reads()))
         # Apply filters
         ra.apply_filters(required_poly_t=args.min_poly_t)
-		log.info('Total active reads after filters: {}'.format(ra.count_active_reads()))
+        log.info('Total active reads after filters: {}'.format(ra.count_active_reads()))
         # Correct barcodes
         error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
-		log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
+        log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
         # Resolve multimapping
         
         #TODO: add,commit,push,run,test,fix problems
