@@ -236,7 +236,7 @@ class ReadArray:
                     correct_barcodes.append(set(DNA3Bit.encode(line.strip())
                                                 for line in f.readlines()))
         
-        num_barcodes = platform.num_barcodes()
+        num_barcodes = platform.num_barcodes
         dynamic_codes_table     = [{}]*num_barcodes
         correct                 = [None]*num_barcodes
         edit_dist               = [None]*num_barcodes
