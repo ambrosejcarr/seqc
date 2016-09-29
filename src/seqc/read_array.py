@@ -177,32 +177,32 @@ class ReadArray:
         """
         for r in self.data:
             if len(r['ma_genes']) == 0:
-                set_filt_fail(r, NO_ALIGNMENT)
+                ReadArray.set_filt_fail(r, NO_ALIGNMENT)
                 self._filtered[NO_ALIGNMENT] += 1
                 set_status_inactive(r)
                 continue
             if r['ma_genes'] == -1:
-                set_filt_fail(r, SCAFFOLD)
+                ReadArray.set_filt_fail(r, SCAFFOLD)
                 self._filtered[SCAFFOLD] += 1
                 set_status_inactive(r)
                 continue
             if r['cell'] == 0:
-                set_filt_fail(r, NO_CELL)
+                ReadArray.set_filt_fail(r, NO_CELL)
                 self._filtered[NO_CELL] += 1
                 set_status_inactive(r)
                 continue
             if r['rmt'] == 0:
-                set_filt_fail(r, NO_RMT)
+                ReadArray.set_filt_fail(r, NO_RMT)
                 self._filtered[NO_RMT] += 1
                 set_status_inactive(r)
                 continue
             if r['n_poly_t'] < required_poly_t:
-                set_filt_fail(r, POLY_T)
+                ReadArray.set_filt_fail(r, POLY_T)
                 self._filtered[POLY_T] += 1
                 set_status_inactive(r)
                 continue
             if 0 in r['ma_genes']:
-                set_filt_fail(r, GENE_0)
+                ReadArray.set_filt_fail(r, GENE_0)
                 self._filtered[GENE_0] += 1
                 set_status_inactive(r)
                 continue
