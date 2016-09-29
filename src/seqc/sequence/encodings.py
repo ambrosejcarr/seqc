@@ -88,13 +88,14 @@ class DNA3Bit(object):
                 tmp >>= 3
             res += num
         return res
-        
+    
+	@staticmethod
     def count(seq, char_bin):
         """
         count how many times char is in seq.
         char needs to be an encoded value of one of the bases.
         """
-        if char_bin not in _bin2strdict.keys():
+        if char_bin not in DNA3Bit._bin2strdict.keys():
             raise ValueError("DNA3Bit.count was called with an invalid char code - {}".format(char_bin))
         res = 0
         while seq > 0:
