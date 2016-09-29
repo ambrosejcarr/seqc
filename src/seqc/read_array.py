@@ -251,7 +251,7 @@ class ReadArray:
                               DNA3Bit.encode(b'T'): 0}
         
         for r in self.data:
-            if not is_active_read(r):
+            if not ReadArray.is_active_read(r):
                 continue
             barcodes = platform.extract_barcodes(int(r['cell']))
             for i in range(num_barcodes):
