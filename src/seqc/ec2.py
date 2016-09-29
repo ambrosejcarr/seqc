@@ -293,10 +293,20 @@ class AWSInstance(object):
                 self.instance.wait_until_running()
                 log.notify('instance %s in running state' % self.instance.id)
 
+    @staticmethod
+    def mount_volume(ssh):
+        """mount /dev/xvdf to /data given an ssh client with access to an instance"""
+        log.notify("Formatting and mounting /dev/xvdf to /data")
+        ssh.execute("sudo mkfs -t ext4 /dev/xvdf")
+        ssh.execute("sudo mkdir -p /data")
+        ssh.execute("sudo mount /dev/xvdf /data")
+        log.notify("Successfully mounted new volume onto /data.")
+
     def setup_seqc(self):
         if self.instance is None:
             self.create_instance()  # todo split here if spot
         with SSHConnection(self.instance) as ssh:
+            self.mount_volume(ssh)
             log.notify('Installing SEQC on remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
             ssh.execute('sudo mkdir -p /data/software')
