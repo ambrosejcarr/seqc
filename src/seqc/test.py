@@ -779,6 +779,7 @@ class TestLogData(unittest.TestCase):
             exclude='.*?log')
         assert not np.sum(np.isnan(df.values))
 
+
 class TestEC2(unittest.TestCase):
 
     def test_instantiation_config(self):
@@ -806,21 +807,35 @@ class TestEC2(unittest.TestCase):
 
     def test_create_and_terminate_instance(self):
         instance = ec2.AWSInstance('c3', volume_size=1100)
-        self.assertIsNone(instance.instance)
+        self.assertIsNone(instance.instance_id)
         instance.create_instance()  # instance should be None
-        self.assertIsNotNone(instance.instance)
+        self.assertIsNotNone(instance.instance_id)
         instance.terminate()
 
-    def test_create_spot_bid(self):
-        instance = ec2.AWSInstance('c3', volume_size=1100, spot_bid=1.0)
-        self.assertIsNone(instance.instance)
-        instance.create_spot_instance()
-        self.assertIsNotNone(instance.instance)
+    def test_create_setup_terminate_spot_instance(self):
+        instance = ec2.AWSInstance('c3', volume_size=1100, instance_type='c3.4xlarge',
+                                   instance='i-a089dfb6')  # , spot_bid=1.5)
+        # self.assertIsNone(instance.instance)
+        instance.setup_seqc()
+        self.assertIsNotNone(instance.instance_id)
+        instance.terminate()
 
     def test_setup_seqc(self):
         instance = ec2.AWSInstance('c3', volume_size=1100, spot_bid=1.0,
                                    instance='i-0a580c1c')
         instance.setup_seqc()
+
+    def test_context_manager(self):
+        flocal = os.environ['TMPDIR'] + 'test_doing_things.txt'
+        with ec2.AWSInstance(
+                'c3', volume_size=25, instance_type='c3.large',
+                terminate_on_complete=True) as aws:
+            with ec2.SSHConnection(aws.instance_id, aws.rsa_key_path) as ssh:
+                ssh.execute('echo "I did something!" > /data/test_doing_things.txt')
+                ssh.get_file('/data/test_doing_things.txt', flocal)
+        with open(flocal) as f:
+            data = f.read()
+        self.assertEqual('I did something!', data.strip())
 
 
 #########################################################################################

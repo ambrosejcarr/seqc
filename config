@@ -12,7 +12,7 @@ instance_type = c3.8xlarge
 
 [c4]
 cluster_size = 1
-image_id = ami-e0671cf7
+image_id = ami-cdf0b6da
 instance_type = c4.8xlarge
 
 [r3]

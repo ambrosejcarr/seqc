@@ -8,9 +8,13 @@ import types
 import dill
 from functools import wraps
 from contextlib import closing
+from paramiko.ssh_exception import NoValidConnectionsError
 import paramiko
 import boto3
-from seqc import log
+import socket
+from subprocess import Popen, check_output, PIPE
+from seqc import log, io
+from seqc.core import verify
 from seqc.exceptions import (
     RetryLimitExceeded, ConfigurationError, InstanceNotRunningError, EC2RuntimeError)
 from botocore.exceptions import ClientError
@@ -98,7 +102,6 @@ class AWSInstance(object):
     client = boto3.client('ec2'
                           )
 
-    # todo make security_group and instance properties so they support string arguments
     # (do the typechecking at the property setter level)
     def __init__(
             self, instance_alias, **kwargs):
@@ -141,8 +144,8 @@ class AWSInstance(object):
         self.image_id = None
         self.instance_type = None
 
-        self._instance = None
-        self.security_group = None
+        self._instance_id = None
+        self._security_group_id = None
         self.spot_bid = None
         self.terminate_on_complete = False
         self.volume_size = 5
@@ -154,7 +157,6 @@ class AWSInstance(object):
         security = ('aws_public_access_key', 'aws_secret_access_key', 'availability_zone',
                     'rsa_key_path', 'subnet_id')
         instance = ('image_id', 'instance_type')
-        optional = ('instance', 'security_group', 'spot_bid', 'volume_size')
 
         # set defaults from config file if they weren't passed
         for k in security:
@@ -165,30 +167,45 @@ class AWSInstance(object):
             if k not in kwargs.keys():
                 setattr(self, k, _get_default_ec2_parameter(instance_alias, k))
 
-        for k in optional:
-            if k in kwargs.keys():
-                setattr(self, k, kwargs[k])
+        for k in kwargs.keys():
+            setattr(self, k, kwargs[k])
 
     # todo define def __repr__(self):
 
-    @classmethod
-    def _check_instance(cls, instance):
-        if isinstance(instance, str):
-            instance = cls.ec2.Instance(instance)
-            try:
-                instance.state
-            except ClientError:
-                raise ValueError(
-                    'provided instance id does not map to an existing instance')
-        return instance
+    # @classmethod
+    # def _check_instance(cls, instance):
+    #     if isinstance(instance, str):
+    #         instance = cls.ec2.Instance(instance)
+    #         try:
+    #             instance.state
+    #         except (ClientError, AttributeError):
+    #             raise ValueError(
+    #                 'provided instance id does not map to an existing instance')
+    #     return instance
 
     @property
-    def instance(self):
-        return self._instance
+    def instance_id(self):
+        return self._instance_id
 
-    @instance.setter
-    def instance(self, instance_or_id):
-        self._instance = self._check_instance(instance_or_id)
+    @instance_id.setter
+    def instance_id(self, value):
+        if not isinstance(value, str):
+            raise ValueError('instance must be a string instance id')
+        if not value.startswith('i-'):
+            raise ValueError('valid instance identifiers must start with "i-"')
+        self._instance_id = value
+
+    @property
+    def security_group_id(self):
+        return self._security_group_id
+
+    @security_group_id.setter
+    def security_group_id(self, value):
+        if not isinstance(value, str):
+            raise ValueError('instance must be a string instance id')
+        if not value.startswith('sg-'):
+            raise ValueError('valid instance identifiers must start with "i-"')
+        self._security_group_id = value
 
     @property
     def rsa_key_path(self):
@@ -214,84 +231,87 @@ class AWSInstance(object):
             name = 'SEQC-%07d' % random.randint(1, int(1e7))
         sg = cls.ec2.create_security_group(GroupName=name, Description=name)
         log.notify('Created new security group: %s (name=%s).' % (sg.id, name))
-        return sg
+        return sg.id
 
     @classmethod
     @Retry(retries=5)
-    def enable_ssh(cls, security_group):
+    def enable_ssh(cls, security_group_id):
+        security_group = cls.ec2.SecurityGroup(security_group_id)
         try:
             security_group.authorize_ingress(
                 IpProtocol="tcp", CidrIp="0.0.0.0/0", FromPort=22, ToPort=22)
             security_group.authorize_ingress(
                 SourceSecurityGroupName=security_group.description)
-        except ClientError as e:
-            if 'InvalidPermission.Duplicate' not in e.args[0]:  # todo figure out why this is happening
+        except ClientError as e:  # todo figure out why this is happening
+            if 'InvalidPermission.Duplicate' not in e.args[0]:
                 raise
         log.notify('Enabled ssh access via port 22 for security group %s' %
-                   security_group.id)
+                   security_group_id)
 
     @classmethod
     @Retry(retries=20, delay=0.5)
-    def verify_security_group(cls, security_group) -> None:
+    def verify_security_group(cls, security_group_id) -> None:
         """If the security group has not been recognized server-side, this will thrown an
         exception.
         """
-        _ = security_group.description
+        _ = cls.ec2.SecurityGroup(security_group_id).description
 
     @classmethod
     @Retry(retries=10, delay=0.5)
-    def remove_security_group(cls, security_group) -> None:
-        security_group.delete()
+    def remove_security_group(cls, security_group_id) -> None:
+        cls.ec2.SecurityGroup(security_group_id).delete()
         log.notify('security group %s successfully removed.' % (
-            security_group.id))
+            security_group_id))
 
-    # @property
     def launch_specification(self) -> dict:
         """return the specification for launching an instance with parameters defined
         by the class constructor
         """
-        if self.security_group is None:
-            sg = self.create_security_group()
-            self.verify_security_group(sg)
-            self.enable_ssh(sg)
-            self.security_group = sg
+        if self.security_group_id is None:
+            sg_id = self.create_security_group()
+            self.verify_security_group(sg_id)
+            self.enable_ssh(sg_id)
+            self.security_group_id = sg_id
         else:
-            sg = self.security_group
+            sg_id = self.security_group_id
 
         spec = {
             'ImageId': self.image_id,
             'KeyName': self.rsa_key_path.split('/')[-1].split('.')[0],
             'InstanceType': self.instance_type,
             'Placement': {'AvailabilityZone': self.availability_zone},
-            'SecurityGroupIds': [sg.id],
+            'SecurityGroupIds': [sg_id],
             'BlockDeviceMappings': [{'DeviceName': '/dev/xvdf',
                                      'Ebs': {'VolumeSize': self.volume_size,
                                              'VolumeType': 'gp2',
                                              'DeleteOnTermination': True}}],
         }
-        if self.instance_type in ['c4', 'r3']:
+        if any(self.instance_type.startswith(prefix) for prefix in ('c4', 'r3')):
             spec['SubnetId'] = self.subnet_id
         return spec
 
-    @staticmethod
     @Retry(retries=40, catch=(ClientError, InstanceNotRunningError), delay=5)
-    def verify_instance_running(instance):
+    def verify_instance_running(self, instance_id):
         """wait for instance to reach 'running' state, then return"""
+        instance = self.ec2.Instance(id=instance_id)
         if not instance.state['Name'] == 'running':
             raise InstanceNotRunningError
-        log.notify('instance %s in running state' % instance.id)
+        log.notify('instance %s in running state' % instance_id)
 
     def create_instance(self) -> None:
-        if self.instance is None:
-            if self.spot_bid:
-                self.create_spot_instance()
-            else:
-                specification = self.launch_specification()
-                specification['MinCount'] = specification['MaxCount'] = 1
-                self.instance = self.ec2.create_instances(**specification)[0]
-                log.notify('instance %s created' % self.instance.id)
-                self.instance.wait_until_running()
-                log.notify('instance %s in running state' % self.instance.id)
+        if self.instance_id is not None:
+            raise RuntimeError('instance %s already exists.' % self.instance_id)
+        if self.spot_bid:
+            self.create_spot_instance()
+        else:
+            specification = self.launch_specification()
+            specification['MinCount'] = specification['MaxCount'] = 1
+            instance = self.ec2.create_instances(**specification)[0]
+            self.instance_id = instance.id
+            log.notify('instance %s created, waiting until running' %
+                       self.instance_id)
+            instance.wait_until_running()
+            log.notify('instance %s in running state' % self.instance_id)
 
     @staticmethod
     def mount_volume(ssh):
@@ -303,11 +323,12 @@ class AWSInstance(object):
         log.notify("Successfully mounted new volume onto /data.")
 
     def setup_seqc(self):
-        if self.instance is None:
-            self.create_instance()  # todo split here if spot
-        with SSHConnection(self.instance) as ssh:
+        if self.instance_id is None:
+            self.create_instance()
+        with SSHConnection(instance_id=self.instance_id,
+                           rsa_key_path=self.rsa_key_path) as ssh:
             self.mount_volume(ssh)
-            log.notify('Installing SEQC on remote instance.')
+            log.notify('uploading local SEQC installation to remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
             ssh.execute('sudo mkdir -p /data/software')
             ssh.execute('sudo chown -c ubuntu /data')
@@ -336,43 +357,46 @@ class AWSInstance(object):
 
     def stop(self):
         """stops a running instance"""
-        if self.instance is None:
+        if self.instance_id is None:
             raise RuntimeError('Instance not yet created, nothing to be stopped.')
-        elif self.instance.state['Name'] not in (
+        instance = self.ec2.Instance(self.instance_id)
+        if instance.state['Name'] not in (
                 'stopped', 'terminated', 'shutting-down'):
-            iid = self.instance.id
-            log.notify('requesting termination of instance {id}'.format(id=iid))
-            self.instance.stop()
-            self.instance.wait_until_stopped()
-            log.notify('instance {id} stopped.'.format(id=iid))
+            log.notify('requesting termination of instance {id}'.format(
+                id=self.instance_id))
+            instance.stop()
+            instance.wait_until_stopped()
+            log.notify('instance {id} stopped.'.format(id=self.instance_id))
         else:
             log.notify('instance is not running')
 
     def restart(self):
         """restarts a stopped instance"""
-        if self.instance is None:
+        if self.instance_id is None:
             raise RuntimeError('Instance not yet created, nothing to be restarted.')
-        if self.instance.state['Name'] == 'stopped':
-            self.instance.start()
-            self.instance.wait_until_running()
-            log.notify('Stopped instance %s has restarted.' % self.instance.id)
+        instance = self.ec2.Instance(self.instance_id)
+        if instance.state['Name'] == 'stopped':
+            instance.start()
+            instance.wait_until_running()
+            log.notify('Stopped instance %s has restarted.' % self.instance_id)
         else:
             log.notify('Instance %s in state "%s" must be in a stopped state to be '
-                       'restarted.' % (self.instance.id, self.instance.state['Name']))
+                       'restarted.' % (self.instance_id, instance.state['Name']))
 
     def terminate(self):
         """terminates an instance in any state (including stopped)"""
-        if self.instance is None:
+        if self.instance_id is None:
             raise RuntimeError('Instance not yet created, nothing to be restarted.')
-        elif self.instance.state['Name'] not in ('terminated', 'shutting-down'):
-            iid = self.instance.id
-            log.notify('requesting termination of instance {id}'.format(id=iid))
-            self.instance.terminate()
-            self.instance.wait_until_terminated()
-            log.notify('instance {id} terminated.'.format(id=iid))
+        instance = self.ec2.Instance(self.instance_id)
+        if instance.state['Name'] not in ('terminated', 'shutting-down'):
+            log.notify('requesting termination of instance {id}'.format(
+                id=self.instance_id))
+            instance.terminate()
+            instance.wait_until_terminated()
+            log.notify('instance {id} terminated.'.format(id=self.instance_id))
         else:
             log.notify('Instance %s in state "%s" must be running to be stopped.' %
-                       (self.instance.id, self.instance.state['Name']))
+                       (self.instance_id, instance.state['Name']))
 
     @classmethod
     @Retry(retries=40, delay=5, catch=InstanceNotRunningError)
@@ -384,7 +408,7 @@ class AWSInstance(object):
             raise EC2RuntimeError('spot request bad-status: %s' % status)
         elif status != 'fulfilled':
             raise InstanceNotRunningError
-        return cls.ec2.Instance(result['SpotInstanceRequests'][0]['InstanceId'])
+        return result['SpotInstanceRequests'][0]['InstanceId']
 
     def create_spot_instance(self):
         if not self.spot_bid:
@@ -396,22 +420,32 @@ class AWSInstance(object):
         sir_id = response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
         log.notify(
             'spot instance requested (%s), waiting for bid to be accepted.' % sir_id)
-        self.instance = self.verify_spot_bid_fulfilled(sir_id)
-        if self.instance is None:
+        self.instance_id = self.verify_spot_bid_fulfilled(sir_id)
+        if self.instance_id is None:
             raise InstanceNotRunningError(
                 'spot bid of %f was not fulfilled, please try a higher bid or ')
         log.notify('spot bid accepted, waiting for instance (id=%s) to attain running '
-                   'state.' % self.instance.id)
-        self.instance.wait_until_running()
-        log.notify('spot instance (id=%s) in running state' % self.instance.id)
+                   'state.' % self.instance_id)
+        self.ec2.Instance(self.instance_id).wait_until_running()
+        log.notify('spot instance (id=%s) in running state' % self.instance_id)
 
     def __enter__(self):
-        self.setup_seqc()
+        try:
+            self.setup_seqc()
+        except:
+            if self.terminate_on_complete and self.instance_id:
+                log.notify('error occurred during setup, attemption instance termination')
+                log.exception()
+                try:
+                    self.terminate()
+                except ClientError:
+                    pass
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.terminate_on_complete:
-            self.instance.terminate()
+            self.terminate()
         if not exc_type:
             return True
 
@@ -479,7 +513,7 @@ class AWSInstance(object):
             # create an instance
             self.setup_seqc()
 
-            with SSHConnection(self.instance, self.rsa_key_path) as ssh:
+            with SSHConnection(self.instance_id, self.rsa_key_path) as ssh:
                 ssh.put_file(script, '/data/script.py')
                 ssh.put_file(func, '/data/func.p')
                 if self.terminate_on_complete:
@@ -507,46 +541,56 @@ class SSHConnection:
 
     ec2 = boto3.resource('ec2')
 
-    def __init__(self, instance, rsa_key_path=None):
-        if isinstance(instance, str):
-            self._instance = self.ec2.Instance(instance)
-        self._instance = instance
+    def __init__(self, instance_id, rsa_key_path=None):
+        if not isinstance(instance_id, str):
+            raise ValueError('instance must be a string instance id')
+        if not instance_id.startswith('i-'):
+            raise ValueError('valid instance identifiers must start with "i-"')
+        self._instance_id = instance_id
         if rsa_key_path is None:
-            self.rsa_key_path = _get_default_ec2_parameter('security', 'rsa_key_path')
+            rsa_key_path = _get_default_ec2_parameter('security', 'rsa_key_path')
+        self.rsa_key_path = os.path.expanduser(rsa_key_path)
+
         self.check_key_file()
         self.ssh = paramiko.SSHClient()
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # todo define def __repr__(self):
 
     @property
-    def instance(self):
-        return self._instance
+    def instance_id(self):
+        return self._instance_id
 
-    @instance.setter
-    def instance(self, value):
+    @instance_id.setter
+    def instance_id(self, value):
         if isinstance(value, str):
-            self._instance = self.ec2.Instance(value)
-        self._instance = value
+            raise ValueError('instance must be a string instance id')
+        if not value.startswith('i-'):
+            raise ValueError('valid instance identifiers must start with "i-"')
+        self._instance_id = value
 
     def check_key_file(self):
         """Checks the rsa file is present"""
-        if not os.path.isfile(self.rsa_key_path):
+        if not self.rsa_key_path:
             log.notify('The key %s was not found!' % self.rsa_key_path)
             raise FileNotFoundError(self._error_msg, 'The key file %s does not exist' %
                                     self.rsa_key_path)
 
-    @Retry(retries=50, delay=2.5)
+    @Retry(retries=40, delay=2.5, catch=(NoValidConnectionsError, socket.error))
     def connect(self):
         """connects to a remote instance"""
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        instance = self.ec2.Instance(self.instance_id)
         try:
-            self.ssh.connect(self.instance.public_dns_name, username='ubuntu',
+            self.ssh.connect(instance.public_dns_name, username='ubuntu',
                              key_filename=self.rsa_key_path, timeout=3.0)
-        except (paramiko.AuthenticationException, paramiko.SSHException):
-            log.notify('Authentication failure using key %s, try to log in manually with '
-                       'ssh' % self.rsa_key_path)
-            log.exception()
-            raise
+        except NoValidConnectionsError:
+            state = instance.state['Name']
+            if state not in ['running', 'pending']:
+                raise InstanceNotRunningError(
+                    'instance %s in state %s. Only running instances can be connected to.'
+                    % (self.instance_id, state))
+            else:
+                raise
 
     def is_connected(self):
         """checks whether the user is connected to the desired instance"""
@@ -566,7 +610,7 @@ class SSHConnection:
         if not self.is_connected():
             self.connect()
         with closing(self.ssh.open_sftp()) as ftp:
-            ftp.get(remote_file, local_file)  # todo check order
+            ftp.get(remote_file, local_file)
 
     def put_file(self, local_file, remote_file):
         """places a file from the local machine onto a remote instance
@@ -578,7 +622,7 @@ class SSHConnection:
         if not self.is_connected():
             self.connect()
         with closing(self.ssh.open_sftp()) as ftp:
-            ftp.put(local_file, remote_file)  # todo check order
+            ftp.put(local_file, remote_file)
             log.info('placed {lfile} at {rfile}.'.format(
                 lfile=local_file, rfile=remote_file))
 
@@ -598,10 +642,12 @@ class SSHConnection:
         return data, errs
 
     def login_command(self):
+        instance = self.ec2.Instance(self.instance_id)
         return ('ssh -i {rsa_path} ubuntu@{dns_name}'.format(
-            rsa_path=self.rsa_key_path, dns_name=self.instance.public_dns_name))
+            rsa_path=self.rsa_key_path, dns_name=instance.public_dns_name))
 
     def __enter__(self):
+        log.notify('connecting to instance %s via ssh' % self.instance_id)
         self.connect()
         return self
 
@@ -609,3 +655,126 @@ class SSHConnection:
         self.disconnect()
         if not exc_type:
             return True
+
+
+class clean_up:
+
+    def __init__(self, email=None, upload=None, log_name='seqc.log', terminate=True):
+        """Execution context for on-server code execution with defined clean-up practices.
+
+        This is the cognate context manager to aws_setup, and when used with aws_setup(),
+        ensures that all errors are captured and, if desirable, instances can be properly
+        terminated.
+
+        usage:
+        ------
+        with aws_execute(email=addr, upload=s3://my_bucket/my_key/, terminate=True):
+            <execute code here>
+
+        :param email: email address to send the log containing execution summary and any
+          errors
+        :param upload: s3 location to upload the log to
+        :param log_name: name of the log object
+        :param terminate: if True, terminate the instance upon completion, provided that
+          no errors occurred.
+        """
+        self.email = email
+        self.log_name = '/data/' + log_name  # todo think about this!
+        self.terminate = terminate  # only terminate if error occurs
+        self.aws_upload_key = upload
+        self.err_status = False
+        self.mutt = verify.executables('mutt')[0]  # unpacking necessary for singleton
+
+    # todo email doesn't always send; could there be something here? we don't check stderr
+    @staticmethod
+    def email_user(attachment: str, email_body: str, email_address: str) -> None:
+        """
+        sends an email to email address with text contents of email_body and attachment
+        attached. Email will come from "Ubuntu@<ec2-instance-ip-of-aws-instance>
+
+        :param attachment: the file location of the attachment to append to the email
+        :param email_body: text to send in the body of the email
+        :param email_address: the address to which the email should be sent"""
+
+        if isinstance(email_body, str):
+            email_body = email_body.encode()
+
+        email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment,
+                      '-s',
+                      'Remote Process', '--', email_address]
+        email_process = Popen(email_args, stdin=PIPE)
+        email_process.communicate(email_body)
+
+    def __enter__(self):
+        log.setup_logger(self.log_name)
+        log.notify('Beginning remote execution')
+
+    @staticmethod
+    def _get_instance_id():
+        """get an aws instances id from it's private ip address"""
+        ip = check_output(
+            '/sbin/ifconfig eth0 | grep "inet addr"'
+            ).decode().strip().split()[0].replace('inet addr:', '')
+        ec2 = boto3.resource('ec2')
+        instances = ec2.instances.filter(
+            Filters=[{'Name': 'private-ip-address', 'Values': [ip]}])
+        return next(iter(instances)).id  # todo add assertion that len(instances == 1)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """If an exception occurs, log the exception, email if possible, then terminate
+        the aws instance if requested by the user
+
+        :param exc_type: type of exception encountered
+        :param exc_val: value of exception
+        :param exc_tb: exception traceback
+        """
+
+        # log any exceptions, set email body based on error / terminate status
+        if issubclass(exc_type, BaseException):
+            log.exception()
+            email_body = 'Process interrupted -- see attached error message'
+        elif self.terminate:
+            email_body = 'Process completed successfully -- see attached log'
+            log.info('Execution completed successfully, instance terminated.')
+        else:
+            email_body = 'Process completed successfully -- see attached log'
+            log.info('Execution completed successfully, but user requested no '
+                     'termination. Instance will continue to run.')
+
+        # email user if possible
+        if self.email and self.mutt:
+            log.notify('Emailing user.')
+            self.email_user(
+                attachment=self.log_name, email_body=email_body, email_address=self.email)
+
+        # upload data if requested
+        if self.aws_upload_key:
+            log.notify('Uploading data to {}'.format(self.aws_upload_key))
+            bucket, key = io.S3.split_link(self.aws_upload_key)
+            Retry(catch=Exception)(io.S3.upload_file(self.log_name, bucket, key))()
+
+        # terminate if requested and no errors
+        if self.terminate and exc_type:
+            instance_id = self._get_instance_id()
+            ec2 = boto3.resource('ec2')
+            instance = ec2.Instance(instance_id)
+            instance.terminate()
+            log.notify('instance %s termination requested.' % instance_id)
+            instance.wait_until_terminated()
+            log.notify('instance %s terminated' % instance_id)
+
+        log.notify('Exiting remote execution context.')
+
+
+def remove_inactive_security_groups():
+    """security groups cannot be automatically cleaned up when instances self-terminate.
+
+    This function finds all inactive security groups. Note that it is NOT limited to your
+    user account
+    """
+    ec2 = boto3.resource('ec2')
+    for s in ec2.security_groups.all():
+        try:
+            s.delete()
+        except ClientError:  # is in use
+            pass
