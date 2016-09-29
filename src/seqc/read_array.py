@@ -19,6 +19,7 @@ NO_CELL         = 3
 NO_RMT          = 4
 POLY_T          = 5
 SCAFFOLD        = 6
+NO_GENES        = 7
 
 BC_OK           = 0
 BC_FIXED        = 1
@@ -59,7 +60,7 @@ class ReadArray:
         self._total_reads       = 0
         self._no_alignment      = 0
         self._non_unique_align  = 0
-        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0}
+        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0}
         self._bad_barcodes      = 0
         self._fix_barcodes      = 0
         self._ok_barcodes       = 0
@@ -176,6 +177,11 @@ class ReadArray:
         Filters are not ordered in any particular way.
         """
         for r in self.data:
+            if r['ma_genes'] == None:
+                ReadArray.set_filt_fail(r, NO_GENES)
+                self._filtered[NO_GENES] += 1
+                ReadArray.set_status_inactive(r)
+                continue
             if r['ma_genes'] == -1:
                 ReadArray.set_filt_fail(r, SCAFFOLD)
                 self._filtered[SCAFFOLD] += 1
@@ -207,8 +213,8 @@ class ReadArray:
                 ReadArray.set_status_inactive(r)
                 continue
                 
-        seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}'.
-        format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0]))
+        seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}, genes is None: {}'.
+        format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0], self._filtered[NO_GENES]))
         
             
     def apply_barcode_correction(self, platform, barcode_files, reverse_complement=True, max_ed=2):
