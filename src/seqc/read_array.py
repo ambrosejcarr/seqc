@@ -258,7 +258,7 @@ class ReadArray:
                 try:
                     correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i] = dynamic_codes_table[i][barcodes[i]]
                 except KeyError:
-                    correct[i], edit_dist[i] = barcodes.find_correct_barcode(barcodes[i], correct_barcodes[i])
+                    correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], correct_barcodes[i])
                     sequencer_errors_cnt[i] = DNA3Bit.count(barcodes[i], DNA3Bit.encode(b'N'))
                     
                     # No point calculating errors on codes with more errors than allowed
