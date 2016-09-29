@@ -89,7 +89,7 @@ class DNA3Bit(object):
             res += num
         return res
     
-	@staticmethod
+    @staticmethod
     def count(seq, char_bin):
         """
         count how many times char is in seq.
