@@ -179,32 +179,32 @@ class ReadArray:
             if r['ma_genes'] == -1:
                 ReadArray.set_filt_fail(r, SCAFFOLD)
                 self._filtered[SCAFFOLD] += 1
-                set_status_inactive(r)
+                ReadArray.set_status_inactive(r)
                 continue
             if len(r['ma_genes']) == 0:
                 ReadArray.set_filt_fail(r, NO_ALIGNMENT)
                 self._filtered[NO_ALIGNMENT] += 1
-                set_status_inactive(r)
+                ReadArray.set_status_inactive(r)
                 continue
             if r['cell'] == 0:
                 ReadArray.set_filt_fail(r, NO_CELL)
                 self._filtered[NO_CELL] += 1
-                set_status_inactive(r)
+                ReadArray.set_status_inactive(r)
                 continue
             if r['rmt'] == 0:
                 ReadArray.set_filt_fail(r, NO_RMT)
                 self._filtered[NO_RMT] += 1
-                set_status_inactive(r)
+                ReadArray.set_status_inactive(r)
                 continue
             if r['n_poly_t'] < required_poly_t:
                 ReadArray.set_filt_fail(r, POLY_T)
                 self._filtered[POLY_T] += 1
-                set_status_inactive(r)
+                ReadArray.set_status_inactive(r)
                 continue
             if 0 in r['ma_genes']:
                 ReadArray.set_filt_fail(r, GENE_0)
                 self._filtered[GENE_0] += 1
-                set_status_inactive(r)
+                ReadArray.set_status_inactive(r)
                 continue
                 
         seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}'.
@@ -266,8 +266,8 @@ class ReadArray:
             # Filter reads with too many errors in their barcodes           
             if max(edit_dist) > max_ed:
                 self._bad_barcodes += 1
-                set_barcodes(r, BC_BAD)
-                set_status_inactive(r)
+                ReadArray.set_barcodes(r, BC_BAD)
+                ReadArray.set_status_inactive(r)
                 continue
                             
             # Count the different error types
@@ -294,10 +294,10 @@ class ReadArray:
             #correct cell and update read status
             if tmp_bc!=tmp_cor:
                 r['cell'] = tmp_cor
-                set_barcodes(r, BC_FIXED)
+                ReadArray.set_barcodes(r, BC_FIXED)
                 self._fix_barcodes += 1
             else:
-                set_barcodes(r, BC_OK)
+                ReadArray.set_barcodes(r, BC_OK)
                 self._ok_barcodes += 1
                 
         # Create error rate table
