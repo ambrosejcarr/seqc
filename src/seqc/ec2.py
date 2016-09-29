@@ -283,13 +283,14 @@ class AWSInstance(object):
 
     def create_instance(self) -> None:
         if self.instance is None:
-            specification = self.launch_specification()
-            specification['MinCount'] = specification['MaxCount'] = 1
-            self.instance = self.ec2.create_instances(**specification)[0]
-            log.notify('instance %s created' % self.instance.id)
-            self.instance.wait_until_running()
-            # self.verify_instance_running(instance)
-            # self.instance = instance
+            if self.spot_bid:
+                self.create_spot_instance()
+            else:
+                specification = self.launch_specification()
+                specification['MinCount'] = specification['MaxCount'] = 1
+                self.instance = self.ec2.create_instances(**specification)[0]
+                log.notify('instance %s created' % self.instance.id)
+                self.instance.wait_until_running()
 
     def setup_seqc(self):
         if self.instance is None:
@@ -363,15 +364,16 @@ class AWSInstance(object):
     @classmethod
     @Retry(retries=40, delay=5, catch=InstanceNotRunningError)
     def verify_spot_bid_fulfilled(cls, sir_id):
-        result = cls.ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
-        status = result[0]['SpotInstanceRequests']['Status']['Code']
+        result = cls.client.describe_spot_instance_requests(
+            SpotInstanceRequestIds=[sir_id])
+        status = result['SpotInstanceRequests'][0]['Status']['Code']
         if status not in ['pending-evaluation', 'pending-fulfillment', 'fulfilled']:
             raise EC2RuntimeError('spot request bad-status: %s' % status)
         elif status != 'fulfilled':
             raise InstanceNotRunningError
         return cls.ec2.Instance(result['SpotInstanceRequests'][0]['InstanceId'])
 
-    def create_spot_bid_instance(self):
+    def create_spot_instance(self):
         if not self.spot_bid:
             raise ValueError('must pass constructor spot_bid price (float) to create a '
                              'spot bid request.')
@@ -379,9 +381,18 @@ class AWSInstance(object):
             DryRun=False, SpotPrice=str(self.spot_bid),
             LaunchSpecification=self.launch_specification())
         sir_id = response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+        log.notify(
+            'spot instance requested (%s), waiting for bid to be accepted.' % sir_id)
         instance = self.verify_spot_bid_fulfilled(sir_id)
-        self.verify_instance_running(instance)
+        if instance is None:
+            raise InstanceNotRunningError(
+                'spot bid of %f was not fulfilled, please try a higher bid or ')
+        log.notify('spot bid accepted, waiting for instance to attain running state.')
         self.instance = instance
+        self.instance.wait_until_running()
+        log.notify('spot instance (id=%s) in running state' % self.instance.id)
+        # self.verify_instance_running(instance)
+
 
 
     def __enter__(self):

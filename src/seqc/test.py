@@ -812,10 +812,11 @@ class TestEC2(unittest.TestCase):
         instance.terminate()
 
     def test_create_spot_bid(self):
-        instance = ec2.AWSInstance('c3', volume_size=1100, spot_bid=0.1)
-        result = instance.create_spot_bid()
-        print(result)
-        print(result.items())
+        instance = ec2.AWSInstance('c3', volume_size=1100, spot_bid=1.0)
+        self.assertIsNone(instance.instance)
+        instance.create_spot_instance()
+        self.assertIsNotNone(instance.instance)
+
 
 
 #########################################################################################
