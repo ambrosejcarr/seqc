@@ -266,10 +266,10 @@ class ReadArray:
                         err_list[i] = None
                     else:
                         err_list[i] = seqc.correct_errors.list_errors(correct[i], barcodes[i])
-                    dynamic_codes_table[barcodes[i]] = (correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i])
+                    dynamic_codes_table[i][barcodes[i]] = (correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i])
                     
 
-            # Filter reads with too many errors in their barcodes           
+            # Filter reads with too many errors in their barcodes 
             if max(edit_dist) > max_ed:
                 self._bad_barcodes += 1
                 ReadArray.set_barcodes(r, BC_BAD)
