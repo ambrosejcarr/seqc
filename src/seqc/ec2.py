@@ -172,17 +172,6 @@ class AWSInstance(object):
 
     # todo define def __repr__(self):
 
-    # @classmethod
-    # def _check_instance(cls, instance):
-    #     if isinstance(instance, str):
-    #         instance = cls.ec2.Instance(instance)
-    #         try:
-    #             instance.state
-    #         except (ClientError, AttributeError):
-    #             raise ValueError(
-    #                 'provided instance id does not map to an existing instance')
-    #     return instance
-
     @property
     def instance_id(self):
         return self._instance_id
@@ -317,7 +306,7 @@ class AWSInstance(object):
     def mount_volume(ssh):
         """mount /dev/xvdf to /data given an ssh client with access to an instance"""
         log.notify("Formatting and mounting /dev/xvdf to /data")
-        ssh.execute("sudo mkfs -t ext4 /dev/xvdf")
+        ssh.execute("sudo mkfs -t ext4 /dev/xvdf 2>&1")  # redir; errors invisible
         ssh.execute("sudo mkdir -p /data")
         ssh.execute("sudo mount /dev/xvdf /data")
         log.notify("Successfully mounted new volume onto /data.")
@@ -339,7 +328,7 @@ class AWSInstance(object):
                 'mkdir seqc && tar -xvf seqc.tar.gz -C seqc --strip-components 1')
 
             log.notify("Sources are uploaded and decompressed, installing seqc.")
-            ssh.execute('sudo pip3 install -e data/software/seqc/')
+            ssh.execute('sudo -H pip3 install -e /data/software/seqc/')
 
             # test the installation
             try:
@@ -464,7 +453,7 @@ class AWSInstance(object):
         return filename
 
     @staticmethod
-    def get_imports():
+    def get_imports():  # todo this doesn't work; it gets THIS module's imports, but not the calling module!
         for alias, val in globals().items():
             if isinstance(val, types.ModuleType):
                 yield (val.__name__, alias)
@@ -498,10 +487,12 @@ class AWSInstance(object):
         script_body = script_body.format(imports=cls.format_importlist())
 
         with open(script_name, 'w') as f:
-            print('writing script to file:\n%s' % script_body)
+            # log.notify('writing script to file:\n%s' % script_body)
             f.write(script_body)
         return script_name
 
+    # todo separate terminate_on_complete into 'asyncronous' and 'terminate_on_complete'
+    # raise exception if async and terminate are both true. Other combinations are fine.
     def __call__(self, function):
 
         def function_executed_on_aws(*args, **kwargs):
@@ -510,7 +501,8 @@ class AWSInstance(object):
             script = self.write_script(function)
             func = self.pickle_function(function, args, kwargs)
 
-            # create an instance
+            # create an instance, or ensure the passed instance has the necessary
+            # packages installed
             self.setup_seqc()
 
             with SSHConnection(self.instance_id, self.rsa_key_path) as ssh:
@@ -523,7 +515,7 @@ class AWSInstance(object):
                     with open(results_name, 'rb') as f:
                         results = dill.load(f)
                 else:
-                    ssh.execute('nohup python3 /data/script.py > /dev/null/ 2>&1 &')
+                    ssh.execute('nohup python3 /data/script.py > /data/nohup.log 2>&1 &')
                     results = None
 
             if self.terminate_on_complete:
@@ -639,6 +631,8 @@ class SSHConnection:
         stdin.flush()
         data = stdout.read().decode().splitlines()
         errs = stderr.read().decode().splitlines()
+        if errs:
+            raise ChildProcessError(errs)
         return data, errs
 
     def login_command(self):
@@ -680,7 +674,7 @@ class clean_up:
         """
         self.email = email
         self.log_name = '/data/' + log_name  # todo think about this!
-        self.terminate = terminate  # only terminate if error occurs
+        self.terminate = terminate  # only terminate if no errors occur
         self.aws_upload_key = upload
         self.err_status = False
         self.mutt = verify.executables('mutt')[0]  # unpacking necessary for singleton
@@ -702,8 +696,10 @@ class clean_up:
         email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment,
                       '-s',
                       'Remote Process', '--', email_address]
-        email_process = Popen(email_args, stdin=PIPE)
-        email_process.communicate(email_body)
+        email_process = Popen(email_args, stdin=PIPE, stderr=PIPE)
+        _, err = email_process.communicate(email_body)
+        if err:
+            raise ChildProcessError(err)
 
     def __enter__(self):
         log.setup_logger(self.log_name)
@@ -749,12 +745,12 @@ class clean_up:
 
         # upload data if requested
         if self.aws_upload_key:
-            log.notify('Uploading data to {}'.format(self.aws_upload_key))
+            log.notify('Uploading log to {}'.format(self.aws_upload_key))
             bucket, key = io.S3.split_link(self.aws_upload_key)
             Retry(catch=Exception)(io.S3.upload_file(self.log_name, bucket, key))()
 
         # terminate if requested and no errors
-        if self.terminate and exc_type:
+        if self.terminate and not exc_type:
             instance_id = self._get_instance_id()
             ec2 = boto3.resource('ec2')
             instance = ec2.Instance(instance_id)

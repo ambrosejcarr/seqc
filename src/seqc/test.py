@@ -837,6 +837,34 @@ class TestEC2(unittest.TestCase):
             data = f.read()
         self.assertEqual('I did something!', data.strip())
 
+    def test_decorator(self):
+
+        # decorated function, synchronous execution
+        @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.large',
+                         terminate_on_complete=True, instance_id='i-180a540e')
+        def do_something():
+            log.setup_logger('/data/seqc.log')
+            log.notify('I logged a message')
+            return 'I did something!'
+
+        result = do_something()
+        self.assertEqual('I did something!', result)
+
+    def test_async_cleanup(self):
+        """note that this method leaves a security group lying around"""
+
+        @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.xlarge',
+                         terminate_on_complete=False, instance_id='i-56f6a840')
+        def create_index():
+            from seqc import ec2
+            from seqc.sequence import index
+            with ec2.clean_up(email='mail@ambrosejcarr.com',
+                              upload='s3://ajc-data/test_async_cleanup'):
+                organism = 'ciona_intestinalis'
+                idx = index.Index(organism, ['entrezgene'])
+                idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
+
+        create_index()
 
 #########################################################################################
 
