@@ -316,7 +316,12 @@ class AWSInstance(object):
             self.create_instance()
         with SSHConnection(instance_id=self.instance_id,
                            rsa_key_path=self.rsa_key_path) as ssh:
-            self.mount_volume(ssh)
+            try:  # pass errors related to the drive already being mounted
+                self.mount_volume(ssh)
+            except ChildProcessError as e:
+                if not ('mount: according to mtab, /dev/xvdf is already mounted on /data'
+                        in ' '.join(e.args[0])):
+                    raise
             log.notify('uploading local SEQC installation to remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
             ssh.execute('sudo mkdir -p /data/software')
@@ -325,7 +330,7 @@ class AWSInstance(object):
             ssh.put_file(seqc_distribution, '/data/software/seqc.tar.gz')
             ssh.execute(
                 'cd /data/software/; '
-                'mkdir seqc && tar -xvf seqc.tar.gz -C seqc --strip-components 1')
+                'mkdir -p seqc && tar -m -xvf seqc.tar.gz -C seqc --strip-components 1')
 
             log.notify("Sources are uploaded and decompressed, installing seqc.")
             ssh.execute('sudo -H pip3 install -e /data/software/seqc/')
