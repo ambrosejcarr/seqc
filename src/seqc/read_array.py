@@ -294,7 +294,7 @@ class ReadArray:
             while tmp_bc > 0:
                 if tmp_bc & 0b111 == tmp_cor & 0b111:
                     cor_instance_table[tmp_bc & 0b111] += 1
-                tmp_c >>= 3
+                tmp_bc >>= 3
                 tmp_cor >>= 3
             
             #correct cell and update read status
