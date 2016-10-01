@@ -1,4 +1,5 @@
 from seqc.sequence.encodings import DNA3Bit
+from sys import maxsize
 
 _revcomp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
             'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
