@@ -311,6 +311,15 @@ class AWSInstance(object):
         ssh.execute("sudo mount /dev/xvdf /data")
         log.notify("Successfully mounted new volume onto /data.")
 
+    def set_credentials(self, ssh):
+        """sets aws credentials on remote instance from user's local config file"""
+
+        ssh.execute('aws configure set aws_access_key_id %s' % self.aws_public_access_key)
+        ssh.execute(
+            'aws configure set aws_secret_access_key %s' % self.aws_secret_access_key)
+        # us-east-1 (no a-b-c-d-e etc), cut off letter.
+        ssh.execute('aws configure set region %s' % self.availability_zone[:-1])
+
     def setup_seqc(self):
         if self.instance_id is None:
             self.create_instance()
@@ -342,8 +351,11 @@ class AWSInstance(object):
                 log.notify('SEQC installation failed.')
                 log.exception()
                 raise
+            log.notify('setting aws credentials.')
+            self.set_credentials(ssh)
             log.notify('SEQC setup complete.')
             log.notify('instance login: %s' % ssh.login_command())
+
 
     def start(self):
         self.setup_seqc()
@@ -714,7 +726,7 @@ class clean_up:
     def _get_instance_id():
         """get an aws instances id from it's private ip address"""
         ip = check_output(
-            '/sbin/ifconfig eth0 | grep "inet addr"'
+            '/sbin/ifconfig eth0 | grep "inet addr"', shell=True
             ).decode().strip().split()[0].replace('inet addr:', '')
         ec2 = boto3.resource('ec2')
         instances = ec2.instances.filter(
@@ -731,7 +743,8 @@ class clean_up:
         """
 
         # log any exceptions, set email body based on error / terminate status
-        if issubclass(exc_type, BaseException):
+
+        if exc_type is not None:
             log.exception()
             email_body = 'Process interrupted -- see attached error message'
         elif self.terminate:
@@ -752,7 +765,11 @@ class clean_up:
         if self.aws_upload_key:
             log.notify('Uploading log to {}'.format(self.aws_upload_key))
             bucket, key = io.S3.split_link(self.aws_upload_key)
-            Retry(catch=Exception)(io.S3.upload_file(self.log_name, bucket, key))()
+
+            @Retry(catch=Exception)
+            def upload_file():
+                io.S3.upload_file(self.log_name, bucket, key)
+            upload_file()
 
         # terminate if requested and no errors
         if self.terminate and not exc_type:

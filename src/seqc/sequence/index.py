@@ -289,6 +289,8 @@ class Index:
         key_prefix = '/'.join(dirs)
         S3.upload_files(file_prefix=index_directory, bucket=bucket, key_prefix=key_prefix)
 
+    # todo when on aws, ssh automatically logs you into ~/, and this function will create the genome there unless otherwise specified!
+    # need to specify that it should go to /data, I think (?)
     def create_index(
             self,
             index_folder_name: str=None,
