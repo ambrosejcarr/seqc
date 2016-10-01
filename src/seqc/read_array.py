@@ -284,7 +284,7 @@ class ReadArray:
                 for err_l in err_list:
                     for err in err_l:
                         try:
-                            error_table[er] += 1
+                            error_table[err] += 1
                         except KeyError:    # happens for sequencer errors
                             continue
             
