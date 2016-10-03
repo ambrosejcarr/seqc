@@ -121,18 +121,18 @@ class AWSInstance(object):
 
         optional arguments:
         -------------------
-        :param boto3.resources.factory.ec2.Instance instance: instance object
-        :param boto3.resources.factory.ec2.SecurityGroup security_group: security group
-          object
-        :param float spot_bid:
-        :param int volume_size: size in Gb of volume to attach to /data. Must be smaller
-          than 16 and greater than 0.
+        :param str instance_id: id for ec2 instance
+        :param str security_group_id: id for ec2 security group object
+        :param float spot_bid: amount of money to pay per hour in dollars
+        :param int volume_size: size in Gb of volume to attach to home directory. Must be
+          smaller than 16 and greater than 0.
         :param bool terminate_on_complete: flag for use in contextmanager or function
           decorator context. If true, the instance will be automatically shut down when
           either (1) the contextmanager exits or (2) the decorated function completes
 
         """
 
+        # todo check for volume size
         # todo change these dummy arguments into properties
         # dummy arguments set by kwargs or configuration; for inspection only.
         self.aws_public_access_key = None
@@ -303,13 +303,25 @@ class AWSInstance(object):
             log.notify('instance %s in running state' % self.instance_id)
 
     @staticmethod
-    def mount_volume(ssh):
-        """mount /dev/xvdf to /data given an ssh client with access to an instance"""
-        log.notify("Formatting and mounting /dev/xvdf to /data")
-        ssh.execute("sudo mkfs -t ext4 /dev/xvdf 2>&1")  # redir; errors invisible
-        ssh.execute("sudo mkdir -p /data")
-        ssh.execute("sudo mount /dev/xvdf /data")
-        log.notify("Successfully mounted new volume onto /data.")
+    def mount_volume(ssh, directory='/home/ubuntu'):
+        """mount /dev/xvdf to /data given an ssh client with access to an instance
+
+        :param str directory: directory to mount the drive to. Note that odd behavior may
+          be encountered if the home directory is not the mount target, since paramiko
+          automatically uses the home directory as the point of execution.
+        """
+        try:  # pass errors related to the drive already being mounted
+            log.notify("Formatting and mounting /dev/xvdf to %s" % directory)
+            ssh.execute("sudo mkfs -t ext4 /dev/xvdf 2>&1")  # redir; errors invisible
+            ssh.execute("sudo cp -a %s/. /tmp/directory/" % directory)  # copy original
+            ssh.execute("sudo mkdir -p %s" % directory)
+            ssh.execute("sudo mount /dev/xvdf %s && sudo cp -a /tmp/directory/. %s/"
+                        % (directory, directory))
+            log.notify("Successfully mounted new volume onto %s." % directory)
+        except ChildProcessError as e:
+            if not ('mount: according to mtab, /dev/xvdf is already mounted on /data'
+                    in ' '.join(e.args[0])):
+                raise
 
     def set_credentials(self, ssh):
         """sets aws credentials on remote instance from user's local config file"""
@@ -325,24 +337,17 @@ class AWSInstance(object):
             self.create_instance()
         with SSHConnection(instance_id=self.instance_id,
                            rsa_key_path=self.rsa_key_path) as ssh:
-            try:  # pass errors related to the drive already being mounted
-                self.mount_volume(ssh)
-            except ChildProcessError as e:
-                if not ('mount: according to mtab, /dev/xvdf is already mounted on /data'
-                        in ' '.join(e.args[0])):
-                    raise
+            self.mount_volume(ssh)
             log.notify('uploading local SEQC installation to remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
-            ssh.execute('sudo mkdir -p /data/software')
-            ssh.execute('sudo chown -c ubuntu /data')
-            ssh.execute('sudo chown -c ubuntu /data/software')
-            ssh.put_file(seqc_distribution, '/data/software/seqc.tar.gz')
+            ssh.execute('sudo mkdir -p software/seqc')
+            # ssh.execute('sudo chown -c ubuntu /data')
+            # ssh.execute('sudo chown -c ubuntu /data/software')
+            ssh.put_file(seqc_distribution, 'software/seqc.tar.gz')
             ssh.execute(
-                'cd /data/software/; '
-                'mkdir -p seqc && tar -m -xvf seqc.tar.gz -C seqc --strip-components 1')
-
+                'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
             log.notify("Sources are uploaded and decompressed, installing seqc.")
-            ssh.execute('sudo -H pip3 install -e /data/software/seqc/')
+            ssh.execute('sudo -H pip3 install -e software/seqc/')
 
             # test the installation
             try:
@@ -495,10 +500,10 @@ class AWSInstance(object):
         script_name = '{}{}.py'.format(os.environ['TMPDIR'], function.__name__)
         script_body = (
             '{imports}'
-            'with open("/data/func.p", "rb") as fin:\n'
+            'with open("func.p", "rb") as fin:\n'
             '    data = dill.load(fin)\n'
             'results = data["function"](*data["args"], **data["kwargs"])\n'
-            'with open("/data/results.p", "wb") as f:\n'
+            'with open("results.p", "wb") as f:\n'
             '    dill.dump(results, f)\n'
         )
         script_body = script_body.format(imports=cls.format_importlist())
@@ -523,16 +528,16 @@ class AWSInstance(object):
             self.setup_seqc()
 
             with SSHConnection(self.instance_id, self.rsa_key_path) as ssh:
-                ssh.put_file(script, '/data/script.py')
-                ssh.put_file(func, '/data/func.p')
+                ssh.put_file(script, 'script.py')
+                ssh.put_file(func, 'func.p')
                 if self.terminate_on_complete:
-                    ssh.execute('python3 /data/script.py')
+                    ssh.execute('python3 script.py')
                     results_name = os.environ['TMPDIR'] + function.__name__ + '_results.p'
-                    ssh.get_file('/data/results.p', results_name)
+                    ssh.get_file('results.p', results_name)
                     with open(results_name, 'rb') as f:
                         results = dill.load(f)
                 else:
-                    ssh.execute('nohup python3 /data/script.py > /data/nohup.log 2>&1 &')
+                    ssh.execute('nohup python3 script.py > nohup.log 2>&1 &')
                     results = None
 
             if self.terminate_on_complete:

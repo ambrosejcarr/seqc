@@ -841,7 +841,7 @@ class TestEC2(unittest.TestCase):
 
         # decorated function, synchronous execution
         @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.large',
-                         terminate_on_complete=True, instance_id='i-180a540e')
+                         terminate_on_complete=True)
         def do_something():
             log.setup_logger('/data/seqc.log')
             log.notify('I logged a message')
