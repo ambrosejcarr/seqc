@@ -147,7 +147,7 @@ class AWSInstance(object):
         self._instance_id = None
         self._security_group_id = None
         self.spot_bid = None
-        self.terminate_on_complete = False
+        self.synchronous = False
         self.volume_size = 5
 
         # additional properties
@@ -444,7 +444,7 @@ class AWSInstance(object):
         try:
             self.setup_seqc()
         except:
-            if self.terminate_on_complete and self.instance_id:
+            if self.synchronous and self.instance_id:
                 log.notify('error occurred during setup, attemption instance termination')
                 log.exception()
                 try:
@@ -455,7 +455,7 @@ class AWSInstance(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.terminate_on_complete:
+        if self.synchronous:
             self.terminate()
         if not exc_type:
             return True
@@ -530,7 +530,7 @@ class AWSInstance(object):
             with SSHConnection(self.instance_id, self.rsa_key_path) as ssh:
                 ssh.put_file(script, 'script.py')
                 ssh.put_file(func, 'func.p')
-                if self.terminate_on_complete:
+                if self.synchronous:
                     ssh.execute('python3 script.py')
                     results_name = os.environ['TMPDIR'] + function.__name__ + '_results.p'
                     ssh.get_file('results.p', results_name)
@@ -540,7 +540,7 @@ class AWSInstance(object):
                     ssh.execute('nohup python3 script.py > nohup.log 2>&1 &')
                     results = None
 
-            if self.terminate_on_complete:
+            if self.synchronous:
                 self.terminate()
 
             return results
@@ -654,7 +654,7 @@ class SSHConnection:
         data = stdout.read().decode().splitlines()
         errs = stderr.read().decode().splitlines()
         if errs:
-            raise ChildProcessError(errs)
+            raise ChildProcessError('\n'.join(errs))
         return data, errs
 
     def login_command(self):
@@ -732,7 +732,7 @@ class clean_up:
         """get an aws instances id from it's private ip address"""
         ip = check_output(
             '/sbin/ifconfig eth0 | grep "inet addr"', shell=True
-            ).decode().strip().split()[0].replace('inet addr:', '')
+            ).decode().strip().split()[1].replace('addr:', '')
         ec2 = boto3.resource('ec2')
         instances = ec2.instances.filter(
             Filters=[{'Name': 'private-ip-address', 'Values': [ip]}])
@@ -754,7 +754,7 @@ class clean_up:
             email_body = 'Process interrupted -- see attached error message'
         elif self.terminate:
             email_body = 'Process completed successfully -- see attached log'
-            log.info('Execution completed successfully, instance terminated.')
+            log.info('Execution completed successfully, instance will be terminated.')
         else:
             email_body = 'Process completed successfully -- see attached log'
             log.info('Execution completed successfully, but user requested no '
@@ -781,10 +781,10 @@ class clean_up:
             instance_id = self._get_instance_id()
             ec2 = boto3.resource('ec2')
             instance = ec2.Instance(instance_id)
-            instance.terminate()
             log.notify('instance %s termination requested.' % instance_id)
+            instance.terminate()
             instance.wait_until_terminated()
-            log.notify('instance %s terminated' % instance_id)
+            log.notify('instance %s terminated' % instance_id)  # should never run
 
         log.notify('Exiting remote execution context.')
 

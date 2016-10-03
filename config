@@ -5,6 +5,11 @@ availability_zone = us-east-1c
 rsa_key_path = None
 subnet_id = subnet-70d7ec36
 
+[ami]
+pv = ami-6e239a79
+hvm = ami-3c2e972b
+r3 = ami-772e9760
+
 [c3]
 cluster_size = 1
 image_id = ami-6e239a79

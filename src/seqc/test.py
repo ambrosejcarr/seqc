@@ -829,7 +829,7 @@ class TestEC2(unittest.TestCase):
         flocal = os.environ['TMPDIR'] + 'test_doing_things.txt'
         with ec2.AWSInstance(
                 'c3', volume_size=25, instance_type='c3.large',
-                terminate_on_complete=True) as aws:
+                synchronous=True) as aws:
             with ec2.SSHConnection(aws.instance_id, aws.rsa_key_path) as ssh:
                 ssh.execute('echo "I did something!" > /data/test_doing_things.txt')
                 ssh.get_file('/data/test_doing_things.txt', flocal)
@@ -841,7 +841,7 @@ class TestEC2(unittest.TestCase):
 
         # decorated function, synchronous execution
         @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.large',
-                         terminate_on_complete=True)
+                         synchronous=True)
         def do_something():
             from seqc import ec2, log
             with ec2.clean_up(email='mail@ambrosejcarr.com'):
@@ -856,7 +856,7 @@ class TestEC2(unittest.TestCase):
         """note that this method leaves a security group lying around"""
 
         @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.xlarge',
-                         terminate_on_complete=False)
+                         synchronous=False)
         def create_index():
             from seqc import ec2
             from seqc.sequence import index
