@@ -248,7 +248,8 @@ class ReadArray:
         cor_instance_table = {DNA3Bit.encode(b'A'): 0,
                               DNA3Bit.encode(b'C'): 0,
                               DNA3Bit.encode(b'G'): 0,
-                              DNA3Bit.encode(b'T'): 0}
+                              DNA3Bit.encode(b'T'): 0,
+                              DNA3Bit.encode(b'N'): 0}
         
         for r in self.data:
             if not ReadArray.is_active_read(r):
