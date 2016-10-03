@@ -856,7 +856,7 @@ class TestEC2(unittest.TestCase):
         """note that this method leaves a security group lying around"""
 
         @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.xlarge',
-                         terminate_on_complete=False, instance_id='i-56f6a840')
+                         terminate_on_complete=False)
         def create_index():
             from seqc import ec2
             from seqc.sequence import index
