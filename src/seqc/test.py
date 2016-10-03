@@ -843,8 +843,10 @@ class TestEC2(unittest.TestCase):
         @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.large',
                          terminate_on_complete=True)
         def do_something():
-            log.setup_logger('/data/seqc.log')
-            log.notify('I logged a message')
+            from seqc import ec2, log
+            with ec2.clean_up(email='mail@ambrosejcarr.com'):
+                log.setup_logger('seqc.log')
+                log.notify('I logged a message')
             return 'I did something!'
 
         result = do_something()
@@ -854,7 +856,7 @@ class TestEC2(unittest.TestCase):
         """note that this method leaves a security group lying around"""
 
         @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.xlarge',
-                         terminate_on_complete=False, instance_id='i-56f6a840')
+                         terminate_on_complete=False)
         def create_index():
             from seqc import ec2
             from seqc.sequence import index

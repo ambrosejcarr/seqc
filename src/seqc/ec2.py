@@ -340,7 +340,7 @@ class AWSInstance(object):
             self.mount_volume(ssh)
             log.notify('uploading local SEQC installation to remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
-            ssh.execute('sudo mkdir -p software/seqc')
+            ssh.execute('mkdir -p software/seqc')
             # ssh.execute('sudo chown -c ubuntu /data')
             # ssh.execute('sudo chown -c ubuntu /data/software')
             ssh.put_file(seqc_distribution, 'software/seqc.tar.gz')
@@ -695,7 +695,7 @@ class clean_up:
           no errors occurred.
         """
         self.email = email
-        self.log_name = '/data/' + log_name  # todo think about this!
+        self.log_name = log_name  # changed mount point to ~, cwd is good.
         self.terminate = terminate  # only terminate if no errors occur
         self.aws_upload_key = upload
         self.err_status = False
