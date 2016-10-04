@@ -459,11 +459,12 @@ def main(argv: list=None) -> None:
         error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
         log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
         # Resolve multimapping
+        ra.resolve_alignments(args.index)
         
         #TODO: add,commit,push,run,test,fix problems
         #############
         prefix, directory = os.path.split(args.output_stem)
-        log_text = prefix + '/' + log_name
+        log_text = prefix + '/' + args.log_name
 
         body = ('<font face="Courier New, Courier, monospace">'
             'SEQC RUN COMPLETE.\n\n'

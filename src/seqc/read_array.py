@@ -35,7 +35,8 @@ class ReadArray:
         ('dust_score', np.uint8),
         ('gene', np.uint32),
         ('position', np.uint64),
-        ('ma_genes', np.dtype(object))]
+        ('ma_genes', np.dtype(object)),
+        ('ma_pos', np.dtype(object))]
 
     def __init__(self, data, non_unique_alignments=-1):
         """
@@ -144,11 +145,14 @@ class ReadArray:
                 if genes != -1:
                     if len(genes) > 1:
                         non_unique_align+=1
+                    ma_pos = []
+                    for i in range(len(genes)):
+                        ma_pos.append(alignment.pos)
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
                 rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
                 dust_score = alignment.dust_low_complexity_score
-                pos = alignment.pos
+                
             #the same read
             else:
                 genes_l = translator.translate(alignment.rname, alignment.strand, alignment.pos)
@@ -157,8 +161,11 @@ class ReadArray:
                         non_unique_align+=1
                     if genes == -1:
                         genes = genes_l
+                        ma_pos = []
                     else:
                         genes+=genes_l
+                    for i in range(len(genes_l)):
+                        ma_pos.append(alignment.pos)
             
         seqc.log.info('non unique alignments count: {}'.format(non_unique_align))
         #seqc.log.info('focus gene {}. Total alignmens: {}, total reads: {}, total uniquely aligned reads: {}'.format(focus_gene, fgene_tot_reads, fgene_tot_reads, fgene_tot_uniq))
@@ -392,16 +399,12 @@ class ReadArray:
         f.close()
         return cls(data)
         
-    def resolve_alignments(self, index, barcode_files, required_poly_t=1, reverse_complement = True, max_ed=2):
+    def resolve_alignments(self, index):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
         in-place to reflect the more specific gene assignments.
         args:
         index: path were p_coalignment_array.p is found - . 
-        required_poly_t (default: 0): the number of poly_t required for a read to be
-          considered a valid input for resolution. Reads lacking a poly_t tail are likely
-          to randomly prime into non-mRNA sequences, so requiring the presence of poly_t
-          in the 5' end of the forward read can reduce unwanted contamination
         
         After loading the co alignment matrix we group the reads of the ra by cell/rmt. In each group we look at the different disjoint subsetes of genes reads are aligned to.
         For each subset there are 4 options:
@@ -410,18 +413,14 @@ class ReadArray:
         3. There is more than one gene that can explain - can't be resolved
         4. There are a few models - for now no single model is being picked.
         """
-        
-        #for debugging
-        focus_gene = 3
-        fg_gra_cnt = 0
-        #
-                
+                        
         reads_res = {mm.NO_DISAMBIGUATION:0,mm.RESOLVED_GENE:0,mm.NO_GENE_RESOLVED:0,mm.MULTIPLE_MODELS:0}
         total_reads = 0
 
         seqc.log.info('grouping for disambiguation')
         #Group according to cell/RMT
-        g_ra = seqc.correct_errors.group_for_disambiguation(self, barcode_files, required_poly_t, reverse_complement, max_ed=2)
+        g_ra = seqc.correct_errors.group_for_disambiguation(self)
+        return
         
         #TODO - for now we're not using the expectations so I commented this part. -> Rami
         # After uncommenting, we need a new p_coalignment_array.p file to be created with the same mosule hirerachy

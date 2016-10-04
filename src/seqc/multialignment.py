@@ -1,11 +1,47 @@
 import numpy as np
 import itertools
+import time
+import seqc
 
 # Some constants
 NO_DISAMBIGUATION = 0
 RESOLVED_GENE = 1
 NO_GENE_RESOLVED = 2
 MULTIPLE_MODELS = 3
+
+def group_for_disambiguation(ra):
+    """
+    Prepare the RA for multi alignment disambiguation. Apply filters, correct the barcodes and group by cell/RMT pairs.
+    Retain the indices corresponding to each read.
+    The resulting dictionary has the following structure:
+        res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
+    Note the mapped genes list should be sorted before converted to a tuple
+    :param ra:
+    """
+    start = time.process_time()
+
+    res = {}
+
+    for i, r in enumerate(ra.data):
+        if not ReadArray.is_active_read(r):
+            continue
+
+        genes = tuple(set(sorted(v['ma_genes'])))
+        # group according to the correct barcodes and gene
+        cell = r['cell']
+        rmt = r['rmt']
+        try:
+            res[cell, rmt][genes].append(i)
+        except KeyError:
+            try:
+                res[cell, rmt][genes] = [i]
+            except KeyError:
+                res[cell, rmt] = {genes: [i]}
+
+    tot_time=time.process_time()-start
+    seqc.log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
+    return res
+
 
 def reduce_coalignment_array(arr, threshold = 0.0001):
     res = {}
