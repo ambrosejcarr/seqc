@@ -99,22 +99,17 @@ class AWSInstance(object):
     """
 
     ec2 = boto3.resource('ec2')
-    client = boto3.client('ec2'
-                          )
+    client = boto3.client('ec2')
 
-    # (do the typechecking at the property setter level)
-    def __init__(
-            self, instance_alias, **kwargs):
+    def __init__(self, **kwargs):
         """
-        required:
-        ---------
-        :param str instance_alias: type of instance to create. options=('c4, 'c3', 'r3')
 
         passed keyword arguments or present in config:
         ---------------------------
         :param str rsa_key_path:
         :param str image_id:
         :param str subnet_id:
+        :param str instance_type:
         :param str availability_zone:
         :param str aws_public_access_key:
         :param str aws_secret_access_key:
@@ -125,14 +120,13 @@ class AWSInstance(object):
         :param str security_group_id: id for ec2 security group object
         :param float spot_bid: amount of money to pay per hour in dollars
         :param int volume_size: size in Gb of volume to attach to home directory. Must be
-          smaller than 16 and greater than 0.
-        :param bool terminate_on_complete: flag for use in contextmanager or function
+          between 1 and 16384gb.
+        :param bool synchronous: flag for use in contextmanager or function
           decorator context. If true, the instance will be automatically shut down when
           either (1) the contextmanager exits or (2) the decorated function completes
 
         """
 
-        # todo check for volume size
         # todo change these dummy arguments into properties
         # dummy arguments set by kwargs or configuration; for inspection only.
         self.aws_public_access_key = None
@@ -140,7 +134,6 @@ class AWSInstance(object):
         self.availability_zone = None
         self._rsa_key_path = None
         self.subnet_id = None
-
         self.image_id = None
         self.instance_type = None
 
@@ -154,21 +147,24 @@ class AWSInstance(object):
         self._ssh_connection = None
 
         # list of arguments to search config for
-        security = ('aws_public_access_key', 'aws_secret_access_key', 'availability_zone',
-                    'rsa_key_path', 'subnet_id')
-        instance = ('image_id', 'instance_type')
+        config_params = (
+            'aws_public_access_key', 'aws_secret_access_key', 'availability_zone',
+            'rsa_key_path', 'subnet_id', 'image_id', 'instance_type')
 
         # set defaults from config file if they weren't passed
-        for k in security:
+        for k in config_params:
             if k not in kwargs.keys():
-                setattr(self, k, _get_default_ec2_parameter('security', k))
+                setattr(self, k, _get_default_ec2_parameter('seqc', k))
 
-        for k in instance:
-            if k not in kwargs.keys():
-                setattr(self, k, _get_default_ec2_parameter(instance_alias, k))
-
+        # set passed arguments
         for k in kwargs.keys():
             setattr(self, k, kwargs[k])
+
+        # check vol_size
+        if 'volume_size' in kwargs.keys():
+            vs = kwargs['volume_size']
+            if not isinstance(vs, int) or not 1 <= vs < 16384:
+                raise ValueError('volume size must be an integer ')
 
     # todo define def __repr__(self):
 
@@ -205,6 +201,10 @@ class AWSInstance(object):
         if not isinstance(value, str):
             raise ValueError('rsa_key_path must be type str')
         self._rsa_key_path = os.path.expanduser(value)
+
+    @property
+    def Instance(self):
+        return self.ec2.Instance(self.instance_id)
 
     @classmethod
     def create_security_group(cls, name=None):
@@ -303,7 +303,7 @@ class AWSInstance(object):
             log.notify('instance %s in running state' % self.instance_id)
 
     @staticmethod
-    def mount_volume(ssh, directory='/home/ubuntu'):
+    def mount_volume(ssh, directory='/home/ec2-user'):
         """mount /dev/xvdf to /data given an ssh client with access to an instance
 
         :param str directory: directory to mount the drive to. Note that odd behavior may
@@ -319,8 +319,8 @@ class AWSInstance(object):
                         % (directory, directory))
             log.notify("Successfully mounted new volume onto %s." % directory)
         except ChildProcessError as e:
-            if not ('mount: according to mtab, /dev/xvdf is already mounted on /data'
-                    in ' '.join(e.args[0])):
+            if not ('mount: according to mtab, /dev/xvdf is already mounted on %s'
+                        % directory in ' '.join(e.args[0])):
                 raise
 
     def set_credentials(self, ssh):
@@ -341,8 +341,6 @@ class AWSInstance(object):
             log.notify('uploading local SEQC installation to remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
             ssh.execute('mkdir -p software/seqc')
-            # ssh.execute('sudo chown -c ubuntu /data')
-            # ssh.execute('sudo chown -c ubuntu /data/software')
             ssh.put_file(seqc_distribution, 'software/seqc.tar.gz')
             ssh.execute(
                 'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
@@ -595,7 +593,7 @@ class SSHConnection:
         """connects to a remote instance"""
         instance = self.ec2.Instance(self.instance_id)
         try:
-            self.ssh.connect(instance.public_dns_name, username='ubuntu',
+            self.ssh.connect(instance.public_dns_name, username='ec2-user',
                              key_filename=self.rsa_key_path, timeout=3.0)
         except NoValidConnectionsError:
             state = instance.state['Name']
@@ -659,7 +657,7 @@ class SSHConnection:
 
     def login_command(self):
         instance = self.ec2.Instance(self.instance_id)
-        return ('ssh -i {rsa_path} ubuntu@{dns_name}'.format(
+        return ('ssh -i {rsa_path} ec2-user@{dns_name}'.format(
             rsa_path=self.rsa_key_path, dns_name=instance.public_dns_name))
 
     def __enter__(self):
@@ -706,22 +704,26 @@ class clean_up:
     def email_user(attachment: str, email_body: str, email_address: str) -> None:
         """
         sends an email to email address with text contents of email_body and attachment
-        attached. Email will come from "Ubuntu@<ec2-instance-ip-of-aws-instance>
+        attached. Email will come from "ec2-user@<ec2-instance-ip-of-aws-instance>
 
         :param attachment: the file location of the attachment to append to the email
         :param email_body: text to send in the body of the email
         :param email_address: the address to which the email should be sent"""
 
         if isinstance(email_body, str):
-            email_body = email_body.encode()
+            email_body = email_body
 
-        email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment,
-                      '-s',
-                      'Remote Process', '--', email_address]
-        email_process = Popen(email_args, stdin=PIPE, stderr=PIPE)
-        _, err = email_process.communicate(email_body)
+        email_args = (
+            'echo "{b}" | mutt -e "set content_type="text/html"" -s '
+            '"Remote Process" {e} -a {a}'.format(b=email_body, a=attachment, e=email_address))
+        email_process = Popen(email_args, shell=True, stderr=PIPE, stdout=PIPE)
+        # email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment,
+        #               '-s',
+        #               'Remote Process', '--', email_address]
+        # email_process = Popen(email_args, stdin=PIPE, stderr=PIPE)
+        out, err = email_process.communicate(email_body)
         if err:
-            raise ChildProcessError(err)
+            raise ChildProcessError(err.decode())
 
     def __enter__(self):
         log.setup_logger(self.log_name)
@@ -760,11 +762,15 @@ class clean_up:
             log.info('Execution completed successfully, but user requested no '
                      'termination. Instance will continue to run.')
 
-        # email user if possible
+        # email user if possible; catch exceptions if email fails.
         if self.email and self.mutt:
             log.notify('Emailing user.')
-            self.email_user(
-                attachment=self.log_name, email_body=email_body, email_address=self.email)
+            try:
+                self.email_user(
+                    attachment=self.log_name, email_body=email_body,
+                    email_address=self.email)
+            except ChildProcessError:
+                log.exception()
 
         # upload data if requested
         if self.aws_upload_key:
@@ -781,7 +787,8 @@ class clean_up:
             instance_id = self._get_instance_id()
             ec2 = boto3.resource('ec2')
             instance = ec2.Instance(instance_id)
-            log.notify('instance %s termination requested.' % instance_id)
+            log.notify('instance %s termination requested. If successful, this is the '
+                       'final log entry.' % instance_id)
             instance.terminate()
             instance.wait_until_terminated()
             log.notify('instance %s terminated' % instance_id)  # should never run

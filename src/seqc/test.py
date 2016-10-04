@@ -662,9 +662,8 @@ class TestIndexCreation(unittest.TestCase):
         # watch output for success; will list uploads
 
     def test_create_index_produces_and_uploads_an_index(self):
-        os.chdir(self.outdir)
         organism = 'ciona_intestinalis'
-        idx = index.Index(organism, ['entrezgene'])
+        idx = index.Index(organism, ['entrezgene'], self.outdir)
         idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
 
 
@@ -838,30 +837,40 @@ class TestEC2(unittest.TestCase):
         self.assertEqual('I did something!', data.strip())
 
     def test_decorator(self):
+        """This test should:
+        1. create an instance
+        2. run the code
+        3. email the user
+        4. upload the result to s3://dplab-data/seqc/test/create_index/
+        5. the remote server should terminate itself.
+        """
 
         # decorated function, synchronous execution
-        @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.large',
-                         synchronous=True)
+        @ec2.AWSInstance(volume_size=25, instance_type='c3.large',
+                         synchronous=False)
         def do_something():
             from seqc import ec2, log
-            with ec2.clean_up(email='mail@ambrosejcarr.com'):
+            with ec2.clean_up(email='mail@ambrosejcarr.com',
+                              upload='s3://dplab-data/seqc/test/create_index/'):
                 log.setup_logger('seqc.log')
                 log.notify('I logged a message')
             return 'I did something!'
 
         result = do_something()
-        self.assertEqual('I did something!', result)
+        log.notify('local test portion concluded, wait for email and upload to confirm '
+                   'success/failure.')
+        assert result is None
 
     def test_async_cleanup(self):
         """note that this method leaves a security group lying around"""
 
-        @ec2.AWSInstance('c3', volume_size=25, instance_type='c3.xlarge',
+        @ec2.AWSInstance(volume_size=25, instance_type='c3.xlarge',
                          synchronous=False)
         def create_index():
             from seqc import ec2
             from seqc.sequence import index
             with ec2.clean_up(email='mail@ambrosejcarr.com',
-                              upload='s3://ajc-data/test_async_cleanup'):
+                              upload='s3://dplab-data/seqc/test/create_index/'):
                 organism = 'ciona_intestinalis'
                 idx = index.Index(organism, ['entrezgene'])
                 idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)

@@ -10,7 +10,7 @@ from seqc.io import S3
 
 class Index:
 
-    def __init__(self, organism, additional_id_types=None):
+    def __init__(self, organism, additional_id_types=None, index_folder_name='.'):
         """Create an Index object for organism, requiring that a valid annotation have
         both an ENSEMBL id and at least one additional id provided by an
         additional_id_field (if provided)
@@ -60,6 +60,9 @@ class Index:
             self._additional_id_types = additional_id_types
         else:
             self._additional_id_types = []
+
+        # todo type checks
+        self.index_folder_name = index_folder_name
 
     @property
     def organism(self) -> str:
@@ -165,8 +168,9 @@ class Index:
         if err:
             raise ChildProcessError('conversion file download failed: %s' % err)
 
-    def _download_ensembl_files(self, fasta_name: str=None, gtf_name: str=None,
-                                conversion_name: str=None) -> None:
+    def _download_ensembl_files(
+            self, fasta_name: str=None, gtf_name: str=None,
+            conversion_name: str=None) -> None:
         """download the fasta, gtf, and id_mapping file for the organism defined in
         cls.organism
 
@@ -176,11 +180,11 @@ class Index:
         """
 
         if fasta_name is None:
-            fasta_name = './%s.fa.gz' % self.organism
+            fasta_name = '%s/%s.fa.gz' % (self.index_folder_name, self.organism)
         if gtf_name is None:
-            gtf_name = './%s.gtf.gz' % self.organism
+            gtf_name = '%s/%s.gtf.gz' % (self.index_folder_name, self.organism)
         if conversion_name is None:
-            conversion_name = './%s_ids.csv' % self.organism
+            conversion_name = '%s/%s_ids.csv' % (self.index_folder_name, self.organism)
 
         with FTP(host='ftp.ensembl.org') as ftp:
             ftp.login()
@@ -230,11 +234,12 @@ class Index:
                             'as strings or bytes objects (but not both).')
 
         if gtf_file is None:
-            gtf_file = './%s.gtf.gz' % self.organism
+            gtf_file = '%s/%s.gtf.gz' % (self.index_folder_name, self.organism)
         if conversion_file is None:
-            conversion_file = './%s_ids.csv' % self.organism
+            conversion_file = '%s/%s_ids.csv' % (self.index_folder_name, self.organism)
         if truncated_annotation is None:
-            truncated_annotation = './%s_multiconsortia.gtf' % self.organism
+            truncated_annotation = '%s/%s_multiconsortia.gtf' % (
+                self.index_folder_name, self.organism)
 
         # extract valid ensembl ids from the conversion file
         c = pd.read_csv(conversion_file, index_col=[0])
@@ -264,14 +269,16 @@ class Index:
         :return:
         """
         if fasta_file is None:
-            fasta_file = '%s.fa.gz' % self.organism
+            fasta_file = '%s/%s.fa.gz' % (self.index_folder_name, self.organism)
         if gtf_file is None:
-            if os.path.isfile('%s_multiconsortia.gtf' % self.organism):
-                gtf_file = '%s_multiconsortia.gtf' % self.organism
+            if os.path.isfile('%s/%s_multiconsortia.gtf' % (
+                    self.index_folder_name, self.organism)):
+                gtf_file = '%s/%s_multiconsortia.gtf' % (
+                    self.index_folder_name, self.organism)
             else:
-                gtf_file = '%s.gtf.gz' % self.organism
+                gtf_file = '%s/%s.gtf.gz' % (self.index_folder_name, self.organism)
         if genome_dir is None:
-            genome_dir = self.organism
+            genome_dir = '%s/%s' % (self.index_folder_name, self.organism)
         star.create_index(fasta_file, gtf_file, genome_dir, read_length)
 
     @staticmethod
@@ -289,30 +296,20 @@ class Index:
         key_prefix = '/'.join(dirs)
         S3.upload_files(file_prefix=index_directory, bucket=bucket, key_prefix=key_prefix)
 
-    # todo when on aws, ssh automatically logs you into ~/, and this function will create the genome there unless otherwise specified!
-    # need to specify that it should go to /data, I think (?)
     def create_index(
-            self,
-            index_folder_name: str=None,
-            valid_biotypes=('protein_coding', 'lincRNA'),
-            s3_location: str=None):
+            self, valid_biotypes=('protein_coding', 'lincRNA'), s3_location: str=None):
         """create an optionally upload an index
 
-        :param index_folder_name: name of the folder in which to create the index. If not
-          provided, an index will be created that is named after the organism, and will
-          be placed in the current directory
         :param valid_biotypes: gene biotypes that do not match values in this list will
           be discarded from the annotation and will not appear in final count matrices
         :param s3_location: optional, s3 location to upload the index to.
         :return:
         """
-        if not index_folder_name:
-            index_folder_name = self.organism
-
-        os.makedirs(index_folder_name, exist_ok=True)
-        os.chdir(index_folder_name)
+        if self.index_folder_name is not '.':
+            os.makedirs(self.index_folder_name, exist_ok=True)
         self._download_ensembl_files()
         self._subset_genes(valid_biotypes=valid_biotypes)
         self._create_star_index()
         if s3_location:
-            self._upload_index('./', s3_location)
+            self._upload_index('%s/%s' % (self.index_folder_name, self.organism),
+                               s3_location)

@@ -1,7 +1,7 @@
 import os
 import sys
 import shutil
-from subprocess import call
+from subprocess import call, check_output
 from setuptools import setup
 from warnings import warn
 
