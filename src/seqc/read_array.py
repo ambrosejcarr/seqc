@@ -320,7 +320,7 @@ class ReadArray:
                 seqc.log.info('Warning: too few reads to estimate error rate for %r setting default rate of %f' % (k, default_error_rate))
                 err_rate[k] = default_error_rate
             
-        log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
+        seqc.log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
         return err_rate
         
     def reads_passing_filters(self, min_poly_t: int, max_dust_score: int):
