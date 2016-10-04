@@ -74,6 +74,9 @@ class ReadArray:
     def data(self):
         return self._data
 
+    @staticmethod
+    def active_status():
+        return 0
     # Toggle active flag on (byte 15)
     @staticmethod
     def set_status_active(r):
@@ -137,15 +140,15 @@ class ReadArray:
             #new read
             if alignment.qname != prev_alignment_name:
                 if read_idx>0:
-                    data[read_idx-1] = (0, cell, rmt, n_poly_t, dust_score, 0, pos, genes)
+                    data[read_idx-1] = (ReadArray.active_status(), cell, rmt, n_poly_t, dust_score, 0, 0, genes, ma_pos)
                     cls.set_status_active(data[read_idx-1])
                 prev_alignment_name = alignment.qname
                 read_idx+=1
                 genes = translator.translate(alignment.rname, alignment.strand, alignment.pos)
+                ma_pos = []
                 if genes != -1:
                     if len(genes) > 1:
                         non_unique_align+=1
-                    ma_pos = []
                     for i in range(len(genes)):
                         ma_pos.append(alignment.pos)
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
@@ -161,7 +164,6 @@ class ReadArray:
                         non_unique_align+=1
                     if genes == -1:
                         genes = genes_l
-                        ma_pos = []
                     else:
                         genes+=genes_l
                     for i in range(len(genes_l)):
