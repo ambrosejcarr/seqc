@@ -317,7 +317,7 @@ class ReadArray:
             try:
                 err_rate[k] = v / (sum(n for err_type, n in error_table.items() if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
             except ZeroDivisionError:
-                log.info('Warning: too few reads to estimate error rate for %r setting default rate of %f' % (k, default_error_rate))
+                seqc.log.info('Warning: too few reads to estimate error rate for %r setting default rate of %f' % (k, default_error_rate))
                 err_rate[k] = default_error_rate
             
         log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
