@@ -461,22 +461,22 @@ def main(argv: list=None) -> None:
         # Resolve multimapping
         
         #TODO: add,commit,push,run,test,fix problems
-		#############
-		prefix, directory = os.path.split(args.output_stem)
-		log_text = prefix + '/' + log_name
+        #############
+        prefix, directory = os.path.split(args.output_stem)
+        log_text = prefix + '/' + log_name
 
-		body = ('<font face="Courier New, Courier, monospace">'
+        body = ('<font face="Courier New, Courier, monospace">'
             'SEQC RUN COMPLETE.\n\n'
             'The run log has been attached to this email and '
             'results are now available in the S3 location you specified: '
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
             '</font>' % (aws_upload_key, run_summary))
-		log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
+        log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
              'flag was specified.')
-		body = body.replace('\n', '<br>')
-		body = body.replace('\t', '&emsp;')
-		email_user(log_text, body, email)
+        body = body.replace('\n', '<br>')
+        body = body.replace('\t', '&emsp;')
+        email_user(log_text, body, email)
         return
         #################
         # correct errors
