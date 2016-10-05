@@ -2,7 +2,7 @@ import numpy as np
 import itertools
 import time
 import seqc
-from seqc import ReadArray
+from seqc.read_array import ReadArray
 
 # Some constants
 NO_DISAMBIGUATION = 0
