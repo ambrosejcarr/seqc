@@ -10,6 +10,7 @@ import seqc.multialignment as mm
 import seqc.sequence.barcodes
 import pickle
 from itertools import permutations
+import time
 
 # Some constants
 PASS_FILTERS    = 0
@@ -331,7 +332,41 @@ class ReadArray:
             
         seqc.log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
         return err_rate
-        
+    
+
+    def group_for_disambiguation(self):
+        """
+        Prepare the RA for multi alignment disambiguation. Apply filters, correct the barcodes and group by cell/RMT pairs.
+        Retain the indices corresponding to each read.
+        The resulting dictionary has the following structure:
+            res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
+        Note the mapped genes list should be sorted before converted to a tuple
+        :param ra:
+        """
+        start = time.process_time()
+
+        res = {}
+
+        for i, r in enumerate(self.data):
+            if not ReadArray.is_active_read(r):
+                continue
+
+            genes = tuple(set(sorted(v['ma_genes'])))
+            # group according to the correct barcodes and gene
+            cell = r['cell']
+            rmt = r['rmt']
+            try:
+                res[cell, rmt][genes].append(i)
+            except KeyError:
+                try:
+                    res[cell, rmt][genes] = [i]
+                except KeyError:
+                    res[cell, rmt] = {genes: [i]}
+
+        tot_time=time.process_time()-start
+        seqc.log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
+        return res
+    
     def reads_passing_filters(self, min_poly_t: int, max_dust_score: int):
         """
         Subset the ReadArray returning a new ReadArray containing eads that passed all
