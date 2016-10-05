@@ -179,7 +179,7 @@ class ReadArray:
             
         seqc.log.info('non unique alignments count: {}'.format(non_unique_align))
         #seqc.log.info('focus gene {}. Total alignmens: {}, total reads: {}, total uniquely aligned reads: {}'.format(focus_gene, fgene_tot_reads, fgene_tot_reads, fgene_tot_uniq))
-        
+        seqc.log.info('scaffold chrs: {}'.format(scaffold_chr))
         res_ra = cls(data, non_unique_align)
         res_ra._total_alignments = len(reader)
         res_ra._total_reads = num_reads

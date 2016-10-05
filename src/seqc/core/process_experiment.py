@@ -477,7 +477,7 @@ def main(argv: list=None) -> None:
              'flag was specified.')
         body = body.replace('\n', '<br>')
         body = body.replace('\t', '&emsp;')
-        email_user(log_text, body, email)
+        remote.email_user(log_text, body, email)
         return
         #################
         # correct errors
