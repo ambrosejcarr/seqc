@@ -472,7 +472,7 @@ def main(argv: list=None) -> None:
             'results are now available in the S3 location you specified: '
             '"%s"\n\n'
             'RUN SUMMARY:\n\n%s'
-            '</font>' % (aws_upload_key, run_summary))
+            '</font>' % (aws_upload_key, 'none'))
         log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
              'flag was specified.')
         body = body.replace('\n', '<br>')

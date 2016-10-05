@@ -132,7 +132,8 @@ class ReadArray:
                 num_reads +=1
                 prev_alignment_name = alignment.qname       
         
-        translator = GeneIntervals(gtf_f)    
+        translator = GeneIntervals(gtf_f)
+        scaffold_chr = []
         
         data = np.recarray((num_reads,), cls._dtype)
         prev_alignment_name=''
@@ -152,6 +153,12 @@ class ReadArray:
                         non_unique_align+=1
                     for i in range(len(genes)):
                         ma_pos.append(alignment.pos)
+                ### for debugging purposes
+                else:
+                    if len(scaffold_chr) < 100:
+                    #if alignment.rname not in scaffold_chr:
+                        scaffold_chr.append(alignment.rname)
+                #####
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
                 rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
@@ -327,7 +334,7 @@ class ReadArray:
             try:
                 err_rate[k] = v / (sum(n for err_type, n in error_table.items() if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
             except ZeroDivisionError:
-                seqc.log.info('Warning: too few reads to estimate error rate for %r setting default rate of %f' % (k, default_error_rate))
+                seqc.log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
                 err_rate[k] = default_error_rate
             
         seqc.log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
