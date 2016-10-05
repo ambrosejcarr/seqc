@@ -456,7 +456,7 @@ class ReadArray:
 
         seqc.log.info('grouping for disambiguation')
         #Group according to cell/RMT
-        g_ra = mm.group_for_disambiguation(self)
+        g_ra = self.group_for_disambiguation()
         return
         
         #TODO - for now we're not using the expectations so I commented this part. -> Rami
