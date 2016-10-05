@@ -463,8 +463,6 @@ def main(argv: list=None) -> None:
         
         #TODO: add,commit,push,run,test,fix problems
         #############
-        prefix, directory = os.path.split(args.output_stem)
-        log_text = prefix + '/' + args.log_name
 
         body = ('<font face="Courier New, Courier, monospace">'
             'SEQC RUN COMPLETE.\n\n'
@@ -477,7 +475,7 @@ def main(argv: list=None) -> None:
              'flag was specified.')
         body = body.replace('\n', '<br>')
         body = body.replace('\t', '&emsp;')
-        remote.email_user(log_text, body, email)
+        remote.email_user('', body, email)
         return
         #################
         # correct errors
