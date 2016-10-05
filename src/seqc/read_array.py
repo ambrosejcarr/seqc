@@ -331,8 +331,8 @@ class ReadArray:
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
-			if DNA3Bit.decode(k)[0] in b'Nn':
-				continue
+            if DNA3Bit.decode(k)[0] in b'Nn':
+                continue
             try:
                 err_rate[k] = v / (sum(n for err_type, n in error_table.items() if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
             except ZeroDivisionError:
