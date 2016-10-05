@@ -351,7 +351,7 @@ class ReadArray:
             if not ReadArray.is_active_read(r):
                 continue
 
-            genes = tuple(set(sorted(v['ma_genes'])))
+            genes = tuple(set(sorted(r['ma_genes'])))
             # group according to the correct barcodes and gene
             cell = r['cell']
             rmt = r['rmt']
