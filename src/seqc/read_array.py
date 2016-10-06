@@ -530,7 +530,7 @@ class ReadArray:
                     ReadArray.set_mm_status(self.data[ind], r)
                     if resolved:
                         self.data['gene'][ind] = g
-                        self.data['pos'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
+                        self.data['position'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
                     else:
                         ReadArray.set_status_inactive(r)        
         

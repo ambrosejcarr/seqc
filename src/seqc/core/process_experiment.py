@@ -460,6 +460,7 @@ def main(argv: list=None) -> None:
         log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
         # Resolve multimapping
         ra.resolve_alignments(args.index)
+        log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
         
         #TODO: add,commit,push,run,test,fix problems
         #############
