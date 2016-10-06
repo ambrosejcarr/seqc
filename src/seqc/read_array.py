@@ -499,8 +499,6 @@ class ReadArray:
             for genes in g_ra_rec:
                 if genes == ():
                     continue
-                if focus_gene in genes:
-                    fg_gra_cnt += len(g_ra_rec[genes])
                 if genes not in obs:
                     obs[genes] = len(g_ra_rec[genes])
                     total_reads += len(g_ra_rec[genes])
