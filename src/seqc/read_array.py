@@ -66,7 +66,7 @@ class ReadArray:
         self._bad_barcodes      = 0
         self._fix_barcodes      = 0
         self._ok_barcodes       = 0
-		self._multialignment	= {mm.NO_DISAMBIGUATION: 0, mm.RESOLVED_GENE: 0, mm.NO_GENE_RESOLVED: 0, mm.MULTIPLE_MODELS: 0}
+        self._multialignment    = {mm.NO_DISAMBIGUATION: 0, mm.RESOLVED_GENE: 0, mm.NO_GENE_RESOLVED: 0, mm.MULTIPLE_MODELS: 0}
         
         if non_unique_alignments != -1:
             self._non_unique_align = non_unique_alignments
@@ -100,12 +100,12 @@ class ReadArray:
             raise ValueError('Barcodes status must be 0,1 or 2. value given: {}'.format(bc_status))
         r['status'] &= 0b1111111110011111
         r['status'] |= bc_status<<5
-	
-	def set_mm_status(r, mm_stat):
-		if mm_stat > 0b11:
-			raise ValueError('Multimapping status must be 0,1,2 or 3. value given: {}'.format(mm_stat))
-		r['status'] &= 0b1111110011111111
-		r['status'] |= mm_stat<<8
+    
+    def set_mm_status(r, mm_stat):
+        if mm_stat > 0b11:
+            raise ValueError('Multimapping status must be 0,1,2 or 3. value given: {}'.format(mm_stat))
+        r['status'] &= 0b1111110011111111
+        r['status'] |= mm_stat<<8
     
     @staticmethod
     def is_active_read(r):
@@ -118,8 +118,8 @@ class ReadArray:
             if ReadArray.is_active_read(r):
                 res+=1
         return res
-		
-	
+        
+    
         
     @classmethod
     def from_samfile(cls, samfile: str, gtf_f: str):
@@ -519,22 +519,22 @@ class ReadArray:
 
             subsets = mm.split_to_disjoint(obs_s)
             for obs_subset in subsets:
-				resolved = False
+                resolved = False
                 models, r = mm.best_fit_model(obs_subset, mat)
                 self._multialignment[r] += sum(obs_subset.values())
-				if r==mm.NO_DISAMBIGUATION or r==mm.RESOLVED_GENE:
-						model=models[0]
-						g = mm.model_to_gene(model)
-						resolved = True
-						
-				indices = mm.get_indices(ind_s, obs_subset)
-				for ind in indices:
-					ReadArray.set_mm_status(self.data[ind], r)
-					if resolved:
-						self.data['gene'][ind] = g
-						self.data['pos'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
-					else:
-						ReadArray.set_status_inactive(r)        
+                if r==mm.NO_DISAMBIGUATION or r==mm.RESOLVED_GENE:
+                        model=models[0]
+                        g = mm.model_to_gene(model)
+                        resolved = True
+                        
+                indices = mm.get_indices(ind_s, obs_subset)
+                for ind in indices:
+                    ReadArray.set_mm_status(self.data[ind], r)
+                    if resolved:
+                        self.data['gene'][ind] = g
+                        self.data['pos'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
+                    else:
+                        ReadArray.set_status_inactive(r)        
         
         seqc.log.info('Total reads in samfile: {}'.format(len(self)))
         seqc.log.info('Reads that passed the filter: {}'.format(total_reads))
