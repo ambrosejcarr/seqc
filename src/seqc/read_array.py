@@ -76,10 +76,10 @@ class ReadArray:
         s += "Read array of size: {:,}\n".format(len(self._data))
         s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(self.non_unique_align)
         s += "Total reads: {:,}\n".format(self._total_reads)
-        s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".
+        s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".\
              format(self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[SCAFFOLD], self._filtered[NO_GENES])
         s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
-        s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, competing models (unhandeled): {:,}\n".
+        s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, competing models (unhandeled): {:,}\n".\
              format(self._multialignment[mm.NO_DISAMBIGUATION], self._multialignment[mm.RESOLVED_GENE], self._multialignment[mm.NO_GENE_RESOLVED], self._multialignment[mm.MULTIPLE_MODELS])
         s += "Total errors: {:,}\n".format(self._total_errors)
         s += "Total active reads: {:,}\n".format(self.count_active_reads())
