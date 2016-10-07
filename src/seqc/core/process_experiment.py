@@ -451,16 +451,16 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
-        log.info('Total active reads before filters: {}'.format(ra.count_active_reads()))
+        log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
         ra.apply_filters(required_poly_t=args.min_poly_t)
-        log.info('Total active reads after filters: {}'.format(ra.count_active_reads()))
+        log.info('Read array after filtering: {}'.format(ra))
         # Correct barcodes
         error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
-        log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
+        log.info('Read array after barcode correction: {}'.format(ra))
         # Resolve multimapping
         ra.resolve_alignments(args.index)
-        log.info('Total active reads after bc correction: {}'.format(ra.count_active_reads()))
+        log.info('Read array after multialignment resolution: {}'.format(ra))
         
         #TODO: add,commit,push,run,test,fix problems
         #############
@@ -476,7 +476,7 @@ def main(argv: list=None) -> None:
              'flag was specified.')
         body = body.replace('\n', '<br>')
         body = body.replace('\t', '&emsp;')
-        remote.email_user('', body, email)
+        remote.email_user('', body, args.email_status)
         return
         #################
         # correct errors

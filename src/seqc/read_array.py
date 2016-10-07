@@ -60,17 +60,30 @@ class ReadArray:
         #some stats
         self._total_alignments  = 0
         self._total_reads       = 0
-        self._no_alignment      = 0
         self._non_unique_align  = 0
         self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0}
         self._bad_barcodes      = 0
         self._fix_barcodes      = 0
         self._ok_barcodes       = 0
         self._multialignment    = {mm.NO_DISAMBIGUATION: 0, mm.RESOLVED_GENE: 0, mm.NO_GENE_RESOLVED: 0, mm.MULTIPLE_MODELS: 0}
+        self._total_errors      = 0
         
         if non_unique_alignments != -1:
             self._non_unique_align = non_unique_alignments
 
+    def __repr__(self):
+        s = ""
+        s += "Read array of size: {:,}\n".format(len(self._data))
+        s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(self.non_unique_align)
+        s += "Total reads: {:,}\n".format(self._total_reads)
+        s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".
+             format(self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[SCAFFOLD], self._filtered[NO_GENES])
+        s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
+        s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, competing models (unhandeled): {:,}\n".
+             format(self._multialignment[mm.NO_DISAMBIGUATION], self._multialignment[mm.RESOLVED_GENE], self._multialignment[mm.NO_GENE_RESOLVED], self._multialignment[mm.MULTIPLE_MODELS])
+        s += "Total errors: {:,}\n".format(self._total_errors)
+        s += "Total active reads: {:,}\n".format(self.count_active_reads())
+        return s
     
     @property
     def data(self):
@@ -119,6 +132,7 @@ class ReadArray:
                 res+=1
         return res
         
+    def 
     
         
     @classmethod
