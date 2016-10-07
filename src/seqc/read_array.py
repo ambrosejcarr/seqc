@@ -74,7 +74,7 @@ class ReadArray:
     def __repr__(self):
         s = ""
         s += "Read array of size: {:,}\n".format(len(self._data))
-        s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(self.non_unique_align)
+        s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(self._non_unique_align)
         s += "Total reads: {:,}\n".format(self._total_reads)
         s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".\
              format(self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[SCAFFOLD], self._filtered[NO_GENES])
