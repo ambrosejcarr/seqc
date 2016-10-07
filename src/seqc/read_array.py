@@ -132,9 +132,6 @@ class ReadArray:
                 res+=1
         return res
         
-    def 
-    
-        
     @classmethod
     def from_samfile(cls, samfile: str, gtf_f: str):
         """
