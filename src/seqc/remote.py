@@ -370,7 +370,7 @@ class ClusterServer(object):
         self.serv.put_file(seqc_distribution, location)
 
         self.serv.execute('cd %s; mkdir seqc && tar -xvf seqc.tar.gz -C seqc '
-                               '--strip-components 1' % folder)
+                          '--strip-components 1' % folder)
 
         log.notify("Sources are installed and decompressed, setting up seqc")
         self.serv.execute('cd %s; sudo pip3 install -e ./' % folder + 'seqc')
@@ -481,7 +481,7 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     email_process = Popen(email_args, stdin=PIPE)
     email_process.communicate(email_body)
 
-
+# todo rewrite this in ec2
 def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
                    start_pos: str, summary: dict, log_name: str, email: bool) -> None:
     """
@@ -496,6 +496,8 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     """
 
     prefix, directory = os.path.split(output_stem)
+    if not prefix:
+        prefix = '.'
     counts = output_stem + '_read_and_count_matrices.p'
     log_text = prefix + '/' + log_name
 

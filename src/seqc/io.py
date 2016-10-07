@@ -16,6 +16,7 @@ import time
 from seqc import log
 import pandas as pd
 import numpy as np
+import shutil
 
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
@@ -27,6 +28,69 @@ logging.getLogger('requests').setLevel(logging.CRITICAL)
 
 class S3:
     """A series of methods to upload and download files from amazon s3"""
+
+    # determine which system should be used to upload and download
+    boto = False if shutil.which('aws') else True
+
+    @staticmethod
+    def download_boto(link, prefix='', overwrite=False, recursive=False):
+        raise NotImplementedError('please download and configure aws cli.')
+
+    # todo implement filtering
+    @staticmethod
+    def download_awscli(link, prefix='./', overwrite=True, recursive=False):
+        """download file(s) at s3 address link to prefix using aws cli
+
+        :param link:
+        :param prefix:
+        :param overwrite:
+        :param recursive:
+        :return list: all downloaded filenames
+        """
+        if prefix is '':
+            prefix = './'
+
+        if overwrite is False:
+            raise ValueError('downloads with awscli cannot control override behavior, '
+                             'any existing files will be overwritten.')
+        if not recursive and link.endswith('/'):
+            raise ValueError(
+                'provided link %s was a prefix but download was not called recursively. '
+                'Please provide a filename or download recursively.' % link)
+
+        cmd = 'aws s3 cp %s %s' % (link, prefix)
+        if recursive:
+            cmd += ' --recursive'
+
+        # download the files
+        p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        out, err = p.communicate()
+        if err:
+            raise ChildProcessError(err.decode())
+
+        # get the names of the files that were downloaded
+        d = Popen(cmd + ' --dryrun', shell=True, stdout=PIPE, stderr=PIPE)
+        out, err = d.communicate()
+        if err:
+            raise ChildProcessError(err.decode())
+        downloaded_files = [line.strip().split()[-1] for line in
+                            out.decode().strip().split('\n') if line.strip()]
+        log.notify('downloaded files [%s]' % ',\n\t'.join(downloaded_files))
+        return downloaded_files
+
+    @classmethod
+    def download(cls, link, prefix='', overwrite=True, recursive=False):
+        """
+        :param link:
+        :param prefix:
+        :param overwrite:
+        :param recursive:
+        :return:
+        """
+        if cls.boto:
+            return cls.download_boto(link, prefix, overwrite, recursive)
+        else:
+            return cls.download_awscli(link, prefix, overwrite, recursive)
 
     @staticmethod
     def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False,
@@ -116,7 +180,7 @@ class S3:
             dirs = '/'.join(fout.split('/')[:-1])
 
             # make directories if they don't exist
-            if not os.path.isdir(dirs):
+            if not os.path.isdir(dirs) and dirs:
                 os.makedirs(dirs)
 
             # check for overwriting

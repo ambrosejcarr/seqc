@@ -12,7 +12,7 @@ from paramiko.ssh_exception import NoValidConnectionsError
 import paramiko
 import boto3
 import socket
-from subprocess import Popen, check_output, PIPE
+from subprocess import Popen, check_output, PIPE, CalledProcessError
 from seqc import log, io
 from seqc.core import verify
 from seqc.exceptions import (
@@ -206,6 +206,7 @@ class AWSInstance(object):
     def Instance(self):
         return self.ec2.Instance(self.instance_id)
 
+    # todo set this security group name according to the seqc run
     @classmethod
     def create_security_group(cls, name=None):
         """creates a new security group
@@ -338,6 +339,8 @@ class AWSInstance(object):
         with SSHConnection(instance_id=self.instance_id,
                            rsa_key_path=self.rsa_key_path) as ssh:
             self.mount_volume(ssh)
+            log.notify('setting aws credentials.')
+            self.set_credentials(ssh)
             log.notify('uploading local SEQC installation to remote instance.')
             seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
             ssh.execute('mkdir -p software/seqc')
@@ -354,11 +357,8 @@ class AWSInstance(object):
                 log.notify('SEQC installation failed.')
                 log.exception()
                 raise
-            log.notify('setting aws credentials.')
-            self.set_credentials(ssh)
             log.notify('SEQC setup complete.')
             log.notify('instance login: %s' % ssh.login_command())
-
 
     def start(self):
         self.setup_seqc()
@@ -408,7 +408,7 @@ class AWSInstance(object):
                        (self.instance_id, instance.state['Name']))
 
     @classmethod
-    @Retry(retries=40, delay=5, catch=InstanceNotRunningError)
+    @Retry(retries=40, delay=5, catch=(InstanceNotRunningError, ClientError))
     def verify_spot_bid_fulfilled(cls, sir_id):
         result = cls.client.describe_spot_instance_requests(
             SpotInstanceRequestIds=[sir_id])
@@ -511,8 +511,6 @@ class AWSInstance(object):
             f.write(script_body)
         return script_name
 
-    # todo separate terminate_on_complete into 'asyncronous' and 'terminate_on_complete'
-    # raise exception if async and terminate are both true. Other combinations are fine.
     def __call__(self, function):
 
         def function_executed_on_aws(*args, **kwargs):
@@ -727,18 +725,25 @@ class clean_up:
 
     def __enter__(self):
         log.setup_logger(self.log_name)
-        log.notify('Beginning remote execution')
+        log.notify('Beginning protected execution')
 
     @staticmethod
     def _get_instance_id():
         """get an aws instances id from it's private ip address"""
-        ip = check_output(
-            '/sbin/ifconfig eth0 | grep "inet addr"', shell=True
-            ).decode().strip().split()[1].replace('addr:', '')
+        p = Popen('/sbin/ifconfig eth0 | grep "inet addr"', shell=True, stdout=PIPE,
+                  stderr=PIPE)
+        ip, err = p.communicate()
+        if err:  # not an ec2 linux instance, nothing to terminate
+            return
+        else:
+            ip = ip.decode().strip().split()[1].replace('addr:', '')
         ec2 = boto3.resource('ec2')
-        instances = ec2.instances.filter(
-            Filters=[{'Name': 'private-ip-address', 'Values': [ip]}])
-        return next(iter(instances)).id  # todo add assertion that len(instances == 1)
+        try:  # if a non-ec2 instance, no instance will pass filter
+            instances = ec2.instances.filter(
+                Filters=[{'Name': 'private-ip-address', 'Values': [ip]}])
+        except StopIteration:
+            return
+        return next(iter(instances)).id
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """If an exception occurs, log the exception, email if possible, then terminate
@@ -785,6 +790,9 @@ class clean_up:
         # terminate if requested and no errors
         if self.terminate and not exc_type:
             instance_id = self._get_instance_id()
+            if instance_id is None:
+                log.notify('no instance found, termination not initiated')
+                return
             ec2 = boto3.resource('ec2')
             instance = ec2.Instance(instance_id)
             log.notify('instance %s termination requested. If successful, this is the '

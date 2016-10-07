@@ -26,6 +26,8 @@ from collections import namedtuple, OrderedDict
 import subprocess
 from contextlib import closing
 
+# safe bug in external dependency, suppress warning.
+warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 class GraphDiffusion:
     def __init__(self, knn=10, normalization='smarkov', epsilon=1,

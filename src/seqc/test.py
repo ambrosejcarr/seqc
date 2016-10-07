@@ -62,6 +62,33 @@ class TestRemoteProcessExperiment(unittest.TestCase):
     Complete tests for the remote running of SEQC.py
     """
 
+    def test_in_drop(self):
+        platform = 'in_drop'
+        argv = [
+            'run',
+            platform,
+            '-o', self.output.format(platform),
+            '-i', self.human,
+            '--email-status', self.email,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--log-name', self.log_name.format(platform),
+            '--no-terminate', 'on-success'
+        ]
+
+        @ec2.AWSInstance(volume_size=25, instance_type='c3.xlarge',
+                         synchronous=False)
+        def process_experiment():
+            from seqc import ec2
+            from seqc.core import SEQC
+            with ec2.clean_up(email='mail@ambrosejcarr.com',
+                              upload='s3://dplab-data/seqc/test/create_index/'):
+                SEQC.main(argv)
+
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+
     @classmethod
     def setUpClass(cls):
         os.makedirs(seqc_dir + 'test/TestRemoteProcessExperiment', exist_ok=True)
@@ -876,6 +903,61 @@ class TestEC2(unittest.TestCase):
                 idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
 
         create_index()
+
+
+class TestSEQC(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        dir_ = os.environ['TMPDIR'] + 'seqc/TestSEQC/{}/'
+        os.makedirs(dir_, exist_ok=True)
+        cls.human = 's3://dplab-data/genomes/hg38_chr19/'
+        cls.mouse = 's3://dplab-data/genomes/mm38_chr19/'
+        cls.output = dir_ + 'test'
+        cls.barcode_files = 's3://dplab-data/barcodes/{}/flat/'
+        cls.barcode_fastq = 's3://dplab-data/seqc/test/{}_chr19/barcode/'
+        cls.genomic_fastq = 's3://dplab-data/seqc/test/{}_chr19/genomic/'
+
+    def test_local_seqc_in_drop_v2(self):
+
+        platform = 'in_drop_v2'
+        argv = [
+            'run',
+            platform,
+            '-o', self.output,
+            '-u', 's3://dplab-data/seqc/test/test_seqc_in_drop_v2_local/',
+            '-i', self.human,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '--local'
+        ]
+        SEQC.main(argv)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_remote_seqc_in_drop_v2(self):
+
+        platform = 'in_drop_v2'
+        argv = [
+            'run',
+            platform,
+            '-o', 'seqc_test',
+            '-u', 's3://dplab-data/seqc/test/test_seqc_in_drop_v2_remote/',
+            '-i', self.human,
+            '-b', self.barcode_fastq.format(platform),
+            '-g', self.genomic_fastq.format(platform),
+            '--barcode-files', self.barcode_files.format(platform),
+            '-e', 'mail@ambrosejcarr.com',
+            '--instance-type', 'c4.large',
+            '--spot-bid', '0.5',
+            '--log-name', 'test_seqc.log',
+
+        ]
+        SEQC.main(argv)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+
+
 
 #########################################################################################
 

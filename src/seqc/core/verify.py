@@ -1,127 +1,163 @@
 from seqc import io, platforms
 import shutil
 import inspect
+from math import ceil
+from seqc.core import config
 
 
-def arguments(args, basespace_token: str) -> float:
-    """
-    verify data input through the command line arguments and throws
-    an error if the provided input data is invalid.
-
-    additionally, this function obtains a rough estimate of how much
-    volume storage is needed for the overall SEQC run.
-
-    :param args: Namespace object, output from ArgumentParser.parse_args()
-    :param basespace_token: str, OAuth token for BaseSpace.
-    :returns total: float, estimated Kb of Volume space needed to run SEQC remotely.
+def estimate_required_volume_size(args):
     """
 
-    # make sure only one filetype has been passed
-    multi_input_error_message = ('Only one input type (-s, -m, -b/-g, or --basespace) '
-                                 'should be passed to SEQC.')
-    unpaired_fastq_error_message = ('If either genomic or barcode fastq files are '
-                                    'provided, both must be provided.')
-
-    # simplify variables and parse out the ones needed
-    barcodes = args.barcode_files
-    index_dir = args.index
-    barcode_fastq = args.barcode_fastq
-    genomic_fastq = args.genomic_fastq
-    merged = args.merged_fastq
-    samfile = args.samfile
-    read_array = args.read_array
-    basespace = args.basespace
-
-    if args.spot_bid is not None:
-        if args.spot_bid < 0:
-            raise ValueError('"{bid}" must be a non-negative float! Exiting.'.format(
-                bid=args.spot_bid))
-
-    # check to make sure that --email-status is passed with remote run
-    if args.remote and not args.email_status:
-        raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
-    if args.instance_type not in ['c3', 'c4', 'r3']:
-        raise ValueError('All AWS instance types must be either c3, c4, or r3.')
-    if args.no_terminate not in ['True', 'true', 'False', 'false', 'on-success']:
-        raise ValueError('the --no-terminate flag must be either True, False, '
-                         'or on-success.')
-
-    # make sure at least one input has been passed
-    if not any([barcode_fastq, genomic_fastq, merged, samfile, basespace, read_array]):
-        raise ValueError('At least one input argument must be passed to SEQC.')
-    if not barcodes:
-        if args.platform != 'drop_seq':
-            raise ValueError('Barcode files are required for this SEQC run.')
-
-    # keep track of which files need to be checked
-    seqc_input = barcodes + [index_dir]
+    :param args:
+    :return:
+    """
 
     # keep track of how much space is needed given input
+    seqc_input = args.barcode_files + [args.index]
+
     # using worst-case estimates to make sure we don't run out of space
-    cushion = 5e10
-    if args.instance_type == 'r3':
-        cushion = 9e10
+    cushion = 9e10
     total = 0
 
-    if barcode_fastq or genomic_fastq:
-        if not all((barcode_fastq, genomic_fastq)):
-            raise ValueError(unpaired_fastq_error_message)
-        if any((merged, samfile, basespace, read_array)):
-            raise ValueError(multi_input_error_message)
-        seqc_input = seqc_input + barcode_fastq + genomic_fastq
+    if args.barcode_fastq and args.genomic_fastq:
+        seqc_input = seqc_input + args.barcode_fastq + args.genomic_fastq
         io.S3.check_links(seqc_input)
 
         # checking size of input file
-        input_fastq = barcode_fastq + genomic_fastq
+        input_fastq = args.barcode_fastq + args.genomic_fastq
         for item in input_fastq:
             total += io.S3.obtain_size(item)
         total += (total * 14) + cushion
-    if samfile:
-        if any((merged, barcode_fastq, genomic_fastq, basespace, read_array)):
-            raise ValueError(multi_input_error_message)
-        seqc_input += [samfile]
+    if args.samfile:
+        seqc_input += [args.samfile]
         io.S3.check_links(seqc_input)
 
         # checking size of input file
-        total += io.S3.obtain_size(samfile)
+        total += io.S3.obtain_size(args.samfile)
         total += (total * 2) + 2e10
-    if merged:
-        if any((samfile, barcode_fastq, genomic_fastq, basespace, read_array)):
-            raise ValueError(multi_input_error_message)
-        seqc_input += [merged]
+    if args.merged_fastq:
+        seqc_input += [args.merged_fastq]
         io.S3.check_links(seqc_input)
 
         # checking size of input file
-        total += io.S3.obtain_size(merged)
+        total += io.S3.obtain_size(args.merged_fastq)
         total += (total * 13) + cushion
-    if basespace:
-        if any((samfile, merged, barcode_fastq, genomic_fastq, read_array)):
-            raise ValueError(multi_input_error_message)
-        if not basespace_token or basespace_token == 'None':
+    if args.basespace:
+        if not args.basespace_token or args.basespace_token == 'None':
             raise ValueError(
-                'If the --basespace argument is used, the BaseSpace token must be '
-                'specified in the seqc config file.')
-        seqc_input += [basespace]
+                'If the --basespace argument is used, the basespace token must be '
+                'specified in the seqc config file or passed as --basespace-token')
+        seqc_input += [args.basespace]
         io.S3.check_links(seqc_input)
-    if read_array:
-        if any((samfile, merged, barcode_fastq, genomic_fastq, basespace)):
-            raise ValueError(multi_input_error_message)
-        seqc_input += [read_array]
-        seqc_input.remove(index_dir)
+    if args.read_array:
+        seqc_input += [args.read_array]
+        seqc_input.remove(args.index)
         io.S3.check_links(seqc_input)
 
         # checking size of input
         for item in seqc_input:
             total += io.S3.obtain_size(item)
         total += 1e10
-    if basespace:
-        io.BaseSpace.check_sample(basespace, basespace_token)
+    if args.basespace:
+        io.BaseSpace.check_sample(args.basespace, args.basespace_token)
         # checking size of input file
-        total = io.BaseSpace.check_size(basespace, basespace_token)
+        total = io.BaseSpace.check_size(args.basespace, args.basespace_token)
         total += (total * 14) + cushion
 
     # return total size needed for EBS volume
-    return total
+    return ceil(total * 1e-9)
+
+
+def run(args) -> float:
+    """
+    verify data input through the command line arguments, fixes minor issues, and
+    throws exceptions if invalid parameters are encountered
+
+    additionally, this function obtains a rough estimate of how much
+    volume storage is needed for a remote run.
+
+    :param Namespace args: Namespace object, output from ArgumentParser.parse_args()
+    :returns total: float, estimated Kb of Volume space needed to run SEQC remotely.
+    """
+
+    if args.output_prefix.endswith('/'):
+        raise ValueError('output_stem should not be a directory.')
+    if not args.index.endswith('/'):
+        raise ValueError('index must be a directory, and must end with "/"')
+
+    # check platform name; raises ValueError if invalid
+    platform_name(args.platform)
+
+    # check to make sure that --email-status is passed with remote run
+    if args.remote and not args.email:
+        raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
+    # if args.instance_type not in ['c3', 'c4', 'r3']:  # todo fix this instance check
+    #     raise ValueError('All AWS instance types must be either c3, c4, or r3.')
+    # if args.terminate not in ['True', 'true', 'False', 'false', 'on-success']:
+    #     raise ValueError('the --no-terminate flag must be either True, False, '
+    #                      'or on-success.')
+
+    # make sure at least one input has been passed
+    valid_inputs = (
+        args.barcode_fastq, args.genomic_fastq, args.merged_fastq, args.samfile,
+        args.basespace, args.read_array)
+    if not any(valid_inputs):
+        raise ValueError(
+            'At least one input argument (-b/-g, -m, -s, -r, --basespace) must be passed '
+            'to SEQC.')
+    if not args.barcode_files:  # todo clean this up and fold into platform somehow
+        if args.platform != 'drop_seq':
+            raise ValueError('--barcode-files is required for this platform.')
+
+    # make sure at most one input type has been passed
+    num_inputs = 0
+    if args.barcode_fastq or args.genomic_fastq:
+        if not all((args.barcode_fastq, args.genomic_fastq)):
+            raise ValueError(
+                'if either genomic or barcode fastq are provided, both must be provided')
+        num_inputs += 1
+    num_inputs += sum(1 for i in (args.merged_fastq, args.samfile,
+                                  args.basespace, args.read_array) if i)
+    if num_inputs > 1:
+        raise ValueError(
+            'user should provide at most one input argument (-b/-g, -m, -s, -r, '
+            '--basespace')
+
+    # if basespace is being used, make sure there is a valid basespace token
+    if args.basespace and not hasattr(args, 'basespace_token'):
+        configuration = config.read_config('~/.seqc/config')
+        setattr(
+            args, 'basespace_token', configuration['BaseSpaceToken']['base_space_token'])
+    else:
+        setattr(args, 'basespace_token', None)
+
+    # check that spot-bid is correct
+    if args.spot_bid is not None:
+        if args.spot_bid < 0:
+            raise ValueError('bid %f must be a non-negative float.' % args.spot_bid)
+
+    if args.upload_prefix and not args.upload_prefix.startswith('s3://'):
+        raise ValueError('upload_prefix should be an s3 address beginning with s3://')
+
+    if args.volume_size is None:
+        setattr(args, 'volume_size', estimate_required_volume_size(args))
+
+    return args
+
+
+def index(args):
+    """add a default volume_size if it was not otherwise passed to seqc.
+
+    :param args:
+    :return:
+    """
+    if args.volume_size is None:
+        setattr(args, 'volume_size', 100)
+    return args
+
+
+def install():
+    raise NotImplementedError  # todo implement; verify aws key, everything else.
 
 
 def executables(*execs):

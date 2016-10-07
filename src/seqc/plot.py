@@ -19,6 +19,8 @@ with warnings.catch_warnings():
     fm.findfont('Raleway')
     fm.findfont('Lato')
 
+warnings.filterwarnings(action="ignore", module="matplotlib", message="^tight_layout")
+
 dark_gray = '.15'
 
 _colors = ['#4C72B0', '#55A868', '#C44E52',
