@@ -532,7 +532,7 @@ class ReadArray:
                         self.data['gene'][ind] = g
                         self.data['position'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
                     else:
-                        ReadArray.set_status_inactive(r)        
+                        ReadArray.set_status_inactive(self.data[ind])        
         
         seqc.log.info('Total reads in samfile: {}'.format(len(self)))
         seqc.log.info('Reads that passed the filter: {}'.format(total_reads))
