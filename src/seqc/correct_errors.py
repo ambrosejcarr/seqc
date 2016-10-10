@@ -435,9 +435,9 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
 
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
     
-    seqc.log.info('Molecules with N that were ignored: {}'.format(rmt_N))
+    log.info('Molecules with N that were ignored: {}'.format(rmt_N))
     tot_time=time.process_time() - start
-    seqc.log.info('total error correction runtime: {}'.format(tot_time))    
+    log.info('total error correction runtime: {}'.format(tot_time))    
     
     return grouped_res_dic
 
