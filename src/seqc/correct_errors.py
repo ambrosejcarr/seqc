@@ -23,8 +23,6 @@ def prepare_for_ec(ra):
     for i, v in enumerate(ra.data):
         if not ReadArray.is_active_read(v):
             continue
-            
-        tot += 1
 
         gene = v['gene']
         cell = v['cell']
