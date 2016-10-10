@@ -8,6 +8,7 @@ import numpy as np
 from seqc import log
 import random
 from seqc.read_array import ReadArray
+import time
 
 
 DEFAULT_BASE_CONVERTION_RATE = 0.02
