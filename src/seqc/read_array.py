@@ -21,6 +21,7 @@ NO_RMT          = 4
 POLY_T          = 5
 SCAFFOLD        = 6
 NO_GENES        = 7
+DUST_SCORE      = 8
 
 BC_OK           = 0
 BC_FIXED        = 1
@@ -61,7 +62,7 @@ class ReadArray:
         self._total_alignments  = 0
         self._total_reads       = 0
         self._non_unique_align  = 0
-        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0}
+        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0, DUST_SCORE: 0}
         self._bad_barcodes      = 0
         self._fix_barcodes      = 0
         self._ok_barcodes       = 0
@@ -114,22 +115,41 @@ class ReadArray:
         r['status'] &= 0b1111111110011111
         r['status'] |= bc_status<<5
     
+    @staticmethod
     def set_mm_status(r, mm_stat):
         if mm_stat > 0b11:
             raise ValueError('Multimapping status must be 0,1,2 or 3. value given: {}'.format(mm_stat))
         r['status'] &= 0b1111110011111111
         r['status'] |= mm_stat<<8
+        
+    @staticmethod
+    def set_error_status_on(r):
+        r['status'] |= 0b0000000010000000
+    
+    @staticmethod
+    def set_error_status_off(r):
+        r['status'] &= 0b1111111101111111
     
     @staticmethod
     def is_active_read(r):
         return (r['status']&0b1)==0b1
+    
+    @staticmethod
+    def is_error(r):
+        return (r['status']&0b0000000010000000)==0b0000000010000000
         
-    #for testing#
     def count_active_reads(self):
         res = 0
         for r in self.data:
             if ReadArray.is_active_read(r):
                 res+=1
+        return res
+    
+    def count_errors(self):
+        res = 0
+        for r in self.data:
+            if ReadArray.is_error(r):
+                res += 1
         return res
         
     @classmethod
@@ -206,7 +226,7 @@ class ReadArray:
 
         return res_ra, res_ra._total_alignments #TODO: It might be nicer to return just the RA and take the total alignments from it
 
-    def apply_filters(self, required_poly_t = 1):
+    def apply_filters(self, required_poly_t = 1, max_dust_score=10):
         """
         Apply different filters to the read array.
         If a read fails a filter, it is not passed to the others and so the counts
@@ -247,6 +267,11 @@ class ReadArray:
             if 0 in r['ma_genes']:
                 ReadArray.set_filt_fail(r, GENE_0)
                 self._filtered[GENE_0] += 1
+                ReadArray.set_status_inactive(r)
+                continue
+            if r['dust_score'] > max_dust_score:
+                ReadArray.set_filt_fail(r, DUST_SCORE)
+                self._filtered[DUST_SCORE] += 1
                 ReadArray.set_status_inactive(r)
                 continue
                 
@@ -303,7 +328,7 @@ class ReadArray:
                     if edit_dist[i] > max_ed:
                         err_list[i] = None
                     else:
-                        err_list[i] = seqc.correct_errors.list_errors(correct[i], barcodes[i])
+                        err_list[i] = seqc.sequence.barcodes.list_errors(correct[i], barcodes[i])
                     dynamic_codes_table[i][barcodes[i]] = (correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i])
                     
 
@@ -479,7 +504,8 @@ class ReadArray:
         3. There is more than one gene that can explain - can't be resolved
         4. There are a few models - for now no single model is being picked.
         """
-                        
+              
+        start = time.process_time()
         total_reads = 0
 
         seqc.log.info('grouping for disambiguation')
@@ -547,6 +573,8 @@ class ReadArray:
         
         seqc.log.info('Total reads in samfile: {}'.format(len(self)))
         seqc.log.info('Reads that passed the filter: {}'.format(total_reads))
+        tot_time=time.process_time()-start
+        seqc.log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
 
         return
 

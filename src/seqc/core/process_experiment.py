@@ -453,7 +453,7 @@ def main(argv: list=None) -> None:
 
         log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
-        ra.apply_filters(required_poly_t=args.min_poly_t)
+        ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score = args.max_dust_score)
         log.info('Read array after filtering: {}'.format(ra))
         # Correct barcodes
         error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
@@ -461,6 +461,14 @@ def main(argv: list=None) -> None:
         # Resolve multimapping
         ra.resolve_alignments(args.index)
         log.info('Read array after multialignment resolution: {}'.format(ra))
+        # correct errors
+        log.info('Filterring errors')
+        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
+        cell_counts = platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        log.info('Read array after error correction: {}'.format(ra))
+            
+        #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
+        summary = None
         
         #TODO: add,commit,push,run,test,fix problems
         #############
@@ -477,15 +485,8 @@ def main(argv: list=None) -> None:
         body = body.replace('\n', '<br>')
         body = body.replace('\t', '&emsp;')
         remote.email_user('', body, args.email_status)
-        return
+        
         #################
-        # correct errors
-        log.info('Correcting cell barcode and RMT errors')
-        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts, summary = platform.correct_errors(
-            ra, args.barcode_files, reverse_complement=False,
-            required_poly_t=args.min_poly_t, max_ed=args.max_ed,
-            max_dust=args.max_dust_score, singleton_weight=args.singleton_weight)
 
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
@@ -503,7 +504,8 @@ def main(argv: list=None) -> None:
 
         sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
             generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
-
+        return
+        
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
         if args.aws:

@@ -7,251 +7,27 @@ from seqc.sequence.barcodes import revcomp_bytes
 import numpy as np
 from seqc import log
 import random
+from seqc.read_array import ReadArray
 
 
-NUM_OF_ERROR_CORRECTION_METHODS = 3
-ERROR_CORRECTION_BC_FILTERS = 3
-ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR = 0
-ERROR_CORRECTION_JAIT_LIKELIHOOD = 2
 DEFAULT_BASE_CONVERTION_RATE = 0.02
 
-
-def group_for_disambiguation(ra, barcode_files, required_poly_t=1, reverse_complement=True, max_ed=2):
+def prepare_for_ec(ra):
     """
-    Prepare the RA for multi alignment disambiguation. Apply filters, correct the barcodes and group by cell/RMT pairs.
-    Retain the indices corresponding to each read.
-    The resulting dictionary has the following structure:
-        res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
-    Note the mapped genes list should be sorted before converted to a tuple
-    :param max_ed:
-    :param reverse_complement:
-    :param required_poly_t:
-        
-    :param barcode_files:
+    Prepare the RA for error correction by grouping it according to cell,gene and rmt
+
     :param ra:
     """
     res = {}
-    tot = 0
-    
-    ##for debugging
-    focus_gene = 3
-    fgene_filt_cell = 0
-    fgene_filt_rmt = 0
-    fgene_filt_gene = 0
-    fgene_filt_polyt = 0
-    fgene_filt_bc = 0
-    #
-    
-    #TODO: move this to an outside filter function
-    # Some constants
-    NO_ALIGNMENT = 0
-    GENES_0 = 1
-    ALIGN_1 = 2
-    CELL_0 = 3
-    RMT_0 = 4
-    POLY_T_0 = 5
-    
-    filtered = {NO_ALIGNMENT:0,GENES_0:0,ALIGN_1:0,CELL_0:0,RMT_0:0,POLY_T_0:0}
-    bc_filter = 0
-
-    dynamic_codes_table_c1 = {}
-    dynamic_codes_table_c2 = {}
-
-    # Read the barcodes into lists
-    correct_barcodes = []
-    for barcode_file in barcode_files:
-    #    f = open(barcode_file)
-    #    if reverse_complement:
-    #        correct_barcodes.append(set(DNA3Bit._str2bindict(rev_comp(line.strip()))
-    #                                        for line in f.readlines()))
-    #    else:
-    #        correct_barcodes.append(set(DNA3Bit._str2bindict(line.strip())
-    #                                        for line in f.readlines()))
-    #    f.close()
-        if reverse_complement:
-            with open(barcode_file) as f:
-                correct_barcodes.append(set(DNA3Bit.encode(rev_comp(line.strip()))
-                                            for line in f.readlines()))
-                #f.close()
-        else:
-            for barcode_file in barcode_files:
-                with open(barcode_file) as f:
-                    correct_barcodes.append(set(DNA3Bit.encode(line.strip())
-                                                for line in f.readlines()))
 
     for i, v in enumerate(ra.data):
+        if not ReadArray.is_active_read(v):
+            continue
+            
         tot += 1
-        # Apply various pereliminary filters on the data
-        if v['ma_genes'] == []:
-            filtered[NO_ALIGNMENT] += 1
-            continue
-        if v['ma_genes'] == -1:
-            filtered[ALIGN_1] += 1
-            continue
-        if v['cell'] == 0:
-            filtered[CELL_0] += 1
-            if focus_gene in v['ma_genes']:
-                fgene_filt_cell += 1
-            continue
-        if v['rmt'] == 0:
-            filtered[RMT_0] += 1
-            if focus_gene in v['ma_genes']:
-                fgene_filt_rmt += 1
-            continue
-        if v['n_poly_t'] < required_poly_t:
-            filtered[POLY_T_0] += 1
-            if focus_gene in v['ma_genes']:
-                fgene_filt_polyt += 1
-            continue
-        if 0 in v['ma_genes']:
-            filtered[GENES_0] += 1
-            if focus_gene in v['ma_genes']:
-                fgene_filt_gene += 1
-
-        # correct and filter barcodes
-        c1 = DNA3Bit.c1_from_codes(int(v['cell']))
-        try:
-            cor_c1, ed_1 = dynamic_codes_table_c1[c1]
-        except KeyError:
-            dynamic_codes_table_c1[c1] = find_correct_barcode(c1, correct_barcodes[0])
-            cor_c1, ed_1 = dynamic_codes_table_c1[c1]
-
-        c2 = DNA3Bit.c2_from_codes(int(v['cell']))
-        try:
-            cor_c2, ed_2 = dynamic_codes_table_c2[c2]
-        except KeyError:
-            dynamic_codes_table_c2[c2] = find_correct_barcode(c2, correct_barcodes[1])
-            cor_c2, ed_2 = dynamic_codes_table_c2[c2]
-
-        # Filter reads with too many errors in their barcodes
-        if ed_1 > max_ed or ed_2 > max_ed:
-            bc_filter += 1
-            if focus_gene in v['ma_genes']:
-                fgene_filt_bc += 1
-            continue
-
-        genes = tuple(set(sorted(v['ma_genes'])))
-        # group according to the correct barcodes and gene
-        cell = DNA3Bit.ints2int([cor_c1, cor_c2])
-        rmt = v['rmt']
-        try:
-            res[cell, rmt][genes].append(i)
-        except KeyError:
-            try:
-                res[cell, rmt][genes] = [i]
-            except KeyError:
-                res[cell, rmt] = {genes: [i]}
-
-    log.info('Group for disambiguation filtering results:')
-    log.info('Total reads: {}. wrong barcodes: {}. filt - No alignment: {}, aligned to gene 0: {}, no chr: {} , no cell: {}, no rmt: {}, low poly_t: {}'.format(tot, bc_filter, filtered[NO_ALIGNMENT], filtered[GENES_0],filtered[ALIGN_1],filtered[CELL_0],filtered[RMT_0],filtered[POLY_T_0]))
-    log.info('Focus gene: {}. filterring: cell: {}, rmt: {}, gene: {}, poly_t: {}, bc:{}'.format(focus_gene, fgene_filt_cell, fgene_filt_rmt, fgene_filt_gene, fgene_filt_polyt, fgene_filt_bc))
-    return res
-
-def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True,
-                   max_ed=2, max_dust=10):
-    """
-    Prepare the RA for error correction. Apply filters, estimate error correction and
-    correct the barcodes
-    :param max_ed:
-    :param reverse_complement:
-    :param required_poly_t:
-    :param max_dust:
-    :param barcode_files:
-    :param ra:
-    """
-    res = {}
-    tot = 0
-    bc_filter = 0
-    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
-                'rmt_N': 0, 'cell_N': 0, 'dust': 0}
-
-    dynamic_codes_table_c1 = {}
-    dynamic_codes_table_c2 = {}
-
-    errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit._bin2strdict.keys(),
-                                                                       r=2))
-    error_table = dict(zip(errors, [0] * len(errors)))
-    cor_instance_table = {DNA3Bit.encode(b'A'): 0,
-                          DNA3Bit.encode(b'C'): 0,
-                          DNA3Bit.encode(b'G'): 0,
-                          DNA3Bit.encode(b'T'): 0}
-
-    # Read the barcodes into lists
-    correct_barcodes = []
-    if reverse_complement:
-        for barcode_file in barcode_files:
-            with open(barcode_file, 'rb') as f:
-                correct_barcodes.append(set(DNA3Bit.encode(revcomp_bytes(line.strip()))
-                                            for line in f.readlines()))
-    else:
-        for barcode_file in barcode_files:
-            with open(barcode_file, 'rb') as f:
-                correct_barcodes.append(set(DNA3Bit.encode(line.strip())
-                                            for line in f.readlines()))
-
-    for i, v in enumerate(ra.data):
-        tot += 1
-        if not pass_filter(v, filtered, required_poly_t, max_dust):
-            continue
 
         gene = v['gene']
-
-        # correct and filter barcodes
-        c1 = DNA3Bit.c1_from_codes(int(v['cell']))
-        try:
-            cor_c1, ed_1, err_l_1, seq_err_1 = dynamic_codes_table_c1[c1]
-        except KeyError:
-            cor_c1, ed_1 = find_correct_barcode(c1, correct_barcodes[0])
-            seq_err_1 = count(c1, DNA3Bit.encode(b'N'))
-            # No point calculating errors on codes with more errors than allowed
-            if ed_1 > max_ed:
-                err_l_1 = None
-            else:
-                err_l_1 = list_errors(cor_c1, c1)
-            dynamic_codes_table_c1[c1] = (cor_c1, ed_1, err_l_1, seq_err_1)
-
-        c2 = DNA3Bit.c2_from_codes(int(v['cell']))
-        try:
-            cor_c2, ed_2, err_l_2, seq_err_2 = dynamic_codes_table_c2[c2]
-        except KeyError:
-            cor_c2, ed_2 = find_correct_barcode(c2, correct_barcodes[1])
-            seq_err_2 = count(c2, DNA3Bit.encode(b'N'))
-            # No point calculating errors on codes with more errors than allowed
-            if ed_2 > max_ed:
-                err_l_2 = None
-            else:
-                err_l_2 = list_errors(cor_c2, c2)
-            dynamic_codes_table_c2[c2] = (cor_c2, ed_2, err_l_2, seq_err_2)
-
-        # Filter reads with too many errors in their barcodes
-        if ed_1 > max_ed or ed_2 > max_ed:
-            bc_filter += 1
-            # Uncomment for debugging
-            # if err_correction_mat != '':
-            #    err_correction_mat[i,ERROR_CORRECTION_BC_FILTERS] = 1
-            continue
-        
-        # For error rate estimation, only reads with at most a single error in both
-        # barcodes are counted. note that only base swicth errors are counted towards
-        # this threshold, sequencer errors (that cause an 'N') are ignored for this.
-        if ed_1 + ed_2 - seq_err_1 - seq_err_2 <= 1:
-            for er in err_l_1 + err_l_2:
-                try:
-                    error_table[er] += 1
-                except KeyError:  # happens for sequencer errors
-                    continue
-
-            # count non error bases
-            tmp_c = DNA3Bit.ints2int([c1, c2])
-            tmp_cor = DNA3Bit.ints2int([cor_c1, cor_c2])
-            while tmp_c > 0:
-                if tmp_c & 0b111 == tmp_cor & 0b111:
-                    cor_instance_table[tmp_c & 0b111] += 1
-                tmp_c >>= 3
-                tmp_cor >>= 3
-
-        # group according to the correct barcodes and gene
-        cell = DNA3Bit.ints2int([cor_c1, cor_c2])
+        cell = v['cell']
         rmt = v['rmt']
         try:
             res[gene, cell][rmt].append(i)
@@ -262,41 +38,7 @@ def prepare_for_ec(ra, barcode_files, required_poly_t=1, reverse_complement=True
                 res[gene, cell] = {}
                 res[gene, cell][rmt] = [i]
 
-    # convert to error rates
-    default_error_rate = DEFAULT_BASE_CONVERTION_RATE
-    err_rate = dict(zip(errors, [0.0] * len(errors)))
-    if sum(error_table.values()) == 0:
-        log.info('No errors were detected, using %f uniform error chance.' % (
-            default_error_rate))
-        err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
-    for k, v in error_table.items():
-        try:
-            err_rate[k] = v / (sum(n for err_type, n in error_table.items()
-                               if err_type & 0b111000 == k & 0b111000) +
-                               cor_instance_table[(k & 0b111000) >> 3])
-        except ZeroDivisionError:
-            log.info('Warning: too few reads to estimate error rate for %r '
-                     'setting default rate of %f' % (k, default_error_rate))
-            err_rate[k] = default_error_rate
-
-    filtered['cb_wrong'] = bc_filter
-    log.info('Error correction filtering results: total reads: {}; '
-             'did not pass preliminary filters: {}; cell barcodes are wrong: '
-             '{}'.format(tot, sum(filtered.values()), bc_filter))
-    # print('error_table: ', error_table, ' cor_instance_table: ', cor_instance_table)
-
-    return res, err_rate, filtered
-
-
-
-
-def count_sequencer_errors(c):
-    err = 0
-    while c > 0:
-        if DNA3Bit.decode(c & 0b111) == b'N':
-            err += 1
-        c >>= 3
-    return err
+    return res
 
 
 def generate_close_seq(seq):
@@ -349,43 +91,7 @@ def prob_d_to_r_bin(d_seq, r_seq, err_rate):
     return p
 
 
-# _complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}  # for reverse complement
-
-# def rev_comp(s):
-#     """Return the reverse complement of an ACGT string s
-#
-#     :param s:
-#     :returns:
-#     """
-#     ret = []
-#     for i in range(len(s)):
-#         ret.append(_complement[(s[-1 - i])])
-#     return ''.join(ret)
-#
-
-def list_errors(s1, s2):
-    """
-    Return the list of nucleotide transformations that turn s1 to s2.
-    An error is a six bit int representing a two chr string of type "AG","CT", etc.
-
-    :param s2:
-    :param s1:
-
-    :returns:
-    """
-
-    # return the actual error
-    err_list = []
-    while s1 > 0:
-        if s1 & 0b111 != s2 & 0b111:
-            err_list.append(DNA3Bit.ints2int([s1 & 0b111, s2 & 0b111]))
-        s1 >>= 3
-        s2 >>= 3
-    return err_list
-
-
-
-
+#TODO: after doing drop_seq this can probably be removed
 def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
     """
     :param read:
@@ -629,71 +335,49 @@ def in_drop_v3(*args, **kwargs):
     return in_drop(*args, **kwargs)
 
 
-# TODO: check this. clean other ec methods, comments and prob_d_to_r. push.
-def in_drop(alignments_ra, barcode_files=list(), apply_likelihood=True,
-            reverse_complement=True, donor_cutoff=1, alpha=0.05,
-            required_poly_t=1, max_ed=2, max_dust=10, singleton_weight=1):
+def in_drop(alignments_ra, error_rate, apply_likelihood=True, alpha=0.05, singleton_weight=1):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
     method
 
     :param alignments_ra:
-    :param barcode_files:
     :param apply_likelihood:
-    :param reverse_complement:
-    :param donor_cutoff:
     :param alpha:
-    :param required_poly_t:
-    :param max_dust:
-    :param max_ed:
     :return:
     """
 
     # res_time_cnt = {}
     # err_correction_res = ''
-    ra_grouped, error_rate, summary = prepare_for_ec(
-            alignments_ra, barcode_files, required_poly_t, reverse_complement, max_ed,
-            max_dust)
-    grouped_res_dic, error_count = correct_errors(
-            alignments_ra, ra_grouped, error_rate, p_value=alpha,
-            singleton_weight=singleton_weight)
+    ra_grouped = prepare_for_ec(alignments_ra)
+    grouped_res_dic = correct_errors(alignments_ra, ra_grouped, error_rate, p_value=alpha, apply_likelihood = apply_likelihood, singleton_weight=singleton_weight)
 
-    return grouped_res_dic, summary
+    return grouped_res_dic
 
 
-def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True,
-                   singleton_weight=1):
+def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True, singleton_weight=1):
     """
     Calculate and correct errors in barcode sets
 
     :param ra:
     :param ra_grouped:
-    :param err_rate:
-    :param p_value:
-    :param apply_likelihood:
+    :param err_rate: A table of the estimate base switch error rate, produced ReadArray.applu_barcode_correction().
+    :param p_value: The p_value used for the likelihood method
+    :param apply_likelihood: apply the likelihood method in addition to the Jaitin et al method (Allons)
     :return:
     """
-    # start = time.process_time()
+    start = time.process_time()
     d = ra_grouped
     grouped_res_dic = {}
-    error_count = 0
-
-    # tot_feats = len(ra_grouped)
-    cur_f = 0
+    rmt_N = 0
     N = DNA3Bit.encode(b'N')
-    # for_removal = []
-    for feature, cell in d.keys():
-        # sys.stdout.write('\r' + str(cur_f) + '/' + str(tot_feats) +
-        #                  ' groups processed. (' + str((100 * cur_f) / tot_feats) + '%)')
-        cur_f += 1
-        if feature == 0:
-            continue
 
+    for feature, cell in d.keys():
         retained_rmts = 0.0
         retained_reads = 0
 
         for r_seq in d[feature, cell].keys():
             if DNA3Bit.contains(r_seq, N):  # todo This throws out more than we want?
+                rmt_N += 1
                 continue
 
             gene = feature
@@ -701,15 +385,10 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
             r_pos_list = np.hstack(ra.data['position'][d[feature, cell][r_seq]])
 
             expected_errors = 0
-            # actual_donors = 0
-            # p_val_not_err = 0
-            # P(x<=r_num_occurences) Note: these are different distributions
-            # p_val_not_correct = poisson.cdf(r_num_occurences, avg_rmt_size)
             jait = False
             for d_rmt in generate_close_seq(r_seq):
                 try:
                     d_num_occurences = len(d[gene, cell][d_rmt])
-                    # actual_donors += d_num_occurences
                 except KeyError:
                     continue
                 # This can cut running time but will have a less accurate likelihood
@@ -730,43 +409,38 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
 
             # P(x>=r_num_occurences)
             p_val_not_err = gammainc(r_num_occurences, expected_errors)
-            # Used for error correction methods comparison
-            # if p_val_not_err <= p_value:
-            #     err_correction_res[ra_grouped[gene, cell][r_seq],
-            #                        ERROR_CORRECTION_LIKELIHOOD_NOT_ERROR] = 1
-            # elif jait:
-            #     err_correction_res[ra_grouped[gene, cell][r_seq],
-            #                        ERROR_CORRECTION_JAIT_LIKELIHOOD] = 1
 
             if apply_likelihood:
                 if not jait or p_val_not_err <= p_value:
+                    #not error
                     if r_num_occurences == 1:
                         retained_rmts += singleton_weight
                     else:
                         retained_rmts += 1
                     retained_reads += r_num_occurences
+                else:
+                    #error
+                    for ind in d[gene, cell][r_seq]:
+                        ReadArray.set_error_status_on(ra.data[i])
             elif not jait:
+                #not error
                 if r_num_occurences == 1:
                     retained_rmts += singleton_weight
                 else:
                     retained_rmts += 1
                 retained_reads += r_num_occurences
+            else:
+                #error
+                for ind in d[gene, cell][r_seq]:
+                    ReadArray.set_error_status_on(ra.data[i])
 
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
-
-    # print('\nLikelihood model error_count: ', error_count)
-    # tot_time=time.process_time() - start
-    # log.info('total error correction runtime: {}'.format(tot_time))
-    # f.close()
     
-    ## for debugging purposes
-    focus_gene = 3
-    fg_ec_cnt = 0
-    for gene, cell in grouped_res_dic:
-        if gene == focus_gene:
-            fg_ec_cnt += grouped_res_dic[1]
-    seqc.log.info('Focus gene: {}. total reads after error correction: {}'.format(focus_gene, fg_ec_cnt))
-    return grouped_res_dic, error_count
+    seqc.log.info('Molecules with N that were ignored: {}'.format(rmt_N))
+    tot_time=time.process_time() - start
+    seqc.log.info('total error correction runtime: {}'.format(tot_time))    
+    
+    return grouped_res_dic
 
 
 def convert_to_matrix(counts_dictionary):
@@ -801,22 +475,3 @@ def convert_to_matrix(counts_dictionary):
     return {'molecules': {'matrix': mol_coo, 'row_ids': unq_row, 'col_ids': unq_col},
             'reads': {'matrix': read_coo, 'row_ids': unq_row, 'col_ids': unq_col}}
 
-
-# For research use only.
-def plot_ed_dist(ra, itr):
-    dist_dic = {'umi': {}, 'cell': {}}
-    for i in range(itr):
-        read1 = ra.data[random.randint(0, len(ra)-1)]
-        read2 = ra.data[random.randint(0, len(ra)-1)]
-        ed = hamming_dist_bin(read1['rmt'], read2['rmt'])
-        try:
-            dist_dic['umi'][ed] += 1
-        except KeyError:
-            dist_dic['umi'][ed] = 1
-            
-        ed = hamming_dist_bin(read1['cell'], read2['cell'])
-        try:
-            dist_dic['cell'][ed] += 1
-        except KeyError:
-            dist_dic['cell'][ed] = 1
-    return dist_dic
