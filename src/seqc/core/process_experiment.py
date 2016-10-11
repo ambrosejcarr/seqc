@@ -473,18 +473,18 @@ def main(argv: list=None) -> None:
         #TODO: add,commit,push,run,test,fix problems
         #############
 
-        body = ('<font face="Courier New, Courier, monospace">'
-            'SEQC RUN COMPLETE.\n\n'
-            'The run log has been attached to this email and '
-            'results are now available in the S3 location you specified: '
-            '"%s"\n\n'
-            'RUN SUMMARY:\n\n%s'
-            '</font>' % (aws_upload_key, 'none'))
-        log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
-             'flag was specified.')
-        body = body.replace('\n', '<br>')
-        body = body.replace('\t', '&emsp;')
-        remote.email_user('', body, args.email_status)
+#        body = ('<font face="Courier New, Courier, monospace">'
+#            'SEQC RUN COMPLETE.\n\n'
+#            'The run log has been attached to this email and '
+#            'results are now available in the S3 location you specified: '
+#            '"%s"\n\n'
+#            'RUN SUMMARY:\n\n%s'
+#            '</font>' % (aws_upload_key, 'none'))
+#        log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
+#             'flag was specified.')
+#        body = body.replace('\n', '<br>')
+#        body = body.replace('\t', '&emsp;')
+#        remote.email_user('', body, args.email_status)
         
         #################
 
@@ -504,7 +504,7 @@ def main(argv: list=None) -> None:
 
         sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
             generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
-        return
+ #       return
         
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.

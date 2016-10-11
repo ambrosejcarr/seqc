@@ -287,53 +287,6 @@ def count_close_umi(seq_dic):
     return (count-len(seq_dic)) / 2
 
 
-# todo this is not going to work because of how c[1|2]_from_int and c[1|2]_from_codes
-# are implemented
-def mars1_seq(*args, **kwargs):
-    """very simple pass-through wrapper for mars1_seq error correction, needs to be
-    replaced with the actual error correction method instead of just in_drop()
-
-    :param args:  pass any args to in_drop()
-    :param kwargs:  pass any kwargs to in_drop()
-    :return:
-    """
-    return in_drop(*args, **kwargs)
-
-# todo this is not going to work because of how c[1|2]_from_int and c[1|2]_from_codes
-# are implemented
-def mars2_seq(*args, **kwargs):
-    """very simple pass-through wrapper for mars1_seq error correction, designed so that
-    getattr() on seqc.correct_errors will find the correct error function for mars2_seq
-
-    :param args:  pass any args to in_drop()
-    :param kwargs:  pass any kwargs to in_drop()
-    :return:
-    """
-    return in_drop(*args, **kwargs)
-
-
-def in_drop_v2(*args, **kwargs):
-    """very simple pass-through wrapper for in_drop error correction, designed so that
-    getattr() on seqc.correct_errors will find the correct error function for in_drop_v2
-
-    :param args:  pass any args to in_drop()
-    :param kwargs:  pass any kwargs to in_drop()
-    :return:
-    """
-    return in_drop(*args, **kwargs)
-
-
-def in_drop_v3(*args, **kwargs):
-    """very simple pass-through wrapper for in_drop error correction, designed so that
-    getattr() on seqc.correct_errors will find the correct error function for in_drop_v2
-
-    :param args:  pass any args to in_drop()
-    :param kwargs:  pass any kwargs to in_drop()
-    :return:
-    """
-    return in_drop(*args, **kwargs)
-
-
 def in_drop(alignments_ra, error_rate, apply_likelihood=True, alpha=0.05, singleton_weight=1):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
