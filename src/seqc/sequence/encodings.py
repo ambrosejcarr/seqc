@@ -3,6 +3,10 @@ class DNA3Bit(object):
     """
     Compact 3-bit encoding scheme for sequence data.
     """
+    
+    @staticmethod
+    def bits_per_base():
+        return 3
 
     _str2bindict = {65: 0b100, 67: 0b110, 71: 0b101, 84: 0b011, 78: 0b111,
                     97: 0b100, 99: 0b110, 103: 0b101, 116: 0b011, 110: 0b111}

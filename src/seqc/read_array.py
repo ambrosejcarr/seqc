@@ -581,5 +581,13 @@ class ReadArray:
     def __len__(self):
         return len(self.data)
         
-#    def to_count_matrix(self):
+    def to_count_matrix(self):
+        res = {'reads':{}, 'molecules':{}}
+        for r in self.data:
+            if not ReadArray.is_active_read(r):
+                continue
+            cell = r['cell']
+            gene = r['gene']
+            if gene == 0:
+                #This means we haven't resolved multimapping yet. use the gene for genes if len(genes)==1
         #TODO - write this

@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from seqc import correct_errors
 import regex as re
+from seqc.sequence.encodings import DNA3Bit
 
 
 class AbstractPlatform:
@@ -90,9 +91,9 @@ class AbstractPlatform:
             if bc_len == -1:    #Return the rest of the MSb's
                 res.insert(0,seq)
                 return res
-            res.insert(0,seq&((1<<bc_len)-1))
+            res.insert(0,seq&((1<<bc_len*DNA3Bit.bits_per_base())-1))
             seq>>=bc_len
-            
+        return res
 
 
 class in_drop(AbstractPlatform):
