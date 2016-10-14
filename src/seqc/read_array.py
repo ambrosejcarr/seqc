@@ -582,9 +582,9 @@ class ReadArray:
         return len(self.data)
         
     def to_count_matrix(self, csv_path = None):
-    '''
-    Convert the ReadArray into a count matrix. Since the matrix is sparse we represent it with 3 columns: row (cell), col (gene), value if not 0 (reads/molecules)
-    '''
+        '''
+        Convert the ReadArray into a count matrix. Since the matrix is sparse we represent it with 3 columns: row (cell), col (gene), value if not 0 (reads/molecules)
+        '''
         reads_mat = {}
         mols_mat = {}
         for r in self.data:
