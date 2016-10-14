@@ -458,8 +458,13 @@ def main(argv: list=None) -> None:
         ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score = args.max_dust_score)
         log.info('Read array after filtering: {}'.format(ra))
         # Correct barcodes
-        error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
-        log.info('Read array after barcode correction: {}'.format(ra))
+        if platform.check_barcodes:
+            error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
+            log.info('Read array after barcode correction: {}'.format(ra))
+        else:
+            error_rate = None
+            log.info('Skipping barcode correction')
+        
         # Resolve multimapping
         ra.resolve_alignments(args.index)
         log.info('Read array after multialignment resolution: {}'.format(ra))

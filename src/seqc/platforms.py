@@ -40,7 +40,10 @@ class AbstractPlatform:
         return the number of barcodes used by this platform
         """
         return len(self._barcodes_lengths)
-    
+        
+    @property
+    def check_barcodes(self):
+        return _check_barcodes
     
     @property
     def correct_errors(self):
