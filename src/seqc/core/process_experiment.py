@@ -57,7 +57,7 @@ def run_remote(args, argv, volsize) -> None:
         cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
         cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                               '/home/ubuntu/.seqc/config')
-        cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
+        cluster.serv.exec_command('cd /data; nohup {cmd} > debug.log 2>&1 &'
                                   ''.format(cmd=cmd))
 
         # check that process_experiment.py is actually running on the cluster
