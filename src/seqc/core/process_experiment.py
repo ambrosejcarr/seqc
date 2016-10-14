@@ -236,7 +236,7 @@ def create_or_download_read_array(
             log.info('Samfile %s successfully installed from S3.' % samfile)
         ra, sam_records = ReadArray.from_samfile(samfile, index + 'annotations.gtf')
         read_array = output_stem + '.h5'
-        ra.save(read_array)
+        #ra.save(read_array)
 
         # converting sam to bam and uploading to S3, else removing samfile
         if input_data == 'samfile':
@@ -254,15 +254,17 @@ def create_or_download_read_array(
                 manage_samfile = io.ProcessManager(convert_sam, upload_bam)
                 manage_samfile.run_all()
     else:
-        if read_array.startswith('s3://'):
-            input_data = 'readarray'
-            bucket, prefix = io.S3.split_link(read_array)
-            _, fname = os.path.split(prefix)
-            read_array = io.S3.download_file(
-                bucket, prefix, output_dir + '/' + fname)
-            log.info('Read array %s successfully installed from S3.' % read_array)
-        ra = ReadArray.load(read_array)
-    return ra, input_data, manage_samfile, sam_records, read_array
+        raise ValueError('Must provide sam file')
+        return
+#        if read_array.startswith('s3://'):
+#            input_data = 'readarray'
+#            bucket, prefix = io.S3.split_link(read_array)
+#            _, fname = os.path.split(prefix)
+#            read_array = io.S3.download_file(
+#                bucket, prefix, output_dir + '/' + fname)
+#            log.info('Read array %s successfully installed from S3.' % read_array)
+#        ra = ReadArray.load(read_array)
+#    return ra, input_data, manage_samfile, sam_records, read_array
 
 
 def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
