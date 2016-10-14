@@ -58,7 +58,7 @@ def args(arguments):
     """
     arguments = vars(arguments)
     info('Passed command line arguments: {}'.format(
-            json.dumps(arguments, separators=(',', ': '), indent=4)))
+            json.dumps(arguments, separators=(',', ': '), indent=4, sort_keys=True)))
 
 
 class LogData:
