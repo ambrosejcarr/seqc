@@ -581,14 +581,45 @@ class ReadArray:
     def __len__(self):
         return len(self.data)
         
-    def to_count_matrix(self):
-        res = {'reads':{}, 'molecules':{}}
+    def to_count_matrix(self, csv_path = None):
+    '''
+    Convert the ReadArray into a count matrix. Since the matrix is sparse we represent it with 3 columns: row (cell), col (gene), value if not 0 (reads/molecules)
+    '''
+        reads_mat = {}
+        mols_mat = {}
         for r in self.data:
             if not ReadArray.is_active_read(r):
                 continue
             cell = r['cell']
             gene = r['gene']
-            #if gene == 0:
-                #This means we haven't resolved multimapping yet. use the gene for genes if len(genes)==1
-        return
-        #TODO - finish this
+            rmt = r['rmt']
+            if gene == 0:
+                if len(r['genes']) == 1:
+                    gene = r['genes'][0]
+                else:
+                    continue
+            try:
+                reads_mat[cell, gene] = reads_mat[cell, gene]+1
+            except KeyError:
+                reads_mat[cell, gene] = 1
+                                
+            try:
+                if rmt not in mols_mat[cell, gene]:
+                    mols_mat[cell, gene].append(rmt)
+            except KeyError:
+                mols_mat[cell, gene] = [rmt]
+        
+        
+        if csv_path = None:
+            for cell, gene in mols_mat:
+                res_mols[cell, gene] = len(mols_mat[cell, gene])
+            return reads_mat, mols_mat
+        
+        f = open(csv_path+'reads_count.csv', 'w')
+        for cell, gene in reads_mat:
+            f.write('{}\t{}\t{}\n'.format(cell, gene, reads_mat[cell, gene]))
+        f.close()
+        f = open(csv_path+'mols_count.csv', 'w')
+        for cell, gene in mols_mat:
+            f.write('{}\t{}\t{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
+        f.close()

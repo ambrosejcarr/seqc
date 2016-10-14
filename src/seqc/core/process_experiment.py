@@ -265,7 +265,7 @@ def create_or_download_read_array(
 #            log.info('Read array %s successfully installed from S3.' % read_array)
 #        ra = ReadArray.load(read_array)
 #    return ra, input_data, manage_samfile, sam_records, read_array
-
+    
 
 def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     """generate sparse count matrix, filter, and generate dense count matrix
@@ -473,27 +473,11 @@ def main(argv: list=None) -> None:
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
         cell_counts = platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
         log.info('Read array after error correction: {}'.format(ra))
+        
+        ra.convert_to_matrix(args.output_stem)
             
         #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
         summary = None
-        
-        #TODO: add,commit,push,run,test,fix problems
-        #############
-
-#        body = ('<font face="Courier New, Courier, monospace">'
-#            'SEQC RUN COMPLETE.\n\n'
-#            'The run log has been attached to this email and '
-#            'results are now available in the S3 location you specified: '
-#            '"%s"\n\n'
-#            'RUN SUMMARY:\n\n%s'
-#            '</font>' % (aws_upload_key, 'none'))
-#        log.info('SEQC run complete. Cluster will be terminated unless --no-terminate '
-#             'flag was specified.')
-#        body = body.replace('\n', '<br>')
-#        body = body.replace('\t', '&emsp;')
-#        remote.email_user('', body, args.email_status)
-        
-        #################
 
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
@@ -508,9 +492,10 @@ def main(argv: list=None) -> None:
                                                                 s3link=aws_upload_key)
                 manage_ra = io.ProcessManager(upload_ra)
                 manage_ra.run_all()
+                
 
-        sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
-            generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
+        #sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
+        #    generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
  #       return
         
         # in this version, local runs won't be able to upload to S3
