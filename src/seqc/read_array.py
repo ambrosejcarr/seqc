@@ -588,6 +588,7 @@ class ReadArray:
                 continue
             cell = r['cell']
             gene = r['gene']
-            if gene == 0:
+            #if gene == 0:
                 #This means we haven't resolved multimapping yet. use the gene for genes if len(genes)==1
-        #TODO - write this
+        return
+        #TODO - finish this
