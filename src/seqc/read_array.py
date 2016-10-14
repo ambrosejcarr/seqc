@@ -610,7 +610,7 @@ class ReadArray:
                 mols_mat[cell, gene] = [rmt]
         
         
-        if csv_path = None:
+        if csv_path == None:
             for cell, gene in mols_mat:
                 res_mols[cell, gene] = len(mols_mat[cell, gene])
             return reads_mat, mols_mat
