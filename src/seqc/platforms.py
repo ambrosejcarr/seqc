@@ -43,7 +43,7 @@ class AbstractPlatform:
         
     @property
     def check_barcodes(self):
-        return _check_barcodes
+        return self._check_barcodes
     
     @property
     def correct_errors(self):
