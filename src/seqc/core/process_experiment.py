@@ -264,7 +264,7 @@ def create_or_download_read_array(
 #                bucket, prefix, output_dir + '/' + fname)
 #            log.info('Read array %s successfully installed from S3.' % read_array)
 #        ra = ReadArray.load(read_array)
-#    return ra, input_data, manage_samfile, sam_records, read_array
+    return ra, input_data, manage_samfile, sam_records, read_array
     
 
 def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
