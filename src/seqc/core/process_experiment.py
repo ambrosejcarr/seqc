@@ -474,7 +474,7 @@ def main(argv: list=None) -> None:
         cell_counts = platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
         log.info('Read array after error correction: {}'.format(ra))
         
-        ra.convert_to_matrix(args.output_stem)
+        ra.to_count_matrix(args.output_stem)
             
         #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
         summary = None
