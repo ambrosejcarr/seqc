@@ -372,7 +372,7 @@ class ReadArray:
         # Create error rate table
         default_error_rate = seqc.correct_errors.DEFAULT_BASE_CONVERTION_RATE
         if sum(error_table.values()) == 0:
-            log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
+            seqc.log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
