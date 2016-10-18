@@ -475,7 +475,7 @@ def main(argv: list=None) -> None:
         log.info('Read array after error correction: {}'.format(ra))
         
         ra.to_count_matrix(args.output_stem)
-            
+        return
         #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
         summary = None
 
