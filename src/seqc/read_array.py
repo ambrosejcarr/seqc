@@ -623,3 +623,5 @@ class ReadArray:
         for cell, gene in mols_mat:
             f.write('{}\t{}\t{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
         f.close()
+        
+        return csv_path+'reads_count.csv', csv_path+'mols_count.csv' 

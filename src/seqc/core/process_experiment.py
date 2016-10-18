@@ -474,8 +474,21 @@ def main(argv: list=None) -> None:
         cell_counts = platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
         log.info('Read array after error correction: {}'.format(ra))
         
-        ra.to_count_matrix(args.output_stem)
-        return
+        files = ra.to_count_matrix(args.output_stem)
+##############
+        bucket, key = io.S3.split_link(aws_upload_key)
+        for item in files:
+            try:
+                retry_boto_call(io.S3.upload_file)(item, bucket, key)
+                item_name = item.split('/')[-1]
+                log.info('Successfully uploaded %s to the specified S3 location '
+                         '"%s%s".' % (item, aws_upload_key, item_name))
+            except FileNotFoundError:
+                log.notify('Item %s was not found! Continuing with upload...' % item)
+
+        raise StandardError('All new code finished running')
+        
+###################
         #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
         summary = None
 
