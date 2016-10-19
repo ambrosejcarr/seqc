@@ -163,6 +163,7 @@ def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
 
     log.info('Error correction filtering results: total reads: {}; did not pass '
              'preliminary filters: {}'.format(tot, sum(filtered.values())))
+    log.info('filter: {}'.format(filtered))
     return res, filtered
 
 
