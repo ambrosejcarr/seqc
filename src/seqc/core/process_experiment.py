@@ -453,13 +453,17 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
+        files = []
+        files += ra.to_count_matrix(args.output_stem+'_phase1_')
         log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
         ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score = args.max_dust_score)
+        files += ra.to_count_matrix(args.output_stem+'_phase2_')
         log.info('Read array after filtering: {}'.format(ra))
         # Correct barcodes
         if platform.check_barcodes:
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=True, max_ed=args.max_ed)
+            files += ra.to_count_matrix(args.output_stem+'_phase3_')
             log.info('Read array after barcode correction: {}'.format(ra))
         else:
             error_rate = None
@@ -467,15 +471,16 @@ def main(argv: list=None) -> None:
         
         # Resolve multimapping
         ra.resolve_alignments(args.index)
+        files += ra.to_count_matrix(args.output_stem+'_phase4_')
         log.info('Read array after multialignment resolution: {}'.format(ra))
         # correct errors
         log.info('Filterring errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts = platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        files += ra.to_count_matrix(args.output_stem+'_phase5_')
         log.info('Read array after error correction: {}'.format(ra))
         
-        files = ra.to_count_matrix(args.output_stem)
-##############
+        #Upload count matrices files
         bucket, key = io.S3.split_link(aws_upload_key)
         for item in files:
             try:
@@ -488,7 +493,6 @@ def main(argv: list=None) -> None:
 
         #raise StandardError('All new code finished running')
         
-###################
         #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
         summary = None
 
