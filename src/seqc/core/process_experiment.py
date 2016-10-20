@@ -486,7 +486,7 @@ def main(argv: list=None) -> None:
             except FileNotFoundError:
                 log.notify('Item %s was not found! Continuing with upload...' % item)
 
-        raise StandardError('All new code finished running')
+        #raise StandardError('All new code finished running')
         
 ###################
         #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
