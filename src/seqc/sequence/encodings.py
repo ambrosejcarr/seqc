@@ -1,29 +1,33 @@
-class DNA3Bit:
+
+class DNA3Bit(object):
     """
     Compact 3-bit encoding scheme for sequence data.
     """
+    
+    @staticmethod
+    def bits_per_base():
+        return 3
 
     _str2bindict = {65: 0b100, 67: 0b110, 71: 0b101, 84: 0b011, 78: 0b111,
                     97: 0b100, 99: 0b110, 103: 0b101, 116: 0b011, 110: 0b111}
     _bin2strdict = {0b100: b'A', 0b110: b'C', 0b101: b'G', 0b011: b'T', 0b111: b'N'}
-    bin_nums = [0b100, 0b110, 0b101, 0b011]
-
-    @classmethod
-    def encode(cls, b: bytes) -> int:
+    
+    @staticmethod
+    def encode(b: bytes) -> int:
         """
-        Convert string nucleotide sequence into binary, note: string is reversed so
-        that the first nucleotide is in the LSB position
+        Convert string nucleotide sequence into binary, note: string is stored so
+        that the first nucleotide is in the MSB position
 
         :param b: bytes, sequence containing nucleotides to be encoded
         """
         res = 0
         for c in b:
             res <<= 3
-            res += cls._str2bindict[c]
+            res += DNA3Bit._str2bindict[c]
         return res
-
-    @classmethod
-    def decode(cls, i: int) -> bytes:
+        
+    @staticmethod
+    def decode(i: int) -> bytes:
         """
         Convert binary nucleotide sequence into string
 
@@ -34,27 +38,11 @@ class DNA3Bit:
             raise ValueError(message)
         r = b''
         while i > 0:
-            r = cls._bin2strdict[i & 0b111] + r
+            r = DNA3Bit._bin2strdict[i & 0b111] + r
             i >>= 3
         return r
-
-    @staticmethod
-    def gc_content(i: int) -> float:
-        """
-        calculates percentage of nucleotides in i that is G or C
-
-        :param i: int, encoded sequence
-        """
-        gc = 0
-        length = 0
-        while i > 0:
-            length += 1
-            masked = i & 111
-            if masked == 0b100 or masked == 0b100:
-                gc += 1
-            i >>= 3
-        return gc / length
-
+        
+    #TODO: another ooption is to use i.bit_length and take into account preceding 0's
     @staticmethod
     def seq_len(i: int) -> int:
         """
@@ -67,7 +55,7 @@ class DNA3Bit:
             l += 1
             i >>= 3
         return l
-
+        
     @staticmethod
     def contains(s: int, char: int) -> bool:
         """
@@ -82,21 +70,7 @@ class DNA3Bit:
                 return True
             s >>= 3
         return False
-
-    @staticmethod
-    def bitlength(i: int) -> int:
-        """
-        return the bitlength of the sequence, compensating for terminal 'T' encodings
-        which are truncated because 0b011 is converted into 0b11 by python internals.
-
-        :param i: int, encoded sequence
-        """
-        bitlen = i.bit_length()
-        # correct for leading T-nucleotide (011) whose leading 0 gets trimmed
-        if bitlen % 3:
-            bitlen += 1
-        return bitlen
-
+    
     @staticmethod
     def ints2int(ints):
         """
@@ -118,28 +92,37 @@ class DNA3Bit:
                 tmp >>= 3
             res += num
         return res
-
-    # todo fix this by using factory methods to generate the correct function
-    # todo these methods only work for in-drop
+    
     @staticmethod
-    def c2_from_int(seq):
-        """Extract barcode2 from a sequence"""
-        return (seq & 0o77777777000000) >> (6 * 3)
+    def count(seq, char_bin):
+        """
+        count how many times char is in seq.
+        char needs to be an encoded value of one of the bases.
+        """
+        if char_bin not in DNA3Bit._bin2strdict.keys():
+            raise ValueError("DNA3Bit.count was called with an invalid char code - {}".format(char_bin))
+        res = 0
+        while seq > 0:
+            if seq & 0b111 == char_bin:
+                res += 1
+            seq >>= 3
+        return res
+    
 
-    # todo these methods only work for in-drop
-    @staticmethod
-    def c1_from_int(seq):
-        """Extract barcode1 from a sequence"""
-        return seq >> ((8 + 6) * 3)
-
-    # todo these methods only work for in-drop
-    @staticmethod
-    def c2_from_codes(seq):
-        """Extract barcode2 from a sequence of just codes"""
-        return seq & 0o77777777
-
-    # todo these methods only work for in-drop
-    @staticmethod
-    def c1_from_codes(seq):
-        """Extract barcode1 from a sequence of just codes"""
-        return seq >> (8 * 3)
+#TODO: this was written for ome tests, not sure it's being used anymore
+#   @staticmethod
+#    def gc_content(i: int) -> float:
+#        """
+#        calculates percentage of nucleotides in i that is G or C#
+#
+#        :param i: int, encoded sequence
+#        """
+#        gc = 0
+#        length = 0
+#        while i > 0:
+#            length += 1
+#            masked = i & 111
+#            if masked == 0b100 or masked == 0b100:
+#                gc += 1
+#            i >>= 3
+#        return gc / length

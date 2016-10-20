@@ -57,7 +57,7 @@ def run_remote(args, argv, volsize) -> None:
         cluster.serv.exec_command('sudo chown -R ubuntu /home/ubuntu/.seqc/')
         cluster.serv.put_file(os.path.expanduser('~/.seqc/config'),
                               '/home/ubuntu/.seqc/config')
-        cluster.serv.exec_command('cd /data; nohup {cmd} > /dev/null 2>&1 &'
+        cluster.serv.exec_command('cd /data; nohup {cmd} > debug.log 2>&1 &'
                                   ''.format(cmd=cmd))
 
         # check that process_experiment.py is actually running on the cluster
@@ -227,17 +227,16 @@ def create_or_download_read_array(
     manage_samfile = None
     sam_records = None
     if process_samfile:
-        log.info('Filtering aligned records and constructing record database.')
+        log.info('Constructing record database.')
         if samfile.startswith('s3://'):
             input_data = 'samfile'
             bucket, prefix = io.S3.split_link(samfile)
             _, fname = os.path.split(prefix)
             samfile = io.S3.download_file(bucket, prefix, output_dir + '/' + fname)
             log.info('Samfile %s successfully installed from S3.' % samfile)
-        ra, sam_records = ReadArray.from_samfile(
-            samfile, index + 'annotations.gtf')
+        ra, sam_records = ReadArray.from_samfile(samfile, index + 'annotations.gtf')
         read_array = output_stem + '.h5'
-        ra.save(read_array)
+        #ra.save(read_array)
 
         # converting sam to bam and uploading to S3, else removing samfile
         if input_data == 'samfile':
@@ -255,16 +254,18 @@ def create_or_download_read_array(
                 manage_samfile = io.ProcessManager(convert_sam, upload_bam)
                 manage_samfile.run_all()
     else:
-        if read_array.startswith('s3://'):
-            input_data = 'readarray'
-            bucket, prefix = io.S3.split_link(read_array)
-            _, fname = os.path.split(prefix)
-            read_array = io.S3.download_file(
-                bucket, prefix, output_dir + '/' + fname)
-            log.info('Read array %s successfully installed from S3.' % read_array)
-        ra = ReadArray.load(read_array)
+        raise ValueError('Must provide sam file')
+        return
+#        if read_array.startswith('s3://'):
+#            input_data = 'readarray'
+#            bucket, prefix = io.S3.split_link(read_array)
+#            _, fname = os.path.split(prefix)
+#            read_array = io.S3.download_file(
+#                bucket, prefix, output_dir + '/' + fname)
+#            log.info('Read array %s successfully installed from S3.' % read_array)
+#        ra = ReadArray.load(read_array)
     return ra, input_data, manage_samfile, sam_records, read_array
-
+    
 
 def generate_count_matrices(args, cell_counts, pigz, aws_upload_key):
     """generate sparse count matrix, filter, and generate dense count matrix
@@ -412,7 +413,7 @@ def main(argv: list=None) -> None:
 
         # check if the platform name provided is supported by seqc
         platform_name = verify.platform_name(args.platform)
-        platform = getattr(platforms, platform_name)()  # returns platform class
+        platform = platforms.AbstractPlatform.factory(platform_name)  # returns platform class
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
@@ -452,13 +453,44 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
+        log.info('Read array after reading sam file: {}'.format(ra))
+        # Apply filters
+        ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score = args.max_dust_score)
+        log.info('Read array after filtering: {}'.format(ra))
+        # Correct barcodes
+        if platform.check_barcodes:
+            error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=True, max_ed=args.max_ed)
+            log.info('Read array after barcode correction: {}'.format(ra))
+        else:
+            error_rate = None
+            log.info('Skipping barcode correction')
+        
+        # Resolve multimapping
+        ra.resolve_alignments(args.index)
+        log.info('Read array after multialignment resolution: {}'.format(ra))
         # correct errors
-        log.info('Correcting cell barcode and RMT errors')
+        log.info('Filterring errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        cell_counts, summary = platform.correct_errors(
-            ra, args.barcode_files, reverse_complement=False,
-            required_poly_t=args.min_poly_t, max_ed=args.max_ed,
-            max_dust=args.max_dust_score, singleton_weight=args.singleton_weight)
+        cell_counts = platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        log.info('Read array after error correction: {}'.format(ra))
+        
+        files = ra.to_count_matrix(args.output_stem)
+##############
+        bucket, key = io.S3.split_link(aws_upload_key)
+        for item in files:
+            try:
+                retry_boto_call(io.S3.upload_file)(item, bucket, key)
+                item_name = item.split('/')[-1]
+                log.info('Successfully uploaded %s to the specified S3 location '
+                         '"%s%s".' % (item, aws_upload_key, item_name))
+            except FileNotFoundError:
+                log.notify('Item %s was not found! Continuing with upload...' % item)
+
+        #raise StandardError('All new code finished running')
+        
+###################
+        #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
+        summary = None
 
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
@@ -473,10 +505,12 @@ def main(argv: list=None) -> None:
                                                                 s3link=aws_upload_key)
                 manage_ra = io.ProcessManager(upload_ra)
                 manage_ra.run_all()
+                
 
-        sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
-            generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
-
+        #sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
+        #    generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
+ #       return
+        
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
         if args.aws:
