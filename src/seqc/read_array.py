@@ -594,8 +594,8 @@ class ReadArray:
             gene = r['gene']
             rmt = r['rmt']
             if gene == 0:
-                if len(r['genes']) == 1:
-                    gene = r['genes'][0]
+                if len(r['ma_genes']) == 1:
+                    gene = r['ma_genes'][0]
                 else:
                     continue
             try:

@@ -89,45 +89,7 @@ def prob_d_to_r_bin(d_seq, r_seq, err_rate):
         r_seq >>= 3
     return p
 
-
-#TODO: after doing drop_seq this can probably be removed
-def pass_filter(read, filters_counter, required_poly_t, max_dust_score):
-    """
-    :param read:
-    :param filters_counter:
-    :param required_poly_t:
-    :param max_dust_score:
-    :return: True if a read passes a;; filters.
-    """
-    phix_genes = np.array(range(1, 7)) * 111111111
-    N = DNA3Bit.encode(b'N')
-
-    if read['gene'] == 0:
-        filters_counter['gene_0'] += 1
-        return False
-    if read['gene'] in phix_genes:
-        filters_counter['phi_x'] += 1
-        return False
-    # todo: collapse cell_0 and rmt_0 into one dictionary key
-    if read['cell'] == 0:
-        filters_counter['cell_0'] += 1
-        return False
-    if read['rmt'] == 0:
-        filters_counter['rmt_0'] += 1
-        return False
-    if read['n_poly_t'] < required_poly_t:
-        filters_counter['poly_t'] += 1
-        return False
-    if DNA3Bit.contains(int(read['rmt']), N):
-        filters_counter['rmt_N'] += 1
-        return False
-    if read['dust_score'] > max_dust_score:
-        filters_counter['dust'] += 1
-        return False
-    return True
-
-
-def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
+def group_for_dropseq(ra):
     """
     Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
     :param required_poly_t:
@@ -135,13 +97,9 @@ def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
     :param ra:
     """
     res = {}
-    tot = 0
-    filtered = {'gene_0': 0, 'phi_x': 0, 'cell_0': 0, 'rmt_0': 0, 'poly_t': 0,
-                'rmt_N': 0, 'cell_N': 0, 'dust': 0}
 
     for i, v in enumerate(ra.data):
-        tot += 1
-        if not pass_filter(v, filtered, required_poly_t, max_dust):
+        if not ReadArray.is_active(v):
             continue
         
         # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
@@ -151,20 +109,16 @@ def group_for_dropseq(ra, required_poly_t=4, max_dust=10):
         rmt = v['rmt']
         gene = v['gene']
         try:
-            res[cell_header][rmt][gene, cell] += 1
+            res[cell_header][rmt][gene, cell].apend(i)
         except KeyError:
             try:
-                res[cell_header][rmt][gene, cell] = 1
+                res[cell_header][rmt][gene, cell] = [i]
             except KeyError:
                 try:
-                    res[cell_header][rmt] = {(gene, cell): 1}
+                    res[cell_header][rmt] = {(gene, cell): [i]}
                 except KeyError:
-                    res[cell_header] = {rmt: {(gene, cell): 1}}
-
-    log.info('Error correction filtering results: total reads: {}; did not pass '
-             'preliminary filters: {}'.format(tot, sum(filtered.values())))
-    log.info('filter: {}' + str(filtered))
-    return res, filtered
+                    res[cell_header] = {rmt: {(gene, cell): [i]}}
+    return res
 
 
 def drop_seq(alignments_ra, *args, **kwargs):
@@ -177,7 +131,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     :return:
     """
     
-    # start = time.process_time()
+    start = time.process_time()
     pos_filter_threshold = 0.8
     barcode_base_shift_threshold = 0.9
     umi_len = 8
@@ -188,11 +142,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     
     res_dic = {}
     
-    if 'grouped_ra' in kwargs:
-        grouped_ra = kwargs['grouped_ra']
-        summary = None
-    else:
-        grouped_ra, summary = group_for_dropseq(alignments_ra)
+    grouped_ra = group_for_dropseq(alignments_ra)
     if 'min_umi_cutoff' in kwargs:
         min_umi_cutoff = kwargs['min_umi_cutoff']
         
@@ -228,9 +178,9 @@ def drop_seq(alignments_ra, *args, **kwargs):
             
             # Check for base shift
             if base_mat['T'][-1] > barcode_base_shift_threshold:
+                # Retain, but insert an 'N'
                 retain = True
                 base_shift = True
-                # Retain, but insert an 'N'
                 base_shift_count += 1            
                 
         if retain:
@@ -244,25 +194,18 @@ def drop_seq(alignments_ra, *args, **kwargs):
                         # correct_rmt = BinRep.ints2int([full_cell & 0b111, rmt]) >> 3
                     else:
                         correct_cell = full_cell
-                        # todo next line unnecessary now that rmts are not being stored
-                        # correct_rmt = rmt
-                    try:
-                        res_dic[gene, correct_cell][0] += 1
-                        res_dic[gene, correct_cell][1] += (
-                            grouped_ra[cell][rmt][gene, full_cell])
-
-                    except KeyError:
-                        res_dic[gene, correct_cell] = [
-                            1, grouped_ra[cell][rmt][gene, full_cell]]
-
-    log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(
-        base_shift_count, pos_bias_count, small_cell_groups))
-    # print('base shift: {}, pos_bias: {}, small cell groups: {}, close pairs: {}'
-    #       ''.format(base_shift_count, pos_bias_count, small_cell_groups, close_pairs))
-    # tot_time = time.process_time() - start
-    # print('tot time: {}'.format(tot_time))
-    return res_dic, summary
-
+                    for read_idx in grouped_ra[cell][rmt][gene, full_cell]:
+                        alignments_ra.data[read_idx]['cell'] = correct_cell
+        
+        else:
+            for rmt in grouped_ra[cell]:
+                for gene, full_cell in grouped_ra[cell][rmt]:
+                    for read_idx in grouped_ra[cell][rmt][gene, full_cell]:
+                        ReadArray.set_error_status_on(alignments_ra.data[read_idx])     
+                    
+    log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
+    log.info('Error correction finished in {}'.format(time.process_time() - start))
+    return
 
 def base_count(seq_dic, umi_len=8):
     count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
@@ -277,17 +220,6 @@ def base_count(seq_dic, umi_len=8):
         count_mat[base] /= tot
     return count_mat
 
-
-# Used for research only
-def count_close_umi(seq_dic):
-    count = 0
-    for seq1 in seq_dic:
-        for seq2 in seq_dic:
-            if hamming_dist_bin(seq1, seq2) <= 1:
-                count += 1
-    return (count-len(seq_dic)) / 2
-
-
 def in_drop(alignments_ra, error_rate, apply_likelihood=True, alpha=0.05, singleton_weight=1):
     """
     Recieve an RA and return a bool matrix of identified errors according to each
@@ -299,8 +231,6 @@ def in_drop(alignments_ra, error_rate, apply_likelihood=True, alpha=0.05, single
     :return:
     """
 
-    # res_time_cnt = {}
-    # err_correction_res = ''
     ra_grouped = prepare_for_ec(alignments_ra)
     grouped_res_dic = correct_errors(alignments_ra, ra_grouped, error_rate, p_value=alpha, apply_likelihood = apply_likelihood, singleton_weight=singleton_weight)
 
@@ -394,37 +324,3 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
     log.info('total error correction runtime: {}'.format(tot_time))    
     
     return grouped_res_dic
-
-
-def convert_to_matrix(counts_dictionary):
-    """
-
-    :param counts_dictionary:
-    :return:
-    """
-    # Set up entries for sparse matrix
-    cols = [k[0] for k in counts_dictionary.keys()]
-    rows = [k[1] for k in counts_dictionary.keys()]
-
-    molecules = np.array(list(v[0] for v in counts_dictionary.values()))
-    reads = np.array(list(v[1] for v in counts_dictionary.values()))
-
-    # Map row and cell to integer values for indexing
-    unq_row = np.unique(rows)  # these are the ids for the new rows / cols of the array
-    unq_col = np.unique(cols)
-    row_map = dict(zip(unq_row, np.arange(unq_row.shape[0])))
-    col_map = dict(zip(unq_col, np.arange(unq_col.shape[0])))
-    row_ind = np.array([row_map[i] for i in rows])
-    col_ind = np.array([col_map[i] for i in cols])
-
-    # change dtype, set shape
-    molecules = molecules.astype(np.float32)
-    reads = reads.astype(np.uint32)
-    shape = (unq_row.shape[0], unq_col.shape[0])
-
-    # return a sparse array
-    mol_coo = coo_matrix((molecules, (row_ind, col_ind)), shape=shape, dtype=np.float32)
-    read_coo = coo_matrix((reads, (row_ind, col_ind)), shape=shape, dtype=np.uint32)
-    return {'molecules': {'matrix': mol_coo, 'row_ids': unq_row, 'col_ids': unq_col},
-            'reads': {'matrix': read_coo, 'row_ids': unq_row, 'col_ids': unq_col}}
-
