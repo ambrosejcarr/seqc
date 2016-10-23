@@ -99,7 +99,7 @@ def group_for_dropseq(ra):
     res = {}
 
     for i, v in enumerate(ra.data):
-        if not ReadArray.is_active(v):
+        if not ReadArray.is_active_read(v):
             continue
         
         # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
