@@ -502,13 +502,14 @@ def main(argv: list=None) -> None:
             rm_ra = 'rm {fname}'.format(fname=args.read_array)
             io.ProcessManager(rm_ra).run_all()
             manage_ra = None
-        else:
-            if aws_upload_key:
-                log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
-                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
-                                                                s3link=aws_upload_key)
-                manage_ra = io.ProcessManager(upload_ra)
-                manage_ra.run_all()
+# This is commented out until we have a better way to save the ReadArray
+#        else:
+#            if aws_upload_key:
+#                log.info('Uploading read array to S3.. Link is %s' % aws_upload_key)
+#                upload_ra = 'aws s3 mv {fname} {s3link}'.format(fname=args.read_array,
+#                                                                s3link=aws_upload_key)
+#                manage_ra = io.ProcessManager(upload_ra)
+#                manage_ra.run_all()
                 
 
         #sparse_proc, sparse_csv, total_mols, mols_lost, cells_lost, cell_descr = (
