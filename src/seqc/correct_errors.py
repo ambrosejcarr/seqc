@@ -109,7 +109,7 @@ def group_for_dropseq(ra):
         rmt = v['rmt']
         gene = v['gene']
         try:
-            res[cell_header][rmt][gene, cell].apend(i)
+            res[cell_header][rmt][gene, cell].append(i)
         except KeyError:
             try:
                 res[cell_header][rmt][gene, cell] = [i]
