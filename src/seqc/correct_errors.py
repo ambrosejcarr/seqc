@@ -188,7 +188,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
                 for gene, full_cell in grouped_ra[cell][rmt]:
                     if base_shift:
                         # replace the last base of cell with 'N'
-                        correct_cell = DNA3Bit.ints2int([cell, DNA3Bit._str2bindict[b'N']])
+                        correct_cell = DNA3Bit.ints2int([cell, DNA3Bit.encode(b'N')])
                         # todo next line unnecessary now that rmts are not being stored
                         # correct the rmt with the last base of cb, remove the last 'T'
                         # correct_rmt = BinRep.ints2int([full_cell & 0b111, rmt]) >> 3
