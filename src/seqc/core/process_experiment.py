@@ -516,6 +516,14 @@ def main(argv: list=None) -> None:
         #    generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
  #       return
         
+        #TODO: generate a printout of these for the summary
+        sparse_proc = None
+        sparse_csv = 0
+        total_mols = 0
+        mols_lost = 0
+        cells_lost = 0
+        cell_descr = None
+        
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
         if args.aws:
