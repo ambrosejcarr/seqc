@@ -34,7 +34,7 @@ def revcomp_bytes(b: bytes) -> bytes:
     if not isinstance(b, bytes):
         raise TypeError('Nucleotide sequence "s" must be bytes, not %s' % type(b))
     try:
-        return ''.join(_revcomp[n] for n in b[::-1])
+        return ''.join(_revcomp_bytes[n] for n in b[::-1])
     except KeyError:
         raise ValueError('%s contains invalid nucleotide character. Supported characters '
                          'are A, C, G, T and N.' % b)
