@@ -3,7 +3,7 @@ import tables as tb
 from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
-from seqc.sequence.barcodes import revcomp_bytes
+from seqc.sequence.barcodes import revcomp_bytes, revcomp
 import os
 import seqc.correct_errors
 import seqc.multialignment as mm
