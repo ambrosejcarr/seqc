@@ -289,12 +289,12 @@ class ReadArray:
         correct_barcodes = []
         if reverse_complement:
             for barcode_file in barcode_files:
-                with open(barcode_file, 'rb') as f:
+                with open(barcode_file, 'r') as f:
                     correct_barcodes.append(set(DNA3Bit.encode(revcomp(line.strip()))
                                                 for line in f.readlines()))
         else:
             for barcode_file in barcode_files:
-                with open(barcode_file, 'rb') as f:
+                with open(barcode_file, 'r') as f:
                     correct_barcodes.append(set(DNA3Bit.encode(line.strip())
                                                 for line in f.readlines()))
         
