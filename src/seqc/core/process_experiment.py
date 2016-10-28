@@ -493,15 +493,12 @@ def main(argv: list=None) -> None:
 
         #raise StandardError('All new code finished running')
         
-        #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
-        summary = None
-
         # uploading read array to S3 if created, else removing read array
         if input_data == 'readarray':
             log.info('Removing .h5 file for memory management.')
             rm_ra = 'rm {fname}'.format(fname=args.read_array)
             io.ProcessManager(rm_ra).run_all()
-            manage_ra = None
+            
 # This is commented out until we have a better way to save the ReadArray
 #        else:
 #            if aws_upload_key:
@@ -516,6 +513,7 @@ def main(argv: list=None) -> None:
         #    generate_count_matrices(args, cell_counts, pigz, aws_upload_key))
  #       return
         
+        #TODO: I need to create summary but from the ra and not throuygh error corrcetion like before
         #TODO: generate a printout of these for the summary
         sparse_proc = None
         sparse_csv = 0
@@ -523,6 +521,9 @@ def main(argv: list=None) -> None:
         mols_lost = 0
         cells_lost = 0
         cell_descr = None
+        summary = None
+        manage_ra = None
+
         
         # in this version, local runs won't be able to upload to S3
         # and also won't get an e-mail notification.
