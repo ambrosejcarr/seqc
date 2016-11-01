@@ -713,12 +713,8 @@ class clean_up:
 
         email_args = (
             'echo "{b}" | mutt -e "set content_type="text/html"" -s '
-            '"Remote Process" {e} -a {a}'.format(b=email_body, a=attachment, e=email_address))
+            '"Remote Process" {e} -a "{a}"'.format(b=email_body, a=attachment, e=email_address))
         email_process = Popen(email_args, shell=True, stderr=PIPE, stdout=PIPE)
-        # email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment,
-        #               '-s',
-        #               'Remote Process', '--', email_address]
-        # email_process = Popen(email_args, stdin=PIPE, stderr=PIPE)
         out, err = email_process.communicate(email_body)
         if err:
             raise ChildProcessError(err.decode())

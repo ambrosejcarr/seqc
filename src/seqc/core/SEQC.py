@@ -288,7 +288,9 @@ def run(args) -> None:
         args.genomic_fastq = download.s3_data(
             args.genomic_fastq, output_dir + '/genomic_fastq/')
         args.barcode_fastq = download.s3_data(
-            args.barcode_fastq, output_dir + '/genomic_fastq/')
+            args.barcode_fastq, output_dir + '/barcode_fastq/')
+
+        # raise RuntimeError('debugging')  # todo
 
         # check if the index must be downloaded
         if any((args.samfile, args.read_array)):

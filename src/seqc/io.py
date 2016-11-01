@@ -8,6 +8,7 @@ from multiprocessing import Process, Pool, cpu_count
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE, CalledProcessError, call
 from itertools import zip_longest
+from collections import namedtuple
 import fcntl
 import boto3
 import logging
@@ -36,9 +37,79 @@ class S3:
     def download_boto(link, prefix='', overwrite=False, recursive=False):
         raise NotImplementedError('please download and configure aws cli.')
 
-    # todo implement filtering
+    _FileIdentity = namedtuple('_FileIdentity', ['name', 'size', 'date', 'time'])
+
     @staticmethod
-    def download_awscli(link, prefix='./', overwrite=True, recursive=False):
+    def split_link(link_or_prefix: str):
+        """take an amazon s3 link or link prefix and return the bucket and key
+
+        :param link_or_prefix: str, an amazon s3 link
+        :returns: tuple, (bucket, key_or_prefix)
+        """
+        if not link_or_prefix.startswith('s3://'):
+            raise ValueError('aws s3 links must start with s3://')
+        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
+        bucket, *key_or_prefix = link_or_prefix.split('/')
+        return bucket, '/'.join(key_or_prefix)
+
+    @classmethod
+    def _fileidentity_from_awscli(cls, line, link, prefix):
+        line = line.strip().split()
+        bucket, key = cls.split_link(link)
+        name = prefix + line[3].replace(key, '')
+        return cls._FileIdentity(name, line[2], line[0], line[1])
+
+    @classmethod
+    def _fileidentity_from_ls(cls, line):
+        line = line.strip().split()
+        return cls._FileIdentity(line[8], line[4], line[5], line[6].rpartition('.')[0])
+
+    @classmethod
+    def awscli_omit_existing_files(cls, link, prefix, recursive):
+        """check if file or files at link exist given prefix
+
+        :param link:
+        :param prefix:
+        :param recursive:
+        :return:
+        """
+        aws_cmd = 'aws s3 ls %s' % link  # get filenames
+        # if recursive:
+        #     aws_cmd += ' --recursive'
+        p = Popen(aws_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        aws_out, aws_err = p.communicate()
+        if aws_err:
+            raise ChildProcessError(aws_err.decode())
+
+        # parse the listed file(s)
+        to_download = [
+            cls._fileidentity_from_awscli(line, link, prefix)
+            for line in aws_out.decode().strip().split('\n')
+            ]
+
+        # existing files
+        ls_cmd = 'ls -l --full-time %s*' % prefix
+        p = Popen(ls_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        ls_out, ls_err = p.communicate()
+        if ls_err:
+            if b'No such file or directory' in ls_err:
+                exists = []
+            else:
+                raise ChildProcessError(ls_err.decode())
+        else:
+            exists = [
+                cls._fileidentity_from_ls(line)
+                for line in ls_out.decode().strip().split('\n')]
+
+        omission_string = ''
+        for f in to_download:
+            if f in exists:
+                omission_string += ' --exclude "%s"' % f.name.replace(prefix, '')
+
+        return omission_string
+
+    @classmethod
+    def download_awscli(cls, link, prefix='./', overwrite=True, recursive=False):
         """download file(s) at s3 address link to prefix using aws cli
 
         :param link:
@@ -62,20 +133,24 @@ class S3:
         if recursive:
             cmd += ' --recursive'
 
+        omit_cmd = cmd + cls.awscli_omit_existing_files(link, prefix, recursive)
+
         # download the files
-        p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        p = Popen(omit_cmd, shell=True, stdout=PIPE, stderr=PIPE)
         out, err = p.communicate()
         if err:
             raise ChildProcessError(err.decode())
 
-        # get the names of the files that were downloaded
+        # get the names of the files that were downloaded or already present
         d = Popen(cmd + ' --dryrun', shell=True, stdout=PIPE, stderr=PIPE)
         out, err = d.communicate()
         if err:
             raise ChildProcessError(err.decode())
         downloaded_files = [line.strip().split()[-1] for line in
                             out.decode().strip().split('\n') if line.strip()]
-        log.notify('downloaded files [%s]' % ',\n\t'.join(downloaded_files))
+        if log:
+            log.notify('downloaded (or already present) files:\n[%s]' % ',\n\t'.join(
+                downloaded_files))
         return downloaded_files
 
     @classmethod
@@ -335,21 +410,6 @@ class S3:
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
-
-    @staticmethod
-    def split_link(link_or_prefix: str):
-        """
-        take an amazon s3 link or link prefix and return the bucket and key for use with
-        S3.download_file() or S3.download_files()
-
-        :param link_or_prefix: str, an amazon s3 link
-        :returns: tuple, (bucket, key_or_prefix)
-        """
-        if not link_or_prefix.startswith('s3://'):
-            raise ValueError('aws s3 links must start with s3://')
-        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
-        bucket, *key_or_prefix = link_or_prefix.split('/')
-        return bucket, '/'.join(key_or_prefix)
 
     @classmethod
     def check_links(cls, input_args: list) -> None:
