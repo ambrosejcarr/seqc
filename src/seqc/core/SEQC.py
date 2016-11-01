@@ -267,7 +267,7 @@ def run(args) -> None:
     ######################### MAIN FUNCTION BEGINS HERE ################################
 
     log.setup_logger(args.log_name)
-    with ec2.clean_up(
+    with ec2.instance_clean_up(
             email=args.email, upload=args.upload_prefix, log_name=args.log_name):
         pigz, mutt = verify.executables('pigz', 'mutt')
         if not mutt:
@@ -397,7 +397,7 @@ def index(args):  # todo needs a volume attached, how to specify amount?
     from seqc.sequence.index import Index
 
     log.setup_logger(args.log_name)
-    with ec2.clean_up(args.email, args.upload, log_name=args.log_name):
+    with ec2.instance_clean_up(args.email, args.upload, log_name=args.log_name):
         idx = Index(args.organism, args.additional_id_types)
         idx.create_index(args.upload_location)
 

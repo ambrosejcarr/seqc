@@ -2,7 +2,7 @@ import os
 from subprocess import Popen
 from seqc import io, log
 
-
+# todo fold this module into io.S3 and io.Basespace
 def basespace(args, output_dir: str, basespace_token: str) -> (str, str):
     """
     If --basespace argument is passed, download BaseSpace data

@@ -669,7 +669,7 @@ class SSHConnection:
             return True
 
 
-class clean_up:
+class instance_clean_up:
 
     def __init__(self, email=None, upload=None, log_name='seqc.log', terminate=True):
         """Execution context for on-server code execution with defined clean-up practices.
