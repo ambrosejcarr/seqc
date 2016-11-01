@@ -453,7 +453,7 @@ def main(argv: list=None) -> None:
             log.notify('Warning: --max-dust-score parameter was not supplied, continuing '
                        'with --max-dust-score=10.')
 
-        files = []
+        files = [args.samfile]
         files += ra.to_count_matrix(args.output_stem+'_phase1_')
         log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
