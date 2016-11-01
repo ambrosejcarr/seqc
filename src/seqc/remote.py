@@ -496,14 +496,13 @@ def upload_results(output_stem: str, email_address: str, aws_upload_key: str,
     """
 
     prefix, directory = os.path.split(output_stem)
-    counts = output_stem + '_read_and_count_matrices.p'
     log_text = prefix + '/' + log_name
 
     # generate a run summary and append to log + email
     run_summary = ExperimentalYield.construct_run_summary(summary)
     log.info('A copy of the SEQC run summary can be found below.\nRUN SUMMARY:\n'
              '{run_summary}'.format(run_summary=run_summary))
-    files = [counts, log_text]  # counts and log will always be uploaded
+    files = [log_text]  # counts and log will always be uploaded
 
     if start_pos == 'start' or start_pos == 'merged':
         alignment_summary = output_stem + '_alignment_summary.txt'
