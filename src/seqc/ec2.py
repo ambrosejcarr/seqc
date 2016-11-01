@@ -1,5 +1,5 @@
 import os
-import logging
+# import logging
 import time
 import random
 import configparser
@@ -20,8 +20,8 @@ from seqc.exceptions import (
 from botocore.exceptions import ClientError
 
 # change some logging defaults
-logging.getLogger('paramiko').setLevel(logging.CRITICAL)
-logging.getLogger('boto3').setLevel(logging.CRITICAL)
+log.logging.getLogger('paramiko').setLevel(log.logging.CRITICAL)
+log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
 
 # set some configuration values
@@ -697,7 +697,6 @@ class instance_clean_up:
         self.err_status = False
         self.mutt = verify.executables('mutt')[0]  # unpacking necessary for singleton
 
-    # todo email doesn't always send; could there be something here? we don't check stderr
     @staticmethod
     def email_user(attachment: str, email_body: str, email_address: str) -> None:
         """
@@ -720,8 +719,9 @@ class instance_clean_up:
             raise ChildProcessError(err.decode())
 
     def __enter__(self):
-        log.setup_logger(self.log_name)
-        log.notify('Beginning protected execution')
+        pass
+        # log.setup_logger(self.log_name)
+        # log.notify('Beginning protected execution')  # todo only run if verbose
 
     @staticmethod
     def _get_instance_id():
@@ -787,7 +787,7 @@ class instance_clean_up:
         if self.terminate and not exc_type:
             instance_id = self._get_instance_id()
             if instance_id is None:
-                log.notify('no instance found, termination not initiated')
+                # todo notify if verbose
                 return
             ec2 = boto3.resource('ec2')
             instance = ec2.Instance(instance_id)
@@ -797,7 +797,7 @@ class instance_clean_up:
             instance.wait_until_terminated()
             log.notify('instance %s terminated' % instance_id)  # should never run
 
-        log.notify('Exiting remote execution context.')
+        # log.notify('Exiting remote execution context.')  # todo only run if verbose
 
 
 def remove_inactive_security_groups():

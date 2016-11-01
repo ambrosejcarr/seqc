@@ -270,7 +270,10 @@ def run(args) -> None:
     with ec2.instance_clean_up(
             email=args.email, upload=args.upload_prefix, log_name=args.log_name):
         pigz, mutt = verify.executables('pigz', 'mutt')
-        if not mutt:
+        if mutt:
+            log.notify('mutt executable identified, email will be sent when instance '
+                       'terminates. ')
+        else:
             log.notify('mutt was not found on this machine; an email will not be sent to '
                        'the user upon termination of SEQC run.')
         log.args(args)
@@ -289,8 +292,6 @@ def run(args) -> None:
             args.genomic_fastq, output_dir + '/genomic_fastq/')
         args.barcode_fastq = download.s3_data(
             args.barcode_fastq, output_dir + '/barcode_fastq/')
-
-        # raise RuntimeError('debugging')  # todo
 
         # check if the index must be downloaded
         if any((args.samfile, args.read_array)):

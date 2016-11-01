@@ -217,7 +217,8 @@ class TestSEQC(unittest.TestCase):
             '-b', self.barcode_fastq.format(platform),
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
-            '--local'
+            '--local',
+            '--log-name', '~/seqc.log'
         ]
         SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
