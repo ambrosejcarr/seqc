@@ -28,7 +28,7 @@ def estimate_min_poly_t(fastq_files: list, platform) -> int:
         raise RuntimeError(
             'provided platform does not have a defined primer length, and thus the '
             'min_poly_t parameter cannot be estimated. Please provide --min-poly-t '
-            'explicitly in SEQC.py.')
+            'explicitly in process_experiment.py.')
     for f in fastq_files:
         mean = Reader(f).estimate_sequence_length()[0]
         available_nucleotides = max(0, mean - primer_length)
@@ -281,8 +281,13 @@ def create_filtered_dense_count_matrix(
     cells_lost = OrderedDict()
     molecules_lost = OrderedDict()
 
-    if molecules.sum().sum() == 0:
-        raise EmptyMatrixError('Matrix is empty, cannot create dense matrix')
+    if not molecules.columns.dtype.char == 'U':
+        if molecules.sum().sum() == 0:
+            raise EmptyMatrixError('Matrix is empty, cannot create dense matrix')
+        else:
+            raise RuntimeError(
+                'non-string column names detected. Please convert column names into '
+                'string gene symbols before calling this function.')
     if not isinstance(max_mt_content, float):
         raise TypeError('Parameter max_mt_content must be of type float.')
     if not 0 <= max_mt_content <= 1:

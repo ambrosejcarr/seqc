@@ -45,6 +45,9 @@ def data_and_notify(
     :param email: bool, whether email should be sent
     :return None:
     """
+    
+    #TODO: Some parts of it are commented out as they rely on stuff returned from "generate_count_matrices()" which is now deprecated and replaced.
+    # Need to think what is missing from the summary now and add it.
 
     log.info('Starting file upload onto %s.' % aws_upload_key)
 
@@ -65,9 +68,9 @@ def data_and_notify(
                 manage_ra.wait_until_complete()
                 log.info('Successfully uploaded %s to the specified S3 location "%s"' %
                          (read_array, aws_upload_key))
-            sparse_proc.wait_until_complete()
-            log.info('Successfully uploaded %s to the specified S3 location "%s"' %
-                     (sparse_csv + '.gz', aws_upload_key))
+            #sparse_proc.wait_until_complete()
+            #log.info('Successfully uploaded %s to the specified S3 location "%s"' %
+            #         (sparse_csv + '.gz', aws_upload_key))
 
         # upload count matrix and alignment summary at the very end
         if summary:
@@ -79,10 +82,10 @@ def data_and_notify(
                 summary['n_sam'] = sam_records
             else:
                 summary['n_sam'] = 'NA'
-            summary['total_mc'] = total_molecules
-            summary['mols_lost'] = mols_lost
-            summary['cells_lost'] = cells_lost
-            summary['cell_desc'] = cell_description
+            #summary['total_mc'] = total_molecules
+            #summary['mols_lost'] = mols_lost
+            #summary['cells_lost'] = cells_lost
+            #summary['cell_desc'] = cell_description
 
         # todo: run summary will not be reported if n_fastq or n_sam = NA
         upload_results(

@@ -1,6 +1,23 @@
 import argparse
+import sys
+from seqc import remote
 from seqc import version
 from seqc.exceptions import ArgumentParserError
+
+
+class NewArgumentParser(argparse.ArgumentParser):
+    """
+    Simple wrapper for ArgumentParser that allows flags to be caught before the presence
+    of 'required' arguments are tested. Allows us to add flags, for example, for
+    checking the progress of existing SEQC runs.
+    """
+    def error(self, message):
+        # checks to see whether user wants to check remote experiment status
+        if '--check-progress' in sys.argv[1:]:
+            remote.check_progress()
+        else:
+            print(message)
+        sys.exit(0)
 
 
 def parse_args(args):
@@ -19,7 +36,6 @@ def parse_args(args):
 
     # subparser for running experiments
     p = subparsers.add_parser('run', help='run help')
-
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2', 'in_drop_v3', 'ten_x'],
@@ -160,7 +176,7 @@ def parse_args(args):
                  'Optional only if running locally.')
 
     try:
-        return meta.parse_args(args)
+        return p.parse_args(args)
     except ArgumentParserError:
         raise
 
@@ -169,17 +185,7 @@ def generate_remote_cmdline_args(argv: list) -> str:
     """recreate the command line arguments for a remote run, appending --local and --aws
 
     :param argv: the output of sys.argv[1:], in other words, all parameters passed to
-      the script, omitting the script name (SEQC.py)
+      the script, omitting the script name (process_experiment.py)
     :return str: command line arguments for a remote run
     """
-    return 'SEQC.py ' + ' '.join(argv) + ' --local --aws'
-
-
-def recreate_cmdline_args(argv: list) -> str:
-    """recreate the command line arguments for a remote run, appending --local and --aws
-
-    :param argv: the output of sys.argv[1:], in other words, all parameters passed to
-      the script, omitting the script name (SEQC.py)
-    :return str: command line arguments for a remote run
-    """
-    return 'SEQC.py ' + ' '.join(argv)
+    return 'process_experiment.py ' + ' '.join(argv) + ' --local --aws'
