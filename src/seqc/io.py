@@ -149,7 +149,7 @@ class S3:
         downloaded_files = [line.strip().split()[-1] for line in
                             out.decode().strip().split('\n') if line.strip()]
         if log:
-            log.notify('downloaded (or already present) files:\n[%s]' % ',\n\t'.join(
+            log.notify('downloaded (or already present) files:\n\t[%s]' % ',\n\t'.join(
                 downloaded_files))
         return downloaded_files
 

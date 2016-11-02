@@ -47,7 +47,7 @@ setup(name='seqc',
           'ecdsa',
           'pycrypto',
           'scikit_learn>=0.17'],
-      scripts=['src/seqc/core/process_experiment.py'],
+      scripts=['src/seqc/core/SEQC.py'],
       extras_require={
           'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
       }

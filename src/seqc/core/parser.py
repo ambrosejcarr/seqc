@@ -1,6 +1,5 @@
 import argparse
 import sys
-from seqc import remote
 from seqc import version
 from seqc.exceptions import ArgumentParserError
 
@@ -176,7 +175,7 @@ def parse_args(args):
                  'Optional only if running locally.')
 
     try:
-        return p.parse_args(args)
+        return meta.parse_args(args)
     except ArgumentParserError:
         raise
 
