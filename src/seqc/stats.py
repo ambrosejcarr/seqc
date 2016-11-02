@@ -25,6 +25,7 @@ from functools import partial
 from collections import namedtuple, OrderedDict
 import subprocess
 from contextlib import closing
+from seqc.ttest import bootstrap_t
 
 # safe bug in external dependency, suppress warning.
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")

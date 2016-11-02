@@ -9,7 +9,8 @@ import ftplib
 import nose2
 from seqc.sequence import index, gtf
 from seqc.core import SEQC
-from seqc import ec2, io
+from seqc.ttest import bootstrap_t
+from seqc import ec2
 
 import seqc
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -764,6 +765,56 @@ class TestEC2(unittest.TestCase):
                 idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
 
         create_index()
+
+
+class TestTTest(unittest.TestCase):
+
+    def test_synthetic_data(self):
+
+        # generate 150 cells with 100 observations over 100 genes
+        x = np.arange(11)
+        a_pval = x / x.sum()
+        b_pval = x[::-1] / x.sum()
+        index = pd.MultiIndex.from_arrays([a_pval, b_pval], names=['a_pval', 'b_pval'])
+        a = np.random.multinomial(100, a_pval, size=150)
+        b = np.random.multinomial(100, b_pval, size=150)
+
+        r = bootstrap_t(a, b)
+        print([x.shape for x in r])
+        v = np.hstack([r[0][:, np.newaxis], r[1], r[2][:, np.newaxis], r[3][:, np.newaxis]])
+        print(pd.DataFrame(v, index=index, columns=['t', 'ci_low', 'ci_high', 'p', 'q']))
+
+    def test_sparse_synthetic_data(self):
+
+        # generate 150 cells with 100 observations over 100 genes
+        x = np.arange(11)
+        a_pval = x / x.sum()
+        b_pval = x[::-1] / x.sum()
+        index = pd.MultiIndex.from_arrays([a_pval, b_pval], names=['a_pval', 'b_pval'])
+        a = np.random.multinomial(20, a_pval, size=150)
+        b = np.random.multinomial(20, b_pval, size=150)
+
+        r = bootstrap_t(a, b)
+        print([x.shape for x in r])
+        v = np.hstack([r[0][:, np.newaxis], r[1], r[2][:, np.newaxis], r[3][:, np.newaxis]])
+        print(pd.DataFrame(v, index=index, columns=['t', 'ci_low', 'ci_high', 'p', 'q']))
+
+    def test_uneven_synthetic_data(self):
+
+        # generate 150 cells with 100 observations over 100 genes
+        x = np.arange(11)
+        a_pval = x / x.sum()
+        b_pval = x[::-1] / x.sum()
+        index = pd.MultiIndex.from_arrays([a_pval, b_pval], names=['a_pval', 'b_pval'])
+        a = np.random.multinomial(100, a_pval, size=150)
+        b = np.random.multinomial(20, b_pval, size=150)
+
+        r = bootstrap_t(a, b)
+        print([x.shape for x in r])
+        v = np.hstack([r[0][:, np.newaxis], r[1], r[2][:, np.newaxis], r[3][:, np.newaxis]])
+        print(pd.DataFrame(v, index=index, columns=['t', 'ci_low', 'ci_high', 'p', 'q']))
+
+
 
 
 #########################################################################################
