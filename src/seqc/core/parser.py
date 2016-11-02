@@ -1,6 +1,5 @@
 import argparse
 import sys
-from seqc import remote
 from seqc import version
 from seqc.exceptions import ArgumentParserError
 
@@ -28,20 +27,22 @@ def parse_args(args):
       from sys.argv.
     :returns: args, namespace object, output of ArgumentParser.parse_args()
     """
-    p = NewArgumentParser(description='Process Single-Cell RNA Sequencing Data')
+    meta = argparse.ArgumentParser(
+        description='Processing Tools for scRNA-seq Experiments')
+    meta.add_argument('-v', '--version', action='version',
+                      version='{} {}'.format(meta.prog, version.__version__))
+    subparsers = meta.add_subparsers(help='sub-command help', dest='subparser_name')
+
+    # subparser for running experiments
+    p = subparsers.add_parser('run', help='run help')
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2', 'in_drop_v3', 'ten_x'],
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')
-    a.add_argument('-o', '--output-stem', metavar='O', required=True,
-                   help='If remote=True (default), an s3 link to the directory where all '
-                        'output data should be uploaded when the run completes (e.g. '
-                        's3://my-bucket/seqc_output_run_x/). If remote=False, the '
-                        'complete path and prefix for the output data '
-                        '(e.g. /Users/me/data/seqc/run_x_output). Cannot have a terminal '
-                        '/.')
+    a.add_argument('-o', '--output-prefix', metavar='O', required=True,
+                   help='filename prefix for all seqc output. Should not be a directory.')
     a.add_argument('-i', '--index', metavar='I', required=True,
                    help='Local folder or s3 link to a directory containing the STAR '
                         'index used for alignment.')
@@ -49,9 +50,6 @@ def parse_args(args):
                    help='Either (a) an s3 link to a folder containing only barcode '
                         'files, or (b) the full file path of each file on the local '
                         'machine.')
-    a.add_argument('--email-status', metavar='E', default=None,
-                   help='Email address to receive run summary or errors when running '
-                        'remotely. Optional if running locally.')
 
     i = p.add_argument_group('input arguments')
     i.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
@@ -74,11 +72,14 @@ def parse_args(args):
                         'of the BaseSpace sample. (e.g. if the link to the sample is '
                         'https://basespace.illumina.com/sample/34000253/0309, '
                         'then --basespace would be 34000253.')
+    i.add_argument('--basespace-token', metavar='BST', default=None,
+                   help='Optional OAuth token for basespace access. Can also be provided '
+                        'in config. Not necessary if --basespace is not used.')
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F',
-                   help='maximum paired-end insert size that is considered a valid '
-                        'record. For multialignment correction. Not currently used.',
+                   help='maximum distance from the TTS for a read to be considered valid'
+                        '. For multialignment correction. Not currently used.',
                    default=1000)
     f.add_argument('--min-poly-t', metavar='T',
                    help='minimum size of poly-T tail that is required for a barcode to '
@@ -110,34 +111,71 @@ def parse_args(args):
                         '--star-args outFilterMultimapNmax=20. Additional arguments can '
                         'be provided as a white-space separated list.')
 
-    r = p.add_argument_group('remote run arguments')
-    r.set_defaults(remote=True)
-    r.set_defaults(check=False)
-    r.add_argument('--local', dest="remote", action="store_false",
-                   help='Run SEQC locally instead of initiating on AWS EC2 servers.')
-    r.add_argument('--aws', default=False, action='store_true',
-                   help='Automatic flag; no need for user specification.')
-    r.add_argument('--no-terminate', default='False',
-                   help='Do not terminate the EC2 instance after program completes. If '
-                        '"on-success" is specified, the EC2 instance does not terminate '
-                        'in case the SEQC run throws an error.')
-    r.add_argument('--check-progress', dest="check", action="store_true",
-                   help='Check progress of all currently running remote SEQC runs.')
-    r.add_argument('--instance-type', default='c4',
-                   help='AWS instance (c3, c4, r3) to run SEQC remotely. Default=c4.')
-    r.add_argument('--spot-bid', type=float, default=None,
-                   help='float, Amount to bid for a spot instance. Default=None (will '
-                        'reserve a non-spot instance). WARNING: using spot instances '
-                        'will cause your instance to terminate if instance prices exceed '
-                        'your spot bid during runtime.')
-    r.add_argument('--log-name', type=str, default='seqc.log',
-                   help='Output log name (default=seqc.log)')
+    # todo create a positional argument to check only specific instances; still check all owned if left empty
+    # add subparser to check progress
+    progress = subparsers.add_parser('progress', help='check SEQC run progress')
 
-    p.add_argument('-v', '--version', action='version',
-                   version='{} {}'.format(p.prog, version.__version__))
+    # todo create subparser to remove security groups, volumes, and optionally, instances older than date.
+
+    # add subparser to create index
+    pindex = subparsers.add_parser('index', help='create a SEQC index')
+
+    pindex.add_argument(
+        '-o', '--organism', required=True,
+        help='organism to create index for. Must be formatted as genus_species in all '
+             'lower-case. e.g. human is homo_sapiens.')
+    pindex.add_argument(
+        '-f', '--folder', default=None,
+        help='folder in which to create the index. Defaults to the name of the organism, '
+             'which is created in the current directory.')
+    pindex.add_argument(
+        '--ids', '--additional-id-types', nargs='*',
+        help='names of additional ids from other consortia to check against. If '
+             'provided, each ENSEMBL gene id must also be annotated by at least one of '
+             'these consortia to be considered valid and appear in the final SEQC count '
+             'matrix.')
+    pindex.add_argument(
+        '-b', '--valid-biotypes', default=('protein_coding', 'lincRNA'),
+        help='list of gene biotypes that are considered valid. Defaults are '
+             'protein_coding and lincRNA. In most cases, other biotypes are not expected '
+             'to be captured by SEQC, and should be excluded')
+
+    for parser in [pindex, p]:
+        r = parser.add_argument_group('Amazon Web Services arguments')  # todo this parser group should be able to be used with remote as vars(args)
+        r.set_defaults(remote=True)
+        r.set_defaults(terminate=True)
+        r.add_argument(
+            '--local', dest="remote", action="store_false",
+            help='Run locally instead of on an aws instance')
+        r.add_argument(
+            '-u', '--upload-prefix', metavar='U', default=None,
+            help='s3 location for data to be uploaded.')
+        r.add_argument(
+            '--no-terminate', action='store_false', dest='terminate',
+            help='Do not terminate the EC2 instance after program completes. Normally, '
+                 'the instance is terminated unless an error is encountered.')
+        r.add_argument(
+            '--instance-type', default='c4.8xlarge',
+            help='AWS instance type to initialize for this job. '
+                 'See https://aws.amazon.com/ec2/instance-types/ for valid types')
+        r.add_argument(
+            '--spot-bid', type=float, default=None,
+            help='float, Amount to bid for a spot instance. Default=None (will reserve a '
+                 'non-spot instance). WARNING: using spot instances will cause your '
+                 'instance to terminate if instance prices exceed your spot bid during '
+                 'runtime.')
+        r.add_argument('--log-name', type=str, default='seqc.log', help='log name')
+        r.add_argument(
+            '--volume-size', type=int, default=None,
+            help='size in Gb required to execute the requested process. If not provided, '
+                 'it will be estimated from passed parameters.')
+        r.add_argument(
+            '-e', '--email', metavar='E', default=None,
+            help='Email address to receive run summary or errors when running remotely. '
+                 'Optional only if running locally.')
 
     try:
-        return p.parse_args(args)
+        return meta.parse_args(args)
     except ArgumentParserError:
         raise
 

@@ -86,7 +86,8 @@ def hamming_dist_bin(c1, c2):
         c1 >>= 3
         c2 >>= 3
     return d
-    
+
+
 def list_errors(s1, s2):
     """
     Return the list of nucleotide transformations that turn s1 to s2.

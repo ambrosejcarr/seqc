@@ -19,6 +19,8 @@ with warnings.catch_warnings():
     fm.findfont('Raleway')
     fm.findfont('Lato')
 
+warnings.filterwarnings(action="ignore", module="matplotlib", message="^tight_layout")
+
 dark_gray = '.15'
 
 _colors = ['#4C72B0', '#55A868', '#C44E52',
@@ -96,7 +98,7 @@ class FigureGrid:
     >>> ax3.set_title("I'm axis 3")
     """
 
-    def __init__(self, n: int, max_cols=3):
+    def __init__(self, n: int, max_cols=3, scale=3):
         """
         :param n: number of axes to generate
         :param max_cols: maximum number of axes in a given row
@@ -105,7 +107,7 @@ class FigureGrid:
         self.n = n
         self.nrows = int(np.ceil(n / max_cols))
         self.ncols = int(min((max_cols, n)))
-        figsize = self.ncols * 3, self.nrows * 3
+        figsize = self.ncols * scale, self.nrows * scale
 
         # create figure
         self.gs = plt.GridSpec(nrows=self.nrows, ncols=self.ncols)

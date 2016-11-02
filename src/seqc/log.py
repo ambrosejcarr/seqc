@@ -37,18 +37,6 @@ def debug(message):
                   ':%(module)s:%(funcName)s:' + ': %s' % message)
 
 
-def print_exact_command_line(arg_line, remote=False):
-    """
-    log command line for easy copy pasting
-    :param arg_line A string corresponding to the command that was called
-    :param remote Show the command will be used remotely
-    """
-    remote_line = "The following command line will be run on the remote server"
-    local_line = "Executing the following command line"
-    line = remote_line if remote else local_line
-    notify(line + ":\n> " + arg_line)
-
-
 def args(arguments):
     """
     log namespace object from argument parser to file.
@@ -58,7 +46,7 @@ def args(arguments):
     """
     arguments = vars(arguments)
     info('Passed command line arguments: {}'.format(
-            json.dumps(arguments, separators=(',', ': '), indent=4)))
+            json.dumps(arguments, separators=(',', ': '), indent=4, sort_keys=True)))
 
 
 class LogData:
