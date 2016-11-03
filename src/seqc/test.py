@@ -765,6 +765,33 @@ class TestEC2(unittest.TestCase):
 
         create_index()
 
+class TestGTest(unittest.TestCase):
+
+    def test_g_test_real_data(self):
+
+        from seqc.g_test import g_test
+        import os
+
+        filename = os.path.expanduser(
+            '~/google_drive/manuscripts/bci/data/BO9999/TUMOR1/TUMOR1_counts.csv.gz')
+        with open(filename) as f:
+            df = pd.read_csv(filename)
+
+        df = np.log(df.fillna(0) + 1)
+
+        # use a random partitioning
+        ntile = int(np.ceil(df.shape[0] / 5))
+        labels = np.tile(np.arange(5), ntile)[:df.shape[0]]
+
+
+
+        g, assign = g_test(df, labels)
+
+        print(g)
+        print(assign)
+
+
+
 
 #########################################################################################
 
