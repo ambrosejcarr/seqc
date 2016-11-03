@@ -311,7 +311,7 @@ class ReadArray:
         bad_bc_count=0
         ###
         for r in self.data:
-            read_idx+=1
+            #read_idx+=1
             if not ReadArray.is_active_read(r):
                 continue
             barcodes = platform.extract_barcodes(int(r['cell']))
@@ -335,9 +335,9 @@ class ReadArray:
                 self._bad_barcodes += 1
                 ReadArray.set_barcodes(r, BC_BAD)
                 ReadArray.set_status_inactive(r)
-                if bad_bc_count < 1000:
-                    seqc.log.info("bad barcode. read num: {}. cell: {}".format(read_idx, r['cell']))
-                    bad_bc_count += 1
+                #if bad_bc_count < 1000:
+                #    seqc.log.info("bad barcode. read num: {}. cell: {}".format(read_idx, r['cell']))
+                #    bad_bc_count += 1
                 continue
                             
             # Count the different error types
