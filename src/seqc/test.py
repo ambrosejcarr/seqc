@@ -9,10 +9,19 @@ import ftplib
 import nose2
 from seqc.sequence import index, gtf
 from seqc.core import SEQC
-from seqc import ec2, io
+from seqc import ec2
+from subprocess import call
 
 import seqc
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
+
+
+class TestNoAWSRun(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        testdir = os.environ['TMPDIR'] + 'test_local_seqc'
+        call('aws s3 cp ')
 
 
 
