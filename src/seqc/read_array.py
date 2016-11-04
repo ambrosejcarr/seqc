@@ -172,8 +172,7 @@ class ReadArray:
                 num_reads +=1
                 prev_alignment_name = alignment.qname       
         
-        translator = GeneIntervals(gtf_f)
-        #scaffold_chr = []
+        translator = GeneIntervals(gtf_f)       
         
         data = np.recarray((num_reads,), cls._dtype)
         prev_alignment_name=''
@@ -193,12 +192,6 @@ class ReadArray:
                         non_unique_align+=1
                     for i in range(len(genes)):
                         ma_pos.append(alignment.pos)
-                ### for debugging purposes
-                #else:
-                #    if len(scaffold_chr) < 100:
-                #    #if alignment.rname not in scaffold_chr:
-                #        scaffold_chr.append(alignment.rname)
-                #####
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
                 rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
@@ -279,7 +272,7 @@ class ReadArray:
         format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0], self._filtered[NO_GENES]))
         
             
-    def apply_barcode_correction(self, platform, barcode_files, reverse_complement=True, max_ed=2):
+    def apply_barcode_correction(self, platform, barcode_files, reverse_complement=False, max_ed=2):
         """
         Correct reads with incorrect barcodes according to the correct barcodes files.
         Reads with barcodes that have too many errors are filtered out.
@@ -314,6 +307,7 @@ class ReadArray:
                               DNA3Bit.encode(b'N'): 0}
         
         for r in self.data:
+            #read_idx+=1
             if not ReadArray.is_active_read(r):
                 continue
             barcodes = platform.extract_barcodes(int(r['cell']))
