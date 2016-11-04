@@ -468,8 +468,7 @@ def main(argv: list=None) -> None:
         else:
             error_rate = None
             log.info('Skipping barcode correction')
-        ##debug
-        raise Exception('Finished checking barcodes')
+
         # Resolve multimapping
         ra.resolve_alignments(args.index)
         files += ra.to_count_matrix(args.output_stem+'_phase4_')
