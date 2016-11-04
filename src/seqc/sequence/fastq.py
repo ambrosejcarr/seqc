@@ -173,7 +173,7 @@ def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
       fastq records that were processed.
     """
     directory, filename = os.path.split(fout)
-    if not os.path.isdir(directory):
+    if directory and not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
     genomic = Reader(genomic)
     num_records = 0

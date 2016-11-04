@@ -8,6 +8,7 @@ from multiprocessing import Process, Pool, cpu_count
 from queue import Queue, Empty
 from subprocess import Popen, check_output, PIPE, CalledProcessError, call
 from itertools import zip_longest
+from collections import namedtuple
 import fcntl
 import boto3
 import logging
@@ -16,6 +17,7 @@ import time
 from seqc import log
 import pandas as pd
 import numpy as np
+import shutil
 
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
@@ -28,116 +30,142 @@ logging.getLogger('requests').setLevel(logging.CRITICAL)
 class S3:
     """A series of methods to upload and download files from amazon s3"""
 
+    # determine which system should be used to upload and download
+    boto = False if shutil.which('aws') else True
+
     @staticmethod
-    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False,
-                      boto: bool=False):
+    def download_boto(link, prefix='', overwrite=False, recursive=False):
+        raise NotImplementedError('please download and configure aws cli.')
+
+    _FileIdentity = namedtuple('_FileIdentity', ['name', 'size', 'date', 'time'])
+
+    @staticmethod
+    def split_link(link_or_prefix: str):
+        """take an amazon s3 link or link prefix and return the bucket and key
+
+        :param link_or_prefix: str, an amazon s3 link
+        :returns: tuple, (bucket, key_or_prefix)
         """
-        download the file key located in bucket, sending output to filename fout
-
-        :param overwrite: True if overwrite existing file
-        :param fout: name of output file
-        :param key: key of S3 bucket
-        :param bucket: name of S3 bucket
-        :param boto: True if download using boto3 (default=False, uses awscli)
-        """
-
-        if not overwrite:
-            if os.path.isfile(fout):
-                log.info('Skipped download of file "{fout}" because it already '
-                         'exists.'.format(fout=fout))
-                return fout
-
-        # key should not start with a forward slash
-        if key.startswith('/'):
-            key = key[1:]
-
-        # if fout is not provided, download the key, cutting all directories
-        if fout is None:
-            fout = key.split('/')[-1]
-
-        # check if all directories exist. if not, create them.
-        *dirs, filename = fout.split('/')
-        dirs = '/'.join(dirs)
-        if not os.path.isdir(dirs):
-            os.makedirs(dirs)
-
-        # download the file
-        if not boto:
-            s3link = 's3://' + bucket + '/' + key
-            cmd = 'aws s3 cp {s3link} {fout}'.format(s3link=s3link, fout=fout)
-            download_cmd = shlex.split(cmd)
-            Popen(download_cmd).wait()
-        else:
-            client = boto3.client('s3')
-            client.download_file(bucket, key, fout)
-
-        return fout
+        if not link_or_prefix.startswith('s3://'):
+            raise ValueError('aws s3 links must start with s3://')
+        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
+        bucket, *key_or_prefix = link_or_prefix.split('/')
+        return bucket, '/'.join(key_or_prefix)
 
     @classmethod
-    def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
-                       overwrite=False, boto=False, filters=None):
+    def _fileidentity_from_awscli(cls, line, link, prefix):
+        line = line.strip().split()
+        bucket, key = cls.split_link(link)
+        name = prefix + line[3].replace(key, '')
+        return cls._FileIdentity(name, line[2], line[0], line[1])
+
+    @classmethod
+    def _fileidentity_from_ls(cls, line):
+        line = line.strip().split()
+        return cls._FileIdentity(line[8], line[4], line[5], line[6].rpartition('.')[0])
+
+    @classmethod
+    def awscli_omit_existing_files(cls, link, prefix, recursive):
+        """check if file or files at link exist given prefix
+
+        :param link:
+        :param prefix:
+        :param recursive:
+        :return:
         """
-        recursively download objects from amazon s3
-        recursively downloads objects from bucket starting with key_prefix.
-        If desired, removes a number of leading directories equal to cut_dirs. Finally,
-        can overwrite files lying in the download path if overwrite is True.
+        aws_cmd = 'aws s3 ls %s' % link  # get filenames
+        # if recursive:
+        #     aws_cmd += ' --recursive'
+        p = Popen(aws_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        aws_out, aws_err = p.communicate()
+        if aws_err:
+            raise ChildProcessError(aws_err.decode())
 
-        :param overwrite: True if overwrite existing file
-        :param cut_dirs: number of leading directories to remove
-        :param output_prefix: location to download file
-        :param key_prefix: key of S3 bucket to download
-        :param bucket: name of S3 bucket
-        :param boto: use boto3 to download files from S3 (takes longer than awscli)
-        :param filters: a list of file extensions to download without the period
-        (ex) ['h5', 'log'] for .h5 and .log files
-        :return: sorted list of file names that were downloaded
-        """
+        # parse the listed file(s)
+        to_download = [
+            cls._fileidentity_from_awscli(line, link, prefix)
+            for line in aws_out.decode().strip().split('\n')
+            ]
 
-        # get bucket and file names
-        client = boto3.client('s3')
-        keys = cls.listdir(bucket, key_prefix)
-
-        if filters:
-            to_download = []
-            for f_ext in filters:
-                to_download += [item for item in keys if f_ext in item]
-            keys = to_download
-
-        # output prefix needs to end in '/'
-        if not output_prefix.endswith('/'):
-            output_prefix += '/'
-
-        # download data
-        output_files = []
-        for k in keys:
-
-            # drop first directory from output name, place in data folder
-            fout = output_prefix + '/'.join(k.split('/')[cut_dirs:])
-            dirs = '/'.join(fout.split('/')[:-1])
-
-            # make directories if they don't exist
-            if not os.path.isdir(dirs):
-                os.makedirs(dirs)
-
-            # check for overwriting
-            if os.path.isfile(fout):
-                if overwrite is False:
-                    log.info('Skipped download of file "{fout}" because it already '
-                             'exists.'.format(fout=fout))
-                    output_files.append(fout)
-                    continue
-
-            # download file
-            if not boto:
-                s3link = 's3://' + bucket + '/' + k
-                cmd = 'aws s3 cp {s3link} {fout}'.format(s3link=s3link, fout=fout)
-                download_cmd = shlex.split(cmd)
-                Popen(download_cmd).wait()
+        # existing files
+        ls_cmd = 'ls -l --full-time %s*' % prefix
+        p = Popen(ls_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        ls_out, ls_err = p.communicate()
+        if ls_err:
+            if b'No such file or directory' in ls_err:
+                exists = []
             else:
-                client.download_file(bucket, k, fout)
+                raise ChildProcessError(ls_err.decode())
+        else:
+            exists = [
+                cls._fileidentity_from_ls(line)
+                for line in ls_out.decode().strip().split('\n')]
 
-            output_files.append(fout)
-        return sorted(output_files)
+        omission_string = ''
+        for f in to_download:
+            if f in exists:
+                omission_string += ' --exclude "%s"' % f.name.replace(prefix, '')
+
+        return omission_string
+
+    @classmethod
+    def download_awscli(cls, link, prefix='./', overwrite=True, recursive=False):
+        """download file(s) at s3 address link to prefix using aws cli
+
+        :param link:
+        :param prefix:
+        :param overwrite:
+        :param recursive:
+        :return list: all downloaded filenames
+        """
+        if prefix is '':
+            prefix = './'
+
+        if overwrite is False:
+            raise ValueError('downloads with awscli cannot control override behavior, '
+                             'any existing files will be overwritten.')
+        if not recursive and link.endswith('/'):
+            raise ValueError(
+                'provided link %s was a prefix but download was not called recursively. '
+                'Please provide a filename or download recursively.' % link)
+
+        cmd = 'aws s3 cp %s %s' % (link, prefix)
+        if recursive:
+            cmd += ' --recursive'
+
+        omit_cmd = cmd + cls.awscli_omit_existing_files(link, prefix, recursive)
+
+        # download the files
+        p = Popen(omit_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        out, err = p.communicate()
+        if err:
+            raise ChildProcessError(err.decode())
+
+        # get the names of the files that were downloaded or already present
+        d = Popen(cmd + ' --dryrun', shell=True, stdout=PIPE, stderr=PIPE)
+        out, err = d.communicate()
+        if err:
+            raise ChildProcessError(err.decode())
+        downloaded_files = [line.strip().split()[-1] for line in
+                            out.decode().strip().split('\n') if line.strip()]
+        if log:
+            log.notify('downloaded (or already present) files:\n\t[%s]' % ',\n\t'.join(
+                downloaded_files))
+        return downloaded_files
+
+    @classmethod
+    def download(cls, link, prefix='', overwrite=True, recursive=False):
+        """
+        :param link:
+        :param prefix:
+        :param overwrite:
+        :param recursive:
+        :return:
+        """
+        if cls.boto:
+            return cls.download_boto(link, prefix, overwrite, recursive)
+        else:
+            return cls.download_awscli(link, prefix, overwrite, recursive)
 
     @staticmethod
     def upload_file(filename, bucket, key, boto=False):
@@ -271,21 +299,6 @@ class S3:
         client = boto3.client('s3')
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
-
-    @staticmethod
-    def split_link(link_or_prefix: str):
-        """
-        take an amazon s3 link or link prefix and return the bucket and key for use with
-        S3.download_file() or S3.download_files()
-
-        :param link_or_prefix: str, an amazon s3 link
-        :returns: tuple, (bucket, key_or_prefix)
-        """
-        if not link_or_prefix.startswith('s3://'):
-            raise ValueError('aws s3 links must start with s3://')
-        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
-        bucket, *key_or_prefix = link_or_prefix.split('/')
-        return bucket, '/'.join(key_or_prefix)
 
     @classmethod
     def check_links(cls, input_args: list) -> None:
@@ -801,87 +814,3 @@ class ProcessManager:
             out = out.decode().strip()
             output.append(out)
         return output
-
-
-def _iter_loadtxt(filename, delimiter='\t', skiprows=0, skipcols=0, dtype=np.float32):
-    """badly written function that relies upon some bad scoping practices to iterate over lines of a text file
-
-    :param str filename: name of file to read
-    :param str delimiter: text delimiter to separate tokens
-    :param int skiprows: number of rows to skip at head of this section
-    :param int skipcols: number of columns to skip at head of this section
-    :param dtype: numpy datatype to apply to each token
-    :return np.ndarray: data matrix
-    """
-    def iter_func():
-        with open(filename, 'r') as infile:
-            for _ in range(skiprows):
-                next(infile)
-            for line in infile:
-                line = line.rstrip().strip(delimiter).split(delimiter)
-                for item in line[skipcols:]:
-                    yield dtype(item)
-        _iter_loadtxt.rowlength = len(line) - skipcols
-
-    data = np.fromiter(iter_func(), dtype=dtype)
-    data = data.reshape((-1, _iter_loadtxt.rowlength))
-    return data
-
-
-def read_biscuit_experiment(data_file, col_label_file, row_label_file, delimiter='\t', skiprows=0, skipcols=0,
-                            dtype=np.float32) -> pd.DataFrame:
-    """function to read the results of biscuit imputation on scRNAseq data
-
-    :param str data_file: data file to read
-    :param str col_label_file: file containing column ids
-    :param str row_label_file: file containing row ids
-    :param str delimiter: text delimiter that separates tokens
-    :param int skiprows: number of lines to skip in each section (dangerous, applied at split points)
-    :param int skipcols: number of columns to skip in each section
-    :param dtype: numpy datatype to apply to the data
-    :return pd.DataFrame: transposed dataframe of cells x genes containing appropriate indexes
-    """
-
-    # todo should be robust to different numbers of columns
-    # read column labels containing sample, cellid and cluster. Convert to integers where appropriate.
-    with open(col_label_file, 'r') as f:
-        sample, cellid, cluster = (l.strip().split()[1:] for l in f.readlines())
-        cellid = list(map(int, cellid))
-        cluster = list(map(int, cluster))
-
-    # read row labels containing gene information
-    with open(row_label_file, 'r') as f:
-        gene = f.read().strip().split()
-
-    # create index
-    index = pd.MultiIndex.from_tuples(list(zip(sample, cellid, cluster)))
-    columns = pd.Index(gene)
-
-    # get approximate number of lines in the data file; set some variables
-    nlines = int(check_output('wc -l {}'.format(data_file), shell=True).strip().split()[0].decode())
-    lines_per_process = int(np.ceil(nlines / cpu_count()))
-    tmpdir = os.environ['TMPDIR']
-
-    # split the file and recover the parts
-    split_res = check_output('split -l {lines!s} {filename} {tmpdir}til_'.format(
-        lines=lines_per_process, filename=data_file, tmpdir=tmpdir), shell=True)
-    split_files = [tmpdir + f for f in os.listdir(tmpdir) if f.startswith('til_')]
-
-    # create a function to map data
-    partial(_iter_loadtxt, delimiter=delimiter, skiprows=skiprows, skipcols=skipcols, dtype=dtype)
-
-    # multiprocess the files
-    with closing(Pool()) as pool:
-        raw_mats = pool.map(_iter_loadtxt, split_files)
-
-    # construct the new matrix
-    m = np.vstack(raw_mats).T  # stack and transpose to cells x genes
-    df = pd.DataFrame(m, index=index, columns=columns)
-
-    # clear out the tmpdir
-    for f in os.listdir(tmpdir):
-        if f.startswith('til_'):
-            os.remove(tmpdir + f)
-    print('files removed from tmpdir {}'.format(tmpdir))
-
-    return df
