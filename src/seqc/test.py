@@ -717,7 +717,7 @@ class TestEC2(unittest.TestCase):
         flocal = os.environ['TMPDIR'] + 'test_doing_things.txt'
         with ec2.AWSInstance(
                 volume_size=25, instance_type='c3.large', synchronous=True) as aws:
-            with ec2.SSHConnection(aws.instance_id, aws.rsa_key_path) as ssh:
+            with ec2.SSHConnection(aws.instance_id, aws.rsa_key) as ssh:
                 ssh.execute('echo "I did something!" > /data/test_doing_things.txt')
                 ssh.get_file('/data/test_doing_things.txt', flocal)
         with open(flocal) as f:

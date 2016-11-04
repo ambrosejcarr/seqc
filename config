@@ -1,9 +1,0 @@
-[seqc]
-aws_public_access_key = None
-aws_secret_access_key = None
-availability_zone = us-east-1c
-rsa_key_path = None
-subnet_id = subnet-70d7ec36
-image_id = ami-00521d17
-base_space_token = None
-instance_type = c4.8xlarge

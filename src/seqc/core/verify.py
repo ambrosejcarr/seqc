@@ -2,7 +2,6 @@ from seqc import io, platforms
 import shutil
 import inspect
 from math import ceil
-from seqc.core import config
 
 
 def estimate_required_volume_size(args):
@@ -19,6 +18,7 @@ def estimate_required_volume_size(args):
     cushion = 9e10
     total = 0
 
+    # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
         seqc_input = seqc_input + args.barcode_fastq + args.genomic_fastq
         io.S3.check_links(seqc_input)
@@ -125,11 +125,8 @@ def run(args) -> float:
 
     # if basespace is being used, make sure there is a valid basespace token
     if args.basespace and not hasattr(args, 'basespace_token'):
-        configuration = config.read_config('~/.seqc/config')
-        setattr(
-            args, 'basespace_token', configuration['BaseSpaceToken']['base_space_token'])
-    else:
-        setattr(args, 'basespace_token', None)
+        raise RuntimeError('if --basespace input is selected, user must provide an OAuth '
+                           'token using the --basespace-token parameter.')
 
     # check that spot-bid is correct
     if args.spot_bid is not None:

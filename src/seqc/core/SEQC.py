@@ -314,7 +314,7 @@ def run(args) -> None:
 
         # check if the platform name provided is supported by seqc
         platform_name = verify.platform_name(args.platform)
-        platform = platforms.AbstractPlatform.factory(platform_name)  # returns platform class
+        platform = platforms.AbstractPlatform.factory(platform_name)  # returns platform
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
@@ -355,12 +355,15 @@ def run(args) -> None:
         files += ra.to_count_matrix(args.output_prefix + '_phase1_')
         log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
-        ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score = args.max_dust_score)
+        ra.apply_filters(
+            required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
         files += ra.to_count_matrix(args.output_prefix + '_phase2_')
         log.info('Read array after filtering: {}'.format(ra))
         # Correct barcodes
         if platform.check_barcodes:
-            error_rate = ra.apply_barcode_correction(platform, args.barcode_files, reverse_complement=False, max_ed=args.max_ed)
+            error_rate = ra.apply_barcode_correction(
+                platform, args.barcode_files, reverse_complement=False,
+                max_ed=args.max_ed)
             files += ra.to_count_matrix(args.output_prefix+'_phase3_')
             log.info('Read array after barcode correction: {}'.format(ra))
         else:
@@ -472,7 +475,7 @@ def main(argv):
     if arguments.remote:
         remote_args = {
             k: getattr(verified_args, k) for k in
-            ('instance_type', 'spot_bid', 'log_name', 'volume_size', 'email') if
+            ('rsa_key', 'instance_type', 'spot_bid', 'volume_size') if
             getattr(verified_args, k)}
         ec2.AWSInstance(synchronous=False, **remote_args)(func)(verified_args)
     else:
