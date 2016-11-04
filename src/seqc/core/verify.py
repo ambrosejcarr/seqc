@@ -1,7 +1,33 @@
-from seqc import io, platforms
+import os
 import shutil
 import inspect
 from math import ceil
+from seqc import io, platforms
+
+
+def filesize(filename):
+    """return filesize of filename in bytes
+
+    :param str filename: full path to file
+    :return int: number of bytes in filename
+    """
+    return os.stat(filename).st_size
+
+
+def validate_and_return_size(filename):  # todo needs to take directories too
+    """return true if a link or filepath points to a valid file
+
+    :param str filename: filepath or s3 link
+    :return None: raises errors if path or link is invalid.
+    """
+    if filename.startswith('s3://'):
+        io.S3.check_links([filename])
+        return io.S3.obtain_size(filename)
+    else:
+        if not os.path.isfile(filename):
+            raise ValueError('%s does not point to a valid file')
+        else:
+            return filesize(filename)
 
 
 def estimate_required_volume_size(args):
@@ -12,57 +38,66 @@ def estimate_required_volume_size(args):
     """
 
     # keep track of how much space is needed given input
-    seqc_input = args.barcode_files + [args.index]
+    # seqc_input = args.barcode_files + [args.index]
+    # total = 0
+    total = validate_and_return_size(args.barcode_files)
 
     # using worst-case estimates to make sure we don't run out of space
-    cushion = 9e10
-    total = 0
 
     # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
-        seqc_input = seqc_input + args.barcode_fastq + args.genomic_fastq
-        io.S3.check_links(seqc_input)
+        # seqc_input = seqc_input + args.barcode_fastq + args.genomic_fastq
+        # io.S3.check_links(seqc_input)
+        #
+        # # checking size of input file
+        # input_fastq = args.barcode_fastq + args.genomic_fastq
+        # for item in input_fastq:
+        #     total += io.S3.obtain_size(item)
+        # total += (total * 14) + cushion
+        total += (validate_and_return_size(args.barcode_fastq) * 14) + 9e10
+        total += (validate_and_return_size(args.genomic_fastq) * 14) + 9e10
+        total += validate_and_return_size(args.index)
 
-        # checking size of input file
-        input_fastq = args.barcode_fastq + args.genomic_fastq
-        for item in input_fastq:
-            total += io.S3.obtain_size(item)
-        total += (total * 14) + cushion
-    if args.samfile:
-        seqc_input += [args.samfile]
-        io.S3.check_links(seqc_input)
+    elif args.samfile:
+        # seqc_input += [args.samfile]
+        # io.S3.check_links(seqc_input)
+        #
+        # # checking size of input file
+        # total += io.S3.obtain_size(args.samfile)
+        # total += (total * 2) + 2e10
+        total += (validate_and_return_size(args.samfile) * 2) + 2e10
+        total += validate_and_return_size(args.index)
 
-        # checking size of input file
-        total += io.S3.obtain_size(args.samfile)
-        total += (total * 2) + 2e10
-    if args.merged_fastq:
-        seqc_input += [args.merged_fastq]
-        io.S3.check_links(seqc_input)
+    elif args.merged_fastq:
+        # seqc_input += [args.merged_fastq]
+        # io.S3.check_links(seqc_input)
+        #
+        # # checking size of input file
+        # total += io.S3.obtain_size(args.merged_fastq)
+        # total += (total * 13) + cushion
+        total += (validate_and_return_size(args.merged_fastq) * 13) + 9e10
+        total += validate_and_return_size(args.index)
 
-        # checking size of input file
-        total += io.S3.obtain_size(args.merged_fastq)
-        total += (total * 13) + cushion
+    elif args.read_array:
+        # seqc_input += [args.read_array]
+        # seqc_input.remove(args.index)
+        # io.S3.check_links(seqc_input)
+        #
+        # # checking size of input
+        # for item in seqc_input:
+        #     total += io.S3.obtain_size(item)
+        # total += 1e10
+        total += validate_and_return_size(args.read_array)
     if args.basespace:
         if not args.basespace_token or args.basespace_token == 'None':
             raise ValueError(
                 'If the --basespace argument is used, the basespace token must be '
                 'specified in the seqc config file or passed as --basespace-token')
-        seqc_input += [args.basespace]
-        io.S3.check_links(seqc_input)
-    if args.read_array:
-        seqc_input += [args.read_array]
-        seqc_input.remove(args.index)
-        io.S3.check_links(seqc_input)
 
-        # checking size of input
-        for item in seqc_input:
-            total += io.S3.obtain_size(item)
-        total += 1e10
-    if args.basespace:
         io.BaseSpace.check_sample(args.basespace, args.basespace_token)
-        # checking size of input file
-        total = io.BaseSpace.check_size(args.basespace, args.basespace_token)
-        total += (total * 14) + cushion
+        # total = io.BaseSpace.check_size(args.basespace, args.basespace_token)
+        # total += (total * 14) + cushion
+        total += io.BaseSpace.check_size(args.basespace, args.basespace_token)
 
     # return total size needed for EBS volume
     return ceil(total * 1e-9)

@@ -381,7 +381,7 @@ def run(args) -> None:
         files += ra.to_count_matrix(args.output_prefix + '_phase5_')
         log.info('Read array after error correction: {}'.format(ra))
         
-        #Upload count matrices files
+        # Upload count matrices files
         bucket, key = io.S3.split_link(args.upload_prefix)
         for item in files:
             try:
