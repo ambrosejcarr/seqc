@@ -14,8 +14,8 @@ def filesize(filename):
     return os.stat(filename).st_size
 
 
-def validate_and_return_size(filename):  # todo needs to take directories too
-    """return true if a link or filepath points to a valid file
+def validate_and_return_size(filename):
+    """return true if a link or filepath points to a valid file or directory
 
     :param str filename: filepath or s3 link
     :return None: raises errors if path or link is invalid.
@@ -24,10 +24,13 @@ def validate_and_return_size(filename):  # todo needs to take directories too
         io.S3.check_links([filename])
         return io.S3.obtain_size(filename)
     else:
-        if not os.path.isfile(filename):
-            raise ValueError('%s does not point to a valid file')
-        else:
+        if os.path.isfile(filename):
             return filesize(filename)
+        elif os.path.isdir(filename.rstrip('/')):
+            return sum(filesize(filename + f) for f in os.listdir(filename))
+        else:
+            print(filename)
+            raise ValueError('%s does not point to a valid file')
 
 
 def estimate_required_volume_size(args):
@@ -40,22 +43,14 @@ def estimate_required_volume_size(args):
     # keep track of how much space is needed given input
     # seqc_input = args.barcode_files + [args.index]
     # total = 0
-    total = validate_and_return_size(args.barcode_files)
+    total = sum(validate_and_return_size(f) for f in args.barcode_files)
 
     # using worst-case estimates to make sure we don't run out of space
 
     # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
-        # seqc_input = seqc_input + args.barcode_fastq + args.genomic_fastq
-        # io.S3.check_links(seqc_input)
-        #
-        # # checking size of input file
-        # input_fastq = args.barcode_fastq + args.genomic_fastq
-        # for item in input_fastq:
-        #     total += io.S3.obtain_size(item)
-        # total += (total * 14) + cushion
-        total += (validate_and_return_size(args.barcode_fastq) * 14) + 9e10
-        total += (validate_and_return_size(args.genomic_fastq) * 14) + 9e10
+        total += sum(validate_and_return_size(f) for f in args.barcode_fastq) * 14 + 9e10
+        total += sum(validate_and_return_size(f) for f in args.genomic_fastq) * 14 + 9e10
         total += validate_and_return_size(args.index)
 
     elif args.samfile:

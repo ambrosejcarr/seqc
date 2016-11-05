@@ -272,7 +272,7 @@ def run(args) -> None:
             email=args.email, upload=args.upload_prefix, log_name=args.log_name):
         pigz, mutt = verify.executables('pigz', 'mutt')
         if mutt:
-            log.notify('mutt executable identified, email will be sent when instance '
+            log.notify('mutt executable identified, email will be sent when run '
                        'terminates. ')
         else:
             log.notify('mutt was not found on this machine; an email will not be sent to '
@@ -295,12 +295,14 @@ def run(args) -> None:
             args.barcode_fastq, output_dir + '/barcode_fastq/')
 
         # check if the index must be downloaded
+        print(args.index)
         if any((args.samfile, args.read_array)):
             index_link = args.index + 'annotations.gtf'
         else:
             index_link = args.index
         download.s3_data([index_link], output_dir + '/index/')
         args.index = output_dir + '/index/'
+        print(args.index)
 
         # check if barcode files must be downloaded
         args.barcode_files = download.s3_data(
@@ -381,22 +383,23 @@ def run(args) -> None:
         files += ra.to_count_matrix(args.output_prefix + '_phase5_')
         log.info('Read array after error correction: {}'.format(ra))
         
-        # Upload count matrices files
-        bucket, key = io.S3.split_link(args.upload_prefix)
-        for item in files:
-            try:
-                ec2.Retry(retries=5)(io.S3.upload_file)(item, bucket, key)
-                item_name = item.split('/')[-1]
-                log.info('Successfully uploaded %s to the specified S3 location '
-                         '"%s%s".' % (item, args.upload_prefix, item_name))
-            except FileNotFoundError:
-                log.notify('Item %s was not found! Continuing with upload...' % item)
+        if args.upload_prefix:
+            # Upload count matrices files
+            bucket, key = io.S3.split_link(args.upload_prefix)
+            for item in files:
+                try:
+                    ec2.Retry(retries=5)(io.S3.upload_file)(item, bucket, key)
+                    item_name = item.split('/')[-1]
+                    log.info('Successfully uploaded %s to the specified S3 location '
+                             '"%s%s".' % (item, args.upload_prefix, item_name))
+                except FileNotFoundError:
+                    log.notify('Item %s was not found! Continuing with upload...' % item)
 
-        # uploading read array to S3 if created, else removing read array
-        if input_data == 'readarray':
-            log.info('Removing .h5 file for memory management.')
-            rm_ra = 'rm {fname}'.format(fname=args.read_array)
-            io.ProcessManager(rm_ra).run_all()
+            # uploading read array to S3 if created, else removing read array
+            if input_data == 'readarray':
+                log.info('Removing .h5 file for memory management.')
+                rm_ra = 'rm {fname}'.format(fname=args.read_array)
+                io.ProcessManager(rm_ra).run_all()
 
 # This is commented out until we have a better way to save the ReadArray
 #        else:

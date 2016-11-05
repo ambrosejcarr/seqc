@@ -20,9 +20,39 @@ class TestNoAWSRun(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        testdir = os.environ['TMPDIR'] + 'test_local_seqc'
-        call('aws s3 cp ')
+        cls.testdir = os.environ['TMPDIR'] + 'test_local_seqc'
+        os.makedirs(cls.testdir, exist_ok=True)
+        cls.index = '{testdir}/index/'.format(testdir=cls.testdir)
+        # if not os.path.isdir(cls.testdir + '/index'):
+        #     call('aws s3 cp s3://dplab-data/genomes/mm38_phiX/ {testdir}/index/ '
+        #          '--recursive'.format(testdir=cls.testdir), shell=True)
 
+    def test_in_drop_v2(self):
+        platform = 'in_drop_v2'
+        barcode_fastq = '{testdir}/barcode/'.format(testdir=self.testdir)
+        genomic_fastq = '{testdir}/genomic/'.format(testdir=self.testdir)
+        output = self.testdir + '/test'
+        barcode_files = '{testdir}/barcode_files/'.format(testdir=self.testdir)
+        call('aws s3 cp s3://dplab-data/seqc/test/{platform}/barcode/ {testdir}/barcode '
+             '--recursive'.format(platform=platform, testdir=self.testdir), shell=True)
+        call('aws s3 cp s3://dplab-data/seqc/test/{platform}/genomic/ {testdir}/genomic '
+             '--recursive'.format(platform=platform, testdir=self.testdir), shell=True)
+        # call('aws s3 cp s3://dplab-data/barcodes/{platform}/flat/ '
+        #      '{testdir}/barcode_files/ --recursive'.format(
+        #          platform=platform, testdir=self.testdir), shell=True)
+
+        argv = [
+            'run',
+            platform,
+            '-o', output,
+            '-i', self.index,
+            '-b', barcode_fastq,
+            '-g', genomic_fastq,
+            '--barcode-files', barcode_files,
+            '--local',
+            '--log-name', '{output}_seqc.log']
+        print('\n'.join(argv))
+        SEQC.main(argv)
 
 
 class TestRemoteRun(unittest.TestCase):
