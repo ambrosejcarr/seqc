@@ -95,7 +95,7 @@ class AbstractPlatform:
                 res.insert(0,seq)
                 return res
             res.insert(0,seq&((1<<bc_len*DNA3Bit.bits_per_base())-1))
-            seq>>=bc_len
+            seq>>=bc_len*DNA3Bit.bits_per_base()
         return res
 
 
