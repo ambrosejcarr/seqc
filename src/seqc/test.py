@@ -76,6 +76,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop(self):
         platform = 'in_drop'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -95,6 +96,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -113,6 +115,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop_v2_no_mt(self):
         platform = 'in_drop_v2'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -133,6 +136,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop_v3(self):
         platform = 'in_drop_v3'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -151,6 +155,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_drop_seq(self):
         platform = 'drop_seq'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -169,6 +174,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_ten_x(self):
         platform = 'ten_x'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.mouse,
@@ -189,6 +195,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_mars1_seq(self):
         platform = 'mars1_seq'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -208,6 +215,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_mars2_seq(self):
         platform = 'mars2_seq'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -274,6 +282,7 @@ class TestSEQC(unittest.TestCase):
             '--instance-type', 'c4.large',
             '--spot-bid', '0.5',
             '--log-name', 'test_seqc.log',
+            '--rsa-key', os.path.expanduser('~/.ssh/aws.rsa')
 
         ]
         SEQC.main(argv)

@@ -318,10 +318,15 @@ class AWSInstance(object):
             ssh.execute(
                 'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
             log.notify("Sources are uploaded and decompressed, installing seqc.")
-            ssh.execute('sudo -H pip3 install -e software/seqc/')
-
-            # test the installation
             try:
+                ssh.execute('sudo -H pip3 install -e software/seqc/')
+            except ChildProcessError as e:
+                if 'pip install --upgrade pip' in str(e):
+                    pass
+                else:
+                    raise
+
+            try:  # test the installation
                 ssh.execute('SEQC.py -h')
             except:
                 log.notify('SEQC installation failed.')
