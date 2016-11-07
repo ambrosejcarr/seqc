@@ -4,6 +4,7 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 from contextlib import closing
 from scipy.stats import t
+import pandas as pd
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 
@@ -136,7 +137,7 @@ def whelchs_t(a_mu, a_var, b_mu, b_var, a_n, b_n):
 
 
 def bootstrap_t(a, b, n_samples=100, n_cells=None, alpha=0.05,
-                downsample_value_function=np.median):
+                downsample_value_function=np.median, labels=None):
     """
 
     :param np.ndarray a:
@@ -147,6 +148,7 @@ def bootstrap_t(a, b, n_samples=100, n_cells=None, alpha=0.05,
     :param Callable downsample_value_function: function that identifies the number of
       molecules n to sample from a and b. the sampling number will be the minimum of the
       result across a and b. default = np.median. Other values include np.mean and np.max.
+    :param labels: feature labels for columns of a & b
     :return (int, int) statistic, q_val:
     """
     assert_input_non_negative(a, b)
@@ -171,4 +173,9 @@ def bootstrap_t(a, b, n_samples=100, n_cells=None, alpha=0.05,
 
     q = multipletests(p, alpha=alpha, method='fdr_tsbh')[1]
 
-    return statistic, ci_95, p, q
+    results = pd.DataFrame(
+        data=np.vstack([statistic, ci_95.T, p, q]).T,
+        index=labels,
+        columns=['t', 't_ci95_low', 't_ci95_high', 'p', 'q'])
+
+    return results
