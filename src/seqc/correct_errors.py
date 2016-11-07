@@ -1,12 +1,7 @@
 from scipy.special import gammainc
-from itertools import permutations
-from sys import maxsize
-from scipy.sparse import coo_matrix
 from seqc.sequence.encodings import DNA3Bit
-from seqc.sequence.barcodes import revcomp_bytes
 import numpy as np
 from seqc import log
-import random
 from seqc.read_array import ReadArray
 import time
 

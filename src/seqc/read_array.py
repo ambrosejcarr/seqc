@@ -3,7 +3,6 @@ import tables as tb
 from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
-from seqc.sequence.barcodes import revcomp_bytes, revcomp
 import os
 import seqc.correct_errors
 import seqc.multialignment as mm
@@ -173,7 +172,6 @@ class ReadArray:
                 prev_alignment_name = alignment.qname       
         
         translator = GeneIntervals(gtf_f)
-        #scaffold_chr = []
         
         data = np.recarray((num_reads,), cls._dtype)
         prev_alignment_name=''
@@ -193,12 +191,6 @@ class ReadArray:
                         non_unique_align+=1
                     for i in range(len(genes)):
                         ma_pos.append(alignment.pos)
-                ### for debugging purposes
-                #else:
-                #    if len(scaffold_chr) < 100:
-                #    #if alignment.rname not in scaffold_chr:
-                #        scaffold_chr.append(alignment.rname)
-                #####
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
                 rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
@@ -218,8 +210,6 @@ class ReadArray:
                         ma_pos.append(alignment.pos)
             
         seqc.log.info('non unique alignments count: {}'.format(non_unique_align))
-        #seqc.log.info('focus gene {}. Total alignmens: {}, total reads: {}, total uniquely aligned reads: {}'.format(focus_gene, fgene_tot_reads, fgene_tot_reads, fgene_tot_uniq))
-        #seqc.log.info('scaffold chrs: {}'.format(scaffold_chr))
         res_ra = cls(data, non_unique_align)
         res_ra._total_alignments = len(reader)
         res_ra._total_reads = num_reads
@@ -279,7 +269,7 @@ class ReadArray:
         format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0], self._filtered[NO_GENES]))
         
             
-    def apply_barcode_correction(self, platform, barcode_files, reverse_complement=True, max_ed=2):
+    def apply_barcode_correction(self, platform, barcode_files, max_ed=2):
         """
         Correct reads with incorrect barcodes according to the correct barcodes files.
         Reads with barcodes that have too many errors are filtered out.
@@ -287,16 +277,9 @@ class ReadArray:
         
         # Read the barcodes into lists
         correct_barcodes = []
-        if reverse_complement:
-            for barcode_file in barcode_files:
-                with open(barcode_file, 'r') as f:
-                    correct_barcodes.append(set(DNA3Bit.encode(revcomp(line.strip()))
-                                                for line in f.readlines()))
-        else:
-            for barcode_file in barcode_files:
-                with open(barcode_file, 'r') as f:
-                    correct_barcodes.append(set(DNA3Bit.encode(line.strip())
-                                                for line in f.readlines()))
+        for barcode_file in barcode_files:
+            with open(barcode_file, 'r') as f:
+                correct_barcodes.append(set(DNA3Bit.encode(line.strip()) for line in f.readlines()))
         
         num_barcodes = platform.num_barcodes
         dynamic_codes_table     = [{}]*num_barcodes
@@ -421,38 +404,6 @@ class ReadArray:
         seqc.log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
         return res
     
-    def reads_passing_filters(self, min_poly_t: int, max_dust_score: int):
-        """
-        Subset the ReadArray returning a new ReadArray containing eads that passed all
-        filters
-
-        :param min_poly_t: int, minimum number of T nucleotides that defined a valid
-          capture primer
-        :param max_dust_score: int, higher scores indicate increasingly degenerate
-          sequences. Typically sequences with dust_score > 10 may be discarded.
-        :return: ReadArray
-        """
-        phix_genes = np.array(range(1, 7)) * 111111111
-        data = self.data[((self.data['n_poly_t'] >= min_poly_t) &
-                          (self.data['dust_score'] <= max_dust_score) &
-                          (self.data['gene'] != 0) &
-                          (self.data['cell'] != 0) &
-                          (self.data['rmt'] != 0))]
-
-        # filter out phiX genes
-        not_phix = ~np.in1d(data['gene'], phix_genes)
-        data = data[not_phix]
-
-        # filter out N's in rmt
-        res = np.zeros(len(data), dtype=np.bool)
-        rmt = data['rmt'].copy()
-        while np.any(rmt):
-            n_filter = rmt & 0b111 == 0b111
-            res[n_filter] = True
-            rmt >>= 3
-        data = data[~res]
-        return ReadArray(data)
-
     def save(self, archive_name: str) -> None:
         """save a ReadArray in .h5 format
 

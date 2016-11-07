@@ -165,15 +165,6 @@ class in_drop(AbstractPlatform):
                 cell, rmt, poly_t = b'', b'', b''
         g.add_annotation((b'', cell, rmt, poly_t))
         return g
-        
-    def extract_barcodes(self, seq):
-        """
-        Return the two barcodes from the encoded cell field.
-        from left to right:
-        cb1 - the first 8 bases
-        cb2 - the last 8 bases
-        """
-        return [seq >> (8 * 3), seq & 0o77777777]
 
 
 class in_drop_v2(AbstractPlatform):
