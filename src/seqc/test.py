@@ -1,18 +1,17 @@
-import ftplib
-import gzip
+from seqc.stats.ttest import bootstrap_t
 import os
 import unittest
-
-import nose2
-import numpy as np
-import pandas as pd
-import seqc
-from seqc import ec2
+import gzip
 from seqc import log
-from seqc.core import SEQC
 from seqc.io import S3
+import pandas as pd
+import numpy as np
+import ftplib
+import nose2
 from seqc.sequence import index, gtf
-from seqc.stats.ttest import bootstrap_t
+from seqc.core import SEQC
+from seqc import ec2, io
+import seqc
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
@@ -767,6 +766,7 @@ class TestEC2(unittest.TestCase):
 
         create_index()
 
+
 class TestGTest(unittest.TestCase):
 
     def test_g_test_real_data(self):
@@ -785,14 +785,10 @@ class TestGTest(unittest.TestCase):
         ntile = int(np.ceil(df.shape[0] / 5))
         labels = np.tile(np.arange(5), ntile)[:df.shape[0]]
 
-
-
         g, assign = g_test(df, labels)
 
         print(g)
         print(assign)
-
-
 
 
 class TestTTest(unittest.TestCase):
@@ -841,8 +837,6 @@ class TestTTest(unittest.TestCase):
         print([x.shape for x in r])
         v = np.hstack([r[0][:, np.newaxis], r[1], r[2][:, np.newaxis], r[3][:, np.newaxis]])
         print(pd.DataFrame(v, index=index, columns=['t', 'ci_low', 'ci_high', 'p', 'q']))
-
-
 
 
 #########################################################################################
