@@ -1,18 +1,19 @@
+import ftplib
+import gzip
 import os
 import unittest
-import gzip
-from seqc import log
-from seqc.io import S3
-import pandas as pd
-import numpy as np
-import ftplib
-import nose2
-from seqc.sequence import index, gtf
-from seqc.core import SEQC
-from seqc.ttest import bootstrap_t
-from seqc import ec2
 
+import nose2
+import numpy as np
+import pandas as pd
 import seqc
+from seqc import ec2
+from seqc import log
+from seqc.core import SEQC
+from seqc.io import S3
+from seqc.sequence import index, gtf
+from seqc.stats.ttest import bootstrap_t
+
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
 
