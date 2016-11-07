@@ -3,7 +3,7 @@ import pandas as pd
 from seqc import io, log
 import shutil
 from subprocess import Popen, PIPE
-from seqc.stats import ExperimentalYield
+from seqc.stats.experimental_yield import ExperimentalYield
 from seqc.ec2 import Retry
 
 

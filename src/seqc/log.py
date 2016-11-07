@@ -2,8 +2,7 @@ import json
 import logging
 from datetime import datetime
 import pandas as pd
-import seqc.stats
-import seqc.exceptions
+from seqc.stats.experimental_yield import ExperimentalYield
 from collections import defaultdict
 import os
 import re
@@ -96,7 +95,7 @@ class LogData:
         :return summary: str, a regex object that may contain errors
         """
         if not summary:
-            summary = seqc.stats.ExperimentalYield.output
+            summary = ExperimentalYield.output
         replacements = [
             ('{divide}', '-*?'),
             ('(', '\('),
