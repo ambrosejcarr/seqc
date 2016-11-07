@@ -7,3 +7,4 @@ from .smoothing import smoothing
 from .tree import Tree as tree
 from .pca import PCA as pca
 from .tsne import TSNE as tsne
+from .g_test import g_test

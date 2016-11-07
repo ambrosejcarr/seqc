@@ -771,7 +771,7 @@ class TestGTest(unittest.TestCase):
 
     def test_g_test_real_data(self):
 
-        from seqc.g_test import g_test
+        from seqc.stats.g_test import g_test
         import os
 
         filename = os.path.expanduser(
