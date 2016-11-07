@@ -1,5 +1,4 @@
 import os
-# import logging
 import time
 import random
 import configparser
@@ -12,11 +11,11 @@ from paramiko.ssh_exception import NoValidConnectionsError
 import paramiko
 import boto3
 import socket
-from subprocess import Popen, check_output, PIPE, CalledProcessError
+from subprocess import Popen, PIPE
 from seqc import log, io
 from seqc.core import verify
 from seqc.exceptions import (
-    RetryLimitExceeded, ConfigurationError, InstanceNotRunningError, EC2RuntimeError)
+    RetryLimitExceeded, InstanceNotRunningError, EC2RuntimeError)
 from botocore.exceptions import ClientError
 
 # change some logging defaults
@@ -24,31 +23,22 @@ log.logging.getLogger('paramiko').setLevel(log.logging.CRITICAL)
 log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
 
-# set some configuration values
-config_file = os.path.expanduser('~/.seqc/config')
+# set default values for a few parameters
+IMAGE_ID = 'ami-00521d17'
+SUBNET_ID = 'subnet-70d7ec36'
 
 
-def _set_default_ec2_configuration_values():
-    """parses configuration file for default aws configuation"""
+def _get_ec2_configuration():
+    """assumes you have awscli and that you have configured it. If so, the default values
+    for credentials will be searchable!"""
+    defaults = {}
     config = configparser.ConfigParser()
-    config.read(config_file)
-    return config
-
-_defaults = _set_default_ec2_configuration_values()
-
-
-def _get_default_ec2_parameter(*args, config_dict=_defaults):
-    if isinstance(args, tuple) and len(args) == 1:
-        try:
-            return config_dict[args[0]]
-        except KeyError:
-            raise ConfigurationError(
-                'no value for {k} found in config file {c}, and {k} was '
-                'not provided to AWSInstance constructor.'.format(
-                    c=config_file, k=args[0]))
-    else:
-        return _get_default_ec2_parameter(
-            *args[1:], config_dict=_defaults[args[0]])
+    config.read(os.path.expanduser('~/.aws/config'))
+    defaults['region'] = config['default']['region']
+    config.read(os.path.expanduser('~/.aws/credentials'))
+    defaults['aws_access_key_id'] = config['default']['aws_access_key_id']
+    defaults['aws_secret_access_key'] = config['default']['aws_secret_access_key']
+    return defaults
 
 
 class Retry:
@@ -101,18 +91,16 @@ class AWSInstance(object):
     ec2 = boto3.resource('ec2')
     client = boto3.client('ec2')
 
-    def __init__(self, **kwargs):
+    def __init__(self, rsa_key, instance_type, instance_id=None, security_group_id=None,
+                 spot_bid=None, synchronous=False, volume_size=5, **kwargs):
         """
 
         passed keyword arguments or present in config:
         ---------------------------
-        :param str rsa_key_path:
+        :param str rsa_key:
         :param str image_id:
         :param str subnet_id:
         :param str instance_type:
-        :param str availability_zone:
-        :param str aws_public_access_key:
-        :param str aws_secret_access_key:
 
         optional arguments:
         -------------------
@@ -126,45 +114,28 @@ class AWSInstance(object):
           either (1) the contextmanager exits or (2) the decorated function completes
 
         """
+        # todo allow overwriting of these arguments with **kwargs
 
-        # todo change these dummy arguments into properties
-        # dummy arguments set by kwargs or configuration; for inspection only.
-        self.aws_public_access_key = None
-        self.aws_secret_access_key = None
-        self.availability_zone = None
-        self._rsa_key_path = None
-        self.subnet_id = None
-        self.image_id = None
-        self.instance_type = None
+        defaults = _get_ec2_configuration()
+        self.aws_public_access_key = defaults['aws_access_key_id']
+        self.aws_secret_access_key = defaults['aws_secret_access_key']
+        self.region = defaults['region']
+        self._rsa_key = rsa_key
+        self.subnet_id = SUBNET_ID
+        self.image_id = IMAGE_ID
+        self.instance_type = instance_type
 
-        self._instance_id = None
-        self._security_group_id = None
-        self.spot_bid = None
-        self.synchronous = False
-        self.volume_size = 5
+        self._instance_id = instance_id
+        self._security_group_id = security_group_id
+        self.spot_bid = spot_bid
+        self.synchronous = synchronous
+
+        if not isinstance(volume_size, int) or not 1 <= volume_size < 16384:
+            raise ValueError('volume size must be an integer ')
+        self.volume_size = volume_size
 
         # additional properties
         self._ssh_connection = None
-
-        # list of arguments to search config for
-        config_params = (
-            'aws_public_access_key', 'aws_secret_access_key', 'availability_zone',
-            'rsa_key_path', 'subnet_id', 'image_id', 'instance_type')
-
-        # set defaults from config file if they weren't passed
-        for k in config_params:
-            if k not in kwargs.keys():
-                setattr(self, k, _get_default_ec2_parameter('seqc', k))
-
-        # set passed arguments
-        for k in kwargs.keys():
-            setattr(self, k, kwargs[k])
-
-        # check vol_size
-        if 'volume_size' in kwargs.keys():
-            vs = kwargs['volume_size']
-            if not isinstance(vs, int) or not 1 <= vs < 16384:
-                raise ValueError('volume size must be an integer ')
 
     # todo define def __repr__(self):
 
@@ -193,14 +164,14 @@ class AWSInstance(object):
         self._security_group_id = value
 
     @property
-    def rsa_key_path(self):
-        return self._rsa_key_path
+    def rsa_key(self):
+        return self._rsa_key
 
-    @rsa_key_path.setter
-    def rsa_key_path(self, value):
+    @rsa_key.setter
+    def rsa_key(self, value):
         if not isinstance(value, str):
             raise ValueError('rsa_key_path must be type str')
-        self._rsa_key_path = os.path.expanduser(value)
+        self._rsa_key = os.path.expanduser(value)
 
     @property
     def Instance(self):
@@ -267,9 +238,9 @@ class AWSInstance(object):
 
         spec = {
             'ImageId': self.image_id,
-            'KeyName': self.rsa_key_path.split('/')[-1].split('.')[0],
+            'KeyName': self.rsa_key.split('/')[-1].split('.')[0],
             'InstanceType': self.instance_type,
-            'Placement': {'AvailabilityZone': self.availability_zone},
+            # 'Placement': {'AvailabilityZone': self.region},  # i broke this, no letter comes later!
             'SecurityGroupIds': [sg_id],
             'BlockDeviceMappings': [{'DeviceName': '/dev/xvdf',
                                      'Ebs': {'VolumeSize': self.volume_size,
@@ -330,14 +301,13 @@ class AWSInstance(object):
         ssh.execute('aws configure set aws_access_key_id %s' % self.aws_public_access_key)
         ssh.execute(
             'aws configure set aws_secret_access_key %s' % self.aws_secret_access_key)
-        # us-east-1 (no a-b-c-d-e etc), cut off letter.
-        ssh.execute('aws configure set region %s' % self.availability_zone[:-1])
+        ssh.execute('aws configure set region %s' % self.region)
 
     def setup_seqc(self):
         if self.instance_id is None:
             self.create_instance()
         with SSHConnection(instance_id=self.instance_id,
-                           rsa_key_path=self.rsa_key_path) as ssh:
+                           rsa_key=self.rsa_key) as ssh:
             self.mount_volume(ssh)
             log.notify('setting aws credentials.')
             self.set_credentials(ssh)
@@ -348,10 +318,15 @@ class AWSInstance(object):
             ssh.execute(
                 'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
             log.notify("Sources are uploaded and decompressed, installing seqc.")
-            ssh.execute('sudo -H pip3 install -e software/seqc/')
-
-            # test the installation
             try:
+                ssh.execute('sudo -H pip3 install -e software/seqc/')
+            except ChildProcessError as e:
+                if 'pip install --upgrade pip' in str(e):
+                    pass
+                else:
+                    raise
+
+            try:  # test the installation
                 ssh.execute('SEQC.py -h')
             except:
                 log.notify('SEQC installation failed.')
@@ -523,7 +498,7 @@ class AWSInstance(object):
             # packages installed
             self.setup_seqc()
 
-            with SSHConnection(self.instance_id, self.rsa_key_path) as ssh:
+            with SSHConnection(self.instance_id, self.rsa_key) as ssh:
                 ssh.put_file(script, 'script.py')
                 ssh.put_file(func, 'func.p')
                 if self.synchronous:
@@ -551,15 +526,13 @@ class SSHConnection:
 
     ec2 = boto3.resource('ec2')
 
-    def __init__(self, instance_id, rsa_key_path=None):
+    def __init__(self, instance_id, rsa_key):
         if not isinstance(instance_id, str):
             raise ValueError('instance must be a string instance id')
         if not instance_id.startswith('i-'):
             raise ValueError('valid instance identifiers must start with "i-"')
         self._instance_id = instance_id
-        if rsa_key_path is None:
-            rsa_key_path = _get_default_ec2_parameter('security', 'rsa_key_path')
-        self.rsa_key_path = os.path.expanduser(rsa_key_path)
+        self.rsa_key = os.path.expanduser(rsa_key)
 
         self.check_key_file()
         self.ssh = paramiko.SSHClient()
@@ -581,10 +554,10 @@ class SSHConnection:
 
     def check_key_file(self):
         """Checks the rsa file is present"""
-        if not self.rsa_key_path:
-            log.notify('The key %s was not found!' % self.rsa_key_path)
+        if not self.rsa_key:
+            log.notify('The key %s was not found!' % self.rsa_key)
             raise FileNotFoundError(self._error_msg, 'The key file %s does not exist' %
-                                    self.rsa_key_path)
+                                    self.rsa_key)
 
     @Retry(retries=40, delay=2.5, catch=(NoValidConnectionsError, socket.error))
     def connect(self):
@@ -592,7 +565,7 @@ class SSHConnection:
         instance = self.ec2.Instance(self.instance_id)
         try:
             self.ssh.connect(instance.public_dns_name, username='ec2-user',
-                             key_filename=self.rsa_key_path, timeout=3.0)
+                             key_filename=self.rsa_key, timeout=3.0)
         except NoValidConnectionsError:
             state = instance.state['Name']
             if state not in ['running', 'pending']:
@@ -656,7 +629,7 @@ class SSHConnection:
     def login_command(self):
         instance = self.ec2.Instance(self.instance_id)
         return ('ssh -i {rsa_path} ec2-user@{dns_name}'.format(
-            rsa_path=self.rsa_key_path, dns_name=instance.public_dns_name))
+            rsa_path=self.rsa_key, dns_name=instance.public_dns_name))
 
     def __enter__(self):
         log.notify('connecting to instance %s via ssh' % self.instance_id)

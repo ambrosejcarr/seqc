@@ -1,22 +1,6 @@
 import argparse
-import sys
 from seqc import version
 from seqc.exceptions import ArgumentParserError
-
-
-class NewArgumentParser(argparse.ArgumentParser):
-    """
-    Simple wrapper for ArgumentParser that allows flags to be caught before the presence
-    of 'required' arguments are tested. Allows us to add flags, for example, for
-    checking the progress of existing SEQC runs.
-    """
-    def error(self, message):
-        # checks to see whether user wants to check remote experiment status
-        if '--check-progress' in sys.argv[1:]:
-            remote.check_progress()
-        else:
-            print(message)
-        sys.exit(0)
 
 
 def parse_args(args):
@@ -73,8 +57,8 @@ def parse_args(args):
                         'https://basespace.illumina.com/sample/34000253/0309, '
                         'then --basespace would be 34000253.')
     i.add_argument('--basespace-token', metavar='BST', default=None,
-                   help='Optional OAuth token for basespace access. Can also be provided '
-                        'in config. Not necessary if --basespace is not used.')
+                   help='OAuth token for basespace access. Required if BaseSpace input '
+                        'is used.')
 
     f = p.add_argument_group('filter arguments')
     f.add_argument('--max-insert-size', metavar='F',
@@ -173,6 +157,10 @@ def parse_args(args):
             '-e', '--email', metavar='E', default=None,
             help='Email address to receive run summary or errors when running remotely. '
                  'Optional only if running locally.')
+        r.add_argument(
+            '-k', '--rsa-key', metavar='K', default=None,
+            help='RSA key registered to your aws account that allowed access to ec2 '
+                 'resources. Required if running instance remotely.')
 
     try:
         return meta.parse_args(args)

@@ -10,11 +10,50 @@ import ftplib
 import nose2
 from seqc.sequence import index, gtf
 from seqc.core import SEQC
-from seqc import ec2, io
+from subprocess import call
+from seqc import ec2
 import seqc
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
+
+class TestNoAWSRun(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.testdir = os.environ['TMPDIR'] + 'test_local_seqc'
+        os.makedirs(cls.testdir, exist_ok=True)
+        cls.index = '{testdir}/index/'.format(testdir=cls.testdir)
+        # if not os.path.isdir(cls.testdir + '/index'):
+        #     call('aws s3 cp s3://dplab-data/genomes/mm38_phiX/ {testdir}/index/ '
+        #          '--recursive'.format(testdir=cls.testdir), shell=True)
+
+    def test_in_drop_v2(self):
+        platform = 'in_drop_v2'
+        barcode_fastq = '{testdir}/barcode/'.format(testdir=self.testdir)
+        genomic_fastq = '{testdir}/genomic/'.format(testdir=self.testdir)
+        output = self.testdir + '/test'
+        barcode_files = '{testdir}/barcode_files/'.format(testdir=self.testdir)
+        call('aws s3 cp s3://dplab-data/seqc/test/{platform}/barcode/ {testdir}/barcode '
+             '--recursive'.format(platform=platform, testdir=self.testdir), shell=True)
+        call('aws s3 cp s3://dplab-data/seqc/test/{platform}/genomic/ {testdir}/genomic '
+             '--recursive'.format(platform=platform, testdir=self.testdir), shell=True)
+        # call('aws s3 cp s3://dplab-data/barcodes/{platform}/flat/ '
+        #      '{testdir}/barcode_files/ --recursive'.format(
+        #          platform=platform, testdir=self.testdir), shell=True)
+
+        argv = [
+            'run',
+            platform,
+            '-o', output,
+            '-i', self.index,
+            '-b', barcode_fastq,
+            '-g', genomic_fastq,
+            '--barcode-files', barcode_files,
+            '--local',
+            '--log-name', '{output}_seqc.log']
+        print('\n'.join(argv))
+        SEQC.main(argv)
 
 
 class TestRemoteRun(unittest.TestCase):
@@ -38,6 +77,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop(self):
         platform = 'in_drop'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -57,6 +97,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop_v2(self):
         platform = 'in_drop_v2'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -75,6 +116,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop_v2_no_mt(self):
         platform = 'in_drop_v2'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -95,6 +137,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_in_drop_v3(self):
         platform = 'in_drop_v3'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -113,6 +156,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_drop_seq(self):
         platform = 'drop_seq'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -131,6 +175,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_ten_x(self):
         platform = 'ten_x'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.mouse,
@@ -151,6 +196,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_mars1_seq(self):
         platform = 'mars1_seq'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -170,6 +216,7 @@ class TestRemoteRun(unittest.TestCase):
     def test_mars2_seq(self):
         platform = 'mars2_seq'
         args = [
+            'run',
             platform,
             '-o', self.output.format(platform),
             '-i', self.human,
@@ -236,6 +283,7 @@ class TestSEQC(unittest.TestCase):
             '--instance-type', 'c4.large',
             '--spot-bid', '0.5',
             '--log-name', 'test_seqc.log',
+            '--rsa-key', os.path.expanduser('~/.ssh/aws.rsa')
 
         ]
         SEQC.main(argv)
@@ -718,7 +766,7 @@ class TestEC2(unittest.TestCase):
         flocal = os.environ['TMPDIR'] + 'test_doing_things.txt'
         with ec2.AWSInstance(
                 volume_size=25, instance_type='c3.large', synchronous=True) as aws:
-            with ec2.SSHConnection(aws.instance_id, aws.rsa_key_path) as ssh:
+            with ec2.SSHConnection(aws.instance_id, aws.rsa_key) as ssh:
                 ssh.execute('echo "I did something!" > /data/test_doing_things.txt')
                 ssh.get_file('/data/test_doing_things.txt', flocal)
         with open(flocal) as f:
