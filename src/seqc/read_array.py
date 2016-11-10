@@ -96,7 +96,7 @@ class ReadArray:
     @staticmethod
     def set_status_active(r):
         r['status'] |= 0b1
-    staticmethod
+    @staticmethod
     def set_status_inactive(r):
         r['status'] &= 0b1111111111111110
 

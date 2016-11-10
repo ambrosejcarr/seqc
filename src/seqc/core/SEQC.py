@@ -179,8 +179,9 @@ def run(args) -> None:
                 log.info('Samfile %s successfully installed from S3.' % samfile)
             ra, sam_records = ReadArray.from_samfile(
                 samfile, index + 'annotations.gtf')
-            read_array = output_stem + '.h5'
-            ra.save(read_array)
+            #TODO - uncomment this once save is fixed. currently it throws memory errors sometimes.
+            #read_array = output_stem + '.h5'
+            #ra.save(read_array)
 
             # converting sam to bam and uploading to S3, else removing samfile
             if input_data == 'samfile':
