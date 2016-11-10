@@ -210,6 +210,14 @@ def xtick_vertical(ax=None):
         xt = xt.astype(int)
     ax.set_xticklabels(xt, rotation='vertical')
 
+# todo does not work
+# def nticks(axis: str, n: int=5, ax=None):
+#     current_ax = plt.gca()
+#     if ax is not None:
+#         plt.sca(ax)
+#     plt.locator_params(axis=axis, nbins=n)
+#     plt.sca(current_ax)  # reset axis to current axis before function call
+
 
 def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
     """
@@ -390,3 +398,4 @@ class Diagnostics:
         ax.set_ylim((None, ymax))
         despine(ax)
         return ax
+

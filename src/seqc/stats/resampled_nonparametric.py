@@ -77,14 +77,19 @@ def find_sampling_value(group_data, percentile):
     return min(np.percentile(g.sum(axis=1), percentile) for g in group_data)
 
 
-def normalize(data, downsample_value):
+def normalize(data, downsample_value, upsample=False):
     """
     :param data:
     :param downsample_value: value to normalize cell counts to. In current implementation,
         a small number of cells (10%) are upsampled to this value.
+    :param upsample: if False, all observations with size < downsample_value are excluded.
+        if True, those cells are upsampled to downsample_value.
     :return:
     """
-    return (data / data.sum(axis=1)[:, np.newaxis]) * downsample_value
+    obs_size = data.sum(axis=1)
+    if not upsample:
+        data = data[obs_size >= downsample_value, :]
+    return (data * downsample_value) / data.sum(axis=1)[:, np.newaxis]
 
 
 def _draw_sample(normalized_data, n):
@@ -119,7 +124,9 @@ def confidence_interval(z):
     return np.percentile(z, [2.5, 97.5], axis=0).T
 
 
-def mannwhitneyu(x, y, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=False):
+def mannwhitneyu(
+        x, y, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=False,
+        upsample=False):
     """
     :param x: observations by features array or DataFrame (ndim must be 2, although there
         needn't be more than one feature)
@@ -130,6 +137,8 @@ def mannwhitneyu(x, y, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=Fa
     :param alpha: significance threshold for FDR correction
     :param verbose: if True, report number of cells sampled in each iteration and the
         integer value to which cells are downsampled
+    :param upsample: if False, cells with size lower than sampling_percentile are
+        discarded. If True, those cells are upsampled.
     :return pd.DataFrame: DataFrame with columns:
         U: median u-statistic over the n_iter iterations of the test
         z_approx: median approximate tie-corrected z-score for the mann-whitney U-test
@@ -153,7 +162,7 @@ def mannwhitneyu(x, y, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=Fa
 
     # calculate sampling values
     v = find_sampling_value([x, y], sampling_percentile)
-    norm_data = [normalize(d, v) for d in [x, y]]
+    norm_data = [normalize(d, v, upsample) for d in [x, y]]
     n_cell = min(d.shape[0] for d in norm_data)
     sampling_function = partial(_mw_sampling_function, n_cell=n_cell)
 
@@ -172,7 +181,15 @@ def mannwhitneyu(x, y, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=Fa
         index=labels,
         columns=['U', 'z_approx', 'p', 'z_lo', 'z_hi'])
 
+    # add multiple-testing correction
     results['q'] = multipletests(results['p'], alpha=alpha, method='fdr_tsbh')[1]
+
+    # remove low-value genes whose median sampling value is -inf
+    neginf = np.isneginf(results['z_approx'])
+    results.ix[neginf, 'z_lo'] = np.nan
+    results.ix[neginf, 'z_approx'] = 0
+    results.ix[neginf, ['p', 'q']] = 1.
+
     results = results[['U', 'z_approx', 'z_lo', 'z_hi', 'p', 'q']].sort_values('q')
     results.iloc[:, 1:4] = np.round(results.iloc[:, 1:4], 2)
 
@@ -206,21 +223,27 @@ def _kruskal(data):
     results = []
     for i in np.arange(data[0].shape[1]):
         args = [d[:, i] for d in data]
-        results.append(_kruskalwallis(*args))
+        try:
+            results.append(_kruskalwallis(*args))
+        except ValueError:
+            results.append([0, 1.])
     return results
 
 
 def kruskalwallis(
-        data, labels, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=False):
+        data, labels, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=False,
+        upsample=False):
     """
-    :param data:
-    :param labels:
+    :param data: np.ndarray or pd.DataFrame of observations x features
+    :param labels: observation labels for categories to be compared
     :param n_iter: number of times to sample x and y
     :param sampling_percentile: percentile to downsample to. observations with row sums
         lower than this value will be excluded
     :param alpha: significance threshold for FDR correction
     :param verbose: if True, report number of cells sampled in each iteration and the
         integer value to which cells are downsampled
+    :param upsample: if False, cells with size lower than sampling_percentile are
+        discarded. If True, those cells are upsampled.
     :return pd.DataFrame: DataFrame with columns:
         H: median u-statistic over the n_iter iterations of the test
         z_approx: median approximate tie-corrected z-score for the mann-whitney U-test
@@ -247,7 +270,7 @@ def kruskalwallis(
 
     # calculate sampling values and downsample data
     v = find_sampling_value(np.split(data, splits), sampling_percentile)
-    norm_data = normalize(data, v)
+    norm_data = normalize(data, v, upsample)
 
     n_cell = min(d.shape[0] for d in np.split(norm_data, splits))
     sampling_function = partial(_kw_sampling_function, n_cell=n_cell, splits=splits)
@@ -261,7 +284,6 @@ def kruskalwallis(
 
     results = np.stack(results)  # H, p
 
-    print(results.shape)
     ci = confidence_interval(results[:, :, 0])  # around H
     results = pd.DataFrame(
         data=np.concatenate([np.median(results, axis=0), ci], axis=1),

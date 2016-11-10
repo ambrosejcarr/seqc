@@ -30,7 +30,7 @@ class correlation:
 
     @staticmethod
     def map(x: np.ndarray, y: np.ndarray):
-        """Correlate each column of x with each column of y
+        """Correlate each row of x with each row of y
 
         :param x: np.array; shape N x T.
         :param y: np.array; shape M x T.
