@@ -62,7 +62,11 @@ class S3:
     @classmethod
     def _fileidentity_from_ls(cls, line):
         line = line.strip().split()
-        return cls._FileIdentity(line[8], line[4], line[5], line[6].rpartition('.')[0])
+        try:
+            return cls._FileIdentity(line[8], line[4], line[5], line[6].rpartition('.')[0])
+        except:
+            log.info(repr(line))
+            raise
 
     @classmethod
     def awscli_omit_existing_files(cls, link, prefix, recursive):
@@ -88,18 +92,24 @@ class S3:
             ]
 
         # existing files
-        ls_cmd = 'ls -l --full-time %s*' % prefix
+        ls_cmd = 'ls -l --full-time %s' % prefix
+        if not prefix.endswith('/'):
+            prefix += '*'
         p = Popen(ls_cmd, shell=True, stdout=PIPE, stderr=PIPE)
         ls_out, ls_err = p.communicate()
         if ls_err:
             if b'No such file or directory' in ls_err:
                 exists = []
             else:
-                raise ChildProcessError(ls_err.decode())
+                raise ChildProcessError(
+                    'ls error:\n%s\nls output:\n%s' % (
+                        ls_err.decode(), ls_out.decode()))
         else:
+            log.info(prefix)
+            log.info(ls_out.decode())
             exists = [
                 cls._fileidentity_from_ls(line)
-                for line in ls_out.decode().strip().split('\n')]
+                for line in ls_out.decode().strip().split('\n')[1:]]
 
         omission_string = ''
         for f in to_download:
@@ -149,7 +159,7 @@ class S3:
         downloaded_files = [line.strip().split()[-1] for line in
                             out.decode().strip().split('\n') if line.strip()]
         if log:
-            log.notify('downloaded (or already present) files:\n\t[%s]' % ',\n\t'.join(
+            log.notify('downloaded files:\n\t[%s]' % ',\n\t'.join(
                 downloaded_files))
         return downloaded_files
 

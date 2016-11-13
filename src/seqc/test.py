@@ -262,7 +262,6 @@ class TestSEQC(unittest.TestCase):
             '-g', self.genomic_fastq.format(platform),
             '--barcode-files', self.barcode_files.format(platform),
             '--local',
-            '--log-name', 'seqc.log'
         ]
         SEQC.main(argv)
         print("Initialization succeeded, wait for email to evaluate test results.")
@@ -282,7 +281,46 @@ class TestSEQC(unittest.TestCase):
             '-e', 'mail@ambrosejcarr.com',
             '--instance-type', 'c4.large',
             '--spot-bid', '0.5',
-            '--log-name', 'test_seqc.log',
+            '--rsa-key', os.path.expanduser('~/.ssh/aws.rsa')
+
+        ]
+        SEQC.main(argv)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def test_remote_merged_in_drop_v2(self):
+
+        platform = 'in_drop_v2'
+        argv = [
+            'run',
+            platform,
+            '-o', 'seqc_test',
+            '-u', 's3://dplab-data/seqc/test/test_seqc_in_drop_v2_remote/',
+            '-i', self.human,
+            '-m', ('s3://dplab-data/seqc/test/test_seqc_in_drop_v2_remote/'
+                   'seqc_test_merged.fastq.gz'),
+            '--barcode-files', self.barcode_files.format(platform),
+            '-e', 'mail@ambrosejcarr.com',
+            '--instance-type', 'c4.large',
+            '--spot-bid', '0.5',
+            '--rsa-key', os.path.expanduser('~/.ssh/aws.rsa')
+
+        ]
+        SEQC.main(argv)
+        print("Initialization succeeded, wait for email to evaluate test results.")
+
+    def large_test_remote_in_drop_v2(self):
+        platform = 'in_drop_v2'
+        argv = [
+            'run',
+            platform,
+            '-o', 'seqc_large_test',
+            '-u', 's3://dplab-data/seqc/test/large_test_seqc_in_drop_v2_remote/',
+            '-i', 's3://dplab-data/genomes/mm38_phiX/',
+            '-b', 's3://dplab-data/ms5034/sc-seq/dataset_comparison/TR1_combined/genomic/',
+            '-g', 's3://dplab-data/ms5034/sc-seq/dataset_comparison/TR1_combined/barcode/',
+            '--barcode-files', self.barcode_files.format(platform),
+            '-e', 'mail@ambrosejcarr.com',
+            '--instance-type', 'c4.8xlarge',
             '--rsa-key', os.path.expanduser('~/.ssh/aws.rsa')
 
         ]

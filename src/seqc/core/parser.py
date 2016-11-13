@@ -1,4 +1,6 @@
 import argparse
+import sys
+from subprocess import Popen, PIPE
 from seqc import version
 from seqc.exceptions import ArgumentParserError
 
@@ -11,14 +13,17 @@ def parse_args(args):
       from sys.argv.
     :returns: args, namespace object, output of ArgumentParser.parse_args()
     """
+
     meta = argparse.ArgumentParser(
         description='Processing Tools for scRNA-seq Experiments')
     meta.add_argument('-v', '--version', action='version',
                       version='{} {}'.format(meta.prog, version.__version__))
-    subparsers = meta.add_subparsers(help='sub-command help', dest='subparser_name')
+    subparsers = meta.add_subparsers(dest='subparser_name')
 
     # subparser for running experiments
-    p = subparsers.add_parser('run', help='run help')
+    # can use to make prettier: formatter_class=partial(argparse.HelpFormatter, width=200)
+    p = subparsers.add_parser('run', help='initiate SEQC runs')
+
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq',
                             'mars2_seq', 'in_drop_v2', 'in_drop_v3', 'ten_x'],
@@ -70,7 +75,7 @@ def parse_args(args):
                         'be considered a valid record (default=None, automatically '
                         'estimates the parameter from the sequence length)',
                    default=None, type=int)
-    f.add_argument('--max-dust-score', metavar='D',
+    f.add_argument('--max-dust-score', metavar='D', default=10, type=int,
                    help='maximum complexity score for a read to be considered valid. '
                         '(default=10, higher scores indicate lower complexity.)')
     f.add_argument('--max-ed', metavar='ED',
@@ -95,15 +100,24 @@ def parse_args(args):
                         '--star-args outFilterMultimapNmax=20. Additional arguments can '
                         'be provided as a white-space separated list.')
 
-    # todo create a positional argument to check only specific instances; still check all owned if left empty
-    # add subparser to check progress
     progress = subparsers.add_parser('progress', help='check SEQC run progress')
+    progress.set_defaults(remote=False)
+    progress.add_argument(
+        '-i', '--instance-ids', help='check the progress of run(s)', nargs='+')
+    progress.add_argument(
+        '-k', '--rsa-key', help='RSA key registered to your aws account', required=True)
 
-    # todo create subparser to remove security groups, volumes, and optionally, instances older than date.
+    terminate = subparsers.add_parser('terminate', help='terminate SEQC runs')
+    terminate.set_defaults(remote=False)
+    terminate.add_argument(
+        '-i', '--instance-ids', help='terminate these instance(s)', nargs='+')
 
-    # add subparser to create index
+    instances = subparsers.add_parser('instances', help='list all running instances')
+    instances.set_defaults(remote=False)
+    instances.add_argument(
+        '-k', '--rsa-key', help='RSA key registered to your aws account', required=True)
+
     pindex = subparsers.add_parser('index', help='create a SEQC index')
-
     pindex.add_argument(
         '-o', '--organism', required=True,
         help='organism to create index for. Must be formatted as genus_species in all '
@@ -125,9 +139,10 @@ def parse_args(args):
              'to be captured by SEQC, and should be excluded')
 
     for parser in [pindex, p]:
-        r = parser.add_argument_group('Amazon Web Services arguments')  # todo this parser group should be able to be used with remote as vars(args)
+        r = parser.add_argument_group('Amazon Web Services arguments')
         r.set_defaults(remote=True)
         r.set_defaults(terminate=True)
+        r.set_defaults(log_name='seqc_log.txt')  # changed to .txt for email
         r.add_argument(
             '--local', dest="remote", action="store_false",
             help='Run locally instead of on an aws instance')
@@ -148,7 +163,6 @@ def parse_args(args):
                  'non-spot instance). WARNING: using spot instances will cause your '
                  'instance to terminate if instance prices exceed your spot bid during '
                  'runtime.')
-        r.add_argument('--log-name', type=str, default='seqc.log', help='log name')
         r.add_argument(
             '--volume-size', type=int, default=None,
             help='size in Gb required to execute the requested process. If not provided, '
@@ -161,6 +175,15 @@ def parse_args(args):
             '-k', '--rsa-key', metavar='K', default=None,
             help='RSA key registered to your aws account that allowed access to ec2 '
                  'resources. Required if running instance remotely.')
+
+    # custom help handling
+    if len(args) == 0:  # print help if no args are passed
+        meta.print_help()
+        sys.exit(1)
+    if args == ['run', '-h']:  # send help for run to less, is too long
+        pipe = Popen(['less'], stdin=PIPE)
+        pipe.communicate(p.format_help().encode())
+        sys.exit(1)
 
     try:
         return meta.parse_args(args)

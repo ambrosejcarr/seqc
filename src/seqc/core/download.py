@@ -2,6 +2,7 @@ import os
 from subprocess import Popen
 from seqc import io, log
 
+
 # todo fold this module into io.S3 and io.Basespace
 def basespace(args, output_dir: str, basespace_token: str) -> (str, str):
     """
@@ -29,7 +30,7 @@ def basespace(args, output_dir: str, basespace_token: str) -> (str, str):
 def s3_data(files_or_links, output_prefix):
     """downloads any data provided by s3 links, otherwise gets list of files.
 
-    :param list files_or_links: files or s3 links to files
+    :param list files_or_links: str files or str s3 links to files
     :param str output_prefix: prefix to prepend files
     :returns list files: filename(s) of downloaded files
     """
@@ -45,4 +46,3 @@ def s3_data(files_or_links, output_prefix):
             files.extend(io.S3.download(f, output_prefix, overwrite=True,
                                         recursive=recursive))
     return files
-
