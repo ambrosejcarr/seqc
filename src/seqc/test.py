@@ -12,10 +12,15 @@ import seqc
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
+# fill and uncomment these variables to avoid having to provide input to tests
+# TEST_BUCKET = None
+# EMAIL = None
+# RSA_KEY = None
+
 # define some constants for testing
 BARCODE_FASTQ = 's3://seqc-pub/test/%s/barcode/'  # platform
 GENOMIC_FASTQ = 's3://seqc-pub/test/%s/genomic/'  # platform
-MERGED = 's3://seqc-pub/test/%s/merged.fastq.gz'  # platform
+MERGED = 's3://seqc-pub/test/%s/%s_merged.fastq.gz'  # platform, platform
 SAMFILE = 's3://seqc-pub/test/%s/Aligned.out.bam'  # platform
 INDEX = 's3://seqc-pub/genomes/hg38_chr19/'
 LOCAL_OUTPUT = os.environ['TMPDIR'] + 'seqc/%s/test'  # test_name
@@ -48,13 +53,22 @@ class TestSEQC(unittest.TestCase):
             '--local']
         SEQC.main(argv)
 
-    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_raw_fastq(self, platform='in_drop_v2'):
+    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_raw_fastq(self, platform):
         test_name = 'test_remote_%s' % platform
-        email = input('please provide an email address for SEQC to send test results: ')
-        bucket = input('please provide an amazon s3 bucket to upload test results: ')
-        rsa_key = input('please provide an RSA key with permission to create aws '
-                        'instances: ')
+        if 'EMAIL' in globals():
+            email = globals()['EMAIL']
+        else:
+            email = input('please provide an email address for SEQC to mail results: ')
+        if 'TEST_BUCKET' in globals():
+            bucket = globals()['TEST_BUCKET']
+        else:
+            bucket = input('please provide an amazon s3 bucket to upload test results: ')
+        if 'RSA_KEY' in globals():
+            rsa_key = globals()['RSA_KEY']
+        else:
+            rsa_key = input('please provide an RSA key with permission to create aws '
+                            'instances: ')
         argv = [
             'run',
             platform,
@@ -71,13 +85,22 @@ class TestSEQC(unittest.TestCase):
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         SEQC.main(argv)
 
-    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_merged(self, platform='in_drop_v2'):
+    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_merged(self, platform):
         test_name = 'test_remote_%s' % platform
-        email = input('please provide an email address for SEQC to send test results: ')
-        bucket = input('please provide an amazon s3 bucket to upload test results: ')
-        rsa_key = input('please provide an RSA key with permission to create aws '
-                        'instances: ')
+        if 'EMAIL' in globals():
+            email = globals()['EMAIL']
+        else:
+            email = input('please provide an email address for SEQC to mail results: ')
+        if 'TEST_BUCKET' in globals():
+            bucket = globals()['TEST_BUCKET']
+        else:
+            bucket = input('please provide an amazon s3 bucket to upload test results: ')
+        if 'RSA_KEY' in globals():
+            rsa_key = globals()['RSA_KEY']
+        else:
+            rsa_key = input('please provide an RSA key with permission to create aws '
+                            'instances: ')
         argv = [
             'run',
             platform,
@@ -85,10 +108,11 @@ class TestSEQC(unittest.TestCase):
             '-u', UPLOAD % (bucket, test_name),
             '-i', INDEX,
             '-e', email,
-            '-m', MERGED % platform,
+            '-m', MERGED % (platform, platform),
             '-k', rsa_key,
             '--instance-type', 'c4.large',
-            '--spot-bid', '1.0']
+            # '--spot-bid', '1.0'
+        ]
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         SEQC.main(argv)
@@ -96,10 +120,19 @@ class TestSEQC(unittest.TestCase):
     @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_samfile(self, platform):
         test_name = 'test_remote_%s' % platform
-        email = input('please provide an email address for SEQC to send test results: ')
-        bucket = input('please provide an amazon s3 bucket to upload test results: ')
-        rsa_key = input('please provide an RSA key with permission to create aws '
-                        'instances: ')
+        if 'EMAIL' in globals():
+            email = globals()['EMAIL']
+        else:
+            email = input('please provide an email address for SEQC to mail results: ')
+        if 'TEST_BUCKET' in globals():
+            bucket = globals()['TEST_BUCKET']
+        else:
+            bucket = input('please provide an amazon s3 bucket to upload test results: ')
+        if 'RSA_KEY' in globals():
+            rsa_key = globals()['RSA_KEY']
+        else:
+            rsa_key = input('please provide an RSA key with permission to create aws '
+                            'instances: ')
         argv = [
             'run',
             platform,
@@ -110,7 +143,8 @@ class TestSEQC(unittest.TestCase):
             '-s', SAMFILE % platform,
             '-k', rsa_key,
             '--instance-type', 'c4.large',
-            '--spot-bid', '1.0']
+            # '--spot-bid', '1.0'
+        ]
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         SEQC.main(argv)
@@ -287,19 +321,26 @@ class TestIndex(unittest.TestCase):
 
     def test_upload_star_index_correctly_places_index_on_s3(self):
         os.chdir(self.outdir)
+        if 'TEST_BUCKET' in globals():
+            bucket = globals()['TEST_BUCKET']
+        else:
+            bucket = input('please provide an amazon s3 bucket to upload test results: ')
         organism = 'ciona_intestinalis'
         idx = index.Index(organism, ['entrezgene'])
         index_directory = organism + '/'
         idx._download_ensembl_files()
         idx._subset_genes()
         idx._create_star_index()
-        idx._upload_index(index_directory, 's3://dplab-data/genomes/ciona_intestinalis/')
-        # watch output for success; will list uploads
+        idx._upload_index(index_directory, 's3://%s/genomes/ciona_intestinalis/' % bucket)
 
     def test_create_index_produces_and_uploads_an_index(self):
+        if 'TEST_BUCKET' in globals():
+            bucket = globals()['TEST_BUCKET']
+        else:
+            bucket = input('please provide an amazon s3 bucket to upload test results: ')
         organism = 'ciona_intestinalis'
         idx = index.Index(organism, ['entrezgene'], self.outdir)
-        idx.create_index(s3_location='s3://dplab-data/genomes/%s/' % idx.organism)
+        idx.create_index(s3_location='s3://%s/genomes/%s/' % (bucket, idx.organism))
 
 #########################################################################################
 
