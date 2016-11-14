@@ -24,7 +24,7 @@ log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
 
 # set default values for a few parameters
-IMAGE_ID = 'ami-00521d17'
+IMAGE_ID = 'ami-5bcbe54c'
 SUBNET_ID = 'subnet-70d7ec36'
 
 
@@ -240,7 +240,6 @@ class AWSInstance(object):
             'ImageId': self.image_id,
             'KeyName': self.rsa_key.split('/')[-1].split('.')[0],
             'InstanceType': self.instance_type,
-            # 'Placement': {'AvailabilityZone': self.region},  # i broke this, no letter comes later!
             'SecurityGroupIds': [sg_id],
             'BlockDeviceMappings': [{'DeviceName': '/dev/xvdf',
                                      'Ebs': {'VolumeSize': self.volume_size,
@@ -289,6 +288,8 @@ class AWSInstance(object):
             ssh.execute("sudo mkdir -p %s" % directory)
             ssh.execute("sudo mount /dev/xvdf %s && sudo cp -a /tmp/directory/. %s/"
                         % (directory, directory))
+            ssh.execute("sudo chown ec2-user:ec2-user %s/lost+found && "
+                        "chmod 755 %s/lost+found" % (directory, directory))
             log.notify("Successfully mounted new volume onto %s." % directory)
         except ChildProcessError as e:
             if not ('mount: according to mtab, /dev/xvdf is already mounted on %s'
@@ -629,7 +630,7 @@ class SSHConnection:
     def login_command(self):
         instance = self.ec2.Instance(self.instance_id)
         return ('ssh -i {rsa_path} ec2-user@{dns_name}'.format(
-            rsa_path=self.rsa_key, dns_name=instance.public_dns_name))
+            rsa_path=self.rsa_key, dns_name=instance.public_ip_address))
 
     def __enter__(self):
         log.notify('connecting to instance %s via ssh' % self.instance_id)
@@ -685,7 +686,8 @@ class instance_clean_up:
 
         email_args = (
             'echo "{b}" | mutt -e "set content_type="text/html"" -s '
-            '"Remote Process" {e} -a "{a}"'.format(b=email_body, a=attachment, e=email_address))
+            '"Remote Process" {e} -a "{a}"'.format(
+                b=email_body, a=attachment, e=email_address))
         email_process = Popen(email_args, shell=True, stderr=PIPE, stdout=PIPE)
         out, err = email_process.communicate(email_body)
         if err:

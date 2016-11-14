@@ -1,4 +1,6 @@
 from collections import namedtuple
+from subprocess import Popen, PIPE
+import shutil
 import gzip
 
 
@@ -188,10 +190,15 @@ class Reader:
         seamlessly open self._samfile, whether gzipped or uncompressed
         :returns: open file object
         """
-        if self._samfile.endswith('.gz'):
-            fobj = gzip.open(self._samfile, 'rb')
+        if self.samfile.endswith('.gz'):
+            fobj = gzip.open(self.samfile, 'rb')
+        elif self.samfile.endswith('.bam'):
+            if not shutil.which('samtools'):
+                raise RuntimeError('samtools utility must be installed to run bamfiles')
+            p = Popen(['samtools', 'view', self.samfile], stdout=PIPE)
+            fobj = p.stdout
         else:
-            fobj = open(self._samfile, 'rb')
+            fobj = open(self.samfile, 'rb')
         return fobj
 
     def __len__(self):

@@ -34,15 +34,12 @@ def validate_and_return_size(filename):
 
 
 def estimate_required_volume_size(args):
+    """estimate the size of volume that should be attached to an aws instance to run SEQC
+
+    :param args: namespace object containing filepaths or download links to input data
+    :return int: size of volume in gb
     """
 
-    :param args:
-    :return:
-    """
-
-    # keep track of how much space is needed given input
-    # seqc_input = args.barcode_files + [args.index]
-    # total = 0
     total = sum(validate_and_return_size(f) for f in args.barcode_files)
 
     # using worst-case estimates to make sure we don't run out of space
@@ -54,34 +51,14 @@ def estimate_required_volume_size(args):
         total += validate_and_return_size(args.index)
 
     elif args.samfile:
-        # seqc_input += [args.samfile]
-        # io.S3.check_links(seqc_input)
-        #
-        # # checking size of input file
-        # total += io.S3.obtain_size(args.samfile)
-        # total += (total * 2) + 2e10
         total += (validate_and_return_size(args.samfile) * 2) + 2e10
         total += validate_and_return_size(args.index)
 
     elif args.merged_fastq:
-        # seqc_input += [args.merged_fastq]
-        # io.S3.check_links(seqc_input)
-        #
-        # # checking size of input file
-        # total += io.S3.obtain_size(args.merged_fastq)
-        # total += (total * 13) + cushion
         total += (validate_and_return_size(args.merged_fastq) * 13) + 9e10
         total += validate_and_return_size(args.index)
 
     elif args.read_array:
-        # seqc_input += [args.read_array]
-        # seqc_input.remove(args.index)
-        # io.S3.check_links(seqc_input)
-        #
-        # # checking size of input
-        # for item in seqc_input:
-        #     total += io.S3.obtain_size(item)
-        # total += 1e10
         total += validate_and_return_size(args.read_array)
     if args.basespace:
         if not args.basespace_token or args.basespace_token == 'None':
@@ -90,11 +67,8 @@ def estimate_required_volume_size(args):
                 'specified in the seqc config file or passed as --basespace-token')
 
         io.BaseSpace.check_sample(args.basespace, args.basespace_token)
-        # total = io.BaseSpace.check_size(args.basespace, args.basespace_token)
-        # total += (total * 14) + cushion
         total += io.BaseSpace.check_size(args.basespace, args.basespace_token)
 
-    # return total size needed for EBS volume
     return ceil(total * 1e-9)
 
 
@@ -175,8 +149,8 @@ def run(args) -> float:
 def index(args):
     """add a default volume_size if it was not otherwise passed to seqc.
 
-    :param args:
-    :return:
+    :param args: namespace object from argparse
+    :return: updated namespace object with volume_size set.
     """
     if args.volume_size is None:
         setattr(args, 'volume_size', 100)

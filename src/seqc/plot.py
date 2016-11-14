@@ -50,6 +50,8 @@ style_dictionary = {
     'grid.linestyle': "-",
 
     'axes.labelcolor': dark_gray,
+    'axes.facecolor': 'white',
+    'axes.linewidth': 1.,
     'axes.grid': False,
     'axes.axisbelow': False,
     'axes.edgecolor': dark_gray,
