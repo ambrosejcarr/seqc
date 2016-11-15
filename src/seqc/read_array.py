@@ -353,7 +353,7 @@ class ReadArray:
                 self._ok_barcodes += 1
                 
         # Create error rate table
-        default_error_rate = seqc.correct_errors.DEFAULT_BASE_CONVERTION_RATE
+        default_error_rate = DEFAULT_BASE_CONVERTION_RATE
         if sum(error_table.values()) == 0:
             seqc.log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
