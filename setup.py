@@ -10,8 +10,9 @@ if sys.version_info.major != 3:
 if sys.version_info.minor < 5:
     warn('Multiprocessing analysis methods may not function on Python versions < 3.5')
 
-# install phenograph
-call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
+# install phenograph if pip3 is installed
+if shutil.which('pip3'):
+    call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
 
 # get version
 with open('src/seqc/version.py') as f:
