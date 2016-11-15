@@ -5,9 +5,6 @@ from seqc import log
 from seqc.read_array import ReadArray
 import time
 
-
-DEFAULT_BASE_CONVERTION_RATE = 0.02
-
 def prepare_for_ec(ra):
     """
     Prepare the RA for error correction by grouping it according to cell,gene and rmt

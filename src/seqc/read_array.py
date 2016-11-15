@@ -3,8 +3,6 @@ import tables as tb
 from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
-import os
-import seqc.correct_errors
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 import pickle
@@ -25,6 +23,8 @@ DUST_SCORE      = 8
 BC_OK           = 0
 BC_FIXED        = 1
 BC_BAD          = 2
+
+DEFAULT_BASE_CONVERTION_RATE = 0.02
     
 class ReadArray:
 
