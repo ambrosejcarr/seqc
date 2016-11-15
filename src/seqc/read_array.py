@@ -1,5 +1,5 @@
 import numpy as np
-import tables as tb
+from seqc import log
 from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
@@ -8,6 +8,7 @@ import seqc.sequence.barcodes
 import pickle
 from itertools import permutations
 import time
+# import tables as tb
 
 # Some constants
 PASS_FILTERS    = 0
@@ -209,7 +210,7 @@ class ReadArray:
                     for i in range(len(genes_l)):
                         ma_pos.append(alignment.pos)
             
-        seqc.log.info('non unique alignments count: {}'.format(non_unique_align))
+        log.info('non unique alignments count: {}'.format(non_unique_align))
         res_ra = cls(data, non_unique_align)
         res_ra._total_alignments = len(reader)
         res_ra._total_reads = num_reads
@@ -265,7 +266,7 @@ class ReadArray:
                 ReadArray.set_status_inactive(r)
                 continue
                 
-        seqc.log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}, genes is None: {}'.
+        log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}, genes is None: {}'.
         format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0], self._filtered[NO_GENES]))
         
             
@@ -355,7 +356,7 @@ class ReadArray:
         # Create error rate table
         default_error_rate = DEFAULT_BASE_CONVERTION_RATE
         if sum(error_table.values()) == 0:
-            seqc.log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
+            log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
@@ -364,10 +365,10 @@ class ReadArray:
             try:
                 err_rate[k] = v / (sum(n for err_type, n in error_table.items() if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
             except ZeroDivisionError:
-                seqc.log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
+                log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
                 err_rate[k] = default_error_rate
             
-        seqc.log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
+        log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
         return err_rate
     
 
@@ -401,7 +402,7 @@ class ReadArray:
                     res[cell, rmt] = {genes: [i]}
 
         tot_time=time.process_time()-start
-        seqc.log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
+        log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
         return res
     
     def save(self, archive_name: str) -> None:
@@ -459,7 +460,7 @@ class ReadArray:
         start = time.process_time()
         total_reads = 0
 
-        seqc.log.info('grouping for disambiguation')
+        log.info('grouping for disambiguation')
         #Group according to cell/RMT
         g_ra = self.group_for_disambiguation()
         
@@ -481,7 +482,7 @@ class ReadArray:
         #mat = mm.reduce_coalignment_array(expectations_mat)
         mat=[]
         
-        seqc.log.info('disambiguating')
+        log.info('disambiguating')
         for g_ra_rec in g_ra.values():
             obs = {}
             for genes in g_ra_rec:
@@ -522,10 +523,10 @@ class ReadArray:
                     else:
                         ReadArray.set_status_inactive(self.data[ind])        
         
-        seqc.log.info('Total reads in samfile: {}'.format(len(self)))
-        seqc.log.info('Reads that passed the filter: {}'.format(total_reads))
+        log.info('Total reads in samfile: {}'.format(len(self)))
+        log.info('Reads that passed the filter: {}'.format(total_reads))
         tot_time=time.process_time()-start
-        seqc.log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
+        log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
 
         return
 
@@ -561,8 +562,8 @@ class ReadArray:
                     mols_mat[cell, gene].append(rmt)
             except KeyError:
                 mols_mat[cell, gene] = [rmt]
-        
-        
+
+        # todo bug here (res_mols referenced before assignment); code never executed?
         if csv_path == None:
             for cell, gene in mols_mat:
                 res_mols[cell, gene] = len(mols_mat[cell, gene])

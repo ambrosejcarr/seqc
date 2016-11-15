@@ -105,8 +105,6 @@ class S3:
                     'ls error:\n%s\nls output:\n%s' % (
                         ls_err.decode(), ls_out.decode()))
         else:
-            log.info(prefix)
-            log.info(ls_out.decode())
             exists = [
                 cls._fileidentity_from_ls(line)
                 for line in ls_out.decode().strip().split('\n')[1:]]

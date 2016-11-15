@@ -22,7 +22,7 @@ BARCODE_FASTQ = 's3://seqc-pub/test/%s/barcode/'  # platform
 GENOMIC_FASTQ = 's3://seqc-pub/test/%s/genomic/'  # platform
 MERGED = 's3://seqc-pub/test/%s/%s_merged.fastq.gz'  # platform, platform
 SAMFILE = 's3://seqc-pub/test/%s/Aligned.out.bam'  # platform
-INDEX = 's3://seqc-pub/genomes/hg38_chr19/'
+INDEX = 's3://seqc-pub/genomes/hg38_long_polya/'
 LOCAL_OUTPUT = os.environ['TMPDIR'] + 'seqc/%s/test'  # test_name
 REMOTE_OUTPUT = './test'
 UPLOAD = 's3://%s/seqc_test/%s/'  # bucket_name, test_folder
@@ -117,8 +117,8 @@ class TestSEQC(unittest.TestCase):
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         SEQC.main(argv)
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_samfile(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_samfile(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
         if 'EMAIL' in globals():
             email = globals()['EMAIL']
