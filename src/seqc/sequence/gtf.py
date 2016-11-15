@@ -298,6 +298,8 @@ class GeneIntervals:
             return -1
         if type(strand) is bytes:
             strand = strand.decode('utf-8')
+        if int_chr not in self._pos_scid_dic:
+            raise ValueError("The annotations files used does not include chr {}".format(int_chr))
             
     # return a list of all scids for the input position
         return [x.data for x in self._pos_scid_dic[int_chr][strand][pos]]
