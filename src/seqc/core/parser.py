@@ -1,8 +1,10 @@
+import os
 import argparse
 import sys
 from subprocess import Popen, PIPE
 from seqc import version
 from seqc.exceptions import ArgumentParserError
+
 
 
 def parse_args(args):
@@ -105,7 +107,8 @@ def parse_args(args):
     progress.add_argument(
         '-i', '--instance-ids', help='check the progress of run(s)', nargs='+')
     progress.add_argument(
-        '-k', '--rsa-key', help='RSA key registered to your aws account', required=True)
+        '-k', '--rsa-key', help='RSA key registered to your aws account',
+        default=os.environ['AWS_RSA_KEY'])
 
     terminate = subparsers.add_parser('terminate', help='terminate SEQC runs')
     terminate.set_defaults(remote=False)
@@ -115,7 +118,8 @@ def parse_args(args):
     instances = subparsers.add_parser('instances', help='list all running instances')
     instances.set_defaults(remote=False)
     instances.add_argument(
-        '-k', '--rsa-key', help='RSA key registered to your aws account', required=True)
+        '-k', '--rsa-key', help='RSA key registered to your aws account',
+        default=os.environ['AWS_RSA_KEY'])
 
     pindex = subparsers.add_parser('index', help='create a SEQC index')
     pindex.add_argument(
@@ -172,7 +176,7 @@ def parse_args(args):
             help='Email address to receive run summary or errors when running remotely. '
                  'Optional only if running locally.')
         r.add_argument(
-            '-k', '--rsa-key', metavar='K', default=None,
+            '-k', '--rsa-key', metavar='K', default=os.environ['AWS_RSA_KEY'],
             help='RSA key registered to your aws account that allowed access to ec2 '
                  'resources. Required if running instance remotely.')
 

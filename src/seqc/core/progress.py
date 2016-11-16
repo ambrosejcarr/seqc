@@ -10,6 +10,6 @@ def progress(args):
     """
     for id_ in args.instance_ids:
         connection = ec2.SSHConnection(id_, args.rsa_key)
-        out, err = connection.execute('cat ./seqc.log')
+        out, err = connection.execute('cat ./seqc_log.txt')
         p = Popen(['less'], stdin=PIPE)
         p.communicate(input='\n'.join(out).encode())
