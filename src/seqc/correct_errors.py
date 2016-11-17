@@ -296,7 +296,7 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
                 else:
                     #error
                     for ind in d[gene, cell][r_seq]:
-                        ReadArray.set_error_status_on(ra.data[i])
+                        ReadArray.set_error_status_on(ra.data[ind])
             elif not jait:
                 #not error
                 if r_num_occurences == 1:
@@ -307,7 +307,7 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
             else:
                 #error
                 for ind in d[gene, cell][r_seq]:
-                    ReadArray.set_error_status_on(ra.data[i])
+                    ReadArray.set_error_status_on(ra.data[ind])
 
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
     
