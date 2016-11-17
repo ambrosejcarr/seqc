@@ -12,7 +12,6 @@ from scipy.special import erfc
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 
-
 def get_memory():
     """
     """
@@ -77,7 +76,7 @@ def find_sampling_value(group_data, percentile):
     return min(np.percentile(g.sum(axis=1), percentile) for g in group_data)
 
 
-def normalize(data, downsample_value, upsample=False):
+def normalize(data, downsample_value, upsample=False, labels=None):
     """
     :param data:
     :param downsample_value: value to normalize cell counts to. In current implementation,
@@ -88,8 +87,15 @@ def normalize(data, downsample_value, upsample=False):
     """
     obs_size = data.sum(axis=1)
     if not upsample:
-        data = data[obs_size >= downsample_value, :]
-    return (data * downsample_value) / data.sum(axis=1)[:, np.newaxis]
+        keep = obs_size >= downsample_value
+        data = data[keep, :]
+        if labels is not None:
+            labels = labels[keep]
+    norm = (data * downsample_value) / data.sum(axis=1)[:, np.newaxis]
+    if labels is not None:
+        return norm, labels
+    else:
+        return norm
 
 
 def _draw_sample(normalized_data, n):
@@ -230,6 +236,17 @@ def _kruskal(data):
     return results
 
 
+def category_to_numeric(labels):
+    """transform categorical labels to a numeric array"""
+    labels = np.array(labels)
+    if np.issubdtype(labels.dtype, np.integer):
+        return labels
+    else:
+        cats = np.unique(labels)
+        map_ = dict(zip(cats, np.arange(cats.shape[0])))
+        return np.array([map_[i] for i in labels])
+
+
 def kruskalwallis(
         data, labels, n_iter=50, sampling_percentile=10, alpha=0.05, verbose=False,
         upsample=False):
@@ -262,6 +279,12 @@ def kruskalwallis(
         raise ValueError('data must be a np.ndarray or pd.DataFrame, not %s' %
                          repr(type(data)))
 
+    # if labels are not numeric, transform to numeric categories
+    labels = category_to_numeric(labels)
+    if not labels.shape[0] == data.shape[0]:
+        raise ValueError('labels (shape=%s) must match dimension 0 of data (shape=%s)' %
+                         (repr(labels.shape), repr(labels.data)))
+
     idx = np.argsort(labels)
     data = data[idx, :]  # will copy
     labels = labels[idx]
@@ -270,7 +293,9 @@ def kruskalwallis(
 
     # calculate sampling values and downsample data
     v = find_sampling_value(np.split(data, splits), sampling_percentile)
-    norm_data = normalize(data, v, upsample)
+    norm_data, labels = normalize(data, v, upsample, labels)
+
+    splits = np.where(np.diff(labels))[0] + 1  # rediff, norm_data causes loss
 
     n_cell = min(d.shape[0] for d in np.split(norm_data, splits))
     sampling_function = partial(_kw_sampling_function, n_cell=n_cell, splits=splits)
@@ -291,7 +316,6 @@ def kruskalwallis(
         columns=['H', 'p', 'H_lo', 'H_hi'])
 
     results['q'] = multipletests(results['p'], alpha=alpha, method='fdr_tsbh')[1]
-    results = results[['H', 'H_lo', 'H_hi', 'p', 'q']].sort_values('q')
-    # results.iloc[:, 1:4] = np.round(results.iloc[:, 1:4], 2)
+    results = results[['H', 'H_lo', 'H_hi', 'p', 'q']]
     return results
 
