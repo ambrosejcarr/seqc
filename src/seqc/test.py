@@ -22,7 +22,7 @@ BARCODE_FASTQ = 's3://seqc-pub/test/%s/barcode/'  # platform
 GENOMIC_FASTQ = 's3://seqc-pub/test/%s/genomic/'  # platform
 MERGED = 's3://seqc-pub/test/%s/%s_merged.fastq.gz'  # platform, platform
 SAMFILE = 's3://seqc-pub/test/%s/Aligned.out.bam'  # platform
-INDEX = 's3://seqc-pub/genomes/hg38_long_polya/'
+INDEX = 's3://seqc-pub/genomes/hg38_chr19/'
 LOCAL_OUTPUT = os.environ['TMPDIR'] + 'seqc/%s/test'  # test_name
 REMOTE_OUTPUT = './test'
 UPLOAD = 's3://%s/seqc_test/%s/'  # bucket_name, test_folder
@@ -138,11 +138,11 @@ class TestSEQC(unittest.TestCase):
             platform,
             '-o', REMOTE_OUTPUT,
             '-u', UPLOAD % (bucket, test_name),
-            '-i', INDEX,
+            '-i', 's3://seqc-pub/genomes/hg38_long_polya/',
             '-e', email,
             '-s', SAMFILE % platform,
             '-k', rsa_key,
-            '--instance-type', 'c4.large',
+            '--instance-type', 'c4.8xlarge',
             # '--spot-bid', '1.0'
         ]
         if platform != 'drop_seq':

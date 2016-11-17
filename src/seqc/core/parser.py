@@ -108,7 +108,7 @@ def parse_args(args):
         '-i', '--instance-ids', help='check the progress of run(s)', nargs='+')
     progress.add_argument(
         '-k', '--rsa-key', help='RSA key registered to your aws account',
-        default=os.environ['AWS_RSA_KEY'])
+        default=None)
 
     terminate = subparsers.add_parser('terminate', help='terminate SEQC runs')
     terminate.set_defaults(remote=False)
@@ -119,7 +119,7 @@ def parse_args(args):
     instances.set_defaults(remote=False)
     instances.add_argument(
         '-k', '--rsa-key', help='RSA key registered to your aws account',
-        default=os.environ['AWS_RSA_KEY'])
+        default=None)
 
     pindex = subparsers.add_parser('index', help='create a SEQC index')
     pindex.add_argument(
@@ -176,7 +176,7 @@ def parse_args(args):
             help='Email address to receive run summary or errors when running remotely. '
                  'Optional only if running locally.')
         r.add_argument(
-            '-k', '--rsa-key', metavar='K', default=os.environ['AWS_RSA_KEY'],
+            '-k', '--rsa-key', metavar='K', default=None,
             help='RSA key registered to your aws account that allowed access to ec2 '
                  'resources. Required if running instance remotely.')
 
@@ -189,10 +189,17 @@ def parse_args(args):
         pipe.communicate(p.format_help().encode())
         sys.exit(1)
 
-    try:
-        return meta.parse_args(args)
-    except ArgumentParserError:
-        raise
+    parsed = meta.parse_args(args)
+
+    if hasattr(parsed, 'rsa_key'):
+        if parsed.rsa_key is None:
+            try:
+                parsed.rsa_key = os.environ['AWS_RSA_KEY']
+            except KeyError:
+                pass
+
+    return parsed
+
 
 
 def generate_remote_cmdline_args(argv: list) -> str:
