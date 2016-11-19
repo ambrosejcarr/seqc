@@ -102,6 +102,7 @@ def parse_args(args):
                         '--star-args outFilterMultimapNmax=20. Additional arguments can '
                         'be provided as a white-space separated list.')
 
+    # PROGRESS PARSER
     progress = subparsers.add_parser('progress', help='check SEQC run progress')
     progress.set_defaults(remote=False)
     progress.add_argument(
@@ -110,14 +111,34 @@ def parse_args(args):
         '-k', '--rsa-key', help='RSA key registered to your aws account',
         default=None)
 
+    # TERMINATE PARSER
     terminate = subparsers.add_parser('terminate', help='terminate SEQC runs')
     terminate.set_defaults(remote=False)
     terminate.add_argument(
         '-i', '--instance-ids', help='terminate these instance(s)', nargs='+')
 
+    # INSTANCES PARSER
     instances = subparsers.add_parser('instances', help='list all running instances')
     instances.set_defaults(remote=False)
     instances.add_argument(
+        '-k', '--rsa-key', help='RSA key registered to your aws account',
+        default=None)
+
+    # START PARSER
+    start = subparsers.add_parser(
+        'start', help='initialize a seqc-ready instance')
+    start.set_defaults(remote=False)
+    start.add_argument(
+        '-s', '--volume-size', help='size of volume (Gb) to attach to instance',
+        default=5, type=int)
+    start.add_argument(
+        '-b', '--spot-bid', help='amount to bid for instance in fractions of dollars',
+        type=float, default=None)
+    start.add_argument(
+        '-t', '--instance-type', default='c4.8xlarge',
+        help='AWS instance type to initialize. '
+             'See https://aws.amazon.com/ec2/instance-types/ for valid types')
+    start.add_argument(
         '-k', '--rsa-key', help='RSA key registered to your aws account',
         default=None)
 
