@@ -69,8 +69,8 @@ def low_count(molecules, is_invalid, plot=False, ax=None):
     except ValueError as e:
         if e.args[0] == ('zero-size array to reduction operation minimum which has no '
                          'identity'):
-            warnings.warn('Low count filter passed-through; too few cells to estimate '
-                          'inflection point.')
+            log.notify('Low count filter passed-through; too few cells to estimate '
+                       'inflection point.')
             return is_invalid  # can't estimate validity
         else:
             raise
@@ -240,7 +240,7 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
     with warnings.catch_warnings():  # ignore scipy LinAlg warning about LAPACK bug.
         warnings.simplefilter('ignore')
         regr = LinearRegression()
-    regr.fit(x, y)
+        regr.fit(x, y)
 
     # mark large residuals as failing
     yhat = regr.predict(x)
