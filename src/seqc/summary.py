@@ -29,11 +29,29 @@ class TwoColumnSubSection:
             data = [l for l in f.readlines() if '|' in l]
         keys = []
         values = []
-        for l in data:
+        for l in data:  # todo change to dict comprehension
             k, v = [string.strip() for string in l.split('|')]
             keys.append(k)
             values.append(v)
         return cls(section_name, keys, values)
+
+
+class OneColumnSubSection:
+
+    def __init__(self, name, contents):
+        self.name = name
+        self.contents = contents
+
+    def __str__(self):
+        return (
+            '<h2>{name}</h2>'
+            '<div align="left">{contents}</div>'
+        ).format(name=self.name,
+                 contents='<br>'.join(self.contents))
+
+    @classmethod
+    def from_read_array_representation(cls, ra_repr):
+        return cls('Read Array Filtering Summary', ra_repr)
 
 
 class Section:
@@ -106,7 +124,13 @@ class Summary:
 
 
 # code to create a star summary object:
+# import seqc.summary
 # star_summary = seqc.summary.TwoColumnSubSection.from_alignment_summary(
 #     '/Users/ajc/Downloads/dj008_alignment_summary.txt')
 # s1 = seqc.summary.Section('STAR Alignment', [star_summary])
-# summary = seqc.summary.Summary([s1])
+# s2 = seqc.summary.OneColumnSubSection.from_read_array_representation(ra_repr)
+# s2 = seqc.summary.OneColumnSubSection.from_read_array_representation(ra_repr)
+# s2 = seqc.summary.Section('All ReadArray Results', [s2])
+# summary = seqc.summary.Summary([s1, s2])
+# with open('/Users/ajc/projects/seqc/src/summary/testfile.html', 'w') as f:
+#     f.write(str(summary))

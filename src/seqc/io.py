@@ -2,21 +2,20 @@ import os
 import ftplib
 import shlex
 from glob import glob
-from contextlib import closing
 from functools import partial
-from multiprocessing import Process, Pool, cpu_count
+from multiprocessing import Process, Pool
 from queue import Queue, Empty
-from subprocess import Popen, check_output, PIPE, CalledProcessError, call
+from subprocess import Popen, check_output, PIPE, CalledProcessError
 from itertools import zip_longest
 from collections import namedtuple
 import fcntl
 import boto3
 import logging
 import requests
+import datetime
 import time
+from math import floor
 from seqc import log
-import pandas as pd
-import numpy as np
 import shutil
 
 
@@ -37,7 +36,7 @@ class S3:
     def download_boto(link, prefix='', overwrite=False, recursive=False):
         raise NotImplementedError('please download and configure aws cli.')
 
-    _FileIdentity = namedtuple('_FileIdentity', ['name', 'size', 'date', 'time'])
+    _FileIdentity = namedtuple('_FileIdentity', ['name', 'size'])
 
     @staticmethod
     def split_link(link_or_prefix: str):
@@ -57,7 +56,16 @@ class S3:
         line = line.strip().split()
         bucket, key = cls.split_link(link)
         name = prefix + line[3].replace(key, '')
-        return cls._FileIdentity(name, line[2], line[0], line[1])
+        return cls._FileIdentity(name, line[2])
+
+    @classmethod
+    def _fileidentity_from_python(cls, filehandle):
+        name = filehandle
+        # timestamp = floor(os.path.getmtime(filehandle))
+        # date, mtime = datetime.datetime.fromtimestamp(timestamp).strftime(
+        #     '%Y-%m-%d %H:%m:%S').split()
+        size = os.stat(filehandle).st_size
+        return cls._FileIdentity(name, str(size))
 
     @classmethod
     def _fileidentity_from_ls(cls, line):
@@ -91,28 +99,38 @@ class S3:
             for line in aws_out.decode().strip().split('\n')
             ]
 
-        # existing files
-        ls_cmd = 'ls -l --full-time %s' % prefix
-        if not prefix.endswith('/'):
-            prefix += '*'
-        p = Popen(ls_cmd, shell=True, stdout=PIPE, stderr=PIPE)
-        ls_out, ls_err = p.communicate()
-        if ls_err:
-            if b'No such file or directory' in ls_err:
-                exists = []
-            else:
-                raise ChildProcessError(
-                    'ls error:\n%s\nls output:\n%s' % (
-                        ls_err.decode(), ls_out.decode()))
-        else:
-            exists = [
-                cls._fileidentity_from_ls(line)
-                for line in ls_out.decode().strip().split('\n')[1:]]
+        directory, prefix = os.path.split(prefix)  # todo this is not identifying existing files properly
+        try:
+            files = os.listdir(directory)
+            if prefix:
+                files = [f for f in files if f.startswith(prefix)]
+            exists = [cls._fileidentity_from_python('%s/%s' % (directory, f))
+                      for f in files]
+        except FileNotFoundError:
+            exists = []
+
+        # # existing files
+        # ls_cmd = 'ls -l --full-time %s' % prefix
+        # if not prefix.endswith('/'):
+        #     prefix += '*'
+        # p = Popen(ls_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        # ls_out, ls_err = p.communicate()
+        # if ls_err:
+        #     if b'No such file or directory' in ls_err:
+        #         exists = []
+        #     else:
+        #         raise ChildProcessError(
+        #             'ls error:\n%s\nls output:\n%s' % (
+        #                 ls_err.decode(), ls_out.decode()))
+        # else:
+        #     exists = [
+        #         cls._fileidentity_from_ls(line)
+        #         for line in ls_out.decode().strip().split('\n')[1:]]
 
         omission_string = ''
         for f in to_download:
             if f in exists:
-                omission_string += ' --exclude "%s"' % f.name.replace(prefix, '')
+                omission_string += ' --exclude "*%s"' % os.path.split(f.name)[-1]
 
         return omission_string
 

@@ -1,27 +1,13 @@
 import re
-import os
-import ftplib
-import gzip
 import fileinput
 import string
-import pickle
-import wikipedia
-from wikipedia import PageError
-from contextlib import closing
-from multiprocessing import Pool
 from collections import defaultdict
 from copy import deepcopy
 import pandas as pd
-import numpy as np
-from seqc import reader
-from seqc.sparse_frame import SparseFrame
-from collections import ChainMap
+from seqc import reader, log
 import time
 import intervaltree
-import seqc
 
-
-#TODO: remove unused classes and files.
 
 def first(iterable):
     return next(iter(iterable))
@@ -273,7 +259,7 @@ class GeneIntervals:
                         tx_chr = chr
                         
         tot_time=time.process_time()-start
-        seqc.log.info('Translator completed in {} seconds.'.format(tot_time))
+        log.info('Translator completed in {} seconds.'.format(tot_time))
         return res_dic
 
                     
@@ -338,6 +324,7 @@ class GeneIntervals:
             id_end = gene_end-1 #ignore the "
             
         return int(attribute_str[id_start:id_end])
+
 
 class Reader(reader.Reader):
     """
@@ -458,28 +445,25 @@ def create_gene_id_to_official_gene_symbol_map(gtf: str):
     gene_id_map = defaultdict(set)
     with open(gtf, 'r') as f:
         for line in f:
-            match = re.match(pattern, line)
+
+            fields = line.split('\t')  # speed-up, only run regex on gene lines
+            if fields[2] != 'gene':
+                continue
+
+            match = re.match(pattern, line)  # run regex
             if match:
                 gene_id_map[int(match.group(2))].add(match.group(4).upper())
     return gene_id_map
 
 
-def ensembl_gene_id_to_official_gene_symbol(
-        data: pd.DataFrame or SparseFrame, gtf=None, gene_id_map=None):
+def ensembl_gene_id_to_official_gene_symbol(ids, gene_id_map):
     """convert data containing ensembl gene ids into an index of gene symbols
 
-    :param data: cells x genes DataFrame or SparseFrame
-    :param gtf: str, filename of a gtf file
+    :param Iterable ids: an iterable containing integer ids to be converted
     :param gene_id_map: gene_id_map constructed from
       Experiment.create_gene_id_to_official_gene_symbol_map. If converting multiple
       objects, it is much faster to only construct the map a single time.
-    :return: data: pd.DataFrame or SparseFrame object
+    :return list: converted ids
     """
-    if gene_id_map is None:
-        if gtf is None:
-            raise ValueError('User must pass either GTF or a gene_id_map object')
-        gene_id_map = create_gene_id_to_official_gene_symbol_map(gtf)
-    data = deepcopy(data)
-    data.columns = ['-'.join(gene_id_map[i]) for i in data.columns]
+    return ['-'.join(gene_id_map[i]) for i in ids]
 
-    return data
