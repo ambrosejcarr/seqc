@@ -304,6 +304,20 @@ def run(args) -> None:
         files += ra.to_count_matrix(args.output_prefix + '_phase5_')
         log.info('Read array after error correction: {}'.format(ra))
 
+        # filter non-cells
+        sp_reads, sp_mols = ra.to_count_matrix(
+            sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
+
+        # todo fold all this output into a summary page
+        cell_filter_figure = 'cell_filters.png'
+        sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
+            filter.create_filtered_dense_count_matrix(
+                sp_mols, sp_reads, plot=True, figname=cell_filter_figure))
+        dense_csv = args.output_prefix + '_dense.csv'
+        sp_csv.to_csv(dense_csv)
+
+        files += [dense_csv, cell_filter_figure]
+
         if args.upload_prefix:
             # Upload count matrices files, logs, and return
             bucket, key = io.S3.split_link(args.upload_prefix)

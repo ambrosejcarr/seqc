@@ -40,8 +40,15 @@ class TestSEQC(unittest.TestCase):
     @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_local(self, platform):
         """test seqc after pre-downloading all files"""
+        with open('seqc_log.txt', 'w') as f:
+            f.write('Dummy log. nose2 captures input, so no log is produced. This causes '
+                    'pipeline errors.\n')
         test_name = 'test_no_aws_%s' % platform
         makedirs(LOCAL_OUTPUT % test_name)
+        if 'EMAIL' in globals():
+            email = globals()['EMAIL']
+        else:
+            email = input('please provide an email address for SEQC to mail results: ')
         argv = [
             'run',
             platform,
@@ -50,8 +57,10 @@ class TestSEQC(unittest.TestCase):
             '-b', BARCODE_FASTQ % platform,
             '-g', GENOMIC_FASTQ % platform,
             '--barcode-files', PLATFORM_BARCODES % platform,
+            '-e', email,
             '--local']
         SEQC.main(argv)
+        os.remove('./seqc_log.txt')  # clean up the dummy log we made.
 
     @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_raw_fastq(self, platform):

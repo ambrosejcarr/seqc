@@ -10,6 +10,7 @@ from seqc.exceptions import EmptyMatrixError
 from seqc.sparse_frame import SparseFrame
 from numpy.linalg import LinAlgError
 import seqc.plot
+from seqc import log
 
 
 def estimate_min_poly_t(fastq_files: list, platform) -> int:
@@ -68,8 +69,8 @@ def low_count(molecules, is_invalid, plot=False, ax=None):
     except ValueError as e:
         if e.args[0] == ('zero-size array to reduction operation minimum which has no '
                          'identity'):
-            warnings.warn('Low count filter passed-through; too few cells to estimate '
-                          'inflection point.')
+            log.notify('Low count filter passed-through; too few cells to estimate '
+                       'inflection point.')
             return is_invalid  # can't estimate validity
         else:
             raise
@@ -113,7 +114,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
     rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
 
     if ms.shape[0] < 10 or rs.shape[0] < 10:
-        warnings.warn(
+        log.notify(
             'Low coverage filter passed-through; too few cells to calculate '
             'mixture model.')
         return is_invalid
@@ -189,7 +190,13 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
 
     if plot and ax:
         if ms.shape[0] and ratios.shape[0]:
-            seqc.plot.scatter.continuous(ms, ratios, colorbar=False, ax=ax, s=3)
+            try:
+                seqc.plot.scatter.continuous(ms, ratios, colorbar=False, ax=ax, s=3)
+            except LinAlgError:
+                log.notify('Inadequate number of cells or MT gene abundance to plot MT '
+                           'filter, no visual will be produced, but filter has been '
+                           'applied.')
+                return is_invalid
         else:
             return is_invalid  # nothing else to do here
         if np.sum(failing) != 0:
@@ -230,8 +237,10 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
         return is_invalid
 
     # get line of best fit
-    regr = LinearRegression()
-    regr.fit(x, y)
+    with warnings.catch_warnings():  # ignore scipy LinAlg warning about LAPACK bug.
+        warnings.simplefilter('ignore')
+        regr = LinearRegression()
+        regr.fit(x, y)
 
     # mark large residuals as failing
     yhat = regr.predict(x)
@@ -243,7 +252,12 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
 
     if plot and ax:
         m, b = regr.coef_, regr.intercept_
-        seqc.plot.scatter.continuous(x, y, ax=ax, colorbar=False, s=3)
+        try:
+            seqc.plot.scatter.continuous(x, y, ax=ax, colorbar=False, s=3)
+        except LinAlgError:
+            log.notify('Inadequate number of cells to plot low coverage filter no visual '
+                       'will be produced, but filter has been applied.')
+            return is_invalid
         xmin, xmax = np.min(x), np.max(x)
         ymin, ymax = np.min(y), np.max(y)
         lx = np.linspace(xmin, xmax, 200)

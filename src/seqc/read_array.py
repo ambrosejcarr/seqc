@@ -3,6 +3,7 @@ from seqc import log
 from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
+from seqc.sparse_frame import SparseFrame
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 import pickle
@@ -158,7 +159,7 @@ class ReadArray:
         construct a ReadArray object from a samfile containing only uniquely aligned
         records
 
-        :param gtf: str, filename of annotations.gtf file
+        :param gtf_f: str, filename of annotations.gtf file
         :param samfile: str, filename of alignment file.
         :return:
         """
@@ -370,7 +371,6 @@ class ReadArray:
             
         log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
         return err_rate
-    
 
     def group_for_disambiguation(self):
         """
@@ -379,7 +379,6 @@ class ReadArray:
         The resulting dictionary has the following structure:
             res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
         Note the mapped genes list should be sorted before converted to a tuple
-        :param ra:
         """
         start = time.process_time()
 
@@ -533,10 +532,22 @@ class ReadArray:
     def __len__(self):
         return len(self.data)
         
-    def to_count_matrix(self, csv_path = None):
-        '''
-        Convert the ReadArray into a count matrix. Since the matrix is sparse we represent it with 3 columns: row (cell), col (gene), value if not 0 (reads/molecules)
-        '''
+    def to_count_matrix(self, csv_path=None, sparse_frame=False, genes_to_symbols=False):
+        """Convert the ReadArray into a count matrix.
+
+        Since the matrix is sparse we represent it with 3 columns: row (cell),
+         col (gene), value if not 0 (reads/molecules)
+
+        :param str csv_path: file prefix for .csv output
+        :param bool sparse_frame: if True, return sparse frame objects
+        :param genes_to_symbols: if SparseFrame is True, integer gene IDs are converted
+          to symbols in the returned SparseFrame objects
+        :return str, str, dict, dict:
+          filename (read counts),
+          filename (mol counts),
+          dict of (cell, rmt) -> read counts
+          dict of (cell, rmt) -> molecule counts
+        """
         reads_mat = {}
         mols_mat = {}
         for r in self.data:
@@ -563,12 +574,15 @@ class ReadArray:
             except KeyError:
                 mols_mat[cell, gene] = [rmt]
 
-        # todo bug here (res_mols referenced before assignment); code never executed?
-        if csv_path == None:
-            for cell, gene in mols_mat:
-                res_mols[cell, gene] = len(mols_mat[cell, gene])
+        if sparse_frame:
+            return (SparseFrame.from_dict(reads_mat, genes_to_symbols=genes_to_symbols),
+                    SparseFrame.from_dict(
+                        {k: len(v) for k, v in mols_mat.items()},
+                        genes_to_symbols=genes_to_symbols))
+
+        if csv_path is None:
             return reads_mat, mols_mat
-        
+
         f = open(csv_path+'reads_count.csv', 'w')
         for cell, gene in reads_mat:
             f.write('{}\t{}\t{}\n'.format(cell, gene, reads_mat[cell, gene]))
@@ -577,5 +591,6 @@ class ReadArray:
         for cell, gene in mols_mat:
             f.write('{}\t{}\t{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
         f.close()
-        
-        return csv_path+'reads_count.csv', csv_path+'mols_count.csv' 
+
+        return csv_path + 'reads_count.csv', csv_path + 'mols_count.csv',
+

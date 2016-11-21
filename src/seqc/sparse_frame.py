@@ -1,5 +1,9 @@
+import os
 import numpy as np
 from scipy.sparse import coo_matrix
+from collections import OrderedDict
+from seqc.sequence.gtf import create_gene_id_to_official_gene_symbol_map
+from seqc.sequence.gtf import ensembl_gene_id_to_official_gene_symbol
 
 
 class SparseFrame:
@@ -75,3 +79,43 @@ class SparseFrame:
         :return: np.ndarray vector of column or row sums
         """
         return self.data.sum(axis=axis)
+
+    @classmethod
+    def from_dict(cls, dictionary, genes_to_symbols=False):
+        """create a SparseFrame from a dictionary
+
+        :param dict dictionary: dictionary in form (cell, gene) -> count
+        :param str|bool genes_to_symbols: convert genes into symbols. If not False, user
+          must provide the location of a .gtf file to carry out conversion. Otherwise the
+          column index will retain the original integer ids
+        :return SparseFrame: SparseFrame containing dictionary data
+        """
+
+        i, j = (np.array(v, dtype=int) for v in zip(*dictionary.keys()))
+        data = np.fromiter(dictionary.values(), dtype=int)
+
+        # map cells to small values
+        uniq_i = np.unique(i)
+        imap = OrderedDict(zip(uniq_i, np.arange(uniq_i.shape[0])))
+
+        uniq_j = np.unique(j)
+        jmap = OrderedDict(zip(uniq_j, np.arange(uniq_j.shape[0])))
+
+        i_inds = np.fromiter((imap[v] for v in i), dtype=int)
+        j_inds = np.fromiter((jmap[v] for v in j), dtype=int)
+
+        coo = coo_matrix((data, (i_inds, j_inds)), shape=(len(imap), len(jmap)),
+                         dtype=np.int32)
+
+        index = np.fromiter(imap.keys(), dtype=int)
+        columns = np.fromiter(jmap.keys(), dtype=int)
+
+        if genes_to_symbols:
+            if not os.path.isfile(genes_to_symbols):
+                raise ValueError('genes_to_symbols argument %s is not a valid annotation '
+                                 'file' % repr(genes_to_symbols))
+            gmap = create_gene_id_to_official_gene_symbol_map(genes_to_symbols)
+            columns = np.array(ensembl_gene_id_to_official_gene_symbol(
+                columns, gene_id_map=gmap))
+
+        return cls(coo, index, columns)
