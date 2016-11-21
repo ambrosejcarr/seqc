@@ -157,10 +157,6 @@ def index(args):
     return args
 
 
-def install():
-    raise NotImplementedError  # todo implement; verify aws key, everything else.
-
-
 def executables(*execs):
     """
     checks whether executables are installed on the machine of the

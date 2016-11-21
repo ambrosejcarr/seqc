@@ -1,4 +1,5 @@
 from subprocess import Popen, PIPE
+import os
 
 
 def email_user(attachment: str, email_body: str, email_address: str) -> None:
@@ -10,10 +11,10 @@ def email_user(attachment: str, email_body: str, email_address: str) -> None:
     :param email_body: text to send in the body of the email
     :param email_address: the address to which the email should be sent"""
 
+    # todo if remote is sending double emails, add quotes around attachment.
     if isinstance(email_body, str):
         email_body = email_body.encode()
-
-    email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', '"%s"' % attachment, '-s',
+    email_args = ['mutt', '-e', 'set content_type="text/html"', '-a', attachment, '-s',
                   'Remote Process', '--', email_address]
     email_process = Popen(email_args, stdin=PIPE)
     email_process.communicate(email_body)

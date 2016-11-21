@@ -114,7 +114,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
     rs = np.ravel(reads.tocsr()[~is_invalid, :].sum(axis=1))
 
     if ms.shape[0] < 10 or rs.shape[0] < 10:
-        warnings.warn(
+        log.notify(
             'Low coverage filter passed-through; too few cells to calculate '
             'mixture model.')
         return is_invalid
