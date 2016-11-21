@@ -276,18 +276,18 @@ def run(args) -> None:
                        'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
 
         files = []
-        files += ra.to_count_matrix(args.output_prefix + '_phase1_')[:2]
+        files += ra.to_count_matrix(args.output_prefix + '_phase1_')
         log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
         ra.apply_filters(
             required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
-        files += ra.to_count_matrix(args.output_prefix + '_phase2_')[:2]
+        files += ra.to_count_matrix(args.output_prefix + '_phase2_')
         log.info('Read array after filtering: {}'.format(ra))
         # Correct barcodes
         if platform.check_barcodes:
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
                                                      max_ed=args.max_ed)
-            files += ra.to_count_matrix(args. output_prefix + '_phase3_')[:2]
+            files += ra.to_count_matrix(args. output_prefix + '_phase3_')
             log.info('Read array after barcode correction: {}'.format(ra))
         else:
             error_rate = None
@@ -295,7 +295,7 @@ def run(args) -> None:
 
         # Resolve multimapping
         ra.resolve_alignments(args.index)
-        files += ra.to_count_matrix(args.output_prefix + '_phase4_')[:2]
+        files += ra.to_count_matrix(args.output_prefix + '_phase4_')
         log.info('Read array after multialignment resolution: {}'.format(ra))
         # correct errors
         log.info('Filterring errors')
