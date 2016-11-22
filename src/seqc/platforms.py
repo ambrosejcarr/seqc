@@ -33,6 +33,8 @@ class AbstractPlatform:
             return mars2_seq()
         if type == "ten_x":
             return ten_x()
+        if type == "ten_x_v2":
+            return ten_x_v2()
     
     @property
     def num_barcodes(self):
