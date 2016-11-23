@@ -585,11 +585,11 @@ class ReadArray:
 
         f = open(csv_path+'reads_count.csv', 'w')
         for cell, gene in reads_mat:
-            f.write('{}\t{}\t{}\n'.format(cell, gene, reads_mat[cell, gene]))
+            f.write('{},{},{}\n'.format(cell, gene, reads_mat[cell, gene]))
         f.close()
         f = open(csv_path+'mols_count.csv', 'w')
         for cell, gene in mols_mat:
-            f.write('{}\t{}\t{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
+            f.write('{},{},{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
         f.close()
 
         return csv_path + 'reads_count.csv', csv_path + 'mols_count.csv',

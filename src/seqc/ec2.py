@@ -25,7 +25,6 @@ log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
 # set default values for a few parameters
 IMAGE_ID = 'ami-5bcbe54c'
-SUBNET_ID = 'subnet-70d7ec36'
 
 
 def _get_ec2_configuration():
@@ -99,7 +98,6 @@ class AWSInstance(object):
         ---------------------------
         :param str rsa_key:
         :param str image_id:
-        :param str subnet_id:
         :param str instance_type:
 
         optional arguments:
@@ -121,7 +119,6 @@ class AWSInstance(object):
         self.aws_secret_access_key = defaults['aws_secret_access_key']
         self.region = defaults['region']
         self._rsa_key = rsa_key
-        self.subnet_id = SUBNET_ID
         self.image_id = IMAGE_ID
         self.instance_type = instance_type
 
@@ -246,8 +243,6 @@ class AWSInstance(object):
                                              'VolumeType': 'gp2',
                                              'DeleteOnTermination': True}}],
         }
-        if any(self.instance_type.startswith(prefix) for prefix in ('c4', 'r3')):
-            spec['SubnetId'] = self.subnet_id
         return spec
 
     @Retry(retries=40, catch=(ClientError, InstanceNotRunningError), delay=5)
