@@ -1,4 +1,5 @@
 import boto3
+import os
 
 
 def instances(args):
@@ -8,6 +9,11 @@ def instances(args):
       the rsa-key used to start the instances you want to list
     :return None:
     """
+
+    if args.rsa_key is None:
+        raise ValueError('-k/--rsa-key does not point to a valid file object. ')
+    if not os.path.isfile(args.rsa_key):
+        raise ValueError('-k/--rsa-key does not point to a valid file object. ')
 
     keyname = args.rsa_key.rpartition('.')[0].rpartition('/')[-1]
 

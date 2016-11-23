@@ -10,6 +10,7 @@ from itertools import zip_longest
 from collections import namedtuple
 import fcntl
 import boto3
+from botocore.exceptions import ClientError
 import logging
 import requests
 import datetime
@@ -355,6 +356,8 @@ class S3:
                     'Error: Provided s3 link "%s" does not contain the proper '
                     'input files to SEQC.' % infile)
                 raise
+            except ClientError:
+                raise ValueError('s3 file %s not found.' % infile)
 
     @staticmethod
     def obtain_size(item: str) -> int:
