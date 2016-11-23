@@ -4,7 +4,7 @@
 
 SEQC is a python package that processes single-cell sequencing data in the cloud and analyzes it interactively on your local machine.
  
-To faciliate easy installation and use, we have made available Amazon Machine Images (AMIs) that come with all of SEQC's dependencies pre-installed. In addition, we have uploaded common genome indices (-i/--index parameter, see "Running SEQC) and barcode data (--barcode-files) to public amazon s3 repositories. These links can be provided to SEQC and it will automatically fetch them prior to initiating an analysis run. Finally, it will fetch data from BaseSpace or amazon s3 for analysis.
+To faciliate easy installation and use, we have made available Amazon Machine Images (AMIs) that come with all of SEQC's dependencies pre-installed. In addition, we have uploaded common genome indices (-i/--index parameter) and barcode data (--barcode-files) to public amazon s3 repositories. These links can be provided to SEQC and it will automatically fetch them prior to initiating an analysis run. Finally, it can fetch input data directly from BaseSpace or amazon s3 for analysis.
 
 For users with access to in-house compute clusters, SEQC can be installed on your systems and run using the --local parameter.
 
