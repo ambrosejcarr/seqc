@@ -309,6 +309,8 @@ def run(args) -> None:
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
+        ra.save(args.output_prefix)
+
         # todo fold all this output into a summary page
         cell_filter_figure = 'cell_filters.png'
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (

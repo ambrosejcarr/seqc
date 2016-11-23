@@ -4,12 +4,15 @@ from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sparse_frame import SparseFrame
+from numpy.lib.recfunctions import append_fields
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 import pickle
+import shutil
+import os
 from itertools import permutations
 import time
-# import tables as tb
+import tables as tb
 
 # Some constants
 PASS_FILTERS    = 0
@@ -27,7 +30,8 @@ BC_FIXED        = 1
 BC_BAD          = 2
 
 DEFAULT_BASE_CONVERTION_RATE = 0.02
-    
+
+
 class ReadArray:
 
     _dtype = [
@@ -405,42 +409,68 @@ class ReadArray:
         return res
     
     def save(self, archive_name: str) -> None:
-        """save a ReadArray in .h5 format
+        """save a ReadArray object as a .tar archive of a few formats
 
-        :param archive_name: filename of a new .h5 archive in which to save the ReadArray
+        :param archive_name: filestem for the new archive
         :return: None
         """
 
-        # create table
-#        blosc5 = tb.Filters(complevel=5, complib='blosc')
-#        f = tb.open_file(archive_name, mode='w', title='Data for seqc.ReadArray',
-#                         filters=blosc5)
+        directory = os.path.dirname(archive_name + '/')
+        print('directory:', directory)
+        print('archive_name:', archive_name)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
 
-        # store data
-#        f.create_table(f.root, 'data', self._data)
-#        f.close()
-        f = open(archive_name, 'wb')
-        pickle.dump(self._data, f, protocol=4)
+        # construct container
+        blosc5 = tb.Filters(complevel=5, complib='blosc')
+        f = tb.open_file(directory + '/ra.h5', mode='w', title='Data for seqc.ReadArray',
+                         filters=blosc5)
+
+        # select the subset of the readarray that is storable and put that in h5
+        data = self._data[
+            ['status', 'cell', 'rmt', 'n_poly_t', 'dust_score', 'gene', 'position']]
+        f.create_table(f.root, 'data', data)
         f.close()
+
+        # select the subset of data that is not and put those into pickle files
+        with open(directory + '/genes.p', 'wb') as f:
+            pickle.dump(list(self.data['ma_genes']), f)
+
+        with open(directory + '/positions.p', 'wb') as f:
+            pickle.dump(list(self.data['ma_pos']), f)
+
+        # wrap it up into an archive
+        shutil.make_archive(archive_name, 'tar', archive_name + '/')
+        shutil.rmtree(archive_name + '/')
 
     @classmethod
     def load(cls, archive_name: str):
-        """load a ReadArray from a .h5 archive
+        """load a ReadArray from a tar archive
 
         :param archive_name: name of a .h5 archive containing a saved ReadArray object
         :return: ReadArray
         """
 
-        #f = tb.open_file(archive_name, mode='r')
-        #data = f.root.data.read()
-        #f.close()
-        #return cls(data)
-        
-        f = open(archive_name, 'rb')
-        data = pickle.load(f)
+        directory = archive_name.replace('.tar', '')
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        shutil.unpack_archive(archive_name, archive_name.replace('.tar', ''), 'tar')
+
+        f = tb.open_file(directory + '/ra.h5', mode='r')
+        data = f.root.data.read()
         f.close()
+
+        with open(directory + '/genes.p', 'wb') as f:
+            genes = np.array(pickle.load(f))
+        with open(directory + '/positions.p', 'wb') as f:
+            positions = np.array(pickle.load(f))
+
+        data = append_fields(
+            base=data, names=['ma_genes', 'ma_pos'], data=[genes, positions],
+            dtypes=[np.object, np.object], asrecarray=True)
+
         return cls(data)
-        
+
     def resolve_alignments(self, index):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
