@@ -321,9 +321,10 @@ def run(args) -> None:
         sp_csv.to_csv(dense_csv)
 
         # get alignment summary
-        os.rename(output_dir + '/alignments/Log.final.out',
-                  output_dir + '/alignment_summary.txt')
-        files += [output_dir + '/alignment_summary.txt']
+        if os.path.isfile(output_dir + '/alignments/Log.final.out'):
+            os.rename(output_dir + '/alignments/Log.final.out',
+                      output_dir + '/alignment_summary.txt')
+            files += [output_dir + '/alignment_summary.txt']
 
         files += [dense_csv, cell_filter_figure, args.output_prefix + '.h5']
 
