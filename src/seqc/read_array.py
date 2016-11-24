@@ -409,21 +409,19 @@ class ReadArray:
         return res
     
     def save(self, archive_name: str) -> None:
-        """save a ReadArray object as a .tar archive of a few formats
+        """save a ReadArray object as a .h5 archive: note that ma_genes and ma_pos are
+        discarded
 
         :param archive_name: filestem for the new archive
         :return: None
         """
 
-        directory = os.path.dirname(archive_name + '/')
-        print('directory:', directory)
-        print('archive_name:', archive_name)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
+        if not archive_name.endswith('.h5'):
+            archive_name += '.h5'
 
         # construct container
         blosc5 = tb.Filters(complevel=5, complib='blosc')
-        f = tb.open_file(directory + '/ra.h5', mode='w', title='Data for seqc.ReadArray',
+        f = tb.open_file(archive_name, mode='w', title='Data for seqc.ReadArray',
                          filters=blosc5)
 
         # select the subset of the readarray that is storable and put that in h5
@@ -432,42 +430,18 @@ class ReadArray:
         f.create_table(f.root, 'data', data)
         f.close()
 
-        # select the subset of data that is not and put those into pickle files
-        with open(directory + '/genes.p', 'wb') as f:
-            pickle.dump(list(self.data['ma_genes']), f)
-
-        with open(directory + '/positions.p', 'wb') as f:
-            pickle.dump(list(self.data['ma_pos']), f)
-
-        # wrap it up into an archive
-        shutil.make_archive(archive_name, 'tar', archive_name + '/')
-        shutil.rmtree(archive_name + '/')
-
     @classmethod
     def load(cls, archive_name: str):
-        """load a ReadArray from a tar archive
+        """load a ReadArray from an hdf5 archive, note that ma_pos and ma_genes are
+        discarded.
 
         :param archive_name: name of a .h5 archive containing a saved ReadArray object
         :return: ReadArray
         """
 
-        directory = archive_name.replace('.tar', '')
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-        shutil.unpack_archive(archive_name, archive_name.replace('.tar', ''), 'tar')
-
-        f = tb.open_file(directory + '/ra.h5', mode='r')
+        f = tb.open_file(archive_name, mode='r')
         data = f.root.data.read()
         f.close()
-
-        with open(directory + '/genes.p', 'wb') as f:
-            genes = np.array(pickle.load(f))
-        with open(directory + '/positions.p', 'wb') as f:
-            positions = np.array(pickle.load(f))
-
-        data = append_fields(
-            base=data, names=['ma_genes', 'ma_pos'], data=[genes, positions],
-            dtypes=[np.object, np.object], asrecarray=True)
 
         return cls(data)
 
