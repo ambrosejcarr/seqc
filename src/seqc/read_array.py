@@ -4,12 +4,8 @@ from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sparse_frame import SparseFrame
-from numpy.lib.recfunctions import append_fields
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
-import pickle
-import shutil
-import os
 from itertools import permutations
 import time
 import tables as tb
