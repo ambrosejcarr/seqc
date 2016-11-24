@@ -1,5 +1,4 @@
 from jinja2 import Environment, PackageLoader
-import shutil
 from collections import OrderedDict
 
 
