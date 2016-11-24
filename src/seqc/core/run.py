@@ -11,6 +11,7 @@ def run(args) -> None:
     # top 2 only needed for post-filtering
     # from seqc.filter import create_filtered_dense_count_matrix  # todo can remove this?
     # from seqc.sparse_frame import SparseFrame  # todo can remove this?
+
     import os
     import multiprocessing
     from seqc import log, ec2, platforms, filter, io
@@ -298,7 +299,7 @@ def run(args) -> None:
         files += ra.to_count_matrix(args.output_prefix + '_phase4_')
         log.info('Read array after multialignment resolution: {}'.format(ra))
         # correct errors
-        log.info('Filterring errors')
+        log.info('Filtering errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
         platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
         files += ra.to_count_matrix(args.output_prefix + '_phase5_')
@@ -308,6 +309,9 @@ def run(args) -> None:
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
+        ra.save(args.output_prefix + '.h5')
+        log.notify('ReadArray saved.')
+
         # todo fold all this output into a summary page
         cell_filter_figure = 'cell_filters.png'
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
@@ -316,7 +320,12 @@ def run(args) -> None:
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)
 
-        files += [dense_csv, cell_filter_figure]
+        # get alignment summary
+        os.rename(output_dir + '/alignments/Log.final.out',
+                  output_dir + '/alignment_summary.txt')
+        files += [output_dir + '/alignment_summary.txt']
+
+        files += [dense_csv, cell_filter_figure, args.output_prefix + '.h5']
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return
@@ -370,12 +379,12 @@ def run(args) -> None:
         # TODO: I need to create summary but from the read_array instead of via error
         # correction
         # TODO: generate a printout of these for the summary
-
-        email_body = (
-            '<font face="Courier New, Courier, monospace">'
-            'SEQC RUN COMPLETE.\n\n'
-            'The run log has been attached to this email and '
-            'results are now available in the S3 location you specified: '
-            '"%s"\n\n' % args.upload_prefix)
-        email_body = email_body.replace('\n', '<br>').replace('\t', '&emsp;')  # html code
-        email_user(args.log_name, email_body, args.email)
+        if mutt:
+            email_body = (
+                '<font face="Courier New, Courier, monospace">'
+                'SEQC RUN COMPLETE.\n\n'
+                'The run log has been attached to this email and '
+                'results are now available in the S3 location you specified: '
+                '"%s"\n\n' % args.upload_prefix)
+            email_body = email_body.replace('\n', '<br>').replace('\t', '&emsp;')
+            email_user(args.log_name, email_body, args.email)

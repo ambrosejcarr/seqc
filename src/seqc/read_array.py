@@ -6,10 +6,9 @@ from seqc.sequence.encodings import DNA3Bit
 from seqc.sparse_frame import SparseFrame
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
-import pickle
 from itertools import permutations
 import time
-# import tables as tb
+import tables as tb
 
 # Some constants
 PASS_FILTERS    = 0
@@ -27,7 +26,8 @@ BC_FIXED        = 1
 BC_BAD          = 2
 
 DEFAULT_BASE_CONVERTION_RATE = 0.02
-    
+
+
 class ReadArray:
 
     _dtype = [
@@ -405,42 +405,42 @@ class ReadArray:
         return res
     
     def save(self, archive_name: str) -> None:
-        """save a ReadArray in .h5 format
+        """save a ReadArray object as a .h5 archive: note that ma_genes and ma_pos are
+        discarded
 
-        :param archive_name: filename of a new .h5 archive in which to save the ReadArray
+        :param archive_name: filestem for the new archive
         :return: None
         """
 
-        # create table
-#        blosc5 = tb.Filters(complevel=5, complib='blosc')
-#        f = tb.open_file(archive_name, mode='w', title='Data for seqc.ReadArray',
-#                         filters=blosc5)
+        if not archive_name.endswith('.h5'):
+            archive_name += '.h5'
 
-        # store data
-#        f.create_table(f.root, 'data', self._data)
-#        f.close()
-        f = open(archive_name, 'wb')
-        pickle.dump(self._data, f, protocol=4)
+        # construct container
+        blosc5 = tb.Filters(complevel=5, complib='blosc')
+        f = tb.open_file(archive_name, mode='w', title='Data for seqc.ReadArray',
+                         filters=blosc5)
+
+        # select the subset of the readarray that is storable and put that in h5
+        data = self._data[
+            ['status', 'cell', 'rmt', 'n_poly_t', 'dust_score', 'gene', 'position']]
+        f.create_table(f.root, 'data', data)
         f.close()
 
     @classmethod
     def load(cls, archive_name: str):
-        """load a ReadArray from a .h5 archive
+        """load a ReadArray from an hdf5 archive, note that ma_pos and ma_genes are
+        discarded.
 
         :param archive_name: name of a .h5 archive containing a saved ReadArray object
         :return: ReadArray
         """
 
-        #f = tb.open_file(archive_name, mode='r')
-        #data = f.root.data.read()
-        #f.close()
-        #return cls(data)
-        
-        f = open(archive_name, 'rb')
-        data = pickle.load(f)
+        f = tb.open_file(archive_name, mode='r')
+        data = f.root.data.read()
         f.close()
+
         return cls(data)
-        
+
     def resolve_alignments(self, index):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
@@ -585,11 +585,11 @@ class ReadArray:
 
         f = open(csv_path+'reads_count.csv', 'w')
         for cell, gene in reads_mat:
-            f.write('{}\t{}\t{}\n'.format(cell, gene, reads_mat[cell, gene]))
+            f.write('{},{},{}\n'.format(cell, gene, reads_mat[cell, gene]))
         f.close()
         f = open(csv_path+'mols_count.csv', 'w')
         for cell, gene in mols_mat:
-            f.write('{}\t{}\t{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
+            f.write('{},{},{}\n'.format(cell, gene, len(mols_mat[cell, gene])))
         f.close()
 
         return csv_path + 'reads_count.csv', csv_path + 'mols_count.csv',

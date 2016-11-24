@@ -200,7 +200,6 @@ class GeneIntervals:
         
     
     def build_pos_scid_dic(self, fname):
-        print('using function ver 2')
         start = time.process_time()
         exons = {'-':[],'+':[]}
         res_dic = {} #The resulting dictionary holding two lists. the first is of positions sorted, the second is a list of scids relevant for that position onwards

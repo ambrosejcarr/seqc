@@ -84,6 +84,11 @@ def run(args) -> float:
     :returns total: float, estimated Kb of Volume space needed to run SEQC remotely.
     """
 
+    if args.rsa_key is None:
+        raise ValueError('-k/--rsa-key does not point to a valid file object. ')
+    if not os.path.isfile(args.rsa_key):
+        raise ValueError('-k/--rsa-key does not point to a valid file object. ')
+
     if args.output_prefix.endswith('/'):
         raise ValueError('output_stem should not be a directory.')
     if not args.index.endswith('/'):
