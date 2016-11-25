@@ -20,7 +20,7 @@ Python must be installed on your local machine to run SEQC. We recommend install
 
 
 #### STAR
-To run SEQC locally, you must install the <a href=https://github.com/alexdobin/STAR>STAR Aligner</a>. If you only intend to run remotely, this dependency is optional. 
+To run SEQC locally, you must install the <a href=https://github.com/alexdobin/STAR>STAR Aligner</a>, <a href=http://www.htslib.org/>Samtools</a>, and <a href=https://support.hdfgroup.org/HDF5/>hdf5</a>. If you only intend to run remotely, these dependency is optional. We recommend installing samtools and hdf5 through your package manager, if possible. 
 
 
 #### Hardware Requirements:

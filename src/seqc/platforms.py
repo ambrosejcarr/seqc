@@ -33,6 +33,8 @@ class AbstractPlatform:
             return mars2_seq()
         if type == "ten_x":
             return ten_x()
+        if type == "ten_x_v2":
+            return ten_x_v2()
     
     @property
     def num_barcodes(self):
@@ -358,6 +360,7 @@ class mars2_seq(AbstractPlatform):
 
 
 class ten_x(AbstractPlatform):
+    # 10X version 1 chemistry
 
     def __init__(self):
         AbstractPlatform.__init__(self, [14], True, correct_errors.in_drop)
@@ -384,5 +387,35 @@ class ten_x(AbstractPlatform):
         rmt = b.sequence.strip()
         # bc is in a fixed position in the name; assumes 10bp indices.
         cell = g.name.strip()[-23:-9]
+        g.add_annotation((b'', cell, rmt, b''))
+        return g
+
+
+class ten_x_v2(AbstractPlatform):
+    # 10X version 2 chemistry
+
+    def __init__(self):
+        AbstractPlatform.__init__(self, [16], True, correct_errors.in_drop)
+
+    def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for 10X
+        """
+        return 26
+
+    def merge_function(self, g, b):
+        """
+        merge forward and reverse 10x reads, annotating the reverse read
+        (containing genomic information) with the rmt from the forward read.
+        Pool is left empty, and the cell barcode is obtained from the
+        forward read.
+
+        :param g: genomic fastq sequence data
+        :param b: barcode fastq sequence data
+        :return: annotated genomic sequence.
+        """
+        combined = b.sequence.strip()
+        cell = combined[0:16]  # v2 chemistry has 16bp barcodes
+        rmt = combined[16:]  # remaining 10 bp
         g.add_annotation((b'', cell, rmt, b''))
         return g
