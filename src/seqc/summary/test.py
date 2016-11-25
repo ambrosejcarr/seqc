@@ -7,10 +7,10 @@ from collections import OrderedDict
 class TestSummary(unittest.TestCase):
 
     def test_render_section(self):
-        s1 = summary.KVSection('test1', OrderedDict(zip(range(5, 10), 'fghij')))
-        s2 = summary.KVSection('test2', OrderedDict(zip(range(5), 'abcde')))
-        summary.create_summary_section((s1, s2))
-
+        s1 = summary.Section.from_alignment_summary(
+            '/var/folders/y3/ysxvl2w921d881nfpvx5ypvh0000gn/T/seqc/test_no_aws_in_drop_v2'
+            '/alignment_summary.txt')
+        s1.render('./src/seqc/summary/test_summary.html')
 
 if __name__ == "__main__":
     nose2.main()

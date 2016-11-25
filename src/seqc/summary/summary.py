@@ -1,6 +1,107 @@
 from jinja2 import Environment, PackageLoader
-import shutil
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
+
+
+ImageContent = namedtuple('ImageContent', ['image', 'caption', 'legend'])
+
+TextContent = namedtuple('TextContent', ['text'])
+
+DataContent = namedtuple('DataContent', ['keys', 'values'])
+
+
+class Section:
+
+    __slots__ = ['name', 'content']
+
+    def __init__(self, name, content):
+        """
+
+        :param str name: Section name
+        :param OrderedDict content: ordered dictionary containing keys corresponding to
+          header information and values which are Content classes
+        """
+        self.name = name
+        self.content = content
+
+    def render(self, filename):
+        """renders this sub-section
+
+        :param str filename: name of rendered html file
+        :return None:
+        """
+        env = Environment(loader=PackageLoader('seqc.summary', 'templates'))
+        print(env.list_templates())
+        section_template = env.get_template('section_content.html')
+        rendered_section = section_template.render(
+            sections=[self], section=self)  # todo this API is stupid
+        with open(filename, 'w') as f:
+            f.write(rendered_section)
+
+    @classmethod
+    def from_alignment_summary(cls, alignment_summary):
+        """Create a summary section from an alignment summary file produced by STAR
+
+        :param str alignment_summary: STAR alignment summary
+        :return:
+        """
+        with open(alignment_summary, 'r') as f:
+            data = f.read()
+        categories = OrderedDict()
+
+        def split_lines(block):
+            keys, values = zip(*(l.split('|') for l in block.split('\n') if '|' in l))
+            keys = [k.strip() for k in keys if k.strip()]
+            values = [v.strip() for v in values if v.strip()]
+            return DataContent(keys, values)
+
+        # time and input read numbers
+        time, _, data = data.partition('UNIQUE READS:')
+        categories['Run Time'] = split_lines(time)
+
+        # unique reads and splicing
+        splicing, _, data = data.partition('MULTI-MAPPING READS:')
+        categories['Unique Reads and Splicing'] = split_lines(splicing)
+
+        # multimapping reads
+        multimapping, _, unmapped = data.partition('UNMAPPED READS:')
+        categories['Multimapping Reads'] = split_lines(multimapping)
+        categories['Unmapped Reads'] = split_lines(unmapped)
+
+        return cls('STAR Alignment Summary', categories)
+
+    @classmethod
+    def from_filters(cls, read_array):
+        """
+
+        :param seqc.read_array.ReadArray read_array: ReadArray object
+        :return:
+        """
+
+    @classmethod
+    def from_read_array(cls, read_array):
+        """includes error correction, filtering, multimapping
+
+        :param seqc.read_array.ReadArray read_array:
+        :return Section:
+        """
+        raise NotImplementedError
+
+    def from_dense_filtration(
+            self, total_mols, molecules_lost, cells_lost, cell_description):
+        """ cell selection, molecule distribution, etc.
+
+        :param total_mols:
+        :param molecules_lost:
+        :param cells_lost:
+        :param cell_description:
+        :return Section:
+        """
+        raise NotImplementedError
+
+    def from_dense_matrix(self):
+        raise NotImplementedError
+
+
 
 
 class KVSection:
@@ -72,9 +173,6 @@ class ImageSection:
     def legend(self):
         return self._legend
 
-    def from_loss_results(self):
-
-
 
 class Summary:
 
@@ -109,19 +207,11 @@ class Summary:
         pass
 
 
-def create_summary_section(sections):
-    """
+def create_seqc_summary(archive_name):
+    """creates a SEQC summary from a pre-determined set of sections that are heuristically
+    defined.
 
-    :param tuple sections:
-    :return: formatted html template page
+    :param str archive_name: name for the seqc archive that will be produced in .tar.gz
+        format
+    :return None:
     """
-    env = Environment(loader=PackageLoader('seqc.summary', 'templates'))
-    print(env.list_templates())
-    section_template = env.get_template('kv_section.html')
-    for s in sections:
-        rendered_section = section_template.render(
-            sections=sections,
-            keys=s.keys,
-            values=s.values)
-        with open('./src/seqc/summary/testfile_%s.html' % s.name, 'w') as f:
-            f.write(rendered_section)
