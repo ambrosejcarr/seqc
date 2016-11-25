@@ -207,7 +207,7 @@ class ReadArray:
             # new read
             if alignment.qname != prev_alignment_name:
                 if read_idx > 0:
-                    data[read_idx - 1] = (ReadArray.active_status(), cell, rmt, n_poly_t,
+                    data[read_idx - 1] = (ReadArray.active_status(), cell, rmt, n_poly_t,  # api (construction)
                                           dust_score, 0, 0, genes, ma_pos)
                     cls.set_status_active(data[read_idx - 1])
                 prev_alignment_name = alignment.qname
@@ -226,12 +226,15 @@ class ReadArray:
                 dust_score = alignment.dust_low_complexity_score
                 
             # the same read
+            # todo this is unnecessarily complex
             else:
                 genes_l = translator.translate(
                     alignment.rname, alignment.strand, alignment.pos)
                 if genes_l != -1:
                     if len(genes_l) > 1:
                         non_unique_align += 1
+                    # todo how can genes be -1 and be appendable?
+                    # the translator should output a consistent type
                     if genes == -1:
                         genes = genes_l
                     else:
@@ -257,6 +260,8 @@ class ReadArray:
         :param max_dust_score:
         :return:
         """
+        # todo bugs or incosistent typing here; ma_genes is a list so this will never
+        # evaluate to true, or ducktyping is being used.
         for r in self.data:
             if r['ma_genes'] is None:
                 ReadArray.set_filt_fail(r, NO_GENES)
@@ -445,7 +450,7 @@ class ReadArray:
             if not ReadArray.is_active_read(r):
                 continue
 
-            genes = tuple(set(sorted(r['ma_genes'])))
+            genes = tuple(set(sorted(r['ma_genes'])))  # api (access)
             # group according to the correct barcodes and gene
             cell = r['cell']
             rmt = r['rmt']
@@ -577,9 +582,9 @@ class ReadArray:
                 for ind in indices:
                     ReadArray.set_mm_status(self.data[ind], r)
                     if resolved:
-                        self.data['gene'][ind] = g
-                        self.data['position'][ind] = (
-                            self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)])
+                        self.data['gene'][ind] = g  # api (indexing gene field)
+                        self.data['position'][ind] = (  # api (indexing position field)
+                            self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)])  # api (indexing)
                     else:
                         ReadArray.set_status_inactive(self.data[ind])        
         
@@ -618,10 +623,11 @@ class ReadArray:
             gene = r['gene']
             rmt = r['rmt']
             if gene == 0:
-                if r['ma_genes'] == -1 or r['ma_genes'] == 0:
+                # todo bug here (ma_genes is a list, these will never be true)
+                if r['ma_genes'] == -1 or r['ma_genes'] == 0:  # api (comparison to row value of ma_genes)
                     continue
-                elif len(r['ma_genes']) == 1:
-                    gene = r['ma_genes'][0]
+                elif len(r['ma_genes']) == 1:  # api (length)
+                    gene = r['ma_genes'][0]  # api (indexing)
                 else:
                     continue
             try:

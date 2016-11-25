@@ -274,7 +274,8 @@ class GeneIntervals:
         # If we're here - tx is shorter than 1000 - return the start of the first exxon
         return ex_list[0][0]
     
-    
+    # todo translate should output a consistent type! could return empty list that
+    # evaluates to None.
     def translate(self, chr, strand, pos):
         if type(chr) is bytes:
             chr = chr.decode('utf-8')
@@ -286,7 +287,7 @@ class GeneIntervals:
         if int_chr not in self._pos_scid_dic:
             raise ValueError("The annotations files used does not include chr {}".format(int_chr))
             
-    # return a list of all scids for the input position
+        # return a list of all scids for the input position
         return [x.data for x in self._pos_scid_dic[int_chr][strand][pos]]
     
     @staticmethod

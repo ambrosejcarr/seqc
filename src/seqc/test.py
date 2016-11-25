@@ -37,8 +37,8 @@ def makedirs(output):
 
 class TestSEQC(unittest.TestCase):
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_local(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_local(self, platform='in_drop_v2'):
         """test seqc after pre-downloading all files"""
         with open('seqc_log.txt', 'w') as f:
             f.write('Dummy log. nose2 captures input, so no log is produced. This causes '
