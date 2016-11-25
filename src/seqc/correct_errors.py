@@ -44,7 +44,7 @@ def generate_close_seq(seq):
         mask = 0b111 << (i * 3)
         cur_chr = (seq & mask) >> (i * 3)
         res += [seq & (~mask) | (new_chr << (i * 3))
-                for new_chr in DNA3Bit._bin2strdict.keys() if new_chr != cur_chr]
+                for new_chr in DNA3Bit.bin2strdict.keys() if new_chr != cur_chr]
     # generate all sequences that are dist 2
     for i in range(l):
         mask_i = 0b111 << (i * 3)
@@ -54,8 +54,8 @@ def generate_close_seq(seq):
             chr_j = (seq & mask_j) >> (j * 3)
             mask = mask_i | mask_j
             res += [seq & (~mask) | (new_chr_i << (i * 3)) | (new_chr_j << (j * 3)) for
-                    new_chr_i in DNA3Bit._bin2strdict.keys() if new_chr_i != chr_i for
-                    new_chr_j in DNA3Bit._bin2strdict.keys() if new_chr_j != chr_j]
+                    new_chr_i in DNA3Bit.bin2strdict.keys() if new_chr_i != chr_i for
+                    new_chr_j in DNA3Bit.bin2strdict.keys() if new_chr_j != chr_j]
 
     return res
 

@@ -11,19 +11,19 @@ import time
 import tables as tb
 
 # Some constants
-PASS_FILTERS    = 0
-NO_ALIGNMENT    = 1
-GENE_0          = 2
-NO_CELL         = 3
-NO_RMT          = 4
-POLY_T          = 5
-SCAFFOLD        = 6
-NO_GENES        = 7
-DUST_SCORE      = 8
+PASS_FILTERS = 0
+NO_ALIGNMENT = 1
+GENE_0 = 2
+NO_CELL = 3
+NO_RMT = 4
+POLY_T = 5
+SCAFFOLD = 6
+NO_GENES = 7
+DUST_SCORE = 8
 
-BC_OK           = 0
-BC_FIXED        = 1
-BC_BAD          = 2
+BC_OK = 0
+BC_FIXED = 1
+BC_BAD = 2
 
 DEFAULT_BASE_CONVERTION_RATE = 0.02
 
@@ -59,16 +59,28 @@ class ReadArray:
         """
         self._data = data
         
-        #some stats
-        self._total_alignments  = 0
-        self._total_reads       = 0
-        self._non_unique_align  = 0
-        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0, DUST_SCORE: 0}
-        self._bad_barcodes      = 0
-        self._fix_barcodes      = 0
-        self._ok_barcodes       = 0
-        self._multialignment    = {mm.NO_DISAMBIGUATION: 0, mm.RESOLVED_GENE: 0, mm.NO_GENE_RESOLVED: 0, mm.MULTIPLE_MODELS: 0}
-        self._total_errors      = 0
+        # statistical values that are set by filtering functions
+        self._total_alignments = 0
+        self._total_reads = 0
+        self._non_unique_align = 0
+        self._filtered = {
+            NO_ALIGNMENT: 0,
+            GENE_0: 0,
+            NO_CELL: 0,
+            NO_RMT: 0,
+            POLY_T: 0,
+            SCAFFOLD: 0,
+            NO_GENES: 0,
+            DUST_SCORE: 0}
+        self._bad_barcodes = 0
+        self._fix_barcodes = 0
+        self._ok_barcodes = 0
+        self._multialignment = {
+            mm.NO_DISAMBIGUATION: 0,
+            mm.RESOLVED_GENE: 0,
+            mm.NO_GENE_RESOLVED: 0,
+            mm.MULTIPLE_MODELS: 0}
+        self._total_errors = 0
         
         if non_unique_alignments != -1:
             self._non_unique_align = non_unique_alignments
@@ -76,13 +88,22 @@ class ReadArray:
     def __repr__(self):
         s = ""
         s += "Read array of size: {:,}\n".format(len(self._data))
-        s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(self._non_unique_align)
+        s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(
+            self._non_unique_align)
         s += "Total reads: {:,}\n".format(self._total_reads)
-        s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".\
-             format(self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[SCAFFOLD], self._filtered[NO_GENES])
-        s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
-        s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, competing models (unhandeled): {:,}\n".\
-             format(self._multialignment[mm.NO_DISAMBIGUATION], self._multialignment[mm.RESOLVED_GENE], self._multialignment[mm.NO_GENE_RESOLVED], self._multialignment[mm.MULTIPLE_MODELS])
+        s += ("Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, "
+              "poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".format(
+                  self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],
+                  self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T],
+                  self._filtered[SCAFFOLD], self._filtered[NO_GENES]))
+        s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".format(
+            self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
+        s += ("Multialignment results: no disambiguation: {:,}, resolved gene: {:,},"
+              "no gene resolved: {:,}, competing models (unhandeled): {:,}\n".format(
+                  self._multialignment[mm.NO_DISAMBIGUATION],
+                  self._multialignment[mm.RESOLVED_GENE],
+                  self._multialignment[mm.NO_GENE_RESOLVED],
+                  self._multialignment[mm.MULTIPLE_MODELS]))
         s += "Total errors: {:,}\n".format(self._total_errors)
         s += "Total active reads: {:,}\n".format(self.count_active_reads())
         return s
@@ -94,10 +115,12 @@ class ReadArray:
     @staticmethod
     def active_status():
         return 0
-    # Toggle active flag on (byte 15)
+
     @staticmethod
     def set_status_active(r):
+        """Toggles active flag on (byte 15)"""
         r['status'] |= 0b1
+
     @staticmethod
     def set_status_inactive(r):
         r['status'] &= 0b1111111111111110
@@ -107,21 +130,23 @@ class ReadArray:
         if filt > 0b1111:
             raise ValueError('Filter value must be 4 bits. value given: {}'.format(filt))
         r['status'] &= 0b1111111111100001
-        r['status'] |= filt<<1
+        r['status'] |= filt << 1
         
     @staticmethod
     def set_barcodes(r, bc_status):
         if bc_status > 0b11:
-            raise ValueError('Barcodes status must be 0,1 or 2. value given: {}'.format(bc_status))
+            raise ValueError('Barcodes status must be 0,1 or 2. value given: {}'.format(
+                bc_status))
         r['status'] &= 0b1111111110011111
-        r['status'] |= bc_status<<5
+        r['status'] |= bc_status << 5
     
     @staticmethod
     def set_mm_status(r, mm_stat):
         if mm_stat > 0b11:
-            raise ValueError('Multimapping status must be 0,1,2 or 3. value given: {}'.format(mm_stat))
+            raise ValueError(
+                'Multimapping status must be 0,1,2 or 3. value given: {}'.format(mm_stat))
         r['status'] &= 0b1111110011111111
-        r['status'] |= mm_stat<<8
+        r['status'] |= mm_stat << 8
         
     @staticmethod
     def set_error_status_on(r):
@@ -133,17 +158,17 @@ class ReadArray:
     
     @staticmethod
     def is_active_read(r):
-        return (r['status']&0b1)==0b1
+        return (r['status'] & 0b1) == 0b1
     
     @staticmethod
     def is_error(r):
-        return (r['status']&0b0000000010000000)==0b0000000010000000
+        return (r['status'] & 0b0000000010000000) == 0b0000000010000000
         
     def count_active_reads(self):
         res = 0
         for r in self.data:
             if ReadArray.is_active_read(r):
-                res+=1
+                res += 1
         return res
     
     def count_errors(self):
@@ -165,32 +190,34 @@ class ReadArray:
         """
         non_unique_align = 0
         reader = sam.Reader(samfile)
-        #go over the file to find how many unique reads there are
-        num_reads=0
-        prev_alignment_name=''
+        # go over the file to find how many unique reads there are
+        num_reads = 0
+        prev_alignment_name = ''
         for alignment in reader:
             if alignment.qname != prev_alignment_name:
-                num_reads +=1
+                num_reads += 1
                 prev_alignment_name = alignment.qname       
         
         translator = GeneIntervals(gtf_f)
         
         data = np.recarray((num_reads,), cls._dtype)
-        prev_alignment_name=''
+        prev_alignment_name = ''
         read_idx = 0
         for alignment in reader:    
-            #new read
+            # new read
             if alignment.qname != prev_alignment_name:
-                if read_idx>0:
-                    data[read_idx-1] = (ReadArray.active_status(), cell, rmt, n_poly_t, dust_score, 0, 0, genes, ma_pos)
-                    cls.set_status_active(data[read_idx-1])
+                if read_idx > 0:
+                    data[read_idx - 1] = (ReadArray.active_status(), cell, rmt, n_poly_t,
+                                          dust_score, 0, 0, genes, ma_pos)
+                    cls.set_status_active(data[read_idx - 1])
                 prev_alignment_name = alignment.qname
-                read_idx+=1
-                genes = translator.translate(alignment.rname, alignment.strand, alignment.pos)
+                read_idx += 1
+                genes = translator.translate(
+                    alignment.rname, alignment.strand, alignment.pos)
                 ma_pos = []
                 if genes != -1:
                     if len(genes) > 1:
-                        non_unique_align+=1
+                        non_unique_align += 1
                     for i in range(len(genes)):
                         ma_pos.append(alignment.pos)
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
@@ -198,16 +225,17 @@ class ReadArray:
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
                 dust_score = alignment.dust_low_complexity_score
                 
-            #the same read
+            # the same read
             else:
-                genes_l = translator.translate(alignment.rname, alignment.strand, alignment.pos)
+                genes_l = translator.translate(
+                    alignment.rname, alignment.strand, alignment.pos)
                 if genes_l != -1:
                     if len(genes_l) > 1:
-                        non_unique_align+=1
+                        non_unique_align += 1
                     if genes == -1:
                         genes = genes_l
                     else:
-                        genes+=genes_l
+                        genes += genes_l
                     for i in range(len(genes_l)):
                         ma_pos.append(alignment.pos)
             
@@ -216,17 +244,21 @@ class ReadArray:
         res_ra._total_alignments = len(reader)
         res_ra._total_reads = num_reads
 
-        return res_ra, res_ra._total_alignments #TODO: It might be nicer to return just the RA and take the total alignments from it
+        # TODO: nicer to return just the RA and take the total alignments from it
+        return res_ra, res_ra._total_alignments
 
-    def apply_filters(self, required_poly_t = 1, max_dust_score=10):
-        """
-        Apply different filters to the read array.
-        If a read fails a filter, it is not passed to the others and so the counts
-        for each filter is the number of reads that failed that one but passed all previous ones
-        Filters are not ordered in any particular way.
+    def apply_filters(self, required_poly_t=1, max_dust_score=10):
+        """Apply different filters to the read array. If a read fails a filter, it is not
+        passed to the others and so the counts for each filter is the number of reads that
+        failed that one but passed all previous ones Filters are not ordered in any
+        particular way.
+
+        :param required_poly_t:
+        :param max_dust_score:
+        :return:
         """
         for r in self.data:
-            if r['ma_genes'] == None:
+            if r['ma_genes'] is None:
                 ReadArray.set_filt_fail(r, NO_GENES)
                 self._filtered[NO_GENES] += 1
                 ReadArray.set_status_inactive(r)
@@ -267,10 +299,13 @@ class ReadArray:
                 ReadArray.set_status_inactive(r)
                 continue
                 
-        log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: {}, low poly_t: {}, mapped to gene 0: {}, genes is None: {}'.
-        format(self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD], self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[GENE_0], self._filtered[NO_GENES]))
-        
-            
+        log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: '
+                 '{}, low poly_t: {}, mapped to gene 0: {}, genes is None: {}'.format(
+                     self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD],
+                     self._filtered[NO_CELL], self._filtered[NO_RMT],
+                     self._filtered[POLY_T], self._filtered[GENE_0],
+                     self._filtered[NO_GENES]))
+
     def apply_barcode_correction(self, platform, barcode_files, max_ed=2):
         """
         Correct reads with incorrect barcodes according to the correct barcodes files.
@@ -281,16 +316,18 @@ class ReadArray:
         correct_barcodes = []
         for barcode_file in barcode_files:
             with open(barcode_file, 'r') as f:
-                correct_barcodes.append(set(DNA3Bit.encode(line.strip()) for line in f.readlines()))
+                correct_barcodes.append(
+                    set(DNA3Bit.encode(line.strip()) for line in f.readlines()))
         
         num_barcodes = platform.num_barcodes
-        dynamic_codes_table     = [{}]*num_barcodes
-        correct                 = [None]*num_barcodes
-        edit_dist               = [None]*num_barcodes
-        err_list                = [None]*num_barcodes
-        sequencer_errors_cnt    = [None]*num_barcodes
+        dynamic_codes_table = [{}]*num_barcodes
+        correct = [None]*num_barcodes
+        edit_dist = [None]*num_barcodes
+        err_list = [None]*num_barcodes
+        sequencer_errors_cnt = [None]*num_barcodes
         
-        errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit._bin2strdict.keys(), r=2))
+        errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in
+                      permutations(DNA3Bit.bin2strdict.keys(), r=2))
         error_table = dict(zip(errors, [0] * len(errors)))
         cor_instance_table = {DNA3Bit.encode(b'A'): 0,
                               DNA3Bit.encode(b'C'): 0,
@@ -304,20 +341,25 @@ class ReadArray:
             barcodes = platform.extract_barcodes(int(r['cell']))
             for i in range(num_barcodes):
                 try:
-                    correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i] = dynamic_codes_table[i][barcodes[i]]
+                    correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i] = (
+                        dynamic_codes_table[i][barcodes[i]])
                 except KeyError:
-                    correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], correct_barcodes[i])
-                    sequencer_errors_cnt[i] = DNA3Bit.count(barcodes[i], DNA3Bit.encode(b'N'))
+                    correct[i], edit_dist[i] = (
+                        seqc.sequence.barcodes.find_correct_barcode(
+                            barcodes[i], correct_barcodes[i]))
+                    sequencer_errors_cnt[i] = DNA3Bit.count(
+                        barcodes[i], DNA3Bit.encode(b'N'))
                     
                     # No point calculating errors on codes with more errors than allowed
                     if edit_dist[i] > max_ed:
                         err_list[i] = None
                     else:
-                        err_list[i] = seqc.sequence.barcodes.list_errors(correct[i], barcodes[i])
-                    dynamic_codes_table[i][barcodes[i]] = (correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i])
+                        err_list[i] = seqc.sequence.barcodes.list_errors(
+                            correct[i], barcodes[i])
+                    dynamic_codes_table[i][barcodes[i]] = (
+                        correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i])
                     
-
-            # Filter reads with too many errors in their barcodes 
+            # Filter reads with too many errors in their barcodes
             if max(edit_dist) > max_ed:
                 self._bad_barcodes += 1
                 ReadArray.set_barcodes(r, BC_BAD)
@@ -330,10 +372,13 @@ class ReadArray:
             # this threshold, sequencer errors (that cause an 'N') are ignored for this.
             if sum(edit_dist) - sum(sequencer_errors_cnt) <= 1:
                 for err_l in err_list:
+                    # todo bug here, if err_l is None (see above) this will throw a
+                    # TypeError because NoneType is not iterable. Since this does not
+                    # happen in practice, I think the above section is not necessary.
                     for err in err_l:
                         try:
                             error_table[err] += 1
-                        except KeyError:    # happens for sequencer errors
+                        except KeyError:  # happens for sequencer errors
                             continue
             
             # count non error bases
@@ -345,8 +390,8 @@ class ReadArray:
                 tmp_bc >>= 3
                 tmp_cor >>= 3
             
-            #correct cell and update read status
-            if tmp_bc!=tmp_cor:
+            # correct cell and update read status
+            if tmp_bc != tmp_cor:
                 r['cell'] = tmp_cor
                 ReadArray.set_barcodes(r, BC_FIXED)
                 self._fix_barcodes += 1
@@ -357,28 +402,40 @@ class ReadArray:
         # Create error rate table
         default_error_rate = DEFAULT_BASE_CONVERTION_RATE
         if sum(error_table.values()) == 0:
-            log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
+            log.info('No errors were detected, using %f uniform error chance.'
+                     % default_error_rate)
+            # todo bug here <-- this value is never used
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
             if DNA3Bit.decode(k)[0] in b'Nn':
                 continue
             try:
-                err_rate[k] = v / (sum(n for err_type, n in error_table.items() if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
+                err_rate[k] = v / (sum(n for err_type, n in error_table.items()
+                                       if err_type & 0b111000 == k & 0b111000) +
+                                   cor_instance_table[(k & 0b111000) >> 3])
             except ZeroDivisionError:
-                log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
+                log.info('Warning: too few reads to estimate error rate for %s, setting '
+                         'default rate of %f'
+                         % (str(DNA3Bit.decode(k)), default_error_rate))
+
                 err_rate[k] = default_error_rate
             
-        log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
+        log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, '
+                 'bad barcodes: {}'.format(
+                     self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
         return err_rate
 
     def group_for_disambiguation(self):
-        """
-        Prepare the RA for multi alignment disambiguation. Apply filters, correct the barcodes and group by cell/RMT pairs.
-        Retain the indices corresponding to each read.
+        """Prepare the RA for multi alignment disambiguation. Apply filters, correct the
+        barcodes and group by cell/RMT pairs. Retain the indices corresponding to each
+        read.
+
         The resulting dictionary has the following structure:
-            res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
+        res[correct cell barcode, rmt] = {(mapped genes): [read1, read2, ...]}
+
         Note the mapped genes list should be sorted before converted to a tuple
+        :return:
         """
         start = time.process_time()
 
@@ -400,7 +457,7 @@ class ReadArray:
                 except KeyError:
                     res[cell, rmt] = {genes: [i]}
 
-        tot_time=time.process_time()-start
+        tot_time = time.process_time()-start
         log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
         return res
     
@@ -441,6 +498,7 @@ class ReadArray:
 
         return cls(data)
 
+    # todo index parameter is unused, remove
     def resolve_alignments(self, index):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
@@ -448,7 +506,10 @@ class ReadArray:
         args:
         index: path were p_coalignment_array.p is found - . 
         
-        After loading the co alignment matrix we group the reads of the ra by cell/rmt. In each group we look at the different disjoint subsetes of genes reads are aligned to.
+        After loading the co alignment matrix we group the reads of the ra by cell/rmt.
+        In each group we look at the different disjoint subsetes of genes reads are
+        aligned to.
+
         For each subset there are 4 options:
         1. It includes one gene only (no disambiguation).
         2. There is a single gene that explains all (resolved gene)
@@ -460,26 +521,27 @@ class ReadArray:
         total_reads = 0
 
         log.info('grouping for disambiguation')
-        #Group according to cell/RMT
+        # Group according to cell/RMT
         g_ra = self.group_for_disambiguation()
         
-        #TODO - for now we're not using the expectations so I commented this part. -> Rami
-        # After uncommenting, we need a new p_coalignment_array.p file to be created with the same mosule hirerachy
-        # load the expectations
-        #expectations = index + 'p_coalignment_array.p'
-        #if os.path.isfile(expectations):
-        #    with open(expectations, 'rb') as f:
-        #        expectations_mat = pickle.load(f)
-        #elif isinstance(expectations, str):
-        #    raise FileNotFoundError('could not locate serialized expectations object: %s'
-        #                            % expectations)
-        #elif isinstance(expectations, dict):
-        #    pass  # expectations already loaded
-        #else:
-        #    raise TypeError('invalid expectation object type, must be a dict expectation'
-        #                    ' object or a string filepath')
-        #mat = mm.reduce_coalignment_array(expectations_mat)
-        mat=[]
+        # TODO; for now we're not using the expectations so I commented this part. -> Rami
+        # # After uncommenting, we need a new p_coalignment_array.p file to be created
+        # # with the same molecule hierarchy
+        # # load the expectations
+        # expectations = index + 'p_coalignment_array.p'
+        # if os.path.isfile(expectations):
+        #     with open(expectations, 'rb') as f:
+        #         expectations_mat = pickle.load(f)
+        # elif isinstance(expectations, str):
+        #     raise FileNotFoundError('could not locate serialized expectations object: '
+        #                             '%s' % expectations)
+        # elif isinstance(expectations, dict):
+        #     pass  # expectations already loaded
+        # else:
+        #     raise TypeError('invalid expectation object type, must be a dict '
+        #                     'expectation object or a string filepath')
+        # mat = mm.reduce_coalignment_array(expectations_mat)
+        mat = []
         
         log.info('disambiguating')
         for g_ra_rec in g_ra.values():
@@ -490,10 +552,8 @@ class ReadArray:
                 if genes not in obs:
                     obs[genes] = len(g_ra_rec[genes])
                     total_reads += len(g_ra_rec[genes])
-                #TODO: do a sanity check here? I think genes should not be in obs
-                    
-            
-            res = []
+                # TODO: do a sanity check here? I think genes should not be in obs
+
             if () in g_ra_rec:
                 if len(g_ra_rec) == 1:
                     continue
@@ -508,8 +568,8 @@ class ReadArray:
                 resolved = False
                 models, r = mm.best_fit_model(obs_subset, mat)
                 self._multialignment[r] += sum(obs_subset.values())
-                if r==mm.NO_DISAMBIGUATION or r==mm.RESOLVED_GENE:
-                        model=models[0]
+                if r == mm.NO_DISAMBIGUATION or r == mm.RESOLVED_GENE:
+                        model = models[0]
                         g = mm.model_to_gene(model)
                         resolved = True
                         
@@ -518,13 +578,14 @@ class ReadArray:
                     ReadArray.set_mm_status(self.data[ind], r)
                     if resolved:
                         self.data['gene'][ind] = g
-                        self.data['position'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
+                        self.data['position'][ind] = (
+                            self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)])
                     else:
                         ReadArray.set_status_inactive(self.data[ind])        
         
         log.info('Total reads in samfile: {}'.format(len(self)))
         log.info('Reads that passed the filter: {}'.format(total_reads))
-        tot_time=time.process_time()-start
+        tot_time = time.process_time() - start
         log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
 
         return
@@ -564,7 +625,7 @@ class ReadArray:
                 else:
                     continue
             try:
-                reads_mat[cell, gene] = reads_mat[cell, gene]+1
+                reads_mat[cell, gene] += 1
             except KeyError:
                 reads_mat[cell, gene] = 1
                                 
@@ -593,4 +654,3 @@ class ReadArray:
         f.close()
 
         return csv_path + 'reads_count.csv', csv_path + 'mols_count.csv',
-
