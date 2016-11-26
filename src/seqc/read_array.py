@@ -4,6 +4,7 @@ from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sparse_frame import SparseFrame
+from scipy.sparse import coo_matrix
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 from itertools import permutations
@@ -35,30 +36,22 @@ class ReadArray:
         ('cell', np.int64),
         ('rmt', np.int32),
         ('n_poly_t', np.uint8),
-        ('dust_score', np.uint8),
-        ('gene', np.uint32),
-        ('position', np.uint64),
-        ('ma_genes', np.dtype(object)),
-        ('ma_pos', np.dtype(object))]
+        ('dust_score', np.uint8)]
 
-    def __init__(self, data, non_unique_alignments=-1):
+    def __init__(self, data, genes, positions, non_unique_alignments=-1):
         """
         Enhanced np.ndarray (structured array) with several companion functions to hold
         filter, sort, and access compressed fastq read information.
 
-        :param data: np.ndarray with dtype of self._dtype
+        :param np.recarray data: np.ndarray with dtype of self._dtype
+        :param scipy.sparse.coo_matrix genes:
+        :param scipy.sparse.coo_matrix positions:
 
-        :property data: stored np.ndarray
-        :method save: saves the ReadArray in compressed .h5 format
-        :method load: load a saved compressed .h5 representation of a ReadArray
-        :method from_samfile: constructs a ReadArray object from a samfile (uniquely
-          aligned records only)
-        :method reads_passing_filters: Return a ReadArray containing only reads
-          that pass all filters (n_poly_t, dust_complexity_score, presence of cell and
-          rmt)
         """
         self._data = data
-        
+        self._genes = genes
+        self._positions = positions
+
         # statistical values that are set by filtering functions
         self._total_alignments = 0
         self._total_reads = 0
@@ -85,41 +78,22 @@ class ReadArray:
         if non_unique_alignments != -1:
             self._non_unique_align = non_unique_alignments
 
-    def __repr__(self):
-        s = ""
-        s += "Read array of size: {:,}\n".format(len(self._data))
-        s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(
-            self._non_unique_align)
-        s += "Total reads: {:,}\n".format(self._total_reads)
-        s += ("Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, "
-              "poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".format(
-                  self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],
-                  self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T],
-                  self._filtered[SCAFFOLD], self._filtered[NO_GENES]))
-        s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".format(
-            self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
-        s += ("Multialignment results: no disambiguation: {:,}, resolved gene: {:,},"
-              "no gene resolved: {:,}, competing models (unhandeled): {:,}\n".format(
-                  self._multialignment[mm.NO_DISAMBIGUATION],
-                  self._multialignment[mm.RESOLVED_GENE],
-                  self._multialignment[mm.NO_GENE_RESOLVED],
-                  self._multialignment[mm.MULTIPLE_MODELS]))
-        s += "Total errors: {:,}\n".format(self._total_errors)
-        s += "Total active reads: {:,}\n".format(self.count_active_reads())
-        return s
-    
     @property
     def data(self):
         return self._data
 
-    @staticmethod
-    def active_status():
-        return 0
+    @property
+    def genes(self):
+        return self._genes
+
+    @property
+    def positions(self):
+        return self._positions
 
     @staticmethod
     def set_status_active(r):
         """Toggles active flag on (byte 15)"""
-        r['status'] |= 0b1
+        r['status'] |= 0b1  # todo bug? this isn't byte 15, it's bit 0 ??
 
     @staticmethod
     def set_status_inactive(r):
@@ -188,67 +162,64 @@ class ReadArray:
         :param samfile: str, filename of alignment file.
         :return:
         """
-        non_unique_align = 0
         reader = sam.Reader(samfile)
+
+        # todo if this takes a long time, we can read this from the alignment summary!
         # go over the file to find how many unique reads there are
         num_reads = 0
+        num_unique = 0
         prev_alignment_name = ''
         for alignment in reader:
+            num_reads += 1
             if alignment.qname != prev_alignment_name:
-                num_reads += 1
+                num_unique += 1
                 prev_alignment_name = alignment.qname       
         
         translator = GeneIntervals(gtf_f)
-        
-        data = np.recarray((num_reads,), cls._dtype)
-        prev_alignment_name = ''
-        read_idx = 0
-        for alignment in reader:    
-            # new read
-            if alignment.qname != prev_alignment_name:
-                if read_idx > 0:
-                    data[read_idx - 1] = (ReadArray.active_status(), cell, rmt, n_poly_t,  # api (construction)
-                                          dust_score, 0, 0, genes, ma_pos)
-                    cls.set_status_active(data[read_idx - 1])
-                prev_alignment_name = alignment.qname
-                read_idx += 1
-                genes = translator.translate(
-                    alignment.rname, alignment.strand, alignment.pos)
-                ma_pos = []
-                if genes != -1:
-                    if len(genes) > 1:
-                        non_unique_align += 1
-                    for i in range(len(genes)):
-                        ma_pos.append(alignment.pos)
-                cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
-                rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
-                n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
-                dust_score = alignment.dust_low_complexity_score
-                
-            # the same read
-            # todo this is unnecessarily complex
-            else:
-                genes_l = translator.translate(
-                    alignment.rname, alignment.strand, alignment.pos)
-                if genes_l != -1:
-                    if len(genes_l) > 1:
-                        non_unique_align += 1
-                    # todo how can genes be -1 and be appendable?
-                    # the translator should output a consistent type
-                    if genes == -1:
-                        genes = genes_l
-                    else:
-                        genes += genes_l
-                    for i in range(len(genes_l)):
-                        ma_pos.append(alignment.pos)
-            
-        log.info('non unique alignments count: {}'.format(non_unique_align))
-        res_ra = cls(data, non_unique_align)
-        res_ra._total_alignments = len(reader)
-        res_ra._total_reads = num_reads
 
-        # TODO: nicer to return just the RA and take the total alignments from it
-        return res_ra, res_ra._total_alignments
+        # pre-allocate arrays
+        data = np.recarray((num_unique,), cls._dtype)
+        row = np.zeros(num_reads, dtype=np.int32)
+        col = np.zeros(num_reads, dtype=np.int8)
+        position = np.zeros(num_reads, dtype=np.int32)
+        gene = np.zeros(num_reads, dtype=np.int32)
+
+        # loop over multialignments
+        row_idx = 0
+        arr_idx = 0
+        max_ma = 0
+        for ma in reader.iter_multialignments():
+            col_idx = 0
+            for a in ma:
+                genes = translator.translate(a.rname, a.strand, a.pos)
+                if genes != -1 and len(genes) == 1:  # todo return None or integer!
+                    row[arr_idx] = row_idx
+                    col[arr_idx] = col_idx
+                    gene[arr_idx] = genes[0]
+                    position[arr_idx] = a.pos
+                    arr_idx += 1
+                    col_idx += 1
+            max_ma = max(max_ma, col_idx)
+
+            cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
+            rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
+            n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
+            dust_score = alignment.dust_low_complexity_score
+            data[row_idx] = (1, cell, rmt, n_poly_t, dust_score)
+            row_idx += 1
+
+        # some reads will not have aligned, throw these away and don't store in coo_matrix
+        row, col, position, gene = (
+            row[:arr_idx], col[:arr_idx], position[:arr_idx], gene[:arr_idx])
+
+        gene = coo_matrix((gene, (row, col)), shape=(row_idx, max_ma), dtype=np.int32)
+        position = coo_matrix((position, (row, col)), shape=(row_idx, max_ma),
+                              dtype=np.int32)
+
+        log.info('ReadArray constructed')
+        return cls(data, gene, position)
+        # res_ra._total_alignments = len(reader)  # todo I removed these.
+        # res_ra._total_reads = num_unique
 
     def apply_filters(self, required_poly_t=1, max_dust_score=10):
         """Apply different filters to the read array. If a read fails a filter, it is not
