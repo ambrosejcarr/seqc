@@ -4,7 +4,7 @@ from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sparse_frame import SparseFrame
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, csr_matrix
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 from itertools import permutations
@@ -48,9 +48,26 @@ class ReadArray:
         :param scipy.sparse.coo_matrix positions:
 
         """
-        self._data = data
+
+        # set genes and positions to csr matrices.
+        if not isinstance(genes, csr_matrix):
+            try:
+                genes = genes.tocsr()
+            except AttributeError:
+                raise TypeError(
+                    'genes must be a scipy sparse matrix that is convertible to '
+                    'csr_matrix, not %s' % repr(type(genes)))
         self._genes = genes
+        if not isinstance(positions, csr_matrix):
+            try:
+                positions = positions.tocsr()
+            except AttributeError:
+                raise TypeError(
+                    'positions must be a scipy sparse matrix that is convertible to '
+                    'csr_matrix, not %s' % repr(type(positions)))
         self._positions = positions
+
+        self._data = data
 
         # statistical values that are set by filtering functions
         self._total_alignments = 0
@@ -192,7 +209,8 @@ class ReadArray:
             col_idx = 0
             for a in ma:
                 genes = translator.translate(a.rname, a.strand, a.pos)
-                if genes != -1 and len(genes) == 1:  # todo return None or integer!
+                # todo return None or integer ONLY!
+                if genes != -1 and len(genes) == 1 and genes[0] != 0:
                     row[arr_idx] = row_idx
                     col[arr_idx] = col_idx
                     gene[arr_idx] = genes[0]
@@ -208,7 +226,8 @@ class ReadArray:
             data[row_idx] = (1, cell, rmt, n_poly_t, dust_score)
             row_idx += 1
 
-        # some reads will not have aligned, throw these away and don't store in coo_matrix
+        # some reads will not have aligned, throw away excess allocated space before
+        # creating the ReadArray
         row, col, position, gene = (
             row[:arr_idx], col[:arr_idx], position[:arr_idx], gene[:arr_idx])
 
@@ -227,60 +246,25 @@ class ReadArray:
         failed that one but passed all previous ones Filters are not ordered in any
         particular way.
 
-        :param required_poly_t:
-        :param max_dust_score:
-        :return:
+        :param required_poly_t: minimum number of T nucleotides in the primer tail of a
+          valid read
+        :param max_dust_score: maximum complexity score of a valid read, where higher
+          implies lower complexity
+        :return None: method sets the status vector according to the result of filtering.
         """
-        # todo bugs or incosistent typing here; ma_genes is a list so this will never
-        # evaluate to true, or ducktyping is being used.
-        for r in self.data:
-            if r['ma_genes'] is None:
-                ReadArray.set_filt_fail(r, NO_GENES)
-                self._filtered[NO_GENES] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if r['ma_genes'] == -1:
-                ReadArray.set_filt_fail(r, SCAFFOLD)
-                self._filtered[SCAFFOLD] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if len(r['ma_genes']) == 0:
-                ReadArray.set_filt_fail(r, NO_ALIGNMENT)
-                self._filtered[NO_ALIGNMENT] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if r['cell'] == 0:
-                ReadArray.set_filt_fail(r, NO_CELL)
-                self._filtered[NO_CELL] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if r['rmt'] == 0:
-                ReadArray.set_filt_fail(r, NO_RMT)
-                self._filtered[NO_RMT] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if r['n_poly_t'] < required_poly_t:
-                ReadArray.set_filt_fail(r, POLY_T)
-                self._filtered[POLY_T] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if 0 in r['ma_genes']:
-                ReadArray.set_filt_fail(r, GENE_0)
-                self._filtered[GENE_0] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if r['dust_score'] > max_dust_score:
-                ReadArray.set_filt_fail(r, DUST_SCORE)
-                self._filtered[DUST_SCORE] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-                
-        log.info('Filters results: No alignment: {}, scaffold: {}, no cell {}, no rmt: '
-                 '{}, low poly_t: {}, mapped to gene 0: {}, genes is None: {}'.format(
-                     self._filtered[NO_ALIGNMENT], self._filtered[SCAFFOLD],
-                     self._filtered[NO_CELL], self._filtered[NO_RMT],
-                     self._filtered[POLY_T], self._filtered[GENE_0],
-                     self._filtered[NO_GENES]))
+        adjusted_status = self.data['status'].copy()
+
+        n_filtered = {}
+
+        failing = self.genes.sum(axis=1) == 0  # no gene
+        failing &= self.data['rmt'] == 0  # no rmt
+        failing &= self.data['cell'] == 0  # no cell
+        failing &= self.data['n_poly_t'] < required_poly_t
+        failing &= self.data['dust_score'] > max_dust_score
+
+        self.data['status'][failing] &= 0b1111111111111110  # set status of failing reads
+
+        # todo add dictionary containing filtered read numbers
 
     def apply_barcode_correction(self, platform, barcode_files, max_ed=2):
         """
