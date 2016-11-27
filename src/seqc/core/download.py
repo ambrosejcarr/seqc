@@ -15,13 +15,10 @@ def basespace(args, output_dir: str, basespace_token: str) -> (str, str):
     """
     log.info('BaseSpace link provided for fastq argument. Downloading input data.')
 
-    # making extra directories for BaseSpace download, changing permissions
+    # making extra directories for BaseSpace download
     bspace_dir = output_dir + '/Data/Intensities/BaseCalls/'
-    bf = Popen(['sudo', 'mkdir', '-p', bspace_dir])
+    bf = Popen(['mkdir', '-p', bspace_dir])
     bf.communicate()
-    if args.aws:  # changing permissions is unnecessary if local run
-        bf2 = Popen(['sudo', 'chown', '-c', 'ubuntu', bspace_dir])
-        bf2.communicate()
     barcode_fastq, genomic_fastq = io.BaseSpace.download(
         args.platform, args.basespace, output_dir, basespace_token)
     return barcode_fastq, genomic_fastq
