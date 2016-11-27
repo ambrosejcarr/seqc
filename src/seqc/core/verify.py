@@ -40,9 +40,8 @@ def estimate_required_volume_size(args):
     :return int: size of volume in gb
     """
 
-    total = sum(validate_and_return_size(f) for f in args.barcode_files)
-
-    # using worst-case estimates to make sure we don't run out of space
+    # using worst-case estimates to make sure we don't run out of space, 35 = genome index
+    total = (35 * 1e9) + sum(validate_and_return_size(f) for f in args.barcode_files)
 
     # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
