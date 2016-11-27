@@ -261,8 +261,6 @@ class GeneIntervals:
         log.info('Translator completed in {} seconds.'.format(tot_time))
         return res_dic
 
-                    
-
     def calc_tx_1k_end(self, ex_list):
     # find where is the actual position that's 1k bases from the tx end ()
         remaining_len = 1000
@@ -274,9 +272,7 @@ class GeneIntervals:
         # If we're here - tx is shorter than 1000 - return the start of the first exxon
         return ex_list[0][0]
     
-    # todo translate should output a consistent type! could return empty list that
-    # evaluates to None.
-    def translate(self, chr, strand, pos):
+    def translate_old(self, chr, strand, pos):  # todo remove me
         if type(chr) is bytes:
             chr = chr.decode('utf-8')
         int_chr = self.strip_chr(chr)
@@ -286,23 +282,56 @@ class GeneIntervals:
             strand = strand.decode('utf-8')
         if int_chr not in self._pos_scid_dic:
             raise ValueError("The annotations files used does not include chr {}".format(int_chr))
-            
+
         # return a list of all scids for the input position
         return [x.data for x in self._pos_scid_dic[int_chr][strand][pos]]
-    
+
     @staticmethod
-    def strip_chr(s):
-        chr_dic = {'X':23,'Y':24,'MT':25,'M':25}
+    def strip_chr(s):  # todo remove me
+        chr_dic = {'X': 23, 'Y': 24, 'MT': 25, 'M': 25}
         if 'chr' in s:
-            s=s[3:]
+            s = s[3:]
         try:
             int_chr = int(s)
         except ValueError:
             try:
                 int_chr = chr_dic[s]
             except KeyError:
-                return -1   #this happens when it's a scaffold
+                return -1  # this happens when it's a scaffold
         return int_chr
+
+    # moved this outside to avoid reimplementing a dict every iteration.
+    _atypical_chromosome_name_to_int = {b'X': 23, b'Y': 24, b'MT': 25, b'M': 25}
+
+    def translate(self, chromosome, strand, pos):
+        """translates a chromosome, position, and strand into a gene identifier
+
+        Uses the IntervalTree data structure to rapidly search for the corresponding
+        identifier. Currently, only numeric chromosomes are supported, but this is due
+        to a coding limitation in the design of the keys of the IntervalTree (chromosomes
+        could have been left at strings or bytes objects, thus avoiding the integer
+        conversion and slicing in the second line of the below function entirely).
+
+        This should be fixed in the future.
+
+        :param bytes chromosome: chromosome for this alignment
+        :param bytes strand: strand for this alignment (one of [b'+', b'-'])
+        :param int pos: position of the alignment within the chromosome
+        :return:
+        """
+        try:
+            int_chromosome = int(chromosome[3:])  # int converts both str and bytes
+        except ValueError:
+            try:
+                int_chromosome = self._atypical_chromosome_name_to_int[chromosome]
+            except KeyError:
+                return None
+        try:
+            return [x.data for x in
+                    self._pos_scid_dic[int_chromosome][strand.decode()][pos]]
+        except KeyError:
+            raise ValueError(
+                'The annotations files used does not include chromosome %s' % chromosome)
 
     @staticmethod
     def strip_gene_num(attribute_str):
