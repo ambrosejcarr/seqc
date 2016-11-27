@@ -66,7 +66,7 @@ def estimate_required_volume_size(args):
                 'specified in the seqc config file or passed as --basespace-token')
 
         io.BaseSpace.check_sample(args.basespace, args.basespace_token)
-        total += io.BaseSpace.check_size(args.basespace, args.basespace_token)
+        total += io.BaseSpace.check_size(args.basespace, args.basespace_token) * 14 + 9e10
 
     return ceil(total * 1e-9)
 
