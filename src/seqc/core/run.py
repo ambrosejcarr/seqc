@@ -48,8 +48,8 @@ def run(args) -> None:
         """
         # download basespace data if necessary
         if arguments.basespace:
-            arguments.barcode_fastq, arguments.genomic_fastq = download.basespace(
-                arguments, dir_, arguments.basespace_token)
+            arguments.barcode_fastq, arguments.genomic_fastq = io.BaseSpace.download(
+                arguments.platform, arguments.basespace, dir_, arguments.basespace_token)
 
         # check for remote fastq file links
         arguments.genomic_fastq = download.s3_data(
