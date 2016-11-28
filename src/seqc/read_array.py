@@ -1,18 +1,19 @@
 from multiprocessing import Pool
 from contextlib import closing
+from functools import partial
 import numpy as np
 from seqc import log
 from seqc.alignment import sam
 from seqc.sequence.gtf import GeneIntervals
 from seqc.sequence.encodings import DNA3Bit
 from seqc.sparse_frame import SparseFrame
-from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse import coo_matrix, csr_matrix, vstack
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 from itertools import permutations
 import time
 import tables as tb
-from seqc.h5 import H5
+import pysam
 
 # Some constants
 PASS_FILTERS = 0
@@ -177,7 +178,111 @@ class ReadArray:
     #         if ReadArray.is_error(r):
     #             res += 1
     #     return res
-        
+
+    @staticmethod
+    def _iterate_pysam(reference, open_alignment_file):
+        """group and return multialignments for each read associated with reference in
+        bam_file
+
+        :param str reference: the reference within the file to parse
+        :param pysam.AlignmentFile open_alignment_file: an open file descriptor pointing
+          to the bam file that should be parsed
+        :yields list: list of all alignments for each read
+        """
+        iter_bam = open_alignment_file.fetch(reference=reference, multiple_iterators=True)
+        ma = [next(iter_bam)]  # get first alignment
+        for alignment in iter_bam:
+            if alignment.qname == ma[0].qname:
+                ma.append(alignment)
+            else:
+                yield ma
+                ma = [alignment]
+        yield ma  # yield final alignment
+
+    @classmethod
+    def _from_pysam(cls, reference_number, bam_file, translator):
+        """
+
+        :param reference: the reference within the file to parse
+        :param bam_file: the alignment file to iterate over
+        :param translator: a data structure that maps alignments in chromosome space to
+          genes
+        :return np.recarray, csr_matrix, csr_matrix: data, genes, and positions input for
+          ReadArray construction
+        """
+
+        reader = pysam.AlignmentFile(bam_file, 'rb')
+        reference = reader.references[reference_number]
+        length = reader.lengths[reference_number]
+
+        # pre-allocate arrays
+        data = np.recarray((length,), cls._dtype)
+        row = np.zeros(length, dtype=np.int32)
+        col = np.zeros(length, dtype=np.int8)
+        position = np.zeros(length, dtype=np.int32)
+        gene = np.zeros(length, dtype=np.int32)
+
+        row_idx = 0  # identifies the read index
+        arr_idx = 0  # identifies the alignment index across all reads
+        max_ma = 0  # maximum number of alignments observed for a read
+        for multialignment in cls._iterate_pysam(reference, reader):
+
+            col_idx = 0  # identifies the alignment index within a read
+            for a in multialignment:
+                strand = '-' if a.is_reverse else '+'
+                genes = translator.translate(a.reference_name, strand, a.pos)
+
+                # if gene passes filter, store passing genes and increment appropriate
+                # arr and col indices
+                if genes is not None and len(genes) == 1:
+                    row[arr_idx] = row_idx
+                    col[arr_idx] = col_idx
+                    gene[arr_idx] = genes[0]
+                    position[arr_idx] = a.pos
+                    arr_idx += 1
+                    col_idx += 1
+            max_ma = max(max_ma, col_idx)
+
+            _, cell, rmt, poly_t = a.qname[:a.qname.index(';')].split(':')
+            cell = seqc.sequence.encodings.DNA3Bit.encode(cell)
+            rmt = seqc.sequence.encodings.DNA3Bit.encode(rmt)
+            n_poly_t = poly_t.count('T') + poly_t.count('N')
+
+            data[row_idx] = (1, cell, rmt, n_poly_t)
+            row_idx += 1
+
+        # some reads will not have aligned, throw away excess allocated space before
+        # creating the ReadArray
+        row, col, position, gene = (
+            row[:arr_idx], col[:arr_idx], position[:arr_idx], gene[:arr_idx])
+
+        gene = coo_matrix((gene, (row, col)), shape=(row_idx, max_ma), dtype=np.int32).tocsr()
+        position = coo_matrix((position, (row, col)), shape=(row_idx, max_ma),
+                              dtype=np.int32).tocsr()
+
+        return data, gene, position
+
+    @classmethod
+    def from_pysam(cls, bam_file, translator):
+
+        reader = pysam.AlignmentFile(bam_file, 'rb')
+
+        if not reader.has_index():  # todo instead of raising, sort & index bam file
+            raise RuntimeError('Bam file must be coordinate sorted and indexed')
+
+        reference_numbers = np.arange(len(reader.references))
+
+        parser = partial(cls._from_pysam, bam_file=bam_file, translator=translator)
+
+        with closing(Pool()) as pool:
+            data, gene, position = zip(*pool.map(parser, reference_numbers))
+
+        gene = vstack(gene)
+        position = vstack(position)
+        data = np.concatenate(data, axis=0)
+        cls(data, gene, position)
+
+
     @classmethod
     def from_samfile(cls, sam_file: str, gtf_file: str):
         """
