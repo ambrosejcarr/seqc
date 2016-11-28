@@ -38,8 +38,7 @@ class ReadArray:
         ('status', np.uint16),
         ('cell', np.int64),
         ('rmt', np.int32),
-        ('n_poly_t', np.uint8),
-        ('dust_score', np.uint8)]
+        ('n_poly_t', np.uint8)]
 
     def __init__(self, data, genes, positions, non_unique_alignments=-1):
         """
@@ -189,8 +188,14 @@ class ReadArray:
         :param sam_file: str, filename of alignment file.
         :return:
         """
-        # todo there is likely a faster way to read .bam files since they are coordinate
-        # sorted. try the pysam library, which wraps htslib C-API.
+
+        # todo replace most of this function with the pysam API, and read the coordinate
+        # sorted bam file with index by chromosome
+        # farm out individual chromosomes to a processor pool
+        # if scaffolds are not supported, filter out scaffolds.
+        # ignore dust score, it takes 66% of time in normal processing
+        # this should speed up RA creation to ~ 1h or less, from 17h on 400M read file.
+
         reader = sam.Reader(sam_file)
 
         # todo if this takes a long time, we can read this from the alignment summary!
@@ -221,11 +226,10 @@ class ReadArray:
             col_idx = 0  # identifies the alignment index within a read
             for a in ma:
                 genes = translator.translate(a.rname, a.strand, a.pos)
-                # todo return None or integer ONLY!
 
                 # if gene passes filter, store passing genes and increment appropriate
                 # arr and col indices
-                if genes != -1 and len(genes) == 1 and genes[0] != 0:
+                if genes is not None and len(genes) == 1:
                     row[arr_idx] = row_idx
                     col[arr_idx] = col_idx
                     gene[arr_idx] = genes[0]
@@ -237,8 +241,8 @@ class ReadArray:
             cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
             rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
             n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
-            dust_score = alignment.dust_low_complexity_score
-            data[row_idx] = (1, cell, rmt, n_poly_t, dust_score)
+            # dust_score = alignment.dust_low_complexity_score
+            data[row_idx] = (1, cell, rmt, n_poly_t)
             row_idx += 1
 
         # some reads will not have aligned, throw away excess allocated space before

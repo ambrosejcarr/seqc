@@ -330,6 +330,7 @@ class GeneIntervals:
             return [x.data for x in
                     self._pos_scid_dic[int_chromosome][strand.decode()][pos]]
         except KeyError:
+            # return None
             raise ValueError(
                 'The annotations files used does not include chromosome %s' % chromosome)
 

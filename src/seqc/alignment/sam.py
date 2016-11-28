@@ -2,6 +2,8 @@ from collections import namedtuple
 from subprocess import Popen, PIPE
 import shutil
 import gzip
+from itertools import islice
+from collections import Counter
 
 
 class SamRecord:
@@ -140,22 +142,23 @@ class SamRecord:
         minus_strand = int(self.flag) & 16
         return b'-' if minus_strand else b'+'
 
-    @property
-    def dust_low_complexity_score(self) -> int:
-
-        # Counts of 3-mers in the sequence
-        counts = {}
-        for i in range(len(self.seq) - 2):
-            kmer = self.seq[i:i + 3]
-            counts[kmer] = counts.get(kmer, 0) + 1
-
-        # Calculate dust score
-        score = sum([i * (i - 1) / 2 for i in counts.values()]) / (len(self.seq) - 3)
-
-        # Scale score (Max score possible is no. of 3mers/2)
-        score = int(score / ((len(self.seq) - 2) / 2) * 100)
-
-        return score
+    # # todo this takes up 66% of the processing time for parsing the sam record
+    # @property
+    # def dust_low_complexity_score(self) -> int:
+    #
+    #     # Counts of 3-mers in the sequence
+    #     counts = {}
+    #     for i in range(len(self.seq) - 2):
+    #         kmer = self.seq[i:i + 3]
+    #         counts[kmer] = counts.get(kmer, 0) + 1
+    #
+    #     # Calculate dust score  # todo this is 30% faster when vectorized
+    #     score = sum([i * (i - 1) / 2 for i in counts.values()]) / (len(self.seq) - 3)
+    #
+    #     # Scale score (Max score possible is no. of 3mers/2)
+    #     score = int(score / ((len(self.seq) - 2) / 2) * 100)
+    #
+    #     return score
 
 
 class Reader:

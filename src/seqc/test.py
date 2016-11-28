@@ -5,9 +5,12 @@ import pandas as pd
 import numpy as np
 import ftplib
 import nose2
+import time
 from nose2.tools import params
 from seqc.sequence import index, gtf
 from seqc.core import SEQC
+from seqc.read_array import ReadArray
+from seqc.io import S3
 import seqc
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
@@ -350,6 +353,27 @@ class TestIndex(unittest.TestCase):
         organism = 'ciona_intestinalis'
         idx = index.Index(organism, ['entrezgene'], self.outdir)
         idx.create_index(s3_location='s3://%s/genomes/%s/' % (bucket, idx.organism))
+
+
+class TestReadArrayCreation(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        platform='in_drop_v2'
+        # cls.bamfile = LOCAL_OUTPUT % platform + '_bamfile.bam'
+        # cls.annotation = LOCAL_OUTPUT % platform + '_annotations.gtf'
+        # S3.download(SAMFILE % platform, cls.bamfile, recursive=False)
+        # S3.download(INDEX + 'annotations.gtf', cls.annotation, recursive=False)
+
+        cls.bamfile = '/Users/ajc/Downloads/test.sam'
+        cls.annotation = '/Users/ajc/Downloads/annotations.gtf'
+
+    def test_read_array_creation(self):
+        t0 = time.process_time()
+        ReadArray.from_samfile(self.bamfile, self.annotation)
+        t1 = time.process_time()
+        print(t1 - t0)
+
 
 #########################################################################################
 
