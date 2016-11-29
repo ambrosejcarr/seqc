@@ -32,7 +32,6 @@ BC_BAD = 2
 
 DEFAULT_BASE_CONVERTION_RATE = 0.02
 
-
 class ReadArray:
 
     _dtype = [
@@ -288,22 +287,19 @@ class ReadArray:
         construct a ReadArray object from a samfile containing only uniquely aligned
         records
 
-        :param gtf_file: str, filename of annotations.gtf file
-        :param sam_file: str, filename of alignment file.
+        :param str gtf_file: filename of annotations.gtf file
+        :param str sam_file: filename of alignment file.
+        :param max_alignments: the number of reads in the alignment file. Used to
+          pre-allocate memory in the readarray. If max_alignments is smaller than the size
+          of the sam file being processed, seqc will throw an IndexError.
         :return:
         """
 
-        # todo replace most of this function with the pysam API, and read the coordinate
-        # sorted bam file with index by chromosome
-        # farm out individual chromosomes to a processor pool
-        # if scaffolds are not supported, filter out scaffolds.
-        # ignore dust score, it takes 66% of time in normal processing
-        # this should speed up RA creation to ~ 1h or less, from 17h on 400M read file.
+        # todo add a check for @GO query header (file matches sorting assumptions)
 
         reader = sam.Reader(sam_file)
 
-        # todo if this takes a long time, we can read this from the alignment summary!
-        # go over the file to find how many unique reads there are
+        # todo allow reading of this from alignment summary
         num_reads = 0
         num_unique = 0
         prev_alignment_name = ''
@@ -311,8 +307,8 @@ class ReadArray:
             num_reads += 1
             if alignment.qname != prev_alignment_name:
                 num_unique += 1
-                prev_alignment_name = alignment.qname       
-        
+                prev_alignment_name = alignment.qname
+
         translator = GeneIntervals(gtf_file)
 
         # pre-allocate arrays
@@ -403,53 +399,54 @@ class ReadArray:
 
         reads = self._genes[slice(*inds)]
 
-
         total_reads = 0
         g_ra = {}  # I added this
 
-        for g_ra_rec in g_ra.values():  # loop over molecules; this is in the outer func
-            obs = {}
-            for genes in g_ra_rec:  # loop over genes
-                if genes == ():
-                    continue
-                if genes not in obs:
-                    obs[genes] = len(g_ra_rec[genes])
-                    total_reads += len(g_ra_rec[genes])
-                    # TODO: do a sanity check here? I think genes should not be in obs
+        g_ra_rec = {}
+        for i, r in zip(np.arange(*inds), reads):
+            g_ra_rec[tuple(r)].append(i)
 
-            if () in g_ra_rec:
-                if len(g_ra_rec) == 1:
-                    continue
-            if () in obs:
-                del obs[()]
+        obs = {}
+        for genes in g_ra_rec:  # loop over genes
+            if genes == ():
+                continue
+            if genes not in obs:
+                obs[genes] = len(g_ra_rec[genes])
+                total_reads += len(g_ra_rec[genes])
+                # TODO: do a sanity check here? I think genes should not be in obs
 
-            obs_s = mm.strip_model(obs)
-            ind_s = mm.strip_model(g_ra_rec)
+        if () in g_ra_rec:
+            if len(g_ra_rec) == 1:
+                continue
+        if () in obs:
+            del obs[()]
 
-            subsets = mm.split_to_disjoint(obs_s)
-            for obs_subset in subsets:
-                resolved = False
-                models, r = mm.best_fit_model(obs_subset, mat)
-                self._multialignment[r] += sum(obs_subset.values())
-                if r == mm.NO_DISAMBIGUATION or r == mm.RESOLVED_GENE:
-                    model = models[0]
-                    g = mm.model_to_gene(model)
-                    resolved = True
+        obs_s = mm.strip_model(obs)
+        ind_s = mm.strip_model(g_ra_rec)
 
-                indices = mm.get_indices(ind_s, obs_subset)
-                for ind in indices:
-                    ReadArray.set_mm_status(self.data[ind], r)
-                    if resolved:
-                        self.data['gene'][ind] = g  # api (indexing gene field)
-                        self.data['position'][ind] = (  # api (indexing position field)
-                            self.data['ma_pos'][ind][
-                                self.data['ma_genes'][ind].index(g)])  # api (indexing)
-                    else:
-                        ReadArray.set_status_inactive(self.data[ind])
+        subsets = mm.split_to_disjoint(obs_s)
+        for obs_subset in subsets:
+            resolved = False
+            models, r = mm.best_fit_model(obs_subset, mat)
+            self._multialignment[r] += sum(obs_subset.values())
+            if r == mm.NO_DISAMBIGUATION or r == mm.RESOLVED_GENE:
+                model = models[0]
+                g = mm.model_to_gene(model)
+                resolved = True
+
+            indices = mm.get_indices(ind_s, obs_subset)
+            for ind in indices:
+                ReadArray.set_mm_status(self.data[ind], r)
+                if resolved:
+                    self.data['gene'][ind] = g  # api (indexing gene field)
+                    self.data['position'][ind] = (  # api (indexing position field)
+                        self.data['ma_pos'][ind][
+                            self.data['ma_genes'][ind].index(g)])  # api (indexing)
+                else:
+                    ReadArray.set_status_inactive(self.data[ind])
 
         log.info('Total reads in samfile: {}'.format(len(self)))
         log.info('Reads that passed the filter: {}'.format(total_reads))
-        tot_time = time.process_time() - start
         log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
 
     def disambiguation(self):
