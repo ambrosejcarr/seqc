@@ -199,9 +199,9 @@ class ReadArray:
                     col_idx += 1
             max_ma = max(max_ma, col_idx)
 
-            cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
-            rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
-            n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
+            cell = seqc.sequence.encodings.DNA3Bit.encode(a.cell)
+            rmt = seqc.sequence.encodings.DNA3Bit.encode(a.rmt)
+            n_poly_t = a.poly_t.count(b'T') + a.poly_t.count(b'N')
             # dust_score = alignment.dust_low_complexity_score
             data[row_idx] = (0, cell, rmt, n_poly_t)
             row_idx += 1
