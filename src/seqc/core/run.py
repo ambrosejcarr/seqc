@@ -190,7 +190,7 @@ def run(args) -> None:
           samfile ProcessManager, and number of processed sam records
         """
         log.info('Filtering aligned records and constructing record database.')
-        read_array, sam_record_count = ReadArray.from_samfile(
+        read_array, sam_record_count = ReadArray.from_alignment_file(
             samfile, index + 'annotations.gtf')
 
         # TODO save the created ReadArray object

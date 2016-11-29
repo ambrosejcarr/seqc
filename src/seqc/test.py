@@ -365,14 +365,13 @@ class TestReadArrayCreation(unittest.TestCase):
         # S3.download(SAMFILE % platform, cls.bamfile, recursive=False)
         # S3.download(INDEX + 'annotations.gtf', cls.annotation, recursive=False)
 
-        cls.bamfile = '/Users/ajc/Downloads/test.sam'
-        cls.annotation = '/Users/ajc/Downloads/annotations.gtf'
+        cls.bamfile = os.path.expanduser('~/Downloads/short_pbmc_sorted_name.bam')
+        cls.annotation = os.path.expanduser('~/Downloads/annotations.gtf')
+        cls.translator = gtf.GeneIntervals(cls.annotation)
 
     def test_read_array_creation(self):
-        t0 = time.process_time()
-        ReadArray.from_samfile(self.bamfile, self.annotation)
-        t1 = time.process_time()
-        print(t1 - t0)
+        ra = ReadArray.from_alignment_file(self.bamfile, self.translator)
+        ra.save(os.path.expanduser('~/Downloads/test.ra'))
 
 
 #########################################################################################
