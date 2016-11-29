@@ -179,109 +179,108 @@ class ReadArray:
     #             res += 1
     #     return res
 
-    @staticmethod
-    def _iterate_pysam(reference, open_alignment_file):
-        """group and return multialignments for each read associated with reference in
-        bam_file
-
-        :param str reference: the reference within the file to parse
-        :param pysam.AlignmentFile open_alignment_file: an open file descriptor pointing
-          to the bam file that should be parsed
-        :yields list: list of all alignments for each read
-        """
-        iter_bam = open_alignment_file.fetch(reference=reference, multiple_iterators=True)
-        ma = [next(iter_bam)]  # get first alignment
-        for alignment in iter_bam:
-            if alignment.qname == ma[0].qname:
-                ma.append(alignment)
-            else:
-                yield ma
-                ma = [alignment]
-        yield ma  # yield final alignment
-
-    @classmethod
-    def _from_pysam(cls, reference_number, bam_file, translator):
-        """
-
-        :param reference: the reference within the file to parse
-        :param bam_file: the alignment file to iterate over
-        :param translator: a data structure that maps alignments in chromosome space to
-          genes
-        :return np.recarray, csr_matrix, csr_matrix: data, genes, and positions input for
-          ReadArray construction
-        """
-
-        reader = pysam.AlignmentFile(bam_file, 'rb')
-        reference = reader.references[reference_number]
-        length = reader.lengths[reference_number]
-
-        # pre-allocate arrays
-        data = np.recarray((length,), cls._dtype)
-        row = np.zeros(length, dtype=np.int32)
-        col = np.zeros(length, dtype=np.int8)
-        position = np.zeros(length, dtype=np.int32)
-        gene = np.zeros(length, dtype=np.int32)
-
-        row_idx = 0  # identifies the read index
-        arr_idx = 0  # identifies the alignment index across all reads
-        max_ma = 0  # maximum number of alignments observed for a read
-        for multialignment in cls._iterate_pysam(reference, reader):
-
-            col_idx = 0  # identifies the alignment index within a read
-            for a in multialignment:
-                strand = '-' if a.is_reverse else '+'
-                genes = translator.translate(a.reference_name, strand, a.pos)
-
-                # if gene passes filter, store passing genes and increment appropriate
-                # arr and col indices
-                if genes is not None and len(genes) == 1:
-                    row[arr_idx] = row_idx
-                    col[arr_idx] = col_idx
-                    gene[arr_idx] = genes[0]
-                    position[arr_idx] = a.pos
-                    arr_idx += 1
-                    col_idx += 1
-            max_ma = max(max_ma, col_idx)
-
-            _, cell, rmt, poly_t = a.qname[:a.qname.index(';')].split(':')
-            cell = seqc.sequence.encodings.DNA3Bit.encode(cell)
-            rmt = seqc.sequence.encodings.DNA3Bit.encode(rmt)
-            n_poly_t = poly_t.count('T') + poly_t.count('N')
-
-            data[row_idx] = (1, cell, rmt, n_poly_t)
-            row_idx += 1
-
-        # some reads will not have aligned, throw away excess allocated space before
-        # creating the ReadArray
-        row, col, position, gene = (
-            row[:arr_idx], col[:arr_idx], position[:arr_idx], gene[:arr_idx])
-
-        gene = coo_matrix((gene, (row, col)), shape=(row_idx, max_ma), dtype=np.int32).tocsr()
-        position = coo_matrix((position, (row, col)), shape=(row_idx, max_ma),
-                              dtype=np.int32).tocsr()
-
-        return data, gene, position
-
-    @classmethod
-    def from_pysam(cls, bam_file, translator):
-
-        reader = pysam.AlignmentFile(bam_file, 'rb')
-
-        if not reader.has_index():  # todo instead of raising, sort & index bam file
-            raise RuntimeError('Bam file must be coordinate sorted and indexed')
-
-        reference_numbers = np.arange(len(reader.references))
-
-        parser = partial(cls._from_pysam, bam_file=bam_file, translator=translator)
-
-        with closing(Pool()) as pool:
-            data, gene, position = zip(*pool.map(parser, reference_numbers))
-
-        gene = vstack(gene)
-        position = vstack(position)
-        data = np.concatenate(data, axis=0)
-        cls(data, gene, position)
-
+    # @staticmethod
+    # def _iterate_pysam(reference, open_alignment_file):
+    #     """group and return multialignments for each read associated with reference in
+    #     bam_file
+    #
+    #     :param str reference: the reference within the file to parse
+    #     :param pysam.AlignmentFile open_alignment_file: an open file descriptor pointing
+    #       to the bam file that should be parsed
+    #     :yields list: list of all alignments for each read
+    #     """
+    #     iter_bam = open_alignment_file.fetch(reference=reference, multiple_iterators=True)
+    #     ma = [next(iter_bam)]  # get first alignment
+    #     for alignment in iter_bam:
+    #         if alignment.qname == ma[0].qname:
+    #             ma.append(alignment)
+    #         else:
+    #             yield ma
+    #             ma = [alignment]
+    #     yield ma  # yield final alignment
+    #
+    # @classmethod
+    # def _from_pysam(cls, reference_number, bam_file, translator):
+    #     """
+    #
+    #     :param reference: the reference within the file to parse
+    #     :param bam_file: the alignment file to iterate over
+    #     :param translator: a data structure that maps alignments in chromosome space to
+    #       genes
+    #     :return np.recarray, csr_matrix, csr_matrix: data, genes, and positions input for
+    #       ReadArray construction
+    #     """
+    #
+    #     reader = pysam.AlignmentFile(bam_file, 'rb')
+    #     reference = reader.references[reference_number]
+    #     length = reader.lengths[reference_number]
+    #
+    #     # pre-allocate arrays
+    #     data = np.recarray((length,), cls._dtype)
+    #     row = np.zeros(length, dtype=np.int32)
+    #     col = np.zeros(length, dtype=np.int8)
+    #     position = np.zeros(length, dtype=np.int32)
+    #     gene = np.zeros(length, dtype=np.int32)
+    #
+    #     row_idx = 0  # identifies the read index
+    #     arr_idx = 0  # identifies the alignment index across all reads
+    #     max_ma = 0  # maximum number of alignments observed for a read
+    #     for multialignment in cls._iterate_pysam(reference, reader):
+    #
+    #         col_idx = 0  # identifies the alignment index within a read
+    #         for a in multialignment:
+    #             strand = '-' if a.is_reverse else '+'
+    #             genes = translator.translate(a.reference_name, strand, a.pos)
+    #
+    #             # if gene passes filter, store passing genes and increment appropriate
+    #             # arr and col indices
+    #             if genes is not None and len(genes) == 1:
+    #                 row[arr_idx] = row_idx
+    #                 col[arr_idx] = col_idx
+    #                 gene[arr_idx] = genes[0]
+    #                 position[arr_idx] = a.pos
+    #                 arr_idx += 1
+    #                 col_idx += 1
+    #         max_ma = max(max_ma, col_idx)
+    #
+    #         _, cell, rmt, poly_t = a.qname[:a.qname.index(';')].split(':')
+    #         cell = seqc.sequence.encodings.DNA3Bit.encode(cell)
+    #         rmt = seqc.sequence.encodings.DNA3Bit.encode(rmt)
+    #         n_poly_t = poly_t.count('T') + poly_t.count('N')
+    #
+    #         data[row_idx] = (1, cell, rmt, n_poly_t)
+    #         row_idx += 1
+    #
+    #     # some reads will not have aligned, throw away excess allocated space before
+    #     # creating the ReadArray
+    #     row, col, position, gene = (
+    #         row[:arr_idx], col[:arr_idx], position[:arr_idx], gene[:arr_idx])
+    #
+    #     gene = coo_matrix((gene, (row, col)), shape=(row_idx, max_ma), dtype=np.int32).tocsr()
+    #     position = coo_matrix((position, (row, col)), shape=(row_idx, max_ma),
+    #                           dtype=np.int32).tocsr()
+    #
+    #     return data, gene, position
+    #
+    # @classmethod
+    # def from_pysam(cls, bam_file, translator):
+    #
+    #     reader = pysam.AlignmentFile(bam_file, 'rb')
+    #
+    #     if not reader.has_index():  # todo instead of raising, sort & index bam file
+    #         raise RuntimeError('Bam file must be coordinate sorted and indexed')
+    #
+    #     reference_numbers = np.arange(len(reader.references))
+    #
+    #     parser = partial(cls._from_pysam, bam_file=bam_file, translator=translator)
+    #
+    #     with closing(Pool()) as pool:
+    #         data, gene, position = zip(*pool.map(parser, reference_numbers))
+    #
+    #     gene = vstack(gene)
+    #     position = vstack(position)
+    #     data = np.concatenate(data, axis=0)
+    #     cls(data, gene, position)
 
     @classmethod
     def from_samfile(cls, sam_file: str, gtf_file: str):
@@ -347,7 +346,7 @@ class ReadArray:
             rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
             n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
             # dust_score = alignment.dust_low_complexity_score
-            data[row_idx] = (1, cell, rmt, n_poly_t)
+            data[row_idx] = (0, cell, rmt, n_poly_t)
             row_idx += 1
 
         # some reads will not have aligned, throw away excess allocated space before
@@ -364,8 +363,6 @@ class ReadArray:
         # res_ra._total_alignments = len(reader)  # todo I removed these.
         # res_ra._total_reads = num_unique
 
-    # todo might make sense to look into masked arrays, since we're already storing a
-    # status column.
     def apply_filters(self, required_poly_t=1, max_dust_score=10):
         """Apply different filters to the read array. If a read fails a filter, it is not
         passed to the others and so the counts for each filter is the number of reads that
@@ -378,21 +375,15 @@ class ReadArray:
           implies lower complexity
         :return None: method sets the status vector according to the result of filtering.
         """
-        adjusted_status = self.data['status'].copy()
 
-        n_filtered = {}
+        failing = np.zeros(self.data.shape[0])
+        failing[self.genes.sum(axis=1) == 0] &= 0b1  # no gene
+        failing[self.data['rmt'] == 0] &= 0b10  # no rmt
+        failing[self.data['cell'] == 0] &= 0b100 # no cell
+        failing[self.data['n_poly_t'] < required_poly_t] &= 0b1000
+        # failing[self.data['dust_score'] > max_dust_score] &= 0b10000
 
-        # todo can store all this in the status column by setting masked status to
-        # false = 0, and flipping bits according to how the read fails.
-        failing = self.genes.sum(axis=1) == 0  # no gene
-        failing &= self.data['rmt'] == 0  # no rmt
-        failing &= self.data['cell'] == 0  # no cell
-        failing &= self.data['n_poly_t'] < required_poly_t
-        failing &= self.data['dust_score'] > max_dust_score
-
-        self.data['status'][failing] &= 0b1111111111111110  # set status of failing reads
-
-        # todo add dictionary containing filtered read numbers for user summary
+        self.data['status'] &= failing
 
     def _disambiguate(self, inds):
         """side-effecting thread-safe function that sets the reads within inds to the
@@ -407,57 +398,59 @@ class ReadArray:
           unique (cell, rmt) pair.
         :return None:
         """
+
+        # expects d[(cell, rmt)][(gene(s))] = [inds]
+
         reads = self._genes[slice(*inds)]
 
-        raise NotImplementedError  # todo complete implementation.
 
-        # # OLD MULTMAPPING MODULE
-        # log.info('disambiguating')
-        # # todo this should be trivial to parallelize
-        # for g_ra_rec in g_ra.values():
-        #     obs = {}
-        #     for genes in g_ra_rec:
-        #         if genes == ():
-        #             continue
-        #         if genes not in obs:
-        #             obs[genes] = len(g_ra_rec[genes])
-        #             total_reads += len(g_ra_rec[genes])
-        #             # TODO: do a sanity check here? I think genes should not be in obs
-        #
-        #     if () in g_ra_rec:
-        #         if len(g_ra_rec) == 1:
-        #             continue
-        #     if () in obs:
-        #         del obs[()]
-        #
-        #     obs_s = mm.strip_model(obs)
-        #     ind_s = mm.strip_model(g_ra_rec)
-        #
-        #     subsets = mm.split_to_disjoint(obs_s)
-        #     for obs_subset in subsets:
-        #         resolved = False
-        #         models, r = mm.best_fit_model(obs_subset, mat)
-        #         self._multialignment[r] += sum(obs_subset.values())
-        #         if r == mm.NO_DISAMBIGUATION or r == mm.RESOLVED_GENE:
-        #             model = models[0]
-        #             g = mm.model_to_gene(model)
-        #             resolved = True
-        #
-        #         indices = mm.get_indices(ind_s, obs_subset)
-        #         for ind in indices:
-        #             ReadArray.set_mm_status(self.data[ind], r)
-        #             if resolved:
-        #                 self.data['gene'][ind] = g  # api (indexing gene field)
-        #                 self.data['position'][ind] = (  # api (indexing position field)
-        #                     self.data['ma_pos'][ind][
-        #                         self.data['ma_genes'][ind].index(g)])  # api (indexing)
-        #             else:
-        #                 ReadArray.set_status_inactive(self.data[ind])
-        #
-        # log.info('Total reads in samfile: {}'.format(len(self)))
-        # log.info('Reads that passed the filter: {}'.format(total_reads))
-        # tot_time = time.process_time() - start
-        # log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
+        total_reads = 0
+        g_ra = {}  # I added this
+
+        for g_ra_rec in g_ra.values():  # loop over molecules; this is in the outer func
+            obs = {}
+            for genes in g_ra_rec:  # loop over genes
+                if genes == ():
+                    continue
+                if genes not in obs:
+                    obs[genes] = len(g_ra_rec[genes])
+                    total_reads += len(g_ra_rec[genes])
+                    # TODO: do a sanity check here? I think genes should not be in obs
+
+            if () in g_ra_rec:
+                if len(g_ra_rec) == 1:
+                    continue
+            if () in obs:
+                del obs[()]
+
+            obs_s = mm.strip_model(obs)
+            ind_s = mm.strip_model(g_ra_rec)
+
+            subsets = mm.split_to_disjoint(obs_s)
+            for obs_subset in subsets:
+                resolved = False
+                models, r = mm.best_fit_model(obs_subset, mat)
+                self._multialignment[r] += sum(obs_subset.values())
+                if r == mm.NO_DISAMBIGUATION or r == mm.RESOLVED_GENE:
+                    model = models[0]
+                    g = mm.model_to_gene(model)
+                    resolved = True
+
+                indices = mm.get_indices(ind_s, obs_subset)
+                for ind in indices:
+                    ReadArray.set_mm_status(self.data[ind], r)
+                    if resolved:
+                        self.data['gene'][ind] = g  # api (indexing gene field)
+                        self.data['position'][ind] = (  # api (indexing position field)
+                            self.data['ma_pos'][ind][
+                                self.data['ma_genes'][ind].index(g)])  # api (indexing)
+                    else:
+                        ReadArray.set_status_inactive(self.data[ind])
+
+        log.info('Total reads in samfile: {}'.format(len(self)))
+        log.info('Reads that passed the filter: {}'.format(total_reads))
+        tot_time = time.process_time() - start
+        log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
 
     def disambiguation(self):
         """
