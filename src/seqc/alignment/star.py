@@ -20,7 +20,7 @@ def default_alignment_args(
         '--runThreadN': str(n_threads),
         '--genomeDir': index,
         '--outFilterType': 'BySJout',
-        '--outFilterMultimapNmax': '1',  # require unique alignments
+        '--outFilterMultimapNmax': '100',  # require unique alignments
         '--limitOutSJcollapsed': '2000000',  # deal with many splice variants
         '--alignSJDBoverhangMin': '8',
         '--outFilterMismatchNoverLmax': '0.04',
