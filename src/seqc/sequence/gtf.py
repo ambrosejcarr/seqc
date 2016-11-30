@@ -274,8 +274,16 @@ class GeneIntervals:
         # If we're here - tx is shorter than 1000 - return the start of the first exxon
         return ex_list[0][0]
     
-    
+    #todo return only one gene and a status
     def translate(self, chr, strand, pos):
+        '''
+        Find a gene associated with a genomic location
+
+        :param chr:  the chromosome - should be 1-25/chr1-chr25/X/Y/M,chrX,chrY,chrM
+        :param strand: '+' or '-'
+        :param pos: the bp position
+        :return: A list of genes mapped to that location. -1 means a scaffold.
+        '''
         if type(chr) is bytes:
             chr = chr.decode('utf-8')
         int_chr = self.strip_chr(chr)

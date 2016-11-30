@@ -1,3 +1,4 @@
+import sys
 
 def run(args) -> None:
     """Run SEQC on the files provided in args, given specifications provided on the
@@ -190,7 +191,7 @@ def run(args) -> None:
           samfile ProcessManager, and number of processed sam records
         """
         log.info('Filtering aligned records and constructing record database.')
-        read_array, sam_record_count = ReadArray.from_samfile(
+        read_array = ReadArray.from_samfile(
             samfile, index + 'annotations.gtf')
 
         # TODO save the created ReadArray object
@@ -210,7 +211,7 @@ def run(args) -> None:
             rm_samfile = 'rm %s' % samfile
             io.ProcessManager(rm_samfile).run_all()
             upload_manager = None
-        return read_array, upload_manager, sam_record_count
+        return read_array, upload_manager, read_array._total_alignments
 
     # ######################## MAIN FUNCTION BEGINS HERE ################################
 
@@ -279,7 +280,14 @@ def run(args) -> None:
         files = []
         files += ra.to_count_matrix(args.output_prefix + '_phase1_')
         log.info('Read array after reading sam file: {}'.format(ra))
-        # Apply filters
+        print('Read array after reading sam file: {}'.format(ra))
+        ###########
+        log.info('Read array size: {}'.format(sys.getsizeof(ra)))
+        print('Read array size: {}'.format(sys.getsizeof(ra)))
+        print('finished')
+        return
+        ##################
+
         ra.apply_filters(
             required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
         files += ra.to_count_matrix(args.output_prefix + '_phase2_')
@@ -301,7 +309,7 @@ def run(args) -> None:
         # correct errors
         log.info('Filtering errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        #platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
         files += ra.to_count_matrix(args.output_prefix + '_phase5_')
         log.info('Read array after error correction: {}'.format(ra))
 

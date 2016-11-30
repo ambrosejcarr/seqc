@@ -30,18 +30,23 @@ DEFAULT_BASE_CONVERTION_RATE = 0.02
 
 class ReadArray:
 
-    _dtype = [
+    _read_dtype = [
         ('status', np.uint16),
         ('cell', np.int64),
         ('rmt', np.int32),
         ('n_poly_t', np.uint8),
         ('dust_score', np.uint8),
         ('gene', np.uint32),
-        ('position', np.uint64),
-        ('ma_genes', np.dtype(object)),
-        ('ma_pos', np.dtype(object))]
+        ('position', np.uint64)
+    ]
 
-    def __init__(self, data, non_unique_alignments=-1):
+    _alignment_dtype = [
+        ('read_idx', np.uint32),
+        ('pos', np.uint64),
+        ('gene', np.uint32)
+    ]
+
+    def __init__(self, data, alignments, non_unique_alignments=-1):
         """
         Enhanced np.ndarray (structured array) with several companion functions to hold
         filter, sort, and access compressed fastq read information.
@@ -69,6 +74,8 @@ class ReadArray:
         self._ok_barcodes       = 0
         self._multialignment    = {mm.NO_DISAMBIGUATION: 0, mm.RESOLVED_GENE: 0, mm.NO_GENE_RESOLVED: 0, mm.MULTIPLE_MODELS: 0}
         self._total_errors      = 0
+
+        self._resolved_alignments = False
         
         if non_unique_alignments != -1:
             self._non_unique_align = non_unique_alignments
@@ -90,6 +97,10 @@ class ReadArray:
     @property
     def data(self):
         return self._data
+
+    @property
+    def resolved_alignments(self):
+        return self._resolved_alignments
 
     @staticmethod
     def active_status():
@@ -163,7 +174,8 @@ class ReadArray:
         :param samfile: str, filename of alignment file.
         :return:
         """
-        non_unique_align = 0
+        #non_unique_align = 0
+        no_alignment_count = 0
         reader = sam.Reader(samfile)
         #go over the file to find how many unique reads there are
         num_reads=0
@@ -175,65 +187,66 @@ class ReadArray:
         
         translator = GeneIntervals(gtf_f)
         
-        data = np.recarray((num_reads,), cls._dtype)
+        data = np.recarray((num_reads,), ReadArray._read_dtype)
+        alignments = np.recarray((len(reader),), ReadArray._alignment_dtype)
         prev_alignment_name=''
         read_idx = 0
-        for alignment in reader:    
+        genes = []
+        for alignment_idx, alignment in enumerate(reader):
             #new read
             if alignment.qname != prev_alignment_name:
                 if read_idx>0:
-                    data[read_idx-1] = (ReadArray.active_status(), cell, rmt, n_poly_t, dust_score, 0, 0, genes, ma_pos)
+                    data[read_idx-1] = (ReadArray.active_status(), cell, rmt, n_poly_t, dust_score, 0, 0)
                     cls.set_status_active(data[read_idx-1])
+                    if len(genes)>0:    #Add all valid alignments to alignment table
+                        for gene in genes:
+                            alignments[alignment_idx] = (read_idx-1, alignment.pos, gene)
+                    else:
+                        ReadArray.set_filt_fail(data[read_idx-1], NO_ALIGNMENT)
+                        no_alignment_count += 1
+                        ReadArray.set_status_inactive(data[read_idx-1])
+
                 prev_alignment_name = alignment.qname
                 read_idx+=1
-                genes = translator.translate(alignment.rname, alignment.strand, alignment.pos)
-                ma_pos = []
-                if genes != -1:
-                    if len(genes) > 1:
-                        non_unique_align+=1
-                    for i in range(len(genes)):
-                        ma_pos.append(alignment.pos)
+                genes = []
+
                 cell = seqc.sequence.encodings.DNA3Bit.encode(alignment.cell)
                 rmt = seqc.sequence.encodings.DNA3Bit.encode(alignment.rmt)
                 n_poly_t = alignment.poly_t.count(b'T') + alignment.poly_t.count(b'N')
                 dust_score = alignment.dust_low_complexity_score
-                
+                genes_mapped = translator.translate(alignment.rname, alignment.strand, alignment.pos)
+                if genes_mapped != -1:
+                    if len(genes_mapped) == 1:
+                        genes.append(genes_mapped[0])
+
+
             #the same read
             else:
-                genes_l = translator.translate(alignment.rname, alignment.strand, alignment.pos)
-                if genes_l != -1:
-                    if len(genes_l) > 1:
-                        non_unique_align+=1
-                    if genes == -1:
-                        genes = genes_l
-                    else:
-                        genes+=genes_l
-                    for i in range(len(genes_l)):
-                        ma_pos.append(alignment.pos)
+                genes_mapped = translator.translate(alignment.rname, alignment.strand, alignment.pos)
+                if genes_mapped != -1:
+                    if len(genes_mapped) == 1:
+                        genes.append(genes_mapped[0])
+
             
-        log.info('non unique alignments count: {}'.format(non_unique_align))
-        res_ra = cls(data, non_unique_align)
+        #log.info('non unique alignments count: {}'.format(non_unique_align))
+        res_ra = cls(data, alignments)
         res_ra._total_alignments = len(reader)
         res_ra._total_reads = num_reads
+        res_ra._filtered[NO_ALIGNMENT] += no_alignment_count    #todo remove these and add them to the ctr
 
-        return res_ra, res_ra._total_alignments #TODO: It might be nicer to return just the RA and take the total alignments from it
+        return res_ra
 
     def apply_filters(self, required_poly_t = 1, max_dust_score=10):
         """
         Apply different filters to the read array.
         If a read fails a filter, it is not passed to the others and so the counts
         for each filter is the number of reads that failed that one but passed all previous ones
-        Filters are not ordered in any particular way.
+        Filters are not ordered in any particular way.0
         """
         for r in self.data:
-            if r['ma_genes'] == None:
+            if r['ma_genes'] == None:   #todo check if this test is not redundant
                 ReadArray.set_filt_fail(r, NO_GENES)
                 self._filtered[NO_GENES] += 1
-                ReadArray.set_status_inactive(r)
-                continue
-            if r['ma_genes'] == -1:
-                ReadArray.set_filt_fail(r, SCAFFOLD)
-                self._filtered[SCAFFOLD] += 1
                 ReadArray.set_status_inactive(r)
                 continue
             if len(r['ma_genes']) == 0:
@@ -529,6 +542,13 @@ class ReadArray:
 
         return
 
+    def clear_mm_data(self):
+        '''This cleans the multi alignment data which takes up a lot of memory.
+        It should be called after resolve_alignments'''
+        for r in self.data:
+            r['ma_genes'] = None
+            r['ma_pos'] = None
+
     def __len__(self):
         return len(self.data)
         
@@ -548,6 +568,9 @@ class ReadArray:
           dict of (cell, rmt) -> read counts
           dict of (cell, rmt) -> molecule counts
         """
+        if not self.resolved_alignments:
+            log.info('Read array converted to count matrix before alignments were resolved. {} will be empty.'.format(csv_path))
+
         reads_mat = {}
         mols_mat = {}
         for r in self.data:
@@ -557,12 +580,7 @@ class ReadArray:
             gene = r['gene']
             rmt = r['rmt']
             if gene == 0:
-                if r['ma_genes'] == -1 or r['ma_genes'] == 0:
-                    continue
-                elif len(r['ma_genes']) == 1:
-                    gene = r['ma_genes'][0]
-                else:
-                    continue
+                continue
             try:
                 reads_mat[cell, gene] = reads_mat[cell, gene]+1
             except KeyError:
