@@ -81,7 +81,7 @@ class ReadArray:
             for i in np.arange(self.data.shape[0]):
                 yield chain(self.data[i], (self.genes[i], self.positions[i]))
 
-    _filter_codes = {
+    filter_codes = {
         'no_gene': 0b1,
         'no_rmt': 0b10,
         'no_cell': 0b100,  # todo no filter in this module for this method yet
@@ -106,14 +106,14 @@ class ReadArray:
         # genes are dealt with differently depending on the state of the array
         if self._ambiguous_genes:
             nnz = self.genes.getnnz(axis=1)
-            failing[nnz == 0] |= 0b1  # no gene
-            failing[nnz > 1] |= 0b10000  # multiple genes
+            failing[nnz == 0] |= self.filter_codes['no_gene']
+            failing[nnz > 1] |= self.filter_codes['gene_not_unique']
         else:  # multiple gene filter is empty
-            failing[self.genes == 0] |= 0b1
+            failing[self.genes == 0] |= self.filter_codes['no_gene']
 
-        failing[self.data['rmt'] == 0] |= 0b10  # no rmt
-        failing[self.data['cell'] == 0] |= 0b100  # no cell
-        failing[self.data['n_poly_t'] < required_poly_t] |= 0b1000
+        failing[self.data['rmt'] == 0] |= self.filter_codes['no_rmt']
+        failing[self.data['cell'] == 0] |= self.filter_codes['no_cell']
+        failing[self.data['n_poly_t'] < required_poly_t] |= self.filter_codes['low_polyt']
 
         self.data['status'] &= failing
 
@@ -124,13 +124,13 @@ class ReadArray:
         :param *str ignore: fields to ignore when constructing filtering mask
         :return int: mask
         """
-        mask = 2 ** 16 - 1  # 0b111... x16, permissive mask
+        mask = 2 ** 8 - 1  # 0b111... x16, permissive mask
         for filter_ in ignore:
             try:
-                mask ^= self._filter_codes[filter_]  # mask filter
+                mask ^= self.filter_codes[filter_]  # mask filter
             except KeyError:
                 raise KeyError('%s is not a valid filter. Please select from %s' %
-                               (filter_, repr(self._filter_codes.keys())))
+                               (filter_, repr(self.filter_codes.keys())))
         return mask
 
     def iter_active(self, *ignore):
@@ -306,8 +306,8 @@ class ReadArray:
         self._positions = np.ravel(self._positions.tocsc()[:, 0])
 
         # update filtering results
-        self.data['status'] &= 0b101111  # no genes are ambiguous anymore
-        self.data['status'][self.genes == 0] |= 0b1  # 0 indicates missing gene
+        self.data['status'] &= self.filtering_mask('gene_not_unique')
+        self.data['status'][self.genes == 0] |= self.filter_codes['no_gene']
         self._ambiguous_genes = False
 
     def save(self, archive_name: str) -> None:
