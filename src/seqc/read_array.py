@@ -73,7 +73,7 @@ class ReadArray:
 
         :return Iterator: iterator over (recarray_row, gene, position)
         """
-        # todo test out speed loss with chain(), compare to numpy.concatenate, whatever else.
+        # todo test out speed loss with chain(), compare to numpy.concatenate, None
         if self._ambiguous_genes:  # genes, positions are scipy.sparse.csr_matrix
             for i in np.arange(self.data.shape[0]):
                 yield chain(self.data[i], (self.genes[i, 0], self.positions[i, 0]))
@@ -84,14 +84,12 @@ class ReadArray:
     _filter_codes = {
         'no_gene': 0b1,
         'no_rmt': 0b10,
-        'no_cell': 0b100,  # todo should run this filter earlier, before mmaping
+        'no_cell': 0b100,  # todo no filter in this module for this method yet
         'low_polyt': 0b1000,
         'gene_not_unique': 0b10000,
         'no_spacer': 0b100000,
     }
 
-    # todo when to call this? during init doesn't make sense, since that function is also
-    # called on reloading
     def calculate_filtering_results(self, required_poly_t=1):
         """Apply different filters to the read array. If a read fails a filter, it is not
         passed to the others and so the counts for each filter is the number of reads that
@@ -104,12 +102,18 @@ class ReadArray:
         """
 
         failing = np.zeros(self.data.shape[0])
-        nnz = self.genes.getnnz(axis=1)  # todo does this work on non-sparse arrays?
-        failing[nnz == 0] &= 0b1  # no gene
+
+        # genes are dealt with differently depending on the state of the array
+        if self._ambiguous_genes:
+            nnz = self.genes.getnnz(axis=1)
+            failing[nnz == 0] &= 0b1  # no gene
+            failing[nnz > 1] &= 0b10000  # multiple genes
+        else:  # multiple gene filter is empty
+            failing[self.genes == 0] &= 0b1
+
         failing[self.data['rmt'] == 0] &= 0b10  # no rmt
         failing[self.data['cell'] == 0] &= 0b100  # no cell
         failing[self.data['n_poly_t'] < required_poly_t] &= 0b1000
-        failing[nnz > 1] &= 0b10000  # multiple genes
 
         self.data['status'] &= failing
 
@@ -150,7 +154,7 @@ class ReadArray:
                     yield i, data
 
     @classmethod
-    def from_alignment_file(cls, alignment_file, translator):
+    def from_alignment_file(cls, alignment_file, translator, required_poly_t):
         """
         construct a ReadArray object from a samfile containing only uniquely aligned
         records
@@ -218,7 +222,9 @@ class ReadArray:
         position = coo_matrix((position, (row, col)), shape=(row_idx, max_ma),
                               dtype=np.int32)
 
-        return cls(data, gene.tocsr(), position.tocsr())
+        ra = cls(data, gene.tocsr(), position.tocsr())
+        ra.calculate_filtering_results(required_poly_t=required_poly_t)
+        return ra
 
     def group_filtered_indices(self, by, multimapping=False):
         """group the reads in ra.data by columns specified in "by", then return a tuple
