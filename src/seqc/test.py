@@ -370,7 +370,8 @@ class TestReadArrayCreation(unittest.TestCase):
         cls.translator = gtf.GeneIntervals(cls.annotation)
 
     def test_read_array_creation(self):
-        ra = ReadArray.from_alignment_file(self.bamfile, self.translator)
+        ra = ReadArray.from_alignment_file(self.bamfile, self.translator,
+                                           required_poly_t=0)
         ra.save(os.path.expanduser('~/Downloads/test.ra'))
 
 
