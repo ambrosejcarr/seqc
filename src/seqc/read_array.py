@@ -5,8 +5,8 @@ from seqc.alignment import sam
 from seqc.sequence.encodings import DNA3Bit
 from scipy.sparse import coo_matrix, csr_matrix
 import seqc.sequence.barcodes
-
 import tables as tb
+from itertools import chain
 
 
 class ReadArray:
@@ -73,12 +73,13 @@ class ReadArray:
 
         :return Iterator: iterator over (recarray_row, gene, position)
         """
+        # todo test out speed loss with chain(), compare to numpy.concatenate, whatever else.
         if self._ambiguous_genes:  # genes, positions are scipy.sparse.csr_matrix
             for i in np.arange(self.data.shape[0]):
-                yield self.data[i], self.genes[i, 0], self.positions[i, 0]
+                yield chain(self.data[i], (self.genes[i, 0], self.positions[i, 0]))
         else:  # genes, positions are np.array
             for i in np.arange(self.data.shape[0]):
-                yield self.data[i], self.genes[i], self.positions[i]
+                yield chain(self.data[i], (self.genes[i], self.positions[i]))
 
     _filter_codes = {
         'no_gene': 0b1,
