@@ -101,7 +101,7 @@ class ReadArray:
         :return None: method sets the status vector according to the result of filtering.
         """
 
-        failing = np.zeros(self.data.shape[0])
+        failing = np.zeros(self.data.shape[0], dtype=np.int8)
 
         # genes are dealt with differently depending on the state of the array
         if self._ambiguous_genes:
@@ -115,7 +115,7 @@ class ReadArray:
         failing[self.data['cell'] == 0] |= self.filter_codes['no_cell']
         failing[self.data['n_poly_t'] < required_poly_t] |= self.filter_codes['low_polyt']
 
-        self.data['status'] &= failing
+        self.data['status'] = failing
 
     def filtering_mask(self, *ignore):
         """return a filtering mask that, when compared to status, will return False for
@@ -366,9 +366,9 @@ class ReadArray:
             indices = f.root.indices.read()
             genes = f.root.gene_data.read()
             positions = f.root.positions_data.read()
-            shape = (indices.shape[0] - 1, np.max(indptr))
-            genes = csr_matrix((genes, indices, indptr), shape=shape)
-            positions = csr_matrix((positions, indices, indptr), shape=shape)
+            # shape = (indices.shape[0] - 1, np.max(indptr))
+            genes = csr_matrix((genes, indices, indptr))
+            positions = csr_matrix((positions, indices, indptr))
 
         f.close()
 
