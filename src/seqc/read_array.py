@@ -302,12 +302,12 @@ class ReadArray:
         with closing(Pool()) as pool:
             pool.map(self._resolve_ambiguous_alignments, indices_grouped_by_molecule)
 
-        self._genes = np.ravel(self._genes.tocsc()[:, 0])
+        self._genes = np.ravel(self.genes.tocsc()[:, 0])  # todo add setter to self.genes
         self._positions = np.ravel(self._positions.tocsc()[:, 0])
 
         # update filtering results
         self.data['status'] &= 0b101111  # no genes are ambiguous anymore
-        self.data['status'][self._genes == 0] &= 0b111110  # 0 indicates missing gene
+        self.data['status'][self.genes == 0] |= 0b1  # 0 indicates missing gene
         self._ambiguous_genes = False
 
     def save(self, archive_name: str) -> None:
