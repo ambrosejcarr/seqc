@@ -106,14 +106,14 @@ class ReadArray:
         # genes are dealt with differently depending on the state of the array
         if self._ambiguous_genes:
             nnz = self.genes.getnnz(axis=1)
-            failing[nnz == 0] &= 0b1  # no gene
-            failing[nnz > 1] &= 0b10000  # multiple genes
+            failing[nnz == 0] |= 0b1  # no gene
+            failing[nnz > 1] |= 0b10000  # multiple genes
         else:  # multiple gene filter is empty
-            failing[self.genes == 0] &= 0b1
+            failing[self.genes == 0] |= 0b1
 
-        failing[self.data['rmt'] == 0] &= 0b10  # no rmt
-        failing[self.data['cell'] == 0] &= 0b100  # no cell
-        failing[self.data['n_poly_t'] < required_poly_t] &= 0b1000
+        failing[self.data['rmt'] == 0] |= 0b10  # no rmt
+        failing[self.data['cell'] == 0] |= 0b100  # no cell
+        failing[self.data['n_poly_t'] < required_poly_t] |= 0b1000
 
         self.data['status'] &= failing
 
@@ -150,7 +150,7 @@ class ReadArray:
         else:  # create the appropriate mask for filters we want to ignore
             mask = self.filtering_mask(*ignore)
             for i, data in enumerate(self):
-                if data['status'] & mask:  # ignores fields in ignore
+                if not data['status'] & mask:  # ignores fields in ignore
                     yield i, data
 
     @classmethod
