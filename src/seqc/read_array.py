@@ -89,6 +89,8 @@ class ReadArray:
         'no_spacer': 0b100000,
     }
 
+    # todo when to call this? during init doesn't make sense, since that function is also
+    # called on reloading
     def calculate_filtering_results(self, required_poly_t=1):
         """Apply different filters to the read array. If a read fails a filter, it is not
         passed to the others and so the counts for each filter is the number of reads that
@@ -101,11 +103,12 @@ class ReadArray:
         """
 
         failing = np.zeros(self.data.shape[0])
-        # todo check for multiple genes here.
-        failing[self.genes.sum(axis=1) == 0] &= 0b1  # no gene
+        nnz = self.genes.getnnz(axis=1)  # todo does this work on non-sparse arrays?
+        failing[nnz == 0] &= 0b1  # no gene
         failing[self.data['rmt'] == 0] &= 0b10  # no rmt
         failing[self.data['cell'] == 0] &= 0b100  # no cell
         failing[self.data['n_poly_t'] < required_poly_t] &= 0b1000
+        failing[nnz > 1] &= 0b10000  # multiple genes
 
         self.data['status'] &= failing
 
@@ -202,7 +205,6 @@ class ReadArray:
             cell = seqc.sequence.encodings.DNA3Bit.encode(a.cell)
             rmt = seqc.sequence.encodings.DNA3Bit.encode(a.rmt)
             n_poly_t = a.poly_t.count(b'T') + a.poly_t.count(b'N')
-            # dust_score = alignment.dust_low_complexity_score
             data[row_idx] = (0, cell, rmt, n_poly_t)
             row_idx += 1
 
@@ -296,6 +298,9 @@ class ReadArray:
         self._genes = np.ravel(self._genes.tocsc()[:, 0])
         self._positions = np.ravel(self._positions.tocsc()[:, 0])
 
+        # update filtering results
+        self.data['status'] &= 0b101111  # no genes are ambiguous anymore
+        self.data['status'][self._genes == 0] &= 0b111110  # 0 indicates missing gene
         self._ambiguous_genes = False
 
     def save(self, archive_name: str) -> None:
@@ -354,10 +359,9 @@ class ReadArray:
             indices = f.root.indices.read()
             genes = f.root.gene_data.read()
             positions = f.root.positions_data.read()
-            genes = csr_matrix((genes, indices, indptr))
-            positions = csr_matrix((positions, indices, indptr))
-
-        # todo may need more save/load information here if positions isn't inferred by csr
+            shape = (indices.shape[0] - 1, np.max(indptr))
+            genes = csr_matrix((genes, indices, indptr), shape=shape)
+            positions = csr_matrix((positions, indices, indptr), shape=shape)
 
         f.close()
 
