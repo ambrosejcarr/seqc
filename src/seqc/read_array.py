@@ -159,6 +159,8 @@ class ReadArray:
         construct a ReadArray object from a samfile containing only uniquely aligned
         records
 
+        :param required_poly_t: number of poly_t required for a read to be considered
+          a valid alignment
         :param GeneIntervals translator: translator created from the .gtf annotation
           file corresponding to the genome against which the reads in sam_file were
           aligned

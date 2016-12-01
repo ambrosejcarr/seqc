@@ -24,7 +24,7 @@ class SamRecord:
         return '\t'.join(self._record) + '\n'
 
     @property
-    def qname(self) -> bytes:
+    def qname(self) -> str:
         return self._record[0]
 
     @property
@@ -32,7 +32,7 @@ class SamRecord:
         return int(self._record[1])
 
     @property
-    def rname(self) -> bytes:
+    def rname(self) -> str:
         return self._record[2]
 
     @property
@@ -44,11 +44,11 @@ class SamRecord:
         return int(self._record[4])
 
     @property
-    def cigar(self) -> bytes:
+    def cigar(self) -> str:
         return self._record[5]
 
     @property
-    def rnext(self) -> bytes:
+    def rnext(self) -> str:
         return self._record[6]
 
     @property
@@ -60,11 +60,11 @@ class SamRecord:
         return int(self._record[8])
 
     @property
-    def seq(self) -> bytes:
+    def seq(self) -> str:
         return self._record[9]
 
     @property
-    def qual(self) -> bytes:
+    def qual(self) -> str:
         return self._record[10]
 
     @property
@@ -82,7 +82,7 @@ class SamRecord:
         self._parsed_name_field = self.NameField(*processed_fields)
 
     @property
-    def pool(self) -> bytes:
+    def pool(self) -> str:
         try:
             return self._parsed_name_field.pool
         except AttributeError:
@@ -90,7 +90,7 @@ class SamRecord:
             return self._parsed_name_field.pool
 
     @property
-    def rmt(self) -> bytes:
+    def rmt(self) -> str:
         try:
             return self._parsed_name_field.rmt
         except AttributeError:
@@ -98,7 +98,7 @@ class SamRecord:
             return self._parsed_name_field.rmt
 
     @property
-    def cell(self) -> bytes:
+    def cell(self) -> str:
         try:
             return self._parsed_name_field.cell
         except AttributeError:
@@ -106,7 +106,7 @@ class SamRecord:
             return self._parsed_name_field.cell
 
     @property
-    def poly_t(self) -> bytes:
+    def poly_t(self) -> str:
         try:
             return self._parsed_name_field.poly_t
         except AttributeError:
