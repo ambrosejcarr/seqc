@@ -18,10 +18,10 @@ class SamRecord:
         self._parsed_name_field = None
 
     def __repr__(self):
-        return '<SamRecord{!s}>'.format(b'\t'.join(self._record).decode())
+        return '<SamRecord{!s}>'.format('\t'.join(self._record))
 
     def __bytes__(self):
-        return b'\t'.join(self._record) + b'\n'
+        return '\t'.join(self._record) + '\n'
 
     @property
     def qname(self) -> bytes:
@@ -71,13 +71,13 @@ class SamRecord:
     def optional_fields(self):
         flags_ = {}
         for f in self._record[1:]:
-            k, _, v = f.split(b':')
+            k, _, v = f.split(':')
             flags_[k] = int(v)
         return flags_
 
     def _parse_name_field(self):
-        fields, name = self.qname.split(b';')
-        processed_fields = fields.split(b':')
+        fields, name = self.qname.split(';')
+        processed_fields = fields.split(':')
         processed_fields.append(name)
         self._parsed_name_field = self.NameField(*processed_fields)
 
@@ -131,16 +131,16 @@ class SamRecord:
 
     @property
     def is_multimapped(self):
-        return True if self.optional_fields[b'NH'] > 1 else False
+        return True if self.optional_fields['NH'] > 1 else False
 
     @property
     def is_uniquely_mapped(self):
-        return True if self.optional_fields[b'NH'] == 1 else False
+        return True if self.optional_fields['NH'] == 1 else False
 
     @property
     def strand(self):
         minus_strand = int(self.flag) & 16
-        return b'-' if minus_strand else b'+'
+        return '-' if minus_strand else '+'
 
     # # todo this takes up 66% of the processing time for parsing the sam record
     # @property
@@ -212,9 +212,11 @@ class Reader:
         fobj = self._open()
         try:
             for line in fobj:
-                if line.startswith(b'@'):
+                line = line.decode()
+                # todo move this if statement to execute only until header is exhausted
+                if line.startswith('@'):
                     continue
-                yield SamRecord(line.strip().split(b'\t'))
+                yield SamRecord(line.strip().split('\t'))
         finally:
             fobj.close()
 

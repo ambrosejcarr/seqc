@@ -115,7 +115,6 @@ class ReadArray:
         failing[self.data['cell'] == 0] |= self.filter_codes['no_cell']
         failing[self.data['n_poly_t'] < required_poly_t] |= self.filter_codes['low_polyt']
 
-        # todo should this overwrite? if yes, we can set equal to.
         self.data['status'] = np.bitwise_or(self.data['status'], failing)
 
     def filtering_mask(self, *ignore):
@@ -210,7 +209,7 @@ class ReadArray:
 
             cell = seqc.sequence.encodings.DNA3Bit.encode(a.cell)
             rmt = seqc.sequence.encodings.DNA3Bit.encode(a.rmt)
-            n_poly_t = a.poly_t.count(b'T') + a.poly_t.count(b'N')
+            n_poly_t = a.poly_t.count('T') + a.poly_t.count('N')
             data[row_idx] = (0, cell, rmt, n_poly_t)
             row_idx += 1
 

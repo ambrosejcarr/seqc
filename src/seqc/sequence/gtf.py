@@ -6,185 +6,8 @@ from copy import deepcopy
 import pandas as pd
 from seqc import reader, log
 import time
-import intervaltree
+from intervaltree import IntervalTree
 
-
-def first(iterable):
-    return next(iter(iterable))
-
-
-class Record:
-    """
-    Simple namespace object that makes the fields of a GTF record available. Subclassed
-    to create records specific to exons, transcripts, and genes
-    """
-
-    __slots__ = ['_fields', '_attribute']
-
-    _del_letters = string.ascii_letters.encode()
-    _del_non_letters = ''.join(set(string.printable).difference(string.ascii_letters))\
-        .encode()
-
-    def __init__(self, fields: list):
-
-        self._fields = fields
-        self._attribute = {}
-
-    def __repr__(self) -> str:
-        return '<Record: %s>' % bytes(self).decode()
-
-    def __bytes__(self) -> bytes:
-        return b'\t'.join(self._fields)
-
-    def _parse_attribute(self) -> None:
-        for field in self._fields[8].rstrip(b';\n').split(b';'):
-            key, *value = field.strip().split()
-            self._attribute[key] = b' '.join(value).strip(b'"')
-
-    def __hash__(self) -> int:
-        """concatenate strand, start, end, and chromosome and hash the resulting bytes"""
-        return hash(self._fields[6] + self._fields[3] + self._fields[4] + self._fields[0])
-
-    @property
-    def seqname(self) -> bytes:
-        return self._fields[0]
-
-    @property
-    def chromosome(self) -> bytes:
-        return self._fields[0]  # synonym for seqname
-
-    @property
-    def source(self) -> bytes:
-        return self._fields[1]
-
-    @property
-    def feature(self) -> bytes:
-        return self._fields[2]
-
-    @property
-    def start(self) -> int:
-        return int(self._fields[3])
-
-    @property
-    def end(self) -> int:
-        return int(self._fields[4])
-
-    @property
-    def score(self) -> bytes:
-        return self._fields[5]
-
-    @property
-    def strand(self) -> bytes:
-        return self._fields[6]
-
-    @property
-    def frame(self) -> bytes:
-        return self._fields[7]
-
-    @property
-    def size(self) -> int:
-        return self.end - self.start
-
-    @property
-    def fields(self) -> list:
-        return self._fields
-
-    def attribute(self, item):
-        """
-        access an item from the attribute field of a GTF file.
-
-        :param item: item to access
-        :return: value of item
-        """
-        try:
-            return self._attribute[item]
-        except KeyError:
-            if not self._attribute:
-                self._parse_attribute()
-                return self._attribute[item]
-            else:
-                raise KeyError('%s is not a stored attribute of this gtf record' %
-                               repr(item))
-
-    @property
-    def integer_gene_id(self) -> int:
-        """ENSEMBL gene id without the organism specific prefix, encoded as an integer"""
-        return int(self.attribute(b'gene_id').split(b'.')[0]
-                   .translate(None, self._del_letters))
-
-    @property
-    def organism_prefix(self) -> bytes:
-        """Organism prefix of ENSEMBL gene id (e.g. ENSG for human, ENSMUSG)"""
-        return self.attribute(b'gene_id').translate(None, self._del_non_letters)
-
-    @property
-    def string_gene_id(self) -> bytes:
-        """ENSEMBL gene id, including organism prefix."""
-        return self.attribute(b'gene_id')
-
-    @staticmethod
-    def int2str_gene_id(integer_id: int, organism_prefix: bytes) -> bytes:
-        """
-        converts an integer gene id (suffix) to a string gene id (including organism-
-        specific suffix)
-        :param organism_prefix: bytes
-        :param integer_id: int
-        """
-        bytestring = str(integer_id).encode()
-        diff = 11 - len(bytestring)
-        return organism_prefix + (b'0' * diff) + bytestring
-
-    def __eq__(self, other):
-        """equivalent to testing if start, end, chrom and strand are the same."""
-        return hash(self) == hash(other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-
-class Exon(Record):
-
-    def __repr__(self) -> str:
-        return '<Exon: %s>' % bytes(self).decode()
-
-
-class Gene(Record):
-    """
-    Gene record object. In addition to base properties of the Record object, provides:
-
-    :property exons: set, exon objects associated with this gene
-    :method genomic_intervals: iterator, yields tuples of sequence that are covered by
-      this gene.
-
-    """
-
-    __slots__ = ['_exons']
-
-    def __init__(self, fields: list):
-        super().__init__(fields)
-        self._exons = set()
-
-    @property
-    def exons(self) -> set:
-        return self._exons
-
-    def genomic_intervals(self):
-        """
-        Iterator, yields tuples of genomic sequence that codes for this gene. In cases
-        where multiple exons overlap, the union of the intervals is returned.
-        """
-        assert self.exons
-        ivs = sorted(((e.start, e.end) for e in self.exons))
-        ivs = sorted(ivs)
-        saved = list(ivs[0])
-        for st, en in ivs:
-            if st <= saved[1]:
-                saved[1] = max(saved[1], en)
-            else:
-                yield tuple(saved)
-                saved[0] = st
-                saved[1] = en
-        yield tuple(saved)
 
 class GeneIntervals:
     """
@@ -195,165 +18,106 @@ class GeneIntervals:
 
     """
 
-    def __init__(self, gtf: str):
-        self._pos_scid_dic = self.build_pos_scid_dic(gtf)
-        
-    
-    def build_pos_scid_dic(self, fname):
-        start = time.process_time()
-        exons = {'-':[],'+':[]}
-        res_dic = {} #The resulting dictionary holding two lists. the first is of positions sorted, the second is a list of scids relevant for that position onwards
-        new_exons=False
+    def __init__(self, gtf: str, max_transcript_length=1000):
+        """Construct a dictionary containing genomic intervals that map to genes. Allows
+        the translation of alignment coordinates (chromosome, strand, position) to
+        gene identifiers.
 
-        with open(fname) as infile:
-            for line in infile:
-                if line[0]=='#':
-                    continue
-                line_sp = line.split('\t')
-                chr = self.strip_chr(line.split('\t')[0])
-                if chr==-1:
-                    continue
-                if chr not in res_dic:
-                    res_dic[chr] = {}
-                    res_dic[chr]['-'] = intervaltree.IntervalTree()
-                    res_dic[chr]['+'] = intervaltree.IntervalTree()
-                type = line_sp[2]
-                strand = line_sp[6]
-                if type not in ['gene','exon','transcript']:
-                    continue
-                
-                if type=='exon':    #Go over all exxons in a transcript and save them for later
-                    new_exons = True
-                    ex_start = int(line_sp[3])
-                    ex_end = int(line_sp[4])                    
-                    gene_id = self.strip_gene_num(line_sp[8])
-                    if strand == '+':
-                        exons[strand].append((ex_start, ex_end, gene_id))
-                    elif strand == '-':
-                        exons[strand].insert(0,(ex_start, ex_end, gene_id))
-                    else:
-                        raise ValueError('strand must be - or +')
-                else:
-                    if new_exons:  #we finished going over the tx, we need to calculate the actual 1000 bases from its end, and log the coordinates of the exons
-                        chr = tx_chr  #If we're here we already read the chr and strand of the new tx or gene, these hold the values of the previous tx which are relevant to the current exons list
-                        strand = tx_strand
-                        tx_end = self.calc_tx_1k_end(exons[strand])
-                        
-                        for ex_start, ex_end, gene_id in exons[strand]:
-                            if ex_end < tx_end:     #The exon ends before the relevant tx part starts - ignore it
-                                continue
-                            if ex_start < tx_end:   #the exon starts before the 1000 limit but ends after
-                                ex_start = tx_end
-                            
-                            if ex_start==ex_end:    #this can happen sometimes, we don't add empty values to the tree.
-                                continue
-                                
-                            res_dic[chr][strand].addi(ex_start, ex_end, gene_id)
-                            
-                        exons[strand] = []
-                        new_exons = False
-                    if type=='transcript':
-                        #Keep track of the chr and strand
-                        tx_strand = strand
-                        tx_chr = chr
-                        
-        tot_time=time.process_time()-start
-        log.info('Translator completed in {} seconds.'.format(tot_time))
-        return res_dic
+        The returned object is accessible by the translate() method, also defined for this
+        object.
 
-    def calc_tx_1k_end(self, ex_list):
-    # find where is the actual position that's 1k bases from the tx end ()
-        remaining_len = 1000
-        for (ex_start, ex_end, scid) in reversed(ex_list):
-            len = ex_end - ex_start
-            if len >= remaining_len:
-                return ex_end - remaining_len
-            remaining_len -= len
-        # If we're here - tx is shorter than 1000 - return the start of the first exxon
-        return ex_list[0][0]
-    
-    def translate_old(self, chr, strand, pos):  # todo remove me
-        if type(chr) is bytes:
-            chr = chr.decode('utf-8')
-        int_chr = self.strip_chr(chr)
-        if int_chr == -1:   #this happens when it's a scaffold
-            return -1
-        if type(strand) is bytes:
-            strand = strand.decode('utf-8')
-        if int_chr not in self._pos_scid_dic:
-            raise ValueError("The annotations files used does not include chr {}".format(int_chr))
-
-        # return a list of all scids for the input position
-        return [x.data for x in self._pos_scid_dic[int_chr][strand][pos]]
+        :param gtf: annotation file in GTF format. Can be gz or bz2 compressed
+        :param max_transcript_length: Indicates that for an alignment to be valid, it
+          must align within this (spliced) distances from a transcript termination site.
+          This logic stems from 3' sequencing methods, wherein the distribution of
+          transcript sizes indicates that the majority of non-erroneous fragments of
+          mRNA molecules should align within this region.
+        """
+        self._chromosomes_to_genes = self.construct_translator(gtf, max_transcript_length)
 
     @staticmethod
-    def strip_chr(s):  # todo remove me
-        chr_dic = {'X': 23, 'Y': 24, 'MT': 25, 'M': 25}
-        if 'chr' in s:
-            s = s[3:]
-        try:
-            int_chr = int(s)
-        except ValueError:
-            try:
-                int_chr = chr_dic[s]
-            except KeyError:
-                return -1  # this happens when it's a scaffold
-        return int_chr
+    def iterate_adjusted_exons(exons, strand, max_transcript_length):
+        """
+        :param list exons: a list of exon records from a .gtf file
+        :param strand: the strand of the exons, options = ['+', '-']
+        :param int max_transcript_length: maximum allowable distance of an alignment from
+          a transcription termination site
+        :yield (int, int): tuple of (exon start, exon end). If the transcript exceeds
+          maximum transcript length, then this list will be truncated, and the final
+          exon may be shortened.
+        """
+        for exon in exons:  # closest exon to TTS is first (see Reader.iter_transcripts)
+            start, end = int(exon[3]), int(exon[4])
+            size = end - start
+            if size >= max_transcript_length:
+                if strand == '+':
+                    yield end - max_transcript_length, end
+                else:
+                    yield start, start + max_transcript_length
+                break  # we've exhausted the allowable transcript length
+            else:
+                yield start, end
+                max_transcript_length -= size
 
-    # moved this outside to avoid reimplementing a dict every iteration.
-    _atypical_chromosome_name_to_int = {b'X': 23, b'Y': 24, b'MT': 25, b'M': 25}
+    def construct_translator(self, gtf, max_transcript_length):
+        """Construct a dictionary containing genomic intervals that map to genes. Allows
+        the translation of alignment coordinates (chromosome, strand, position) to
+        gene identifiers.
+
+        The returned object is accessible by the translate() method, also defined for this
+        object.
+
+        :param gtf: annotation file in GTF format. Can be gz or bz2 compressed
+        :param max_transcript_length: Indicates that for an alignment to be valid, it
+          must align within this (spliced) distances from a transcript termination site.
+          This logic stems from 3' sequencing methods, wherein the distribution of
+          transcript sizes indicates that the majority of non-erroneous fragments of
+          mRNA molecules should align within this region.
+
+        :return dict: {chromosome: {strand: {position: gene}}}, nested dictionary of
+          chromosome -> strand -> position which returns a gene.
+        """
+        results_dictionary = defaultdict(dict)
+        for (tx_chromosome, tx_strand, gene_id), exons in Reader(gtf).iter_transcripts():
+            for start, end in self.iterate_adjusted_exons(
+                    exons, tx_strand, max_transcript_length):
+                if start == end:
+                    continue  # zero-length exons apparently occur in the gtf
+                try:
+                    results_dictionary[tx_chromosome][tx_strand].addi(
+                        start, end, gene_id)
+                except KeyError:
+                    results_dictionary[tx_chromosome][tx_strand] = IntervalTree()
+                    results_dictionary[tx_chromosome][tx_strand].addi(
+                        start, end, gene_id)
+        return dict(results_dictionary)
 
     def translate(self, chromosome, strand, pos):
         """translates a chromosome, position, and strand into a gene identifier
 
         Uses the IntervalTree data structure to rapidly search for the corresponding
-        identifier. Currently, only numeric chromosomes are supported, but this is due
-        to a coding limitation in the design of the keys of the IntervalTree (chromosomes
-        could have been left at strings or bytes objects, thus avoiding the integer
-        conversion and slicing in the second line of the below function entirely).
-
-        This should be fixed in the future.
+        identifier.
 
         :param bytes chromosome: chromosome for this alignment
-        :param bytes strand: strand for this alignment (one of [b'+', b'-'])
+        :param bytes strand: strand for this alignment (one of ['+', '-'])
         :param int pos: position of the alignment within the chromosome
-        :return:
+        :return: return value is variable, it is one of [], None, or [gene_id, ...].
+          the consuming function only uses unique IDs, so we could constrain this function
+          to output gene_id or None, in the case that this requirement is not satisfied.
         """
+        # todo set function here? assertion that this be unique? also see comment in doc
+        # string above.
         try:
-            int_chromosome = int(chromosome[3:])  # int converts both str and bytes
-        except ValueError:
-            try:
-                int_chromosome = self._atypical_chromosome_name_to_int[chromosome]
-            except KeyError:
-                return None
-        try:
-            return [x.data for x in
-                    self._pos_scid_dic[int_chromosome][strand.decode()][pos]]
+            return [x.data for x in self._chromosomes_to_genes[chromosome][strand][pos]]
         except KeyError:
-            # return None
-            raise ValueError(
-                'The annotations files used does not include chromosome %s' % chromosome)
-
-    @staticmethod
-    def strip_gene_num(attribute_str):
-        gene_start = attribute_str.find('gene_id')
-        if gene_start==-1:
-            raise ValueError('Gene_id field is missing in annotations file: {}'.format(attribute_str))
-        
-        gene_end = attribute_str.find(';',gene_start)
-        if gene_end==-1:
-            raise ValueError('no ; in gene_id attribute, gtf file might be corrupted: {}'.format(attribute_str))
-        
-        id_start = attribute_str.find('0', gene_start)
-        if id_start == -1:
-            raise ValueError('Corrupt gene_id field in annotations file - {}'.format(attribute_str))
-            
-        # ignore the gene version if it's stored as part of the gene id after a decimal point
-        id_end = attribute_str.find('.', id_start, gene_end)
-        if id_end == -1:
-            id_end = gene_end-1 #ignore the "
-            
-        return int(attribute_str[id_start:id_end])
+            # todo took this error out because there are chromosome scaffolds with no
+            # genes, they are aligned against but not included in this translator
+            return None
+            # raise ValueError(
+            #     'The annotations files used does not include chromosome %s. This '
+            #     'likely indicates that the alignments are being translated by a '
+            #     'different annotation than they were aligned with. This can lead to '
+            #     'serious errors in downstream analysis.' % chromosome)
 
 
 class Reader(reader.Reader):
@@ -368,42 +132,102 @@ class Reader(reader.Reader):
     def __iter__(self):
         """return an iterator over all non-header records in gtf"""
         hook = fileinput.hook_compressed
-        with fileinput.input(self._files, openhook=hook, mode='rb') as f:
+        with fileinput.input(self._files, openhook=hook, mode='r') as f:
 
             # get rid of header lines
             file_iterator = iter(f)
             first_record = next(file_iterator)
-            while first_record.startswith(b'#'):
+            while first_record.startswith('#'):
                 first_record = next(file_iterator)
-                continue
-            yield first_record.split(b'\t')
+
+            yield first_record.split('\t')  # avoid loss of first non-comment line
 
             for record in file_iterator:  # now, run to exhaustion
-                yield record.split(b'\t')
+                yield record.split('\t')
 
-    def iter_genes(self):
-        """iterate over all the records for each gene in passed gtf"""
+    @staticmethod
+    def strip_gene_num(attribute_str):
+        try:
+            gene_start = attribute_str.index('gene_id')
+        except ValueError:
+            raise ValueError(
+                'Gene_id field is missing in annotations file: {}'.format(attribute_str))
 
-        records = iter(self)
+        try:
+            gene_end = attribute_str.index('";', gene_start)
+        except ValueError:
+            raise ValueError(
+                'no "; in gene_id attribute, gtf file might be corrupted: {}'.format(
+                    attribute_str))
 
-        # get the first gene record
-        record = next(records)
-        while record[2] != b'gene':
-            record = next(records)
+        try:
+            id_start = attribute_str.index('0', gene_start)
+        except ValueError:
+            raise ValueError(
+                'Corrupt gene_id field in annotations file - {}'.format(attribute_str))
 
-        # aggregate exons for each gene
-        gene = Gene(record)
-        record = next(records)
-        while record:
-            if record[2] == b'exon':
-                gene.exons.add(Exon(record))
-            elif record[2] == b'gene':
-                yield gene
-                gene = Gene(record)
-            record = next(records)
+        # ignore the gene version, which is located after a decimal in some gtf files
+        try:
+            gene_end = attribute_str.index('.', id_start, gene_end)
+        except ValueError:
+            pass
 
-        # yield the final gene record
-        yield gene
+        return int(attribute_str[id_start:gene_end])
+
+    def iter_transcripts(self):
+        """Iterate over transcripts in a gtf file, returning a transcripts's chromosome
+        strand, gene_id, and a list of tab-split exon records
+
+        :yield (str, str, int), [[str], ...]: (chromosome, strand, id), [exon_records]
+        """
+        iterator = iter(self)
+        record = next(iterator)
+
+        # skip to first transcript record and store chromosome and strand
+        while record[2] != 'transcript':
+            record = next(iterator)
+        transcript_chromosome = record[0]
+        transcript_strand = record[6]
+        transcript_gene_id = self.strip_gene_num(record[8])
+
+        # Notes on the following loop:
+        # ----------------------------
+        # - gtf files are ordered gene -> transcript1 -> exons1 -> transcript2 -> exons2
+        #
+        # - therefore, the below loop will begin by parsing the exons for the first
+        #   transcript identified above, since those are next in sequence.
+        #
+        # - Then, if the gene had only one transcript, the else clause will skip the next
+        #   gene record, and will arrive at the following transcript record. Otherwise,
+        #   a second transcript of the same gene will directly follow.
+        #
+        # - The loop yields the chromosome, strand and gene_id from the first transcript,
+        #   stores the new transcript values, and zeros out the exon list. Then the loop
+        #   continues.
+        #
+        # - Downstream, we want to process the exons from the closest exon to the TTS to
+        #   the most distant. The minus strand is already in this order, but we need to
+        #   invert the plus strand exons to obtain this ordering.
+
+        exons = []
+        for record in iterator:
+            if record[2] == 'exon':
+                exons.append(record)
+            elif record[2] == 'transcript':
+                # we want exons in inverse order, - is already in inverse order.
+                if transcript_strand == '+':
+                    exons = exons[::-1]
+                yield (
+                    (transcript_chromosome, transcript_strand, transcript_gene_id), exons)
+                exons = []
+                transcript_chromosome = record[0]
+                transcript_strand = record[6]
+                transcript_gene_id = self.strip_gene_num(record[8])
+
+        # yield the final transcript
+        if transcript_strand == '+':
+            exons = exons[::-1]
+        yield (transcript_chromosome, transcript_strand, transcript_gene_id), exons
 
 
 def create_phix_annotation(phix_fasta):
@@ -496,4 +320,3 @@ def ensembl_gene_id_to_official_gene_symbol(ids, gene_id_map):
     :return list: converted ids
     """
     return ['-'.join(gene_id_map[i]) for i in ids]
-

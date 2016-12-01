@@ -373,19 +373,30 @@ class TestReadArrayCreation(unittest.TestCase):
         cls.annotation = os.path.expanduser('~/Downloads/annotations.gtf')
         cls.summary = os.path.expanduser('~/Downloads/mm_test_summary.txt')
         cls.total_input_reads = 12242659
-        cls.translator = gtf.GeneIntervals(cls.annotation)
+        cls.translator = gtf.GeneIntervals(cls.annotation, 10000)
 
     def test_read_array_creation(self):
         ra = ReadArray.from_alignment_file(self.bamfile, self.translator,
                                            required_poly_t=0)
         print(repr(ra.data.shape[0]))
-        print(repr(self.total_input_reads))
         print(repr(ra.genes))
         ra.save(os.path.expanduser('~/Downloads/test.ra'))
 
 
+class TestTranslator(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.annotation = os.path.expanduser('~/Downloads/annotations.gtf')
 
+    def test_construct_translator(self):
+        translator = gtf.GeneIntervals(self.annotation)
+        print(len(translator._chromosomes_to_genes))
+
+    def get_length_of_gtf(self):
+        rd = gtf.Reader(self.annotation)
+        # print(len(rd))
+        print(sum(1 for _ in rd.iter_transcripts()))
 
 
 #########################################################################################
