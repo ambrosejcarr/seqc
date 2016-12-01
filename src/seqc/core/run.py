@@ -277,18 +277,16 @@ def run(args) -> None:
                        'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
 
         files = []
-        files += ra.to_count_matrix(args.output_prefix + '_phase1_')
         log.info('Read array after reading sam file: {}'.format(ra))
         # Apply filters
         ra.apply_filters(
             required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
-        files += ra.to_count_matrix(args.output_prefix + '_phase2_')
         log.info('Read array after filtering: {}'.format(ra))
+
         # Correct barcodes
         if platform.check_barcodes:
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
-                                                     max_ed=args.max_ed)
-            files += ra.to_count_matrix(args.output_prefix + '_phase3_')
+                             max_ed=args.max_ed)
             log.info('Read array after barcode correction: {}'.format(ra))
         else:
             error_rate = None
@@ -296,13 +294,12 @@ def run(args) -> None:
 
         # Resolve multimapping
         ra.resolve_alignments(args.index)
-        files += ra.to_count_matrix(args.output_prefix + '_phase4_')
         log.info('Read array after multialignment resolution: {}'.format(ra))
+
         # correct errors
         log.info('Filtering errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
         platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
-        files += ra.to_count_matrix(args.output_prefix + '_phase5_')
         log.info('Read array after error correction: {}'.format(ra))
 
         # filter non-cells

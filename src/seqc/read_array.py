@@ -36,7 +36,7 @@ class ReadArray:
         ('rmt', np.int32),
         ('n_poly_t', np.uint8),
         ('dust_score', np.uint8),
-        ('gene', np.uint32)]
+        ('gene', np.uint32),
         ('position', np.uint64),
         ('ma_genes', np.dtype(object)),
         ('ma_pos', np.dtype(object))]
@@ -491,7 +491,7 @@ class ReadArray:
                     except KeyError:
                         gene_groups[key] = [ind]
 
-                # Return if there is only one read group
+                # Return if there is only one gene group
                 if len( gene_groups ) == 1:
                     return
 
