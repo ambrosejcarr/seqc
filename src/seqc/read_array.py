@@ -200,10 +200,10 @@ class ReadArray:
 
                 # if gene passes filter, store passing genes and increment appropriate
                 # arr and col indices
-                if genes is not None and len(genes) == 1:
+                if genes is not None:
                     row[arr_idx] = row_idx
                     col[arr_idx] = col_idx
-                    gene[arr_idx] = genes[0]
+                    gene[arr_idx] = genes
                     position[arr_idx] = a.pos
                     arr_idx += 1
                     col_idx += 1

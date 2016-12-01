@@ -9,6 +9,11 @@ import time
 from intervaltree import IntervalTree
 
 
+def first(iterable):
+    """simple function to return first object in an iterable"""
+    return next(iter(iterable))
+
+
 class GeneIntervals:
     """
     Encodes genomic ranges in an Intervaltree
@@ -101,24 +106,19 @@ class GeneIntervals:
         :param bytes chromosome: chromosome for this alignment
         :param bytes strand: strand for this alignment (one of ['+', '-'])
         :param int pos: position of the alignment within the chromosome
-        :return: return value is variable, it is one of [], None, or [gene_id, ...].
-          the consuming function only uses unique IDs, so we could constrain this function
-          to output gene_id or None, in the case that this requirement is not satisfied.
+        :return int|None: Returns either an integer gene_id if a unique gene was found
+          at the specified position, or None otherwise
         """
-        # todo set function here? assertion that this be unique? also see comment in doc
-        # string above.
+        # todo remove duplicate exons during construction to save time
         try:
-            return [x.data for x in self._chromosomes_to_genes[chromosome][strand][pos]]
+            result = set(x.data for x in
+                         self._chromosomes_to_genes[chromosome][strand][pos])
+            if len(result) == 1:
+                return first(result)  # just right
+            else:
+                return None  # too many genes
         except KeyError:
-            # todo took this error out because there are chromosome scaffolds with no
-            # genes, they are aligned against but not included in this translator
-            return None
-            # raise ValueError(
-            #     'The annotations files used does not include chromosome %s. This '
-            #     'likely indicates that the alignments are being translated by a '
-            #     'different annotation than they were aligned with. This can lead to '
-            #     'serious errors in downstream analysis.' % chromosome)
-
+            return None  # no gene
 
 class Reader(reader.Reader):
     """
