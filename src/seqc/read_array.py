@@ -36,7 +36,7 @@ class ReadArray:
         ('rmt', np.int32),
         ('n_poly_t', np.uint8),
         ('dust_score', np.uint8),
-        ('gene', np.uint32),
+        ('gene', np.uint32)]
         ('position', np.uint64),
         ('ma_genes', np.dtype(object)),
         ('ma_pos', np.dtype(object))]
@@ -84,7 +84,7 @@ class ReadArray:
         s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, competing models (unhandeled): {:,}\n".\
              format(self._multialignment[mm.NO_DISAMBIGUATION], self._multialignment[mm.RESOLVED_GENE], self._multialignment[mm.NO_GENE_RESOLVED], self._multialignment[mm.MULTIPLE_MODELS])
         s += "Total errors: {:,}\n".format(self._total_errors)
-        s += "Total active reads: {:,}\n".format(self.count_active_reads())
+        # s += "Total active reads: {:,}\n".format(self.count_active_reads())
         return s
     
     @property
@@ -290,23 +290,31 @@ class ReadArray:
         err_list                = [None]*num_barcodes
         sequencer_errors_cnt    = [None]*num_barcodes
         
-        errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit._bin2strdict.keys(), r=2))
-        error_table = dict(zip(errors, [0] * len(errors)))
+        # errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit._bin2strdict.keys(), r=2))
+        # error_table = dict(zip(errors, [0] * len(errors)))
+        errors = [p for p in permutations(DNA3Bit._bin2strdict.keys(), r=2)]
+        error_table = dict()
+        for i in errors:
+            error_table[i] = 0
         cor_instance_table = {DNA3Bit.encode(b'A'): 0,
                               DNA3Bit.encode(b'C'): 0,
                               DNA3Bit.encode(b'G'): 0,
                               DNA3Bit.encode(b'T'): 0,
                               DNA3Bit.encode(b'N'): 0}
         
-        for r in self.data:
-            if not ReadArray.is_active_read(r):
-                continue
+        # Check if the barcode has to be an exact match
+        exact_match = False
+        if max_ed == 0:
+            exact_match = True
+
+        for read_ind, r in self.iter_active():
+
             barcodes = platform.extract_barcodes(int(r['cell']))
             for i in range(num_barcodes):
                 try:
                     correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i] = dynamic_codes_table[i][barcodes[i]]
                 except KeyError:
-                    correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], correct_barcodes[i])
+                    correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], correct_barcodes[i], exact_match)
                     sequencer_errors_cnt[i] = DNA3Bit.count(barcodes[i], DNA3Bit.encode(b'N'))
                     
                     # No point calculating errors on codes with more errors than allowed
@@ -319,9 +327,7 @@ class ReadArray:
 
             # Filter reads with too many errors in their barcodes 
             if max(edit_dist) > max_ed:
-                self._bad_barcodes += 1
-                ReadArray.set_barcodes(r, BC_BAD)
-                ReadArray.set_status_inactive(r)
+                ra.data['status'][read_ind] |= ra._filter_codes['barcode_error']
                 continue
                             
             # Count the different error types
@@ -346,25 +352,31 @@ class ReadArray:
                 tmp_cor >>= 3
             
             #correct cell and update read status
-            if tmp_bc!=tmp_cor:
-                r['cell'] = tmp_cor
-                ReadArray.set_barcodes(r, BC_FIXED)
-                self._fix_barcodes += 1
-            else:
-                ReadArray.set_barcodes(r, BC_OK)
-                self._ok_barcodes += 1
+            # todo: do we need to keep track of how many barcodes were fixed:
+            # if yes, just use a counter
+            # if tmp_bc!=tmp_cor:
+            #     r['cell'] = tmp_cor
+            #     ReadArray.set_barcodes(r, BC_FIXED)
+            #     self._fix_barcodes += 1
+            # else:
+            #     ReadArray.set_barcodes(r, BC_OK)
+            #     self._ok_barcodes += 1
                 
         # Create error rate table
         default_error_rate = DEFAULT_BASE_CONVERTION_RATE
         if sum(error_table.values()) == 0:
-            log.info('No errors were detected, using %f uniform error chance.' % (default_error_rate))
+            log.info('No errors were detected or barcodes do not support error correction, using %f uniform error chance.' % (default_error_rate))
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
-            if DNA3Bit.decode(k)[0] in b'Nn':
+            # if DNA3Bit.decode(k)[0] in b'Nn':
+            if DNA3Bit.decode(k[0]) in b'Nn':
                 continue
             try:
-                err_rate[k] = v / (sum(n for err_type, n in error_table.items() if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
+                # err_rate[k] = v / (sum(n for err_type, n in error_table.items() 
+                #     if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
+                err_rate[k] = v / (sum(n for err_type, n in error_table.items() 
+                    if err_type[0] == k[0]) +  cor_instance_table[k[0]])
             except ZeroDivisionError:
                 log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
                 err_rate[k] = default_error_rate
@@ -441,97 +453,159 @@ class ReadArray:
 
         return cls(data)
 
-    def resolve_alignments(self, index):
+    def resolve_alignments(self, indices_grouped_by_molecule):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
         in-place to reflect the more specific gene assignments.
         args:
         index: path were p_coalignment_array.p is found - . 
         
-        After loading the co alignment matrix we group the reads of the ra by cell/rmt. In each group we look at the different disjoint subsetes of genes reads are aligned to.
+        After loading the co alignment matrix we group the reads of the ra by cell/rmt. 
+        In each group we look at the different disjoint subsetes of genes reads are aligned to.
         For each subset there are 4 options:
         1. It includes one gene only (no disambiguation).
         2. There is a single gene that explains all (resolved gene)
         3. There is more than one gene that can explain - can't be resolved
         4. There are a few models - for now no single model is being picked.
         """
-              
-        start = time.process_time()
-        total_reads = 0
+        
+        # Mask for reseting status on resolved genes
+        mask = self.filtering_mask('gene_not_unique')
 
-        log.info('grouping for disambiguation')
-        #Group according to cell/RMT
-        g_ra = self.group_for_disambiguation()
+        for cell_group in indices_grouped_by_cell:
+
+            # Sort by molecules
+            inds = cell_group[self.data['rmt'][cell_group]]
+            breaks = np.where( np.diff(self.data['rmt'][inds]) )[0] + 1
+            indices_grouped_by_molecule = np.split( inds, breaks )
+
+            # Each molecule group
+            for mol_group in indices_grouped_by_molecule:
+
+                # Number of reads mapping to different sets of genes
+                gene_groups = {}
+                for ind in mol_group:
+                    key = tuple(np.sort( self.genes[ind].data ))
+                    try:
+                        gene_groups[key].append(ind)
+                    except KeyError:
+                        gene_groups[key] = [ind]
+
+                # Return if there is only one read group
+                if len( gene_groups ) == 1:
+                    return
+
+                # Divide into disjoint sets
+                uf = mm.UnionFind()
+                uf.union_all( gene_groups.keys() )
+                set_membership, sets = uf.find_all( gene_groups.keys() )
+
+
+                # Disambiguate each set
+                keys = np.array( gene_groups.keys() )
+                for s in sets:
+                    set_groups = keys[ set_membership == set ]
+
+                    # Return if the set contains only one group
+                    if len( set_groups ) == 1:
+                        continue
+
+                    # Disambiguate if possible
+                    common = mm.intersection( set_groups )
+
+                    # Resolved if there is only one common gene
+                    if len(common) == 1:
+                        for group in set_groups:
+                            # Update status
+                            self.data['status'][gene_groups[group]] &= mask
+                            for ind in gene_groups[group]:
+                                # Update gene and position
+                                if self.genes[ind, 0] == common:
+                                    continue
+                                gene_index = (self.genes[ind] == common).nonzero()[1][0]
+                                self.genes[ind, 0] = self.genes[ind, gene_index]
+                                self.position[ind, 0] = self.position[ind, gene_index]
+                    else:
+                        pass
+                        # Todo: Likelihood model goes here
+
+
+        # start = time.process_time()
+        # total_reads = 0
+
+        # log.info('grouping for disambiguation')
+        # #Group according to cell/RMT
+        # g_ra = self.group_for_disambiguation()
         
-        #TODO - for now we're not using the expectations so I commented this part. -> Rami
-        # After uncommenting, we need a new p_coalignment_array.p file to be created with the same mosule hirerachy
-        # load the expectations
-        #expectations = index + 'p_coalignment_array.p'
-        #if os.path.isfile(expectations):
-        #    with open(expectations, 'rb') as f:
-        #        expectations_mat = pickle.load(f)
-        #elif isinstance(expectations, str):
-        #    raise FileNotFoundError('could not locate serialized expectations object: %s'
-        #                            % expectations)
-        #elif isinstance(expectations, dict):
-        #    pass  # expectations already loaded
-        #else:
-        #    raise TypeError('invalid expectation object type, must be a dict expectation'
-        #                    ' object or a string filepath')
-        #mat = mm.reduce_coalignment_array(expectations_mat)
-        mat=[]
+        # #TODO - for now we're not using the expectations so I commented this part. -> Rami
+        # # After uncommenting, we need a new p_coalignment_array.p file to be created with the same mosule hirerachy
+        # # load the expectations
+        # #expectations = index + 'p_coalignment_array.p'
+        # #if os.path.isfile(expectations):
+        # #    with open(expectations, 'rb') as f:
+        # #        expectations_mat = pickle.load(f)
+        # #elif isinstance(expectations, str):
+        # #    raise FileNotFoundError('could not locate serialized expectations object: %s'
+        # #                            % expectations)
+        # #elif isinstance(expectations, dict):
+        # #    pass  # expectations already loaded
+        # #else:
+        # #    raise TypeError('invalid expectation object type, must be a dict expectation'
+        # #                    ' object or a string filepath')
+        # #mat = mm.reduce_coalignment_array(expectations_mat)
+        # mat=[]
         
-        log.info('disambiguating')
-        for g_ra_rec in g_ra.values():
-            obs = {}
-            for genes in g_ra_rec:
-                if genes == ():
-                    continue
-                if genes not in obs:
-                    obs[genes] = len(g_ra_rec[genes])
-                    total_reads += len(g_ra_rec[genes])
-                #TODO: do a sanity check here? I think genes should not be in obs
+        # log.info('disambiguating')
+        # for g_ra_rec in g_ra.values():
+        #     obs = {}
+        #     for genes in g_ra_rec:
+        #         if genes == ():
+        #             continue
+        #         if genes not in obs:
+        #             obs[genes] = len(g_ra_rec[genes])
+        #             total_reads += len(g_ra_rec[genes])
+        #         #TODO: do a sanity check here? I think genes should not be in obs
                     
             
-            res = []
-            if () in g_ra_rec:
-                if len(g_ra_rec) == 1:
-                    continue
-            if () in obs:
-                del obs[()]
+        #     res = []
+        #     if () in g_ra_rec:
+        #         if len(g_ra_rec) == 1:
+        #             continue
+        #     if () in obs:
+        #         del obs[()]
         
-            obs_s = mm.strip_model(obs)
-            ind_s = mm.strip_model(g_ra_rec)
+        #     obs_s = mm.strip_model(obs)
+        #     ind_s = mm.strip_model(g_ra_rec)
 
-            subsets = mm.split_to_disjoint(obs_s)
-            for obs_subset in subsets:
-                resolved = False
-                models, r = mm.best_fit_model(obs_subset, mat)
-                self._multialignment[r] += sum(obs_subset.values())
-                if r==mm.NO_DISAMBIGUATION or r==mm.RESOLVED_GENE:
-                        model=models[0]
-                        g = mm.model_to_gene(model)
-                        resolved = True
+        #     subsets = mm.split_to_disjoint(obs_s)
+        #     for obs_subset in subsets:
+        #         resolved = False
+        #         models, r = mm.best_fit_model(obs_subset, mat)
+        #         self._multialignment[r] += sum(obs_subset.values())
+        #         if r==mm.NO_DISAMBIGUATION or r==mm.RESOLVED_GENE:
+        #                 model=models[0]
+        #                 g = mm.model_to_gene(model)
+        #                 resolved = True
                         
-                indices = mm.get_indices(ind_s, obs_subset)
-                for ind in indices:
-                    ReadArray.set_mm_status(self.data[ind], r)
-                    if resolved:
-                        self.data['gene'][ind] = g
-                        self.data['position'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
-                    else:
-                        ReadArray.set_status_inactive(self.data[ind])        
+        #         indices = mm.get_indices(ind_s, obs_subset)
+        #         for ind in indices:
+        #             ReadArray.set_mm_status(self.data[ind], r)
+        #             if resolved:
+        #                 self.data['gene'][ind] = g
+        #                 self.data['position'][ind] = self.data['ma_pos'][ind][self.data['ma_genes'][ind].index(g)]
+        #             else:
+        #                 ReadArray.set_status_inactive(self.data[ind])        
         
-        log.info('Total reads in samfile: {}'.format(len(self)))
-        log.info('Reads that passed the filter: {}'.format(total_reads))
-        tot_time=time.process_time()-start
-        log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
+        # log.info('Total reads in samfile: {}'.format(len(self)))
+        # log.info('Reads that passed the filter: {}'.format(total_reads))
+        # tot_time=time.process_time()-start
+        # log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
 
         return
 
     def __len__(self):
         return len(self.data)
-        
+    
     def to_count_matrix(self, csv_path=None, sparse_frame=False, genes_to_symbols=False):
         """Convert the ReadArray into a count matrix.
 
@@ -548,26 +622,26 @@ class ReadArray:
           dict of (cell, rmt) -> read counts
           dict of (cell, rmt) -> molecule counts
         """
+
+
+        # # Cell breaks
+        # splits = self.group_filtered_indices( ['cell', 'rmt'] )
+
+
+        # no_cells
+        # no_genes
+
+        
+
         reads_mat = {}
         mols_mat = {}
-        for r in self.data:
-            if not ReadArray.is_active_read(r):
-                continue
-            cell = r['cell']
-            gene = r['gene']
-            rmt = r['rmt']
-            if gene == 0:
-                if r['ma_genes'] == -1 or r['ma_genes'] == 0:
-                    continue
-                elif len(r['ma_genes']) == 1:
-                    gene = r['ma_genes'][0]
-                else:
-                    continue
+        for i, ((status, cell, rmt, poly_t), gene, pos) in self.iter_active():
+
             try:
                 reads_mat[cell, gene] = reads_mat[cell, gene]+1
             except KeyError:
                 reads_mat[cell, gene] = 1
-                                
+
             try:
                 if rmt not in mols_mat[cell, gene]:
                     mols_mat[cell, gene].append(rmt)

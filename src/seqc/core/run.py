@@ -288,7 +288,7 @@ def run(args) -> None:
         if platform.check_barcodes:
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
                                                      max_ed=args.max_ed)
-            files += ra.to_count_matrix(args. output_prefix + '_phase3_')
+            files += ra.to_count_matrix(args.output_prefix + '_phase3_')
             log.info('Read array after barcode correction: {}'.format(ra))
         else:
             error_rate = None
