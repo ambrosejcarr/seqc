@@ -282,16 +282,18 @@ def run(args) -> None:
         log.info('Read array after reading sam file: {}'.format(ra))
         print('Read array after reading sam file: {}'.format(ra))
         ###########
-        log.info('Read array size: {}'.format(sys.getsizeof(ra)))
-        print('Read array size: {}'.format(sys.getsizeof(ra)))
-        print('finished')
-        return
-        ##################
+        log.info('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data), sys.getsizeof(ra.resolve_alignments)))
+        print('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data), sys.getsizeof(ra.resolve_alignments)))
+
 
         ra.apply_filters(
             required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
         files += ra.to_count_matrix(args.output_prefix + '_phase2_')
         log.info('Read array after filtering: {}'.format(ra))
+        print('Read array after filtering: {}'.format(ra))
+        log.info('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data), sys.getsizeof(ra.resolve_alignments)))
+        print('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data), sys.getsizeof(ra.resolve_alignments)))
+        ##################
         # Correct barcodes
         if platform.check_barcodes:
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
@@ -302,10 +304,22 @@ def run(args) -> None:
             error_rate = None
             log.info('Skipping barcode correction')
 
+        log.info('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data),
+                                                                         sys.getsizeof(ra.resolve_alignments)))
+        print('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data),
+                                                                      sys.getsizeof(ra.resolve_alignments)))
+
+        print('reads len: {}'.format(len(ra.data)))
         # Resolve multimapping
         ra.resolve_alignments(args.index)
         files += ra.to_count_matrix(args.output_prefix + '_phase4_')
         log.info('Read array after multialignment resolution: {}'.format(ra))
+        print('Read array after multialignment resolution: {}'.format(ra))
+        log.info('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data),
+                                                                         sys.getsizeof(ra.resolve_alignments)))
+        print('Read array size: {}, reads: {}, alignments: {}'.format(sys.getsizeof(ra), sys.getsizeof(ra._data),
+                                                                      sys.getsizeof(ra.resolve_alignments)))
+
         # correct errors
         log.info('Filtering errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
