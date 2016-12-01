@@ -11,7 +11,11 @@ from seqc.sequence import index, gtf
 from seqc.core import SEQC
 from seqc.read_array import ReadArray
 from seqc.io import S3
+import sys
 import seqc
+import logging
+
+logging.basicConfig()
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
@@ -365,14 +369,23 @@ class TestReadArrayCreation(unittest.TestCase):
         # S3.download(SAMFILE % platform, cls.bamfile, recursive=False)
         # S3.download(INDEX + 'annotations.gtf', cls.annotation, recursive=False)
 
-        cls.bamfile = os.path.expanduser('~/Downloads/short_pbmc_sorted_name.bam')
+        cls.bamfile = os.path.expanduser('~/Downloads/mm_test_short.bam')
         cls.annotation = os.path.expanduser('~/Downloads/annotations.gtf')
+        cls.summary = os.path.expanduser('~/Downloads/mm_test_summary.txt')
+        cls.total_input_reads = 12242659
         cls.translator = gtf.GeneIntervals(cls.annotation)
 
     def test_read_array_creation(self):
         ra = ReadArray.from_alignment_file(self.bamfile, self.translator,
                                            required_poly_t=0)
+        print(repr(ra.data.shape[0]))
+        print(repr(self.total_input_reads))
+        print(repr(ra.genes))
         ra.save(os.path.expanduser('~/Downloads/test.ra'))
+
+
+
+
 
 
 #########################################################################################

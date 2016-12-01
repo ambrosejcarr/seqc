@@ -115,7 +115,8 @@ class ReadArray:
         failing[self.data['cell'] == 0] |= self.filter_codes['no_cell']
         failing[self.data['n_poly_t'] < required_poly_t] |= self.filter_codes['low_polyt']
 
-        self.data['status'] = failing
+        # todo should this overwrite? if yes, we can set equal to.
+        self.data['status'] = np.bitwise_or(self.data['status'], failing)
 
     def filtering_mask(self, *ignore):
         """return a filtering mask that, when compared to status, will return False for
