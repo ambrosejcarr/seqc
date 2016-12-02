@@ -112,8 +112,8 @@ class ReadArray:
             failing[self.genes == 0] |= self.filter_codes['no_gene']
 
         # todo add logic for "primer_missing"
-        # failing[self.data['rmt'] == 0] |= self.filter_codes['no_rmt']
-        # failing[self.data['cell'] == 0] |= self.filter_codes['no_cell']
+        failing[self.data['rmt'] == 0] |= self.filter_codes['primer_missing']
+        failing[self.data['cell'] == 0] |= self.filter_codes['primer_missing']
         failing[self.data['n_poly_t'] < required_poly_t] |= self.filter_codes['low_polyt']
 
         self.data['status'] = np.bitwise_or(self.data['status'], failing)
