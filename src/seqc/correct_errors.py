@@ -326,7 +326,7 @@ def _correct_errors(indices_grouped_by_cell, ra, err_rate, p_value=0.05):
                 # Remove Jaitin corrected reads if likelihood of RMT being an error is high
                 if p_val_err > p_value and jaitin_corrected:
                     # Mark as error
-                    ra.data['status'][rmt_groups[rmt]] |= ra._filter_codes['rmt_error']
+                    ra.data['status'][rmt_groups[rmt]] |= ra.filter_codes['rmt_error']
                     ra.data['rmt'][rmt_groups[rmt]] = jaitin_donor
 
 

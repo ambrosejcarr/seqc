@@ -327,7 +327,7 @@ class ReadArray:
 
             # Filter reads with too many errors in their barcodes 
             if max(edit_dist) > max_ed:
-                ra.data['status'][read_ind] |= ra._filter_codes['barcode_error']
+                ra.data['status'][read_ind] |= ra.filter_codes['barcode_error']
                 continue
                             
             # Count the different error types
