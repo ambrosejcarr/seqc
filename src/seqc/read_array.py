@@ -199,7 +199,12 @@ class ReadArray:
         alignment_ctr = 0
         genes = []
 
+        max_alignments = 100
         for alignment in reader:
+            ########## debug
+            #if alignment_ctr > max_alignments:
+            #    break
+            ##############
             # new read
             if alignment.qname != prev_alignment_name:
                 if read_idx>0:

@@ -216,6 +216,7 @@ def run(args) -> None:
     # ######################## MAIN FUNCTION BEGINS HERE ################################
 
     log.setup_logger(args.log_name)
+    print('hello')
 
     with ec2.instance_clean_up(
             email=args.email, upload=args.upload_prefix, log_name=args.log_name):

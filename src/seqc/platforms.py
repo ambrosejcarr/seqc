@@ -35,6 +35,8 @@ class AbstractPlatform:
             return ten_x()
         if type == "ten_x_v2":
             return ten_x_v2()
+        if type == "mars3_seq":
+            return mars3_seq()
     
     @property
     def num_barcodes(self):
@@ -358,6 +360,23 @@ class mars2_seq(AbstractPlatform):
         g.add_annotation((b'', pool + cell, rmt, poly_t))
         return g
 
+# AKA mars schultz
+class mars3_seq(AbstractPlatform):
+
+    def __init__(self):
+        AbstractPlatform.__init__(self, [4, 6], True, correct_errors.in_drop)
+
+    def primer_length(self):
+        return 15
+
+    def merge_function(self, g, b):
+        pool = g.sequence.strip()[3:7]  # 4 bp
+#        g.sequence = g.sequence.strip()[7:]
+        seq = b.sequence.strip()
+        cell = seq[:6]  # 6 bp
+        rmt = seq[6:12]
+        g.add_annotation((b'', pool + cell, rmt, b''))
+        return g
 
 class ten_x(AbstractPlatform):
     # 10X version 1 chemistry
