@@ -8,7 +8,7 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, barcodes_len, check_barcodes, correct_errors_func):
+    def __init__(self, barcodes_len, check_barcodes = True, correct_errors_func = correct_errors.in_drop, apply_low_coverage_filter = False):
         """
         Ctor for the abstract class. barcodes_len is a list of barcodes lengths, 
         check_barcodes is a flag signalling wether or not the barcodes are known apriori and so can be filtered and corrected
@@ -17,6 +17,7 @@ class AbstractPlatform:
         self._correct_errors = correct_errors_func
         self._barcodes_lengths = barcodes_len
         self._check_barcodes = check_barcodes
+        self._apply_low_coverage_filter = apply_low_coverage_filter
 
     def factory(type):
         if type == "in_drop":
@@ -48,7 +49,11 @@ class AbstractPlatform:
     @property
     def check_barcodes(self):
         return self._check_barcodes
-    
+
+    @property
+    def apply_low_coverage_filter(self):
+        return self._apply_low_coverage_filter
+
     @property
     def correct_errors(self):
         """Gets the error correction function sharing the same name as the platform.
@@ -364,14 +369,15 @@ class mars2_seq(AbstractPlatform):
 class mars3_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4, 6], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [4, 6], True, correct_errors.in_drop, apply_low_coverage_filter=True)
 
     def primer_length(self):
         return 15
 
     def merge_function(self, g, b):
         pool = g.sequence.strip()[3:7]  # 4 bp
-#        g.sequence = g.sequence.strip()[7:]
+        g.sequence = g.sequence.strip()[7:] + b'\n'  # strip() is necessary in case there is a truncated read. \n=good, \n\n=bad
+        g.quality = g.quality.strip()[7:] + b'\n'
         seq = b.sequence.strip()
         cell = seq[:6]  # 6 bp
         rmt = seq[6:12]

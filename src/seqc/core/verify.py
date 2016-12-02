@@ -30,7 +30,7 @@ def validate_and_return_size(filename):
             return sum(filesize(filename + f) for f in os.listdir(filename))
         else:
             print(filename)
-            raise ValueError('%s does not point to a valid file')
+            raise ValueError('{} does not point to a valid file'.format(filename))
 
 
 def estimate_required_volume_size(args):

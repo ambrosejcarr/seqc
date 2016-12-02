@@ -9,6 +9,8 @@ import seqc.sequence.barcodes
 from itertools import permutations
 import time
 import tables as tb
+import pandas as pd
+from statsmodels.sandbox.stats.multicomp import multipletests as mt
 
 # Some constants
 PASS_FILTERS    = 0
@@ -20,6 +22,7 @@ POLY_T          = 5
 SCAFFOLD        = 6
 NO_GENES        = 7
 DUST_SCORE      = 8
+LOW_COVERAGE    = 9
 
 BC_OK           = 0
 BC_FIXED        = 1
@@ -68,8 +71,9 @@ class ReadArray:
         #some stats
         self._total_alignments  = 0
         self._total_reads       = 0
+        self._total_active_reads = 0
         self._non_unique_align  = 0
-        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0, DUST_SCORE: 0}
+        self._filtered          = {NO_ALIGNMENT: 0, GENE_0: 0, NO_CELL: 0, NO_RMT: 0, POLY_T: 0, SCAFFOLD: 0, NO_GENES: 0, DUST_SCORE: 0, LOW_COVERAGE: 0}
         self._bad_barcodes      = 0
         self._fix_barcodes      = 0
         self._ok_barcodes       = 0
@@ -86,11 +90,17 @@ class ReadArray:
         s += "Read array of size: {:,}\n".format(len(self._data))
         s += "Non unique alignments (mapped to more than one gene): {:,}\n".format(self._non_unique_align)
         s += "Total reads: {:,}\n".format(self._total_reads)
-        s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}, no genes at all: {:,}\n".\
-             format(self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],self._filtered[NO_CELL], self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[SCAFFOLD], self._filtered[NO_GENES])
-        s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
-        s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, competing models (unhandeled): {:,}\n".\
-             format(self._multialignment[mm.NO_DISAMBIGUATION], self._multialignment[mm.RESOLVED_GENE], self._multialignment[mm.NO_GENE_RESOLVED], self._multialignment[mm.MULTIPLE_MODELS])
+        s += "Filtered: No alignment:{:,}, gene is 0:{:,}, no cell: {:,}, no rmt: {:,}, poly_t:{:,}, scaffold: {:,}," \
+             " no genes at all: {:,}, low coverage(marseq only): {:,}\n".\
+             format(self._filtered[NO_ALIGNMENT], self._filtered[GENE_0],self._filtered[NO_CELL],
+                    self._filtered[NO_RMT], self._filtered[POLY_T], self._filtered[SCAFFOLD], self._filtered[NO_GENES],
+                    self._filtered[LOW_COVERAGE])
+        s += "Barcodes: good:{:,}, fixed: {:,}, bad:{:,}\n".\
+            format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes)
+        s += "Multialignment results: no disambiguation: {:,}, resolved gene: {:,}, no gene resolved: {:,}, " \
+             "competing models (unhandeled): {:,}\n".\
+             format(self._multialignment[mm.NO_DISAMBIGUATION], self._multialignment[mm.RESOLVED_GENE],
+                    self._multialignment[mm.NO_GENE_RESOLVED], self._multialignment[mm.MULTIPLE_MODELS])
         s += "Total errors: {:,}\n".format(self._total_errors)
         s += "Total active reads: {:,}\n".format(self.count_active_reads())
         return s
@@ -114,6 +124,7 @@ class ReadArray:
     @staticmethod
     def set_status_active(r):
         r['status'] |= 0b1
+
     @staticmethod
     def set_status_inactive(r):
         r['status'] &= 0b1111111111111110
@@ -289,7 +300,7 @@ class ReadArray:
         Correct reads with incorrect barcodes according to the correct barcodes files.
         Reads with barcodes that have too many errors are filtered out.
         """
-        
+
         # Read the barcodes into lists
         correct_barcodes = []
         for barcode_file in barcode_files:
@@ -464,7 +475,7 @@ class ReadArray:
 
         return cls(data)
 
-    def resolve_alignments(self, index):
+    def resolve_alignments(self):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
         in-place to reflect the more specific gene assignments.
@@ -517,6 +528,7 @@ class ReadArray:
             for s in sets:
                 relevant_reads = list(np.array(reads_list)[set_membership == s])
                 res_gene, mm_status = mm.resolve_gene(list(np.array(gene_lists)[set_membership == s]))
+                self._multialignment[mm_status] += len(relevant_reads)
 
                 for read_idx in relevant_reads:
                     ReadArray.set_mm_status(self.data[read_idx], mm_status)
@@ -600,3 +612,102 @@ class ReadArray:
 
         return csv_path + 'reads_count.csv', csv_path + 'mols_count.csv',
 
+
+    def filter_low_coverage(self):
+        cell = self.data['cell']
+        position = self.data['position']
+        rmt = self.data['rmt']
+        genes = self.data['gene']
+
+        # A triplet is a (cell, position, rmt) triplet in each gene
+        df = pd.DataFrame({'gene': genes, 'cell': cell, 'position': position,
+                           'rmt': rmt})
+        grouped = df.groupby(['gene', 'position'])
+        # This gives the gene followed by the number of triplets at each position
+        # Summing across each gene will give the number of total triplets in gene
+        num_per_position = (grouped['position'].agg({
+            'Num Triplets at Pos': np.count_nonzero})).reset_index()
+
+        # Total triplets in each gene
+        trips_in_gene = (num_per_position.groupby(['gene'])
+                         )['Num Triplets at Pos'].agg({'Num Triplets at Gene': np.sum})
+
+        trips_in_gene = trips_in_gene.reset_index()
+
+        num_per_position = num_per_position.merge(trips_in_gene, how='left')
+
+        # for each (c,rmt) in df check in grouped2 if it is lonely
+        # determine number of lonely triplets at each position
+        grouped2 = df.groupby(['gene', 'cell', 'rmt'])
+        # lonely_triplets = grouped2["position"].apply(lambda x: len(x.unique()))
+        # This is a list of each gene, cell, rmt combo and the positions with that criteria
+        lonely_triplets = grouped2['position'].apply(np.unique)
+        lonely_triplets = pd.DataFrame(lonely_triplets)
+
+        # if the length is one, this is a lonely triplet
+        lonely_triplets_u = lonely_triplets['position'].apply(len)
+        lonely_triplets_u = pd.DataFrame(lonely_triplets_u)
+
+        lonely_triplets_u = lonely_triplets_u.reset_index()
+        lonely_triplets = lonely_triplets.reset_index()
+
+        # Rename the columns
+        lonely_triplets = lonely_triplets.rename(columns=lambda x: x.replace(
+            'position', 'lonely position'))
+        lonely_triplets_u = lonely_triplets_u.rename(columns=lambda x: x.replace(
+            'position', 'num'))
+
+        # merge the column that is the length of the positions array
+        # take the ones with length 1
+        lonely_triplets = lonely_triplets.merge(lonely_triplets_u, how='left')
+        lonely_triplets = lonely_triplets.loc[lonely_triplets.loc[:, 'num'] == 1, :]
+
+        # This is the gene, cell, rmt combo and the position that is lonely
+        # We need to convert the array to a scalar
+        scalar = lonely_triplets["lonely position"].apply(np.asscalar)
+        lonely_triplets["lonely position"] = scalar
+        # Now if we group as such, we can determine how many (c, rmt) paris exist at each position
+        # This would be the number of lonely pairs at a position
+        grouped3 = lonely_triplets.groupby(["gene", "lonely position"])
+        l_num_at_position = (grouped3["cell"].agg(['count'])).reset_index()
+        l_num_at_position = l_num_at_position.rename(columns=lambda x: x.replace(
+            'count', 'lonely triplets at pos'))
+        l_num_at_position = l_num_at_position.rename(columns=lambda x: x.replace(
+            'lonely position', 'position'))
+        # lonely pairs in each gene
+        l_num_at_gene = (lonely_triplets.groupby(["gene"]))['lonely position'].agg(
+            ['count'])
+        l_num_at_gene = l_num_at_gene.reset_index()
+        l_num_at_gene = l_num_at_gene.rename(columns=lambda x: x.replace(
+            'count', 'lonely triplets at gen'))
+
+        # aggregate
+        total = l_num_at_position.merge(l_num_at_gene, how='left')
+        total = total.merge(num_per_position, how='left')
+
+        # scipy hypergeom
+        p = total.apply(ReadArray.hypergeom_wrapper, axis=1)
+        p = 1 - p
+
+        adj_p = mt(p, alpha=0.25, method='fdr_bh')
+
+        keep = pd.DataFrame(adj_p[0])
+        total['keep'] = keep
+
+        remove = total[total['keep'] == True]
+        d = df.merge(remove, how="left")
+        final = d[d["keep"] == True]
+
+        for idx in final.index:
+            ReadArray.set_filt_fail(self.data[idx], LOW_COVERAGE)
+            self._filtered[LOW_COVERAGE]+=1
+            ReadArray.set_status_inactive(self.data[idx])
+
+        return
+
+    @staticmethod
+    def hypergeom_wrapper(x):
+        from scipy.stats import hypergeom
+        p = hypergeom.cdf(x['lonely triplets at pos'], x['Num Triplets at Gene'],
+                          x['lonely triplets at gen'], x['Num Triplets at Pos'])
+        return p

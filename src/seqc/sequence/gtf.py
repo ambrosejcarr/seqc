@@ -452,6 +452,8 @@ def create_gene_id_to_official_gene_symbol_map(gtf: str):
     gene_id_map = defaultdict(set)
     with open(gtf, 'r') as f:
         for line in f:
+            if line[0] == '#':
+                continue
 
             fields = line.split('\t')  # speed-up, only run regex on gene lines
             if fields[2] != 'gene':
