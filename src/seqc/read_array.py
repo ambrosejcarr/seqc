@@ -329,7 +329,7 @@ class ReadArray:
 
             # Filter reads with too many errors in their barcodes 
             if max(edit_dist) > max_ed:
-                ra.data['status'][read_ind] |= ra.filter_codes['barcode_error']
+                ra.data['status'][read_ind] |= ra.filter_codes['cell_error']
                 continue
                             
             # Count the different error types
@@ -383,7 +383,6 @@ class ReadArray:
                 log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
                 err_rate[k] = default_error_rate
             
-        log.info('Barcodes correction results: Good barcodes: {}, fixed barcodes: {}, bad barcodes: {}'.format(self._ok_barcodes, self._fix_barcodes, self._bad_barcodes))
         return err_rate
 
     def save(self, archive_name: str) -> None:
@@ -454,7 +453,7 @@ class ReadArray:
         raise NotImplementedError  # todo implement me
 
 
-    def _resolve_alignments(self, indices_grouped_by_cell):
+    def _resolve_alignments(self, indices_grouped_by_cells):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
         in-place to reflect the more specific gene assignments.
@@ -473,7 +472,7 @@ class ReadArray:
         # Mask for reseting status on resolved genes
         mask = self.filtering_mask('gene_not_unique')
 
-        for cell_group in indices_grouped_by_cell:
+        for cell_group in indices_grouped_by_cells:
 
             # Sort by molecules
             inds = cell_group[self.data['rmt'][cell_group]]
@@ -527,7 +526,7 @@ class ReadArray:
                                 self.genes[ind, 0] = self.genes[ind, gene_index]
                                 self.position[ind, 0] = self.position[ind, gene_index]
                     else:
-                        pass
+                        continue
                         # Todo: Likelihood model goes here
 
     def to_count_matrix(self, csv_path=None, sparse_frame=False, genes_to_symbols=False):

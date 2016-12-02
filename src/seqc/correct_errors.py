@@ -4,35 +4,32 @@ import numpy as np
 from seqc import log
 from seqc.read_array import ReadArray
 import time
-from multiprocessing import Pool
-from contextlib import closing
-from functools import partial
 
-def prepare_for_ec(ra):
-    """
-    Prepare the RA for error correction by grouping it according to cell,gene and rmt
+# def prepare_for_ec(ra):
+#     """
+#     Prepare the RA for error correction by grouping it according to cell,gene and rmt
 
-    :param ra:
-    """
-    res = {}
+#     :param ra:
+#     """
+#     res = {}
 
-    for i, v in enumerate(ra.data):
-        if not ReadArray.is_active_read(v):
-            continue
+#     for i, v in enumerate(ra.data):
+#         if not ReadArray.is_active_read(v):
+#             continue
 
-        gene = v['gene']
-        cell = v['cell']
-        rmt = v['rmt']
-        try:
-            res[gene, cell][rmt].append(i)
-        except KeyError:
-            try:
-                res[gene, cell][rmt] = [i]
-            except KeyError:
-                res[gene, cell] = {}
-                res[gene, cell][rmt] = [i]
+#         gene = v['gene']
+#         cell = v['cell']
+#         rmt = v['rmt']
+#         try:
+#             res[gene, cell][rmt].append(i)
+#         except KeyError:
+#             try:
+#                 res[gene, cell][rmt] = [i]
+#             except KeyError:
+#                 res[gene, cell] = {}
+#                 res[gene, cell][rmt] = [i]
 
-    return res
+#     return res
 
 
 def generate_close_seq(seq):
@@ -63,7 +60,7 @@ def generate_close_seq(seq):
     return res
 
 
-def prob_d_to_r_bin(d_seq, r_seq, err_rate):
+def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
     """
     Return the probability of d_seq turning into r_seq based on the err_rate table
     (all binary)
@@ -118,6 +115,8 @@ def group_for_dropseq(ra):
 
 
 def drop_seq(alignments_ra, *args, **kwargs):
+    raise NotImplementedError  # todo port to use gene/position csr
+
     """pass-through function that groups the read_array for count matrix construction but
     does not perform any error correction. To be replaced by Ashley's function.
 
@@ -132,7 +131,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     barcode_base_shift_threshold = 0.9
     umi_len = 8
     min_umi_cutoff = 10
-    # TODO:
+    # todo:
     # 4. collapse UMI's that are 1 ED from one another (This requires more thought as
     # there are plenty of edge cases)
     
@@ -242,19 +241,13 @@ def in_drop(ra, error_rate, alpha=0.05):
     """
 
     # Group read array by cells and submit indices of each cell to a different processor
-    indices_grouped_by_cell = ra.group_filtered_indices(
-            by=('cell'), multimapping=False)
-    _correct_errors(indices_grouped_by_cell, ra, error_rate, alpha)
-
-    # _correct_errors_inds = partial(_correct_errors, 
-    #     ra=ra, err_rate=error_rate, p_value=alpha)
-    # with closing(Pool()) as pool:
-    #     pool.map(_correct_errors_inds, indices_grouped_by_cell)
+    indices_grouped_by_cells = ra.group_indices_by_cell()
+    _correct_errors(indices_grouped_by_cells, ra, error_rate, alpha)
 
 
 
 # def _correct_errors(ra, inds, err_rate, p_value=0.05, apply_likelihood=True, singleton_weight=1):
-def _correct_errors(indices_grouped_by_cell, ra, err_rate, p_value=0.05):
+def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     """
     Calculate and correct errors in barcode sets
 
@@ -266,7 +259,7 @@ def _correct_errors(indices_grouped_by_cell, ra, err_rate, p_value=0.05):
     :return:
     """
 
-    for cell_group in indices_grouped_by_cell:
+    for cell_group in indices_grouped_by_cells:
 
         # Breaks for each gene
         gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
@@ -286,7 +279,7 @@ def _correct_errors(indices_grouped_by_cell, ra, err_rate, p_value=0.05):
             if len(rmt_groups) < 2:
                 continue
 
-            # TODO : decide what to do with Ns: This logic retains RMTs with N if no donor 
+            # todo : decide what to do with Ns: This logic retains RMTs with N if no donor 
             # is found and contributes to the molecule count
             for rmt in rmt_groups.keys():
 
@@ -305,7 +298,7 @@ def _correct_errors(indices_grouped_by_cell, ra, err_rate, p_value=0.05):
 
                     # Build likelihood
                     # Probability of converting donor to target
-                    p_dtr = prob_d_to_r_bin( donor_rmt, rmt, err_rate )
+                    p_dtr = probability_for_convert_d_to_r( donor_rmt, rmt, err_rate )
                     # Number of occurances
                     expected_errors += donor_count * p_dtr
 
