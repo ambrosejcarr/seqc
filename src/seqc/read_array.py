@@ -497,27 +497,8 @@ class ReadArray:
         #Group according to cell/RMT
         r_dic, g_dic, p_dic = self.group_for_disambiguation()
         
-        #TODO - for now we're not using the expectations so I commented this part. -> Rami
-        # After uncommenting, we need a new p_coalignment_array.p file to be created with the same mosule hirerachy
-        # load the expectations
-        #expectations = index + 'p_coalignment_array.p'
-        #if os.path.isfile(expectations):
-        #    with open(expectations, 'rb') as f:
-        #        expectations_mat = pickle.load(f)
-        #elif isinstance(expectations, str):
-        #    raise FileNotFoundError('could not locate serialized expectations object: %s'
-        #                            % expectations)
-        #elif isinstance(expectations, dict):
-        #    pass  # expectations already loaded
-        #else:
-        #    raise TypeError('invalid expectation object type, must be a dict expectation'
-        #                    ' object or a string filepath')
-        #mat = mm.reduce_coalignment_array(expectations_mat)
-        mat=[]
-        
         log.info('disambiguating')
 
-        ###############
         for cell,rmt in g_dic:
             gene_lists = g_dic[cell, rmt]
             reads_list = r_dic[cell,rmt]
@@ -541,11 +522,10 @@ class ReadArray:
                     else:
                         ReadArray.set_status_inactive(self.data[read_idx])
 
-        #################
-
 
         tot_time=time.process_time()-start
         log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
+        self.resolve_alignments = True
 
         return
 
