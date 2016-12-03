@@ -278,10 +278,10 @@ def run(args) -> None:
 
         files = []
         log.info('Read array after reading sam file: {}'.format(ra))
-        # Apply filters
-        ra.apply_filters(
-            required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
-        log.info('Read array after filtering: {}'.format(ra))
+        # # Apply filters
+        # ra.apply_filters(
+        #     required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
+        # log.info('Read array after filtering: {}'.format(ra))
 
         # Correct barcodes
         if platform.check_barcodes:

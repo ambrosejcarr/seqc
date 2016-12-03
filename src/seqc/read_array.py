@@ -6,7 +6,7 @@ from seqc.sequence.encodings import DNA3Bit
 from scipy.sparse import coo_matrix, csr_matrix
 import seqc.sequence.barcodes
 import tables as tb
-from itertools import chain
+from itertools import chain, permutations
 
 
 class ReadArray:
@@ -76,10 +76,10 @@ class ReadArray:
         # todo test out speed loss with chain(), compare to numpy.concatenate, None
         if self._ambiguous_genes:  # genes, positions are scipy.sparse.csr_matrix
             for i in np.arange(self.data.shape[0]):
-                yield chain(self.data[i], (self.genes[i, 0], self.positions[i, 0]))
+                yield self.data[i], self.genes[i, 0], self.positions[i, 0]
         else:  # genes, positions are np.array
             for i in np.arange(self.data.shape[0]):
-                yield chain(self.data[i], (self.genes[i], self.positions[i]))
+                yield self.data[i], self.genes[i], self.positions[i]
 
     filter_codes = {
         'no_gene': 0b1,
@@ -144,15 +144,16 @@ class ReadArray:
         """
 
         if not ignore:  # save a bit of work by not &ing with mask
-            for i, data in enumerate(self):
+            for i, (data, gene, position) in enumerate(self):
+                print(data)
                 if data['status'] == 0:
-                    yield i, data
+                    yield i, data, gene, position
 
         else:  # create the appropriate mask for filters we want to ignore
             mask = self.filtering_mask(*ignore)
-            for i, data in enumerate(self):
+            for i, (data, gene, position) in enumerate(self):
                 if not data['status'] & mask:  # ignores fields in ignore
-                    yield i, data
+                    yield i, data, gene, position
 
     @classmethod
     def from_alignment_file(cls, alignment_file, translator, required_poly_t):
@@ -257,133 +258,115 @@ class ReadArray:
         # filter the index for reads that
         if multimapping:
             mask = self.filtering_mask('gene_not_unique')
-            passing = (self.data['status'] & mask) == 0
+            passing = (self.data['status'][idx] & mask) == 0
         else:
-            passing = self.data['status'] == 0
+            passing = self.data['status'][idx] == 0
         idx = idx[passing]
 
         # determine which positions in idx are the start of new groups (boolean, True)
-        breaks = np.zeros(idx.shape[0] - 1)
-        for column in by:
-            breaks |= np.diff(self.data[column][idx])
-
         # convert boolean positions to indices, add start and end points.
-        molecule_breaks = np.where(breaks)[0] + 1
-
+        breaks = np.where( np.diff(self.data['cell'][idx]) )[0] + 1
         # use these break points to split the filtered index according to "by"
-        return np.split(idx, molecule_breaks)
+        return np.split(idx, breaks)
 
-    # pep8 this whole function; rename badly named sub-functions
-    def apply_barcode_correction(self, platform, barcode_files, max_ed=2):
+    def apply_barcode_correction(self, platform, barcode_files, max_ed=2, default_error_rate=0.02):
         """
         Correct reads with incorrect barcodes according to the correct barcodes files.
         Reads with barcodes that have too many errors are filtered out.
         """
 
         # Read the barcodes into lists
-        correct_barcodes = []
+        valid_barcodes = []
         for barcode_file in barcode_files:
             with open(barcode_file, 'r') as f:
-                correct_barcodes.append(set(DNA3Bit.encode(line.strip()) for line in f.readlines()))
+                valid_barcodes.append(set(DNA3Bit.encode(line.strip()) for line in f.readlines()))
         
+        # Containers         
         num_barcodes = platform.num_barcodes
-        dynamic_codes_table     = [{}]*num_barcodes
         correct                 = [None]*num_barcodes
         edit_dist               = [None]*num_barcodes
-        err_list                = [None]*num_barcodes
-        sequencer_errors_cnt    = [None]*num_barcodes
-        
-        # errors = list(DNA3Bit.ints2int([p[0], p[1]]) for p in permutations(DNA3Bit._bin2strdict.keys(), r=2))
-        # error_table = dict(zip(errors, [0] * len(errors)))
-        errors = [p for p in permutations(DNA3Bit._bin2strdict.keys(), r=2)]
-        error_table = dict()
-        for i in errors:
-            error_table[i] = 0
-        cor_instance_table = {DNA3Bit.encode(b'A'): 0,
-                              DNA3Bit.encode(b'C'): 0,
-                              DNA3Bit.encode(b'G'): 0,
-                              DNA3Bit.encode(b'T'): 0,
-                              DNA3Bit.encode(b'N'): 0}
+
+        # Error table container
+        errors = [p for p in permutations(DNA3Bit.bin2strdict.keys(), r=2)]
+        error_table = dict( zip(errors, np.zeros(len(errors))) )
+        cor_instance_table = dict( zip(DNA3Bit.bin2strdict.keys(), 
+            np.zeros(len(DNA3Bit.bin2strdict))) )
         
         # Check if the barcode has to be an exact match
         exact_match = False
         if max_ed == 0:
             exact_match = True
 
-        for read_ind, r in self.iter_active():
+        # Group reads by cells
+        indices_grouped_by_cells = self.group_indices_by_cell(multimapping=True)
 
-            barcodes = platform.extract_barcodes(int(r['cell']))
+        for inds in indices_grouped_by_cells:
+
+            # Extract barcodes for one of the reads
+            barcodes = platform.extract_barcodes( self.data['cell'][inds[0]] )
+
+            # Identify correct barcode
             for i in range(num_barcodes):
-                try:
-                    correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i] = dynamic_codes_table[i][barcodes[i]]
-                except KeyError:
-                    correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], correct_barcodes[i], exact_match)
-                    sequencer_errors_cnt[i] = DNA3Bit.count(barcodes[i], DNA3Bit.encode(b'N'))
-                    
-                    # No point calculating errors on codes with more errors than allowed
-                    if edit_dist[i] > max_ed:
-                        err_list[i] = None
-                    else:
-                        err_list[i] = seqc.sequence.barcodes.list_errors(correct[i], barcodes[i])
-                    dynamic_codes_table[i][barcodes[i]] = (correct[i], edit_dist[i], err_list[i], sequencer_errors_cnt[i])
+                correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], 
+                    valid_barcodes[i], exact_match)
 
-            # Filter reads with too many errors in their barcodes 
-            if max(edit_dist) > max_ed:
-                ra.data['status'][read_ind] |= ra.filter_codes['cell_error']
-                continue
-                            
-            # Count the different error types
-            # For error rate estimation, only reads with at most a single error in both
-            # barcodes are counted. note that only base swicth errors are counted towards
-            # this threshold, sequencer errors (that cause an 'N') are ignored for this.
-            if sum(edit_dist) - sum(sequencer_errors_cnt) <= 1:
-                for err_l in err_list:
-                    for err in err_l:
-                        try:
-                            error_table[err] += 1
-                        except KeyError:    # happens for sequencer errors
-                            continue
-            
-            # count non error bases
-            tmp_bc = DNA3Bit.ints2int(barcodes)
-            tmp_cor = DNA3Bit.ints2int(correct)
-            while tmp_bc > 0:
-                if tmp_bc & 0b111 == tmp_cor & 0b111:
+
+            # 1. If all edit distances are 0, barcodes are correct, 
+            #    update the correct instance table
+            # 2. Correct any barcodes within permissible edit distance,
+            #    update the correct instance table for non-errored bases,
+            #    update error table for the errored bases
+            # 3. Mark the uncorrectable barcodes as cell errors
+
+            if all(np.array(edit_dist) == 0):
+                # Temp container to increment the correct instance counter
+                tmp_bc = DNA3Bit.ints2int(barcodes)
+                while tmp_bc > 0:
                     cor_instance_table[tmp_bc & 0b111] += 1
-                tmp_bc >>= 3
-                tmp_cor >>= 3
-            
-            #correct cell and update read status
-            # todo: do we need to keep track of how many barcodes were fixed:
-            # if yes, just use a counter
-            # if tmp_bc!=tmp_cor:
-            #     r['cell'] = tmp_cor
-            #     ReadArray.set_barcodes(r, BC_FIXED)
-            #     self._fix_barcodes += 1
-            # else:
-            #     ReadArray.set_barcodes(r, BC_OK)
-            #     self._ok_barcodes += 1
-                
+                    tmp_bc >>= 3
+
+            elif max(edit_dist) > max_ed:
+                self.data['status'][inds] |= self.filter_codes[ 'cell_error' ]
+                continue
+
+            else:
+                # These barcodes can be corrected,
+                # Count the number of correct bases
+                # Update the error table if there was only one error across the barcodes                
+                tmp_bc = DNA3Bit.ints2int(barcodes)
+                tmp_cor = DNA3Bit.ints2int(correct)
+
+                # Update the read array with the correct barcode
+                self.data['cell'][inds] = tmp_cor
+
+                # Iterating through the sequences
+                while tmp_bc > 0:
+                    if tmp_bc & 0b111 == tmp_cor & 0b111:
+                        cor_instance_table[tmp_bc & 0b111] += 1
+                    elif sum(edit_dist) == 1:
+                        error_table[ (tmp_cor & 0b111, tmp_bc & 0b111) ] += 1
+                    tmp_bc >>= 3
+                    tmp_cor >>= 3
+
         # Create error rate table
-        default_error_rate = DEFAULT_BASE_CONVERTION_RATE
         if sum(error_table.values()) == 0:
             log.info('No errors were detected or barcodes do not support error correction, using %f uniform error chance.' % (default_error_rate))
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
-            # if DNA3Bit.decode(k)[0] in b'Nn':
             if DNA3Bit.decode(k[0]) in b'Nn':
                 continue
             try:
-                # err_rate[k] = v / (sum(n for err_type, n in error_table.items() 
-                #     if err_type&0b111000 == k&0b111000) + cor_instance_table[(k & 0b111000) >> 3])
                 err_rate[k] = v / (sum(n for err_type, n in error_table.items() 
                     if err_type[0] == k[0]) +  cor_instance_table[k[0]])
             except ZeroDivisionError:
-                log.info('Warning: too few reads to estimate error rate for %s, setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
+                log.info('Warning: too few reads to estimate error rate for %s,\
+                 setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
                 err_rate[k] = default_error_rate
-            
+
         return err_rate
+
+
 
     def save(self, archive_name: str) -> None:
         """save a ReadArray object as an hdf5 archive
