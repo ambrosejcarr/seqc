@@ -64,6 +64,51 @@ class GeneIntervals:
                 yield start, end
                 max_transcript_length -= size
 
+    # todo implement me.
+    @staticmethod
+    def _remove_overlapping_intervals(dictionary):
+        """The intervaltree automatically removes intervals with duplicate information
+
+        we could parse the tree interval by interval by calling overlap queries using
+        each interval. Then, we could update based on the result.
+
+        removing duplicates within the same gene is very easy; we simply replace each
+        duplicate with their union.
+
+        removing overlaps between exons of different genes is trickier; we need to
+        consider the cases where one gene overlaps the beginning of another, the end
+        of another, is enveloped by another, or evelops another. This gets progressively
+        more complex because evelopment causes intervals to split, which may require
+        some tricky programming or multiple passes to deal with.
+
+        What follows is a skeleton that could be used to parse intervals. I suspect using
+        bisection may be the quickest way to find out which category (above) an interval
+        is in.
+
+        :param dictionary:
+        :return:
+        """
+
+        def parse_intervals(query, other, tree):
+            """private function to parse intervals, should side-effect to modify
+            interval_tree
+
+            :param query: the interval tested for overlaps
+            :param set other: set of Interval objects which overlapped the query
+              interval
+            :param tree: the tree which should be modified
+            :return None:
+            """
+            raise NotImplementedError
+
+        # get each intervaltree # todo can be parallelized
+        for chromosome in dictionary:
+            for strand, interval_tree in dictionary[chromosome].items():
+                for iv in interval_tree:
+                    intervals = interval_tree.search(iv.begin, iv.end)
+                    if intervals:
+                        parse_intervals(iv, intervals, interval_tree)
+
     def construct_translator(self, gtf, max_transcript_length):
         """Construct a dictionary containing genomic intervals that map to genes. Allows
         the translation of alignment coordinates (chromosome, strand, position) to
