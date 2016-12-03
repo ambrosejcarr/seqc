@@ -88,6 +88,7 @@ class ReadArray:
         'low_polyt': 0b1000,
         'gene_not_unique': 0b10000,
         'primer_missing': 0b100000,
+        'lonely_triplet': 0b1000000,  # todo could call this low coverage?
     }
 
     def calculate_filtering_results(self, required_poly_t=1):
@@ -511,6 +512,110 @@ class ReadArray:
                     else:
                         continue
                         # Todo: Likelihood model goes here
+
+    def filter_low_coverage(self):
+
+        if self._ambiguous_genes:
+            raise RuntimeError(
+                'Please run resolve alignments before filtering lonely triplets')
+
+        cell = self['cell']
+        position = self.positions
+        rmt = self['rmt']
+        genes = self.genes
+
+        # A triplet is a (cell, position, rmt) triplet in each gene
+        df = pd.DataFrame({'gene': genes, 'cell': cell, 'position': position,
+                           'rmt': rmt})  # todo does this copy data? if yes, change.
+        grouped = df.groupby(['gene', 'position'])
+        # This gives the gene followed by the number of triplets at each position
+        # Summing across each gene will give the number of total triplets in gene
+        num_per_position = (grouped['position'].agg({
+            'Num Triplets at Pos': np.count_nonzero})).reset_index()
+
+        # Total triplets in each gene
+        trips_in_gene = (num_per_position.groupby(['gene'])
+                         )['Num Triplets at Pos'].agg({'Num Triplets at Gene': np.sum})
+
+        trips_in_gene = trips_in_gene.reset_index()
+
+        num_per_position = num_per_position.merge(trips_in_gene, how='left')
+
+        # for each (c,rmt) in df check in grouped2 if it is lonely
+        # determine number of lonely triplets at each position
+        grouped2 = df.groupby(['gene', 'cell', 'rmt'])
+        # lonely_triplets = grouped2["position"].apply(lambda x: len(x.unique()))
+        # This is a list of each (gene, cell, rmt) and the positions with that criteria
+        lonely_triplets = grouped2['position'].apply(np.unique)
+        lonely_triplets = pd.DataFrame(lonely_triplets)
+
+        # if the length is one, this is a lonely triplet
+        lonely_triplets_u = lonely_triplets['position'].apply(len)
+        lonely_triplets_u = pd.DataFrame(lonely_triplets_u)
+
+        lonely_triplets_u = lonely_triplets_u.reset_index()
+        lonely_triplets = lonely_triplets.reset_index()
+
+        # Rename the columns
+        lonely_triplets = lonely_triplets.rename(columns=lambda x: x.replace(
+            'position', 'lonely position'))
+        lonely_triplets_u = lonely_triplets_u.rename(columns=lambda x: x.replace(
+            'position', 'num'))
+
+        # merge the column that is the length of the positions array
+        # take the ones with length 1
+        lonely_triplets = lonely_triplets.merge(lonely_triplets_u, how='left')
+        lonely_triplets = lonely_triplets.loc[lonely_triplets.loc[:, 'num'] == 1, :]
+
+        # This is the gene, cell, rmt combo and the position that is lonely
+        # We need to convert the array to a scalar
+        scalar = lonely_triplets["lonely position"].apply(np.asscalar)
+        lonely_triplets["lonely position"] = scalar
+        # Now if we group as such, we can determine how many (c, rmt) pairs exist at each
+        # position. This would be the number of lonely pairs at a position
+        grouped3 = lonely_triplets.groupby(["gene", "lonely position"])
+        l_num_at_position = (grouped3["cell"].agg(['count'])).reset_index()
+        l_num_at_position = l_num_at_position.rename(columns=lambda x: x.replace(
+            'count', 'lonely triplets at pos'))
+        l_num_at_position = l_num_at_position.rename(columns=lambda x: x.replace(
+            'lonely position', 'position'))
+        # lonely pairs in each gene
+        l_num_at_gene = (lonely_triplets.groupby(["gene"]))['lonely position'].agg(
+            ['count'])
+        l_num_at_gene = l_num_at_gene.reset_index()
+        l_num_at_gene = l_num_at_gene.rename(columns=lambda x: x.replace(
+            'count', 'lonely triplets at gen'))
+
+        # aggregate
+        total = l_num_at_position.merge(l_num_at_gene, how='left')
+        total = total.merge(num_per_position, how='left')
+
+        # todo not sure how the below works, but need to adjust it's return function
+        # to instead set self['status'][~keep] |= self.filter_codes['lonely_triplet']
+
+        # scipy hypergeom
+        p = total.apply(hypergeom_wrapper, axis=1)
+        p = 1 - p
+
+        from statsmodels.sandbox.stats.multicomp import multipletests as mt
+        adj_p = mt(p, alpha=0.25, method='fdr_bh')
+        print(np.sum(adj_p[0]))
+
+        keep = pd.DataFrame(adj_p[0])
+        total['keep'] = keep
+
+        remove = total[total['keep'] == True]
+
+        return remove
+
+    def hypergeom_wrapper(x):
+
+        from scipy.stats import hypergeom
+        p = hypergeom.cdf(x['lonely triplets at pos'], x['Num Triplets at Gene'],
+                          x['lonely triplets at gen'], x['Num Triplets at Pos'])
+        # print(p)
+        return p
+
 
     def to_count_matrix(self, csv_path=None, sparse_frame=False, genes_to_symbols=False):
         """Convert the ReadArray into a count matrix.
