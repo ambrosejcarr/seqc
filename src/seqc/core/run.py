@@ -299,7 +299,7 @@ def run(args) -> None:
         # correct errors
         log.info('Filtering errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        platform.correct_errors(ra, error_rate)
         log.info('Read array after error correction: {}'.format(ra))
 
         # filter non-cells

@@ -276,7 +276,7 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
                 except KeyError:
                     rmt_groups[rmt] = [ind]
 
-            if len(rmt_groups) < 2:
+            if len(rmt_groups) == 1:
                 continue
 
             # todo : decide what to do with Ns: This logic retains RMTs with N if no donor 
@@ -304,8 +304,8 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
 
                     # Check if jaitin correction is feasible
                     if not jaitin_corrected: 
-                        ref_positions = ra.position[rmt_groups[rmt]]
-                        donor_positions = ra.position[rmt_groups[donor_rmt]]
+                        ref_positions = ra.positions[rmt_groups[rmt]]
+                        donor_positions = ra.positions[rmt_groups[donor_rmt]]
 
                         # Is reference a subset of the donor ? 
                         if (set(ref_positions)).issubset( donor_positions ):

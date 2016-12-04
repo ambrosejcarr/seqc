@@ -650,18 +650,18 @@ class ReadArray:
         """
         reads_mat = {}
         mols_mat = {}
-        for i, ((status, cell, rmt, poly_t), gene, pos) in self.iter_active():
+        for i, data, gene, pos in self.iter_active():
 
             try:
-                reads_mat[cell, gene] = reads_mat[cell, gene]+1
+                reads_mat[data['cell'], gene] = reads_mat[data['cell'], gene]+1
             except KeyError:
-                reads_mat[cell, gene] = 1
+                reads_mat[data['cell'], gene] = 1
 
             try:
-                if rmt not in mols_mat[cell, gene]:
-                    mols_mat[cell, gene].append(rmt)
+                if rmt not in mols_mat[data['cell'], gene]:
+                    mols_mat[data['cell'], gene].append(rmt)
             except KeyError:
-                mols_mat[cell, gene] = [rmt]
+                mols_mat[data['cell'], gene] = [rmt]
 
         if sparse_frame:
             return (SparseFrame.from_dict(reads_mat, genes_to_symbols=genes_to_symbols),
@@ -673,8 +673,8 @@ class ReadArray:
             return reads_mat, mols_mat
 
         f = open(csv_path+'reads_count.csv', 'w')
-        for cell, gene in reads_mat:
-            f.write('{},{},{}\n'.format(cell, gene, reads_mat[cell, gene]))
+        for data['cell'], gene in reads_mat:
+            f.write('{},{},{}\n'.format(data['cell'], gene, reads_mat[data['cell'], gene]))
 
         f.close()
 
