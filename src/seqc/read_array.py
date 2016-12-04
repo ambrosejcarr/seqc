@@ -7,7 +7,7 @@ from scipy.sparse import coo_matrix, csr_matrix
 import seqc.sequence.barcodes
 import tables as tb
 from itertools import chain, permutations
-
+from seqc import multialignment
 
 class ReadArray:
 
@@ -57,9 +57,19 @@ class ReadArray:
     def genes(self):
         return self._genes
 
+    @genes.setter
+    def genes(self, item):
+        # todo: error check
+        self._genes = item
+
     @property
     def positions(self):
         return self._positions
+
+    @positions.setter
+    def positions(self, item):
+        # todo: error check
+        self._positions = item
 
     def __len__(self):
         return len(self.data)
@@ -430,11 +440,17 @@ class ReadArray:
 
         return cls(data, genes, positions)
 
+
     def resolve_ambiguous_alignments(self):
+
+        # Resolve alignments
+        indices_grouped_by_cells = self.group_indices_by_cell(multimapping=True)
+        self._resolve_alignments(indices_grouped_by_cells)
+
+        # Reset genes and positions to be an array
         self._ambiguous_genes = False
-        # todo reset genes / positions to columns
-        # call group_indices_by_cell() method
-        raise NotImplementedError  # todo implement me
+        self.genes = np.ravel(self.genes.tocsc()[:, 0].todense()) 
+        self.positions = np.ravel(self.positions.tocsc()[:, 0].todense())
 
 
     def _resolve_alignments(self, indices_grouped_by_cells):
@@ -459,7 +475,7 @@ class ReadArray:
         for cell_group in indices_grouped_by_cells:
 
             # Sort by molecules
-            inds = cell_group[self.data['rmt'][cell_group]]
+            inds = cell_group[np.argsort(self.data['rmt'][cell_group])]
             breaks = np.where( np.diff(self.data['rmt'][inds]) )[0] + 1
             indices_grouped_by_molecule = np.split( inds, breaks )
 
@@ -477,38 +493,37 @@ class ReadArray:
 
                 # Return if there is only one gene group
                 if len( gene_groups ) == 1:
-                    return
+                    continue
 
                 # Divide into disjoint sets
-                uf = mm.UnionFind()
+                uf = multialignment.UnionFind()
                 uf.union_all( gene_groups.keys() )
                 set_membership, sets = uf.find_all( gene_groups.keys() )
 
-
                 # Disambiguate each set
-                keys = np.array( gene_groups.keys() )
+                keys = np.array( list(gene_groups.keys()) )
                 for s in sets:
-                    set_groups = keys[ set_membership == set ]
+                    set_groups = keys[ set_membership == s ]
 
                     # Return if the set contains only one group
                     if len( set_groups ) == 1:
                         continue
 
                     # Disambiguate if possible
-                    common = mm.intersection( set_groups )
+                    common = list(multialignment.intersection( set_groups ))
 
                     # Resolved if there is only one common gene
                     if len(common) == 1:
                         for group in set_groups:
                             # Update status
-                            self.data['status'][gene_groups[group]] &= mask
-                            for ind in gene_groups[group]:
+                            self.data['status'][gene_groups[tuple(group)]] &= mask
+                            for ind in gene_groups[tuple(group)]:
                                 # Update gene and position
-                                if self.genes[ind, 0] == common:
+                                if self.genes[ind, 0] == common[0]:
                                     continue
-                                gene_index = (self.genes[ind] == common).nonzero()[1][0]
+                                gene_index = (self.genes[ind] == common[0]).nonzero()[1][0]
                                 self.genes[ind, 0] = self.genes[ind, gene_index]
-                                self.position[ind, 0] = self.position[ind, gene_index]
+                                self.positions[ind, 0] = self.positions[ind, gene_index]
                     else:
                         continue
                         # Todo: Likelihood model goes here

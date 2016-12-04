@@ -293,7 +293,7 @@ def run(args) -> None:
             log.info('Skipping barcode correction')
 
         # Resolve multimapping
-        ra.resolve_alignments(args.index)
+        ra.resolve_ambiguous_alignments()
         log.info('Read array after multialignment resolution: {}'.format(ra))
 
         # correct errors

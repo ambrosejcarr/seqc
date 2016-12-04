@@ -84,6 +84,12 @@ class UnionFind:
         """
         return self[next(iter(iterable))]
 
+def intersection(set_l):
+    res = set_l[0]
+    for s in set_l:
+        res = set(set(res) & set(s))
+    return res
+
 
 # # Some constants
 # NO_DISAMBIGUATION = 0
@@ -138,11 +144,6 @@ class UnionFind:
 #         if model[g]==1:
 #             return g
             
-# def intersection(set_l):
-#     res = set_l[0]
-#     for s in set_l:
-#         res = set(set(res) & set(s))
-#     return res
     
 # def get_combinations(l):
 #     res = []
