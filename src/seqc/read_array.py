@@ -8,6 +8,7 @@ import seqc.sequence.barcodes
 import tables as tb
 from itertools import chain, permutations
 from seqc import multialignment
+from seqc.sparse_frame import SparseFrame
 
 class ReadArray:
 
@@ -156,7 +157,6 @@ class ReadArray:
 
         if not ignore:  # save a bit of work by not &ing with mask
             for i, (data, gene, position) in enumerate(self):
-                print(data)
                 if data['status'] == 0:
                     yield i, data, gene, position
 
@@ -658,6 +658,7 @@ class ReadArray:
                 reads_mat[data['cell'], gene] = 1
 
             try:
+                rmt = data['rmt']
                 if rmt not in mols_mat[data['cell'], gene]:
                     mols_mat[data['cell'], gene].append(rmt)
             except KeyError:
@@ -672,6 +673,7 @@ class ReadArray:
         if csv_path is None:
             return reads_mat, mols_mat
 
+        # todo convert gene integers to symbols before saving csv
         f = open(csv_path+'reads_count.csv', 'w')
         for data['cell'], gene in reads_mat:
             f.write('{},{},{}\n'.format(data['cell'], gene, reads_mat[data['cell'], gene]))

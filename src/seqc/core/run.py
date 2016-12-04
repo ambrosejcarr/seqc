@@ -20,6 +20,7 @@ def run(args) -> None:
     from seqc.email import email_user
     from seqc.read_array import ReadArray
     from seqc.core import verify, download
+    from seqc import filter
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -303,6 +304,7 @@ def run(args) -> None:
         log.info('Read array after error correction: {}'.format(ra))
 
         # filter non-cells
+        log.info('Filtering errors')
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
@@ -310,6 +312,7 @@ def run(args) -> None:
         log.notify('ReadArray saved.')
 
         # todo fold all this output into a summary page
+        log.info('Creating filtered counts matrix')
         cell_filter_figure = 'cell_filters.png'
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
