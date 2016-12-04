@@ -190,9 +190,11 @@ def run(args) -> None:
         :returns read_array, input_data, upload_manager: ReadArray object,
           samfile ProcessManager, and number of processed sam records
         """
-        log.info('Filtering aligned records and constructing record database.')
+        log.info('Reading records from sam file into ReadArray.')
         read_array = ReadArray.from_samfile(
             samfile, index + 'annotations.gtf')
+        log.info('Reading sam file complete.')
+
 
         # TODO save the created ReadArray object
 
@@ -271,6 +273,8 @@ def run(args) -> None:
             manage_samfile, sam_records = None, None
             ra = ReadArray.load(args.read_array)
 
+        log.info('ReadArray construction complete.\n{}'.format(ra))
+
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
             args.min_poly_t = 0
@@ -279,49 +283,52 @@ def run(args) -> None:
 
         files = []
         #files += ra.to_count_matrix(args.output_prefix + '_phase1_')
-        log.info('Reading sam file: {}'.format(ra))
 
 
+        # For mars-seq we apply low coverage filter
+        #todo change the filter to be able to run on part of the read array so this can be done in a later stage
+        if platform.apply_low_coverage_filter:
+            log.info('Applying low coverage filter')
+            ra.filter_low_coverage()
+            log.info('Low coverage filtering complete.\n{}'.format(ra))
 
+        log.info('Applying filters')
         ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
         #files += ra.to_count_matrix(args.output_prefix + '_phase2_')
-        log.info('Filterring complete: {}'.format(ra))
+        log.info('Filterring complete.\n{}'.format(ra))
 
-        ##################
         # Correct barcodes
         if platform.check_barcodes:
             log.info('Applying barcode correction')
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
                                                      max_ed=args.max_ed)
             #files += ra.to_count_matrix(args. output_prefix + '_phase3_')
-            log.info('Barcode correction complete: {}'.format(ra))
+            log.info('Barcode correction complete.\n{}'.format(ra))
         else:
             error_rate = None
             log.info('Skipping barcode correction')
 
+        log.info('Resolving multi aligned reads.')
         # Resolve multimapping
         ra.resolve_alignments()
         #files += ra.to_count_matrix(args.output_prefix + '_phase4_')
-        log.info('Multialignment resolution complete: {}'.format(ra))
-
-        #For mars-seq we apply low coverage filter
-        if platform.apply_low_coverage_filter:
-            log.info('Applying low coverage filter')
-            ra.filter_low_coverage()
-            log.info('Low coverage filterring complete. {}'.format(ra))
+        log.info('Multialignment resolution complete.\n{}'.format(ra))
 
         # correct errors
         log.info('Filtering errors')
         # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
         platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
+        log.info('Error correction complete.\n{}'.format(ra))
+
+        log.info('Converting ReadArray to count matrix.')
         files += ra.to_count_matrix(args.output_prefix + '_phase5_')
-        log.info('Read array after error correction: {}'.format(ra))
 
         # filter non-cells
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
         ra.save(args.output_prefix + '.h5')
+        log.info('Count matrix conversion complete.')
         log.notify('ReadArray saved.')
 
         # todo fold all this output into a summary page
