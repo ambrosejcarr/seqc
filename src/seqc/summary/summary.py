@@ -70,108 +70,37 @@ class Section:
         return cls('STAR Alignment Summary', categories)
 
     @classmethod
-    def from_filters(cls, read_array):
+    def from_status_filters(cls):
+        """
+
+        :return:
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def from_cell_filtering(cls, read_array):
         """
 
         :param seqc.read_array.ReadArray read_array: ReadArray object
         :return:
         """
+        raise NotImplementedError
 
     @classmethod
-    def from_read_array(cls, read_array):
-        """includes error correction, filtering, multimapping
+    def from_basic_clustering_and_projection(cls):
+        """What if anything do we want to do here?
 
-        :param seqc.read_array.ReadArray read_array:
-        :return Section:
+        :return:
         """
         raise NotImplementedError
-
-    def from_dense_filtration(
-            self, total_mols, molecules_lost, cells_lost, cell_description):
-        """ cell selection, molecule distribution, etc.
-
-        :param total_mols:
-        :param molecules_lost:
-        :param cells_lost:
-        :param cell_description:
-        :return Section:
-        """
-        raise NotImplementedError
-
-    def from_dense_matrix(self):
-        raise NotImplementedError
-
-
-
-
-class KVSection:
-
-    def __init__(self, name, content):
-        """
-
-        :param name:
-        :param dict content:
-        """
-        self._name = name
-        self._content = content
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def content(self):
-        return self._content
-
-    @property
-    def keys(self):
-        return list(self.content.keys())
-
-    @property
-    def values(self):
-        return list(self.content.values())
 
     @classmethod
-    def from_alignment_summary(cls, alignment_summary):
-        alignment_data = OrderedDict
-        with open(alignment_summary, 'r') as f:
-            for line in f:
-                if '|' in line:
-                    k, v = [item.strip() for item in line.split('|')]
-                    alignment_data[k] = v
-
-        return cls('Alignment Results', alignment_data)
-
-
-class ImageSection:
-
-    def __init__(self, name, figure, caption, legend):
+    def from_overall_yield(cls):
         """
-        :param name:
-        :param figure:
-        :param caption:
-        :param legend:
+
+        :return:
         """
-        self._name = name
-        self._figure = figure
-        self._caption = caption
-        self._legend = legend
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def figure(self):
-        return self._figure
-
-    @property
-    def caption(self):
-        return self._caption
-
-    @property
-    def legend(self):
-        return self._legend
+        raise NotImplementedError
 
 
 class Summary:
@@ -180,36 +109,40 @@ class Summary:
         self.sections = sections
 
     def render(self):
+        """This should just loop over the sections and render them all
 
-        # render main section
-        # timing, progress, steps complete?
-
-        # render alignment summary
-        # parameters, alignment results, speed (maybe some minor figures?)
-        # duration
-
-        # render filtering (including error correction)
-        # image to show relative filtering amounts
-        # duration
-
-        # render multialignment (gain, loss, etc)
-        # same as above, show different categories that were recovered?
-
-        # render cell filtering
-        # this is already done, figure (add legend)
-
-        # render some QC plots for cells
-        # figures can be generate afterwards -- do some PCA, tSNE, filtering (?)
-
-        # store the html including css and js somewhere that can be zipped and uploaded
-        # for the user.
-
-        pass
+        :return:
+        """
+        raise NotImplementedError
 
 
 def create_seqc_summary(archive_name):
     """creates a SEQC summary from a pre-determined set of sections that are heuristically
     defined.
+
+    # render main section
+    # timing, progress, steps complete?
+
+    # render alignment summary
+    # parameters, alignment results, speed (maybe some minor figures?)
+    # duration
+
+    # render filtering (including error correction)
+    # image to show relative filtering amounts
+    # duration
+
+    # render multialignment (gain, loss, etc)
+    # same as above, show different categories that were recovered?
+
+    # render cell filtering
+    # this is already done, figure (add legend)
+
+    # render some QC plots for cells
+    # figures can be generate afterwards -- do some PCA, tSNE, filtering (?)
+
+    # store the html including css and js somewhere that can be zipped and uploaded
+    # for the user.
+
 
     :param str archive_name: name for the seqc archive that will be produced in .tar.gz
         format
