@@ -239,7 +239,7 @@ class ReadArray:
 
         ra = cls(data, gene.tocsr(), position.tocsr())
         ra.calculate_filtering_results(required_poly_t=required_poly_t)
-        return ra
+        return ra, num_reads
 
     def group_indices_by_cell(self, multimapping=False):
         """group the reads in ra.data by columns specified in "by", then return a tuple

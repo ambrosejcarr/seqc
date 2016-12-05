@@ -21,6 +21,7 @@ def run(args) -> None:
     from seqc.read_array import ReadArray
     from seqc.core import verify, download
     from seqc import filter
+    from seqc.sequence.gtf import GeneIntervals
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -180,7 +181,7 @@ def run(args) -> None:
         return samfile, upload_manager
 
     def create_read_array(
-            samfile, dir_, index, aws_upload_key) -> (str, str, io.ProcessManager, int):
+            samfile, dir_, index, aws_upload_key, min_poly_t) -> (str, str, io.ProcessManager, int, int):
         """Create or download a ReadArray object.
 
         :param samfile: str, filename of .sam file
@@ -191,10 +192,10 @@ def run(args) -> None:
           samfile ProcessManager, and number of processed sam records
         """
         log.info('Filtering aligned records and constructing record database.')
+        # Construct translator
+        translator =  GeneIntervals(index + 'annotations.gtf')
         read_array, sam_record_count = ReadArray.from_alignment_file(
-            samfile, index + 'annotations.gtf')
-
-        # TODO save the created ReadArray object
+            samfile, translator, min_poly_t)
 
         # converting sam to bam and uploading to S3, else removing samfile
         if aws_upload_key:
@@ -266,7 +267,7 @@ def run(args) -> None:
         if process_samfile:
             upload_samfile = args.upload_prefix if align else None
             ra, manage_samfile, sam_records = create_read_array(
-                args.samfile, output_dir, args.index, upload_samfile)
+                args.samfile, output_dir, args.index, upload_samfile, args.min_poly_t)
         else:
             manage_samfile, sam_records = None, None
             ra = ReadArray.load(args.read_array)
@@ -304,7 +305,7 @@ def run(args) -> None:
         log.info('Read array after error correction: {}'.format(ra))
 
         # filter non-cells
-        log.info('Filtering errors')
+        log.info('Filtering non cells')
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
@@ -340,13 +341,6 @@ def run(args) -> None:
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 
-            # todo read-array does not exist, no need to remove. waste of time
-            # # uploading read array to S3 if created, else removing read array
-            # if not process_samfile:
-            #     log.info('Removing .h5 file for memory management.')
-            #     rm_ra = 'rm {fname}'.format(fname=args.read_array)
-            #     io.ProcessManager(rm_ra).run_all()
-
         if manage_merged:
             manage_merged.wait_until_complete()
             log.info('Successfully uploaded %s to the specified S3 location "%s"' %
@@ -355,12 +349,6 @@ def run(args) -> None:
             manage_samfile.wait_until_complete()
             log.info('Successfully uploaded %s to the specified S3 location "%s"'
                      % (args.samfile, args.upload_prefix))
-
-        # todo we have no read_array now
-        # if manage_ra:
-        #     manage_ra.wait_until_complete()
-        #     log.info('Successfully uploaded %s to the specified S3 location "%s"' %
-        #              (args.read_array, args.aws_upload_key))
 
         log.info('SEQC run complete. Cluster will be terminated')
 
