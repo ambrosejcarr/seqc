@@ -7,7 +7,6 @@ from seqc.sparse_frame import SparseFrame
 import seqc.multialignment as mm
 import seqc.sequence.barcodes
 from itertools import permutations
-import time
 import tables as tb
 import pandas as pd
 from statsmodels.sandbox.stats.multicomp import multipletests as mt
@@ -406,7 +405,6 @@ class ReadArray:
             p_dic[cell, rmt] = the same with positions
         Note the mapped genes list should be sorted before converted to a tuple
         """
-        start = time.process_time()
 
         r_dic = {}
         g_dic = {}
@@ -435,8 +433,6 @@ class ReadArray:
                 g_dic[cell, rmt] = [[gene]]
                 p_dic[cell, rmt] = [[pos]]
 
-        tot_time=time.process_time()-start
-        log.info('Grouping for multimapping completed in {} seconds.'.format(tot_time))
         return r_dic, g_dic, p_dic
 
     def save(self, archive_name):
@@ -489,9 +485,7 @@ class ReadArray:
         3. There is more than one gene that can explain - can't be resolved
         4. There are a few models - for now no single model is being picked.
         """
-              
-        start = time.process_time()
-        total_reads = 0
+
 
         log.info('grouping for disambiguation')
         #Group according to cell/RMT
@@ -523,8 +517,6 @@ class ReadArray:
                         ReadArray.set_status_inactive(self.data[read_idx])
 
 
-        tot_time=time.process_time()-start
-        log.info('Multimapping resolution completed in {} seconds.'.format(tot_time))
         self.resolve_alignments = True
 
         return
