@@ -86,6 +86,10 @@ def parse_args(args):
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
                    default=1.0, type=float)
+    f.add_argument('--low-coverage-filter-alpha', metavar='LCF',
+                   help='Cutoff value used by the low coverage filter.  '
+                        'Applicable to mars3-seq only. Float between 0 and 1. Default: 0.25',
+                   default=0.25, type=float)
     f.set_defaults(filter_mitochondrial_rna=True)
     f.add_argument('--no-filter-mitochondrial-rna', action='store_false',
                    dest='filter_mitochondrial_rna',

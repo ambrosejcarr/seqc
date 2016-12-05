@@ -593,7 +593,7 @@ class ReadArray:
         return csv_path + 'reads_count.csv', csv_path + 'mols_count.csv',
 
 
-    def filter_low_coverage(self):
+    def filter_low_coverage(self, alpha_value = 0.25):
         cell = self.data['cell']
         position = self.data['position']
         rmt = self.data['rmt']
@@ -669,7 +669,7 @@ class ReadArray:
         p = total.apply(ReadArray.hypergeom_wrapper, axis=1)
         p = 1 - p
 
-        adj_p = mt(p, alpha=0.25, method='fdr_bh')
+        adj_p = mt(p, alpha=alpha_value, method='fdr_bh')
 
         keep = pd.DataFrame(adj_p[0])
         total['keep'] = keep

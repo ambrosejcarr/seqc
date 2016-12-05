@@ -285,13 +285,6 @@ def run(args) -> None:
         #files += ra.to_count_matrix(args.output_prefix + '_phase1_')
 
 
-        # For mars-seq we apply low coverage filter
-        #todo change the filter to be able to run on part of the read array so this can be done in a later stage
-        if platform.apply_low_coverage_filter:
-            log.info('Applying low coverage filter')
-            ra.filter_low_coverage()
-            log.info('Low coverage filtering complete.\n{}'.format(ra))
-
         log.info('Applying filters')
         ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
         #files += ra.to_count_matrix(args.output_prefix + '_phase2_')
@@ -313,6 +306,12 @@ def run(args) -> None:
         ra.resolve_alignments()
         #files += ra.to_count_matrix(args.output_prefix + '_phase4_')
         log.info('Multialignment resolution complete.\n{}'.format(ra))
+
+        # For mars-seq we apply low coverage filter
+        if platform.apply_low_coverage_filter:
+            log.info('Applying low coverage filter')
+            ra.filter_low_coverage(args.low_coverage_filter_alpha)
+            log.info('Low coverage filtering complete.\n{}'.format(ra))
 
         # correct errors
         log.info('Filtering errors')
