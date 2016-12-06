@@ -5,33 +5,8 @@ from seqc import log
 from seqc.read_array import ReadArray
 import time
 
-# def prepare_for_ec(ra):
-#     """
-#     Prepare the RA for error correction by grouping it according to cell,gene and rmt
 
-#     :param ra:
-#     """
-#     res = {}
-
-#     for i, v in enumerate(ra.data):
-#         if not ReadArray.is_active_read(v):
-#             continue
-
-#         gene = v['gene']
-#         cell = v['cell']
-#         rmt = v['rmt']
-#         try:
-#             res[gene, cell][rmt].append(i)
-#         except KeyError:
-#             try:
-#                 res[gene, cell][rmt] = [i]
-#             except KeyError:
-#                 res[gene, cell] = {}
-#                 res[gene, cell][rmt] = [i]
-
-#     return res
-
-
+# todo document me
 def generate_close_seq(seq):
     """ Return a list of all sequences that are up to 2 hamm distance from seq
     :param seq:
@@ -60,6 +35,7 @@ def generate_close_seq(seq):
     return res
 
 
+#todo document me
 def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
     """
     Return the probability of d_seq turning into r_seq based on the err_rate table
@@ -82,38 +58,41 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
         r_seq >>= 3
     return p
 
-def group_for_dropseq(ra):
-    """
-    Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
-    :param required_poly_t:
-    :param max_dust:
-    :param ra:
-    """
-    res = {}
+# def group_for_dropseq(ra):
+#     """
+#
+#     This function is likely deprecated and will be replaced by proper grouping method
+#     based on array sorting.
+#
+#     Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
+#     :param seqc.read_array.ReadArray ra:  ReadArray object to be grouped
+#     """
+#     res = {}
+#
+#     for i, v in enumerate(ra.data):
+#         if not ReadArray.is_active_read(v):
+#             continue
+#
+#         # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
+#         # gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
+#         cell = v['cell']
+#         cell_header = cell >> 3   # we only look at the first 11 bases
+#         rmt = v['rmt']
+#         gene = v['gene']
+#         try:
+#             res[cell_header][rmt][gene, cell].append(i)
+#         except KeyError:
+#             try:
+#                 res[cell_header][rmt][gene, cell] = [i]
+#             except KeyError:
+#                 try:
+#                     res[cell_header][rmt] = {(gene, cell): [i]}
+#                 except KeyError:
+#                     res[cell_header] = {rmt: {(gene, cell): [i]}}
+#     return res
 
-    for i, v in enumerate(ra.data):
-        if not ReadArray.is_active_read(v):
-            continue
-        
-        # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
-        # gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
-        cell = v['cell']
-        cell_header = cell >> 3   # we only look at the first 11 bases
-        rmt = v['rmt']
-        gene = v['gene']
-        try:
-            res[cell_header][rmt][gene, cell].append(i)
-        except KeyError:
-            try:
-                res[cell_header][rmt][gene, cell] = [i]
-            except KeyError:
-                try:
-                    res[cell_header][rmt] = {(gene, cell): [i]}
-                except KeyError:
-                    res[cell_header] = {rmt: {(gene, cell): [i]}}
-    return res
 
-
+# todo document me
 def drop_seq(alignments_ra, *args, **kwargs):
     raise NotImplementedError  # todo port to use gene/position csr
 
@@ -202,7 +181,14 @@ def drop_seq(alignments_ra, *args, **kwargs):
     log.info('Error correction finished in {}'.format(time.process_time() - start))
     return
 
+# todo document me
 def base_count(seq_dic, umi_len=8):
+    """
+
+    :param seq_dic:
+    :param umi_len:
+    :return:
+    """
     count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
                  'T': np.zeros(umi_len)}
     for seq in seq_dic:
@@ -215,23 +201,8 @@ def base_count(seq_dic, umi_len=8):
         count_mat[base] /= tot
     return count_mat
 
-# def in_drop(alignments_ra, error_rate, apply_likelihood=True, alpha=0.05, singleton_weight=1):
-#     """
-#     Recieve an RA and return a bool matrix of identified errors according to each
-#     method
 
-#     :param alignments_ra:
-#     :param apply_likelihood:
-#     :param alpha:
-#     :return:
-#     """
-
-#     ra_grouped = prepare_for_ec(alignments_ra)
-#     grouped_res_dic = correct_errors(alignments_ra, ra_grouped, error_rate, p_value=alpha, apply_likelihood = apply_likelihood, singleton_weight=singleton_weight)
-
-#     return grouped_res_dic
-
-
+# todo document me
 def in_drop(ra, error_rate, alpha=0.05):
     """ Tag any RMT errors
 
@@ -245,26 +216,23 @@ def in_drop(ra, error_rate, alpha=0.05):
     _correct_errors(indices_grouped_by_cells, ra, error_rate, alpha)
 
 
-
-# def _correct_errors(ra, inds, err_rate, p_value=0.05, apply_likelihood=True, singleton_weight=1):
+# todo document me
 def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
-    """
-    Calculate and correct errors in barcode sets
+    """Calculate and correct errors in RMTs
 
     :param ra:
-    :param ra_grouped:
-    :param err_rate: A table of the estimate base switch error rate, produced ReadArray.applu_barcode_correction().
+    :param err_rate: A table of the estimate base switch error rate, produced
+      ReadArray.apply_barcode_correction().
     :param p_value: The p_value used for the likelihood method
-    :param apply_likelihood: apply the likelihood method in addition to the Jaitin et al method (Allons)
-    :return:
+    :return None:
     """
 
     for cell_group in indices_grouped_by_cells:
 
         # Breaks for each gene
         gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
-        breaks = np.where( np.diff(ra.genes[gene_inds]) )[0] + 1
-        splits = np.split( gene_inds, breaks )
+        breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
+        splits = np.split(gene_inds, breaks)
 
         for inds in splits:
             # RMT groups
@@ -279,8 +247,8 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
             if len(rmt_groups) == 1:
                 continue
 
-            # todo : decide what to do with Ns: This logic retains RMTs with N if no donor 
-            # is found and contributes to the molecule count
+            # This logic retains RMTs with N if no donor is found and contributes to the
+            # molecule count
             for rmt in rmt_groups.keys():
 
                 # Enumerate all possible RMTs with hamming distances 1 and/or 2
@@ -288,17 +256,17 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
                 # Simulatenously, check if Jaitin error correction can be applied
                 jaitin_corrected = False
                 expected_errors = 0
-                for donor_rmt in generate_close_seq( rmt ):
+                for donor_rmt in generate_close_seq(rmt):
 
                     # Check if donor is detected
                     try:
-                        donor_count = len( rmt_groups[donor_rmt] )
+                        donor_count = len(rmt_groups[donor_rmt])
                     except KeyError:
                         continue
 
                     # Build likelihood
                     # Probability of converting donor to target
-                    p_dtr = probability_for_convert_d_to_r( donor_rmt, rmt, err_rate )
+                    p_dtr = probability_for_convert_d_to_r(donor_rmt, rmt, err_rate)
                     # Number of occurances
                     expected_errors += donor_count * p_dtr
 
@@ -308,97 +276,15 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
                         donor_positions = ra.positions[rmt_groups[donor_rmt]]
 
                         # Is reference a subset of the donor ? 
-                        if (set(ref_positions)).issubset( donor_positions ):
+                        if (set(ref_positions)).issubset(donor_positions):
                             jaitin_corrected = True
                             jaitin_donor = donor_rmt
 
                 # Probability that the RMT is an error
-                p_val_err = gammainc(len( rmt_groups[rmt] ) , expected_errors)
+                p_val_err = gammainc(len(rmt_groups[rmt]), expected_errors)
 
-
-                # Remove Jaitin corrected reads if likelihood of RMT being an error is high
+                # Remove Jaitin corrected reads if probability of RMT == error is high
                 if p_val_err > p_value and jaitin_corrected:
                     # Mark as error
                     ra.data['status'][rmt_groups[rmt]] |= ra.filter_codes['rmt_error']
                     ra.data['rmt'][rmt_groups[rmt]] = jaitin_donor
-
-
-
-
-    # start = time.process_time()
-    # d = ra_grouped
-    # grouped_res_dic = {}
-    # rmt_N = 0
-    # N = DNA3Bit.encode(b'N')
-
-    # for feature, cell in d.keys():
-    #     retained_rmts = 0.0
-    #     retained_reads = 0
-
-    #     for r_seq in d[feature, cell].keys():
-    #         if DNA3Bit.contains(r_seq, N):  # todo This throws out more than we want?
-    #             rmt_N += 1
-    #             continue
-
-    #         gene = feature
-    #         r_num_occurences = len(d[gene , cell][r_seq])
-    #         r_pos_list = np.hstack(ra.data['position'][d[feature, cell][r_seq]])
-
-    #         expected_errors = 0
-    #         jait = False
-    #         for d_rmt in generate_close_seq(r_seq):
-    #             try:
-    #                 d_num_occurences = len(d[gene, cell][d_rmt])
-    #             except KeyError:
-    #                 continue
-    #             # This can cut running time but will have a less accurate likelihood
-    #             # model. It is currently not used.
-    #             # if d_num_occurences<=donor_cutoff:
-    #             #    continue
-
-    #             p_dtr = prob_d_to_r_bin(d_rmt, r_seq, err_rate)
-    #             expected_errors += d_num_occurences * p_dtr
-
-    #             # do Jaitin
-    #             if not jait:
-    #                 d_pos_list = np.hstack(ra.data['position'][d[feature, cell][d_rmt]])
-    #                 if set(r_pos_list).issubset(set(d_pos_list)):
-    #                     # err_correction_res[ra_grouped[gene, cell][r_seq],
-    #                     #                    ERROR_CORRECTION_jaitin] = 1
-    #                     jait = True
-
-    #         # P(x>=r_num_occurences)
-    #         p_val_not_err = gammainc(r_num_occurences, expected_errors)
-
-    #         if apply_likelihood:
-    #             if not jait or p_val_not_err <= p_value:
-    #                 #not error
-    #                 if r_num_occurences == 1:
-    #                     retained_rmts += singleton_weight
-    #                 else:
-    #                     retained_rmts += 1
-    #                 retained_reads += r_num_occurences
-    #             else:
-    #                 #error
-    #                 for ind in d[gene, cell][r_seq]:
-    #                     ReadArray.set_error_status_on(ra.data[ind])
-    #         elif not jait:
-    #             #not error
-    #             if r_num_occurences == 1:
-    #                 retained_rmts += singleton_weight
-    #             else:
-    #                 retained_rmts += 1
-    #             retained_reads += r_num_occurences
-    #         else:
-    #             #error
-    #             for ind in d[gene, cell][r_seq]:
-    #                 ReadArray.set_error_status_on(ra.data[ind])
-
-    #     # No need to return
-    #     # grouped_res_dic[feature, cell] = retained_rmts, retained_reads
-    
-    # log.info('Molecules with N that were ignored: {}'.format(rmt_N))
-    # tot_time=time.process_time() - start
-    # log.info('total error correction runtime: {}'.format(tot_time))    
-    
-    # return grouped_res_dic
