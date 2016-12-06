@@ -1,14 +1,15 @@
-from multiprocessing import Pool
-from contextlib import closing
 import numpy as np
+import pandas as pd
 from seqc.alignment import sam
 from seqc.sequence.encodings import DNA3Bit
 from scipy.sparse import coo_matrix, csr_matrix
 import seqc.sequence.barcodes
 import tables as tb
-from itertools import chain, permutations
+from itertools import permutations
 from seqc import multialignment
 from seqc.sparse_frame import SparseFrame
+from seqc import log
+
 
 class ReadArray:
 
@@ -102,7 +103,7 @@ class ReadArray:
         'lonely_triplet': 0b1000000,  # todo could call this low coverage?
     }
 
-    def calculate_filtering_results(self, required_poly_t=1):
+    def initial_filtering(self, required_poly_t=1):
         """Apply different filters to the read array. If a read fails a filter, it is not
         passed to the others and so the counts for each filter is the number of reads that
         failed that one but passed all previous ones Filters are not ordered in any
@@ -238,7 +239,7 @@ class ReadArray:
                               dtype=np.int32)
 
         ra = cls(data, gene.tocsr(), position.tocsr())
-        ra.calculate_filtering_results(required_poly_t=required_poly_t)
+        ra.initial_filtering(required_poly_t=required_poly_t)
         return ra, num_reads
 
     def group_indices_by_cell(self, multimapping=False):
@@ -609,7 +610,7 @@ class ReadArray:
         # to instead set self['status'][~keep] |= self.filter_codes['lonely_triplet']
 
         # scipy hypergeom
-        p = total.apply(hypergeom_wrapper, axis=1)
+        p = total.apply(self.hypergeom_wrapper, axis=1)
         p = 1 - p
 
         from statsmodels.sandbox.stats.multicomp import multipletests as mt

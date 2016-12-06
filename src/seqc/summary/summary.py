@@ -1,5 +1,6 @@
 from jinja2 import Environment, PackageLoader
 from collections import OrderedDict, namedtuple
+import numpy as np
 
 
 ImageContent = namedtuple('ImageContent', ['image', 'caption', 'legend'])
@@ -70,16 +71,71 @@ class Section:
         return cls('STAR Alignment Summary', categories)
 
     @classmethod
-    def from_status_filters(cls):
+    def from_status_filters(cls, ra):
+        """run after ReadArray is initialized and initial_filtering() has been run.
+
+        :param ra: ReadArray object
+        :return cls: Section containing initial filtering results
+        """
+        # todo replace whitespace characters with html equiv, add space b/w lines
+        description = (
+            'Initial filters are run over the sam file while our ReadArray database is '
+            'being constructed. These filters indicate heuristic reasons why reads '
+            'should be omitted from downstream operations:\n'
+            'no gene: Regardless of the read\'s genomic alignment status, there was no '
+            'transcriptomic alignment for this read.\n'
+            'gene not unique: this indicates that more than one alignment was recovered '
+            'for this read. We attempt to resolve these multi-alignments downstream. '
+            'primer missing: This is an in-drop specific filter, it indices that the '
+            'spacer sequence could not be identified, and thus neither a cell barcode '
+            'nor an rmt were recorded for this read.\n'
+            'low poly t: the primer did not display enough t-sequence in the primer '
+            'tail, where these nucleotides are expected. This indicates an increased '
+            'probability that this primer randomly primed, instead of hybridizing with '
+            'the poly-a tail of an mRNA molecule.')
+        description_section = TextContent(description)
+
+        keys = ('no gene', 'gene not unique', 'primer missing', 'low poly t')
+        values = (
+            np.sum(ra['status'] & ra.filter_codes['no_gene']),
+            np.sum(ra['status'] & ra.filter_codes['gene_not_unique']),
+            np.sum(ra['status'] & ra.filter_codes['primer_missing']),
+            np.sum(ra['status'] & ra.filter_codes['low_polyt'])
+        )
+        data_section = DataContent(keys, values)
+        return cls(
+            'Initial Filtering',
+            {'Description': description_section, 'Results': data_section})
+
+    @classmethod
+    def cell_barcode_correction(cls, ra):
         """
 
+        :param ra:
         :return:
         """
-        raise NotImplementedError
+        description = ''  # todo implement
+        description_section = TextContent(description)
+        data_section = DataContent(
+            ['cell error'],
+            [np.sum(ra['status'] & ra.filter_codes['cell_error'])])
+        return cls(
+            'Cell Barcode Correction',
+            {'Description': description_section, 'Results': data_section})
+
+    @classmethod
+    def error_correction(cls, read_array):
+        raise NotImplementedError  # describe, then summarize
+
+    @classmethod
+    def resolve_multiple_alignments(cls, read_array):
+        raise NotImplementedError  # describe, then summarize
 
     @classmethod
     def from_cell_filtering(cls, read_array):
         """
+
+        This is the figure, but it needs a caption!
 
         :param seqc.read_array.ReadArray read_array: ReadArray object
         :return:
@@ -90,6 +146,9 @@ class Section:
     def from_basic_clustering_and_projection(cls):
         """What if anything do we want to do here?
 
+        # parameterize (default = True?)
+        user could specify desire for median norm, PCA + tsne.
+
         :return:
         """
         raise NotImplementedError
@@ -97,6 +156,8 @@ class Section:
     @classmethod
     def from_overall_yield(cls):
         """
+
+        % losses from original yield summary, can wait.
 
         :return:
         """
