@@ -2,10 +2,7 @@ import re
 import fileinput
 import string
 from collections import defaultdict
-from copy import deepcopy
-import pandas as pd
-from seqc import reader, log
-import time
+from seqc import reader
 from intervaltree import IntervalTree
 
 
