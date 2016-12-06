@@ -304,6 +304,11 @@ def run(args) -> None:
         platform.correct_errors(ra, error_rate)
         log.info('Read array after error correction: {}'.format(ra))
 
+        # Apply low coverage filter
+        if 'mars' in args.platform:
+            log.info('Low coverage filter')
+            platform.filter_low_coverage()
+
         # filter non-cells
         log.info('Filtering non cells')
         sp_reads, sp_mols = ra.to_count_matrix(
