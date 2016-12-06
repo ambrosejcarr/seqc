@@ -9,6 +9,7 @@ from itertools import permutations
 from seqc import multialignment
 from seqc.sparse_frame import SparseFrame
 from seqc import log
+from scipy.stats import hypergeom
 
 
 class ReadArray:
@@ -243,28 +244,14 @@ class ReadArray:
         return ra, num_reads
 
     def group_indices_by_cell(self, multimapping=False):
-        """group the reads in ra.data by columns specified in "by", then return a tuple
-        containing one array per group that consists of all the indicies corresponding
-        to the positions of reads in self.data which pass filters.
-
-        example usage:
-
-        # group over molecules for multimapping
-        self.group_filtered_indices(by=('cell, 'rmt'), multimapping=True)
-
-        # group over gene/cell pairs for rmt correction; additional sort must be done
-        # over genes within the error correction functions
-        self.group_filtered_indices(by='cell')
+        """group the reads in ra.data by cell.
 
         :param bool multimapping: if True, then reads are not filtered if they have
           alignments to more than one gene
-        :param tuple|str by: group over these columns of self.data
         :return [np.array]: list of numpy arrays, each containing all of the indices for
           reads that correspond to a group, defined as a unique combination of the
           columns specified in parameter by.
         """
-
-        # todo verify that this does not require any propagation later in the function
         idx = np.argsort(self.data['cell'])
 
         # filter the index for reads that
@@ -277,11 +264,13 @@ class ReadArray:
 
         # determine which positions in idx are the start of new groups (boolean, True)
         # convert boolean positions to indices, add start and end points.
-        breaks = np.where( np.diff(self.data['cell'][idx]) )[0] + 1
+        breaks = np.where( np.diff(self.data['cell'][idx]))[0] + 1
         # use these break points to split the filtered index according to "by"
         return np.split(idx, breaks)
 
-    def apply_barcode_correction(self, platform, barcode_files, max_ed=2, default_error_rate=0.02):
+    # todo document me
+    def apply_barcode_correction(self, platform, barcode_files, max_ed=2,
+                                 default_error_rate=0.02):
         """
         Correct reads with incorrect barcodes according to the correct barcodes files.
         Reads with barcodes that have too many errors are filtered out.
@@ -291,18 +280,19 @@ class ReadArray:
         valid_barcodes = []
         for barcode_file in barcode_files:
             with open(barcode_file, 'r') as f:
-                valid_barcodes.append(set(DNA3Bit.encode(line.strip()) for line in f.readlines()))
+                valid_barcodes.append(set(DNA3Bit.encode(line.strip()) for line in
+                                          f.readlines()))
         
         # Containers         
         num_barcodes = platform.num_barcodes
-        correct                 = [None]*num_barcodes
-        edit_dist               = [None]*num_barcodes
+        correct = [None] * num_barcodes
+        edit_dist = [None] * num_barcodes
 
         # Error table container
         errors = [p for p in permutations(DNA3Bit.bin2strdict.keys(), r=2)]
-        error_table = dict( zip(errors, np.zeros(len(errors))) )
-        cor_instance_table = dict( zip(DNA3Bit.bin2strdict.keys(), 
-            np.zeros(len(DNA3Bit.bin2strdict))) )
+        error_table = dict(zip(errors, np.zeros(len(errors))))
+        cor_instance_table = dict(zip(DNA3Bit.bin2strdict.keys(),
+                                      np.zeros(len(DNA3Bit.bin2strdict))))
         
         # Check if the barcode has to be an exact match
         exact_match = False
@@ -315,15 +305,14 @@ class ReadArray:
         for inds in indices_grouped_by_cells:
 
             # Extract barcodes for one of the reads
-            barcodes = platform.extract_barcodes( self.data['cell'][inds[0]] )
+            barcodes = platform.extract_barcodes(self.data['cell'][inds[0]])
 
             # Identify correct barcode
             for i in range(num_barcodes):
-                correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(barcodes[i], 
-                    valid_barcodes[i], exact_match)
+                correct[i], edit_dist[i] = seqc.sequence.barcodes.find_correct_barcode(
+                    barcodes[i], valid_barcodes[i], exact_match)
 
-
-            # 1. If all edit distances are 0, barcodes are correct, 
+            # 1. If all edit distances are 0, barcodes are correct,
             #    update the correct instance table
             # 2. Correct any barcodes within permissible edit distance,
             #    update the correct instance table for non-errored bases,
@@ -338,12 +327,11 @@ class ReadArray:
                     tmp_bc >>= 3
 
             elif max(edit_dist) > max_ed:
-                self.data['status'][inds] |= self.filter_codes[ 'cell_error' ]
+                self.data['status'][inds] |= self.filter_codes['cell_error']
                 continue
 
             else:
-                # These barcodes can be corrected,
-                # Count the number of correct bases
+                # These barcodes can be corrected, Count the number of correct bases
                 # Update the error table if there was only one error across the barcodes                
                 tmp_bc = DNA3Bit.ints2int(barcodes)
                 tmp_cor = DNA3Bit.ints2int(correct)
@@ -356,35 +344,37 @@ class ReadArray:
                     if tmp_bc & 0b111 == tmp_cor & 0b111:
                         cor_instance_table[tmp_bc & 0b111] += 1
                     elif sum(edit_dist) == 1:
-                        error_table[ (tmp_cor & 0b111, tmp_bc & 0b111) ] += 1
+                        error_table[(tmp_cor & 0b111, tmp_bc & 0b111)] += 1
                     tmp_bc >>= 3
                     tmp_cor >>= 3
 
         # Create error rate table
         if sum(error_table.values()) == 0:
-            log.info('No errors were detected or barcodes do not support error correction, using %f uniform error chance.' % (default_error_rate))
+            log.info('No errors were detected or barcodes do not support error '
+                     'correction, using %f uniform error chance.' % default_error_rate)
             err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
+        # todo @Manu bug here, we're always setting the error rate even if there are
+        # no detected errors. should the following line be in an "else" clause?
         err_rate = dict(zip(errors, [0.0] * len(errors)))
         for k, v in error_table.items():
             if DNA3Bit.decode(k[0]) in b'Nn':
                 continue
             try:
-                err_rate[k] = v / (sum(n for err_type, n in error_table.items() 
-                    if err_type[0] == k[0]) +  cor_instance_table[k[0]])
+                err_rate[k] = v / (sum(n for err_type, n in error_table.items()
+                                       if err_type[0] == k[0]) + cor_instance_table[k[0]])
             except ZeroDivisionError:
-                log.info('Warning: too few reads to estimate error rate for %s,\
-                 setting default rate of %f' % (str(DNA3Bit.decode(k)), default_error_rate))
+                log.info('Warning: too few reads to estimate error rate for %s, setting '
+                         'default rate of %f' %
+                         (str(DNA3Bit.decode(k)), default_error_rate))
                 err_rate[k] = default_error_rate
 
         return err_rate
 
-
-
-    def save(self, archive_name: str) -> None:
+    def save(self, archive_name):
         """save a ReadArray object as an hdf5 archive
 
-        :param archive_name: filestem for the new archive
-        :return: None
+        :param str archive_name: filestem for the new archive
+        :return None:
         """
 
         def store_carray(archive, array, name):
@@ -416,12 +406,12 @@ class ReadArray:
         f.close()
 
     @classmethod
-    def load(cls, archive_name: str):
+    def load(cls, archive_name):
         """load a ReadArray from an hdf5 archive, note that ma_pos and ma_genes are
         discarded.
 
-        :param archive_name: name of a .h5 archive containing a saved ReadArray object
-        :return: ReadArray
+        :param str archive_name: name of a .h5 archive containing a saved ReadArray object
+        :return ReadArray:
         """
 
         f = tb.open_file(archive_name, mode='r')
@@ -441,8 +431,12 @@ class ReadArray:
 
         return cls(data, genes, positions)
 
-
+    # todo document me
     def resolve_ambiguous_alignments(self):
+        """
+
+        :return:
+        """
 
         # Resolve alignments
         indices_grouped_by_cells = self.group_indices_by_cell(multimapping=True)
@@ -453,21 +447,21 @@ class ReadArray:
         self.genes = np.ravel(self.genes.tocsc()[:, 0].todense()) 
         self.positions = np.ravel(self.positions.tocsc()[:, 0].todense())
 
-
+    # todo reconcile documentation with new method
     def _resolve_alignments(self, indices_grouped_by_cells):
         """
         Resolve ambiguously aligned molecules and edit the ReadArray data structures
         in-place to reflect the more specific gene assignments.
-        args:
-        index: path were p_coalignment_array.p is found - . 
-        
+
         After loading the co alignment matrix we group the reads of the ra by cell/rmt. 
-        In each group we look at the different disjoint subsetes of genes reads are aligned to.
-        For each subset there are 4 options:
-        1. It includes one gene only (no disambiguation).
-        2. There is a single gene that explains all (resolved gene)
-        3. There is more than one gene that can explain - can't be resolved
-        4. There are a few models - for now no single model is being picked.
+        In each group we look at the different disjoint subsetes of genes reads are
+        aligned to.
+
+        side effect: # todo write here.
+
+        :param list indices_grouped_by_cells: list of numpy arrays containing indices to
+          ReadArray rows that correspond to each cell
+        :return None:
         """
         
         # Mask for reseting status on resolved genes
@@ -477,8 +471,8 @@ class ReadArray:
 
             # Sort by molecules
             inds = cell_group[np.argsort(self.data['rmt'][cell_group])]
-            breaks = np.where( np.diff(self.data['rmt'][inds]) )[0] + 1
-            indices_grouped_by_molecule = np.split( inds, breaks )
+            breaks = np.where(np.diff(self.data['rmt'][inds]))[0] + 1
+            indices_grouped_by_molecule = np.split(inds, breaks)
 
             # Each molecule group
             for mol_group in indices_grouped_by_molecule:
@@ -486,32 +480,32 @@ class ReadArray:
                 # Number of reads mapping to different sets of genes
                 gene_groups = {}
                 for ind in mol_group:
-                    key = tuple(np.sort( self.genes[ind].data ))
+                    key = tuple(np.sort(self.genes[ind].data))
                     try:
                         gene_groups[key].append(ind)
                     except KeyError:
                         gene_groups[key] = [ind]
 
                 # Return if there is only one gene group
-                if len( gene_groups ) == 1:
+                if len(gene_groups) == 1:
                     continue
 
                 # Divide into disjoint sets
                 uf = multialignment.UnionFind()
-                uf.union_all( gene_groups.keys() )
-                set_membership, sets = uf.find_all( gene_groups.keys() )
+                uf.union_all(gene_groups.keys())
+                set_membership, sets = uf.find_all(gene_groups.keys())
 
                 # Disambiguate each set
-                keys = np.array( list(gene_groups.keys()) )
+                keys = np.array(list(gene_groups.keys()))
                 for s in sets:
-                    set_groups = keys[ set_membership == s ]
+                    set_groups = keys[set_membership == s]
 
                     # Return if the set contains only one group
-                    if len( set_groups ) == 1:
+                    if len(set_groups) == 1:
                         continue
 
                     # Disambiguate if possible
-                    common = list(multialignment.intersection( set_groups ))
+                    common = list(multialignment.intersection(set_groups))
 
                     # Resolved if there is only one common gene
                     if len(common) == 1:
@@ -522,7 +516,8 @@ class ReadArray:
                                 # Update gene and position
                                 if self.genes[ind, 0] == common[0]:
                                     continue
-                                gene_index = (self.genes[ind] == common[0]).nonzero()[1][0]
+                                gene_index = (
+                                    self.genes[ind] == common[0]).nonzero()[1][0]
                                 self.genes[ind, 0] = self.genes[ind, gene_index]
                                 self.positions[ind, 0] = self.positions[ind, gene_index]
                     else:
@@ -535,9 +530,9 @@ class ReadArray:
             raise RuntimeError(
                 'Please run resolve alignments before filtering lonely triplets')
 
-        cell = self['cell']
+        cell = self.data['cell']
         position = self.positions
-        rmt = self['rmt']
+        rmt = self.data['rmt']
         genes = self.genes
 
         # A triplet is a (cell, position, rmt) triplet in each gene
@@ -624,14 +619,18 @@ class ReadArray:
 
         return remove
 
+    # todo document me
+    @staticmethod
     def hypergeom_wrapper(x):
+        """
 
-        from scipy.stats import hypergeom
+        :param x:
+        :return:
+        """
         p = hypergeom.cdf(x['lonely triplets at pos'], x['Num Triplets at Gene'],
                           x['lonely triplets at gen'], x['Num Triplets at Pos'])
         # print(p)
         return p
-
 
     def to_count_matrix(self, csv_path=None, sparse_frame=False, genes_to_symbols=False):
         """Convert the ReadArray into a count matrix.
@@ -654,7 +653,7 @@ class ReadArray:
         for i, data, gene, pos in self.iter_active():
 
             try:
-                reads_mat[data['cell'], gene] = reads_mat[data['cell'], gene]+1
+                reads_mat[data['cell'], gene] += 1
             except KeyError:
                 reads_mat[data['cell'], gene] = 1
 
@@ -680,5 +679,3 @@ class ReadArray:
             f.write('{},{},{}\n'.format(data['cell'], gene, reads_mat[data['cell'], gene]))
 
         f.close()
-
-
