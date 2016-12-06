@@ -9,12 +9,10 @@ def run(args) -> None:
 
     # import inside module for pickle functionality
     # top 2 only needed for post-filtering
-    # from seqc.filter import create_filtered_dense_count_matrix  # todo can remove this?
-    # from seqc.sparse_frame import SparseFrame  # todo can remove this?
 
     import os
     import multiprocessing
-    from seqc import log, ec2, platforms, filter, io
+    from seqc import log, ec2, platforms, io
     from seqc.sequence import fastq
     from seqc.alignment import star
     from seqc.email import email_user
@@ -22,6 +20,8 @@ def run(args) -> None:
     from seqc.core import verify, download
     from seqc import filter
     from seqc.sequence.gtf import GeneIntervals
+    from seqc.summary.summary import Section, Summary
+    from collections import OrderedDict
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -180,20 +180,20 @@ def run(args) -> None:
             upload_manager = None
         return samfile, upload_manager
 
-    def create_read_array(
-            samfile, dir_, index, aws_upload_key, min_poly_t) -> (str, str, io.ProcessManager, int, int):
+    def create_read_array(samfile, dir_, index, aws_upload_key, min_poly_t):
         """Create or download a ReadArray object.
 
-        :param samfile: str, filename of .sam file
-        :param dir_: str, directory for output files
-        :param index: str, directory containing index files
-        :param aws_upload_key: str, key where aws files should be uploaded
-        :returns read_array, input_data, upload_manager: ReadArray object,
+        :param str samfile: filename of .sam file
+        :param str dir_: directory for output files
+        :param str index: directory containing index files
+        :param str aws_upload_key: key where aws files should be uploaded
+        :param int min_poly_t: minimum number of poly_t nucleotides for a read to be valid
+        :returns ReadArray, UploadManager, int: ReadArray object,
           samfile ProcessManager, and number of processed sam records
         """
         log.info('Filtering aligned records and constructing record database.')
         # Construct translator
-        translator =  GeneIntervals(index + 'annotations.gtf')
+        translator = GeneIntervals(index + 'annotations.gtf')
         read_array, sam_record_count = ReadArray.from_alignment_file(
             samfile, translator, min_poly_t)
 
@@ -212,6 +212,7 @@ def run(args) -> None:
             rm_samfile = 'rm %s' % samfile
             io.ProcessManager(rm_samfile).run_all()
             upload_manager = None
+            # todo I think the sam upload manager breaks and produces truncated files
         return read_array, upload_manager, sam_record_count
 
     # ######################## MAIN FUNCTION BEGINS HERE ################################
@@ -254,7 +255,7 @@ def run(args) -> None:
                 platform, args.barcode_fastq, args.output_prefix,
                 args.genomic_fastq)
         else:
-            input_fastq_records = None
+            input_fastq_records = None  # todo remove this return value if not used
 
         if align:
             upload_merged = args.upload_prefix if merge else None
@@ -272,30 +273,29 @@ def run(args) -> None:
             manage_samfile, sam_records = None, None
             ra = ReadArray.load(args.read_array)
 
+        # create the first summary section here
+        status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
+
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
             args.min_poly_t = 0
             log.notify('Warning: SEQC started from step other than unmerged fastq with '
                        'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
 
-        files = []
+        # todo fix all these logging messages and determine where we want to time things
         log.info('Read array after reading sam file: {}'.format(ra))
-        # # Apply filters
-        # ra.apply_filters(
-        #     required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
-        # log.info('Read array after filtering: {}'.format(ra))
 
         # Correct barcodes
         if platform.check_barcodes:
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
-                             max_ed=args.max_ed)
+                                                     max_ed=args.max_ed)
             log.info('Read array after barcode correction: {}'.format(ra))
         else:
             error_rate = None
             log.info('Skipping barcode correction')
 
         # Resolve multimapping
-        ra.resolve_ambiguous_alignments()
+        mm_results = ra.resolve_ambiguous_alignments()
         log.info('Read array after multialignment resolution: {}'.format(ra))
 
         # correct errors
@@ -312,7 +312,6 @@ def run(args) -> None:
         ra.save(args.output_prefix + '.h5')
         log.notify('ReadArray saved.')
 
-        # todo fold all this output into a summary page
         log.info('Creating filtered counts matrix')
         cell_filter_figure = 'cell_filters.png'
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
@@ -325,9 +324,29 @@ def run(args) -> None:
         if os.path.isfile(output_dir + '/alignments/Log.final.out'):
             os.rename(output_dir + '/alignments/Log.final.out',
                       output_dir + '/alignment_summary.txt')
-            files += [output_dir + '/alignment_summary.txt']
 
-        files += [dense_csv, cell_filter_figure, args.output_prefix + '.h5']
+        files = [output_dir + '/alignment_summary.txt',
+                 dense_csv,
+                 cell_filter_figure,
+                 args.output_prefix + '.h5']
+
+        # create the sections for the summary object
+        sections = [
+            Section.from_alignment_summary(
+                output_dir + '/alignment_summary.txt', 'alignment_summary.html'),
+            status_filters_section,
+            Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
+            Section.from_rmt_correction(ra, 'rmt_correction.html'),
+            Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html'),
+            Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html')]
+
+        seqc_summary = Summary(output_dir + '/summary', sections)
+        seqc_summary.prepare_archive()
+        seqc_summary.import_image(cell_filter_figure)
+        seqc_summary.render()
+        summary_archive = seqc_summary.compress_archive()
+
+        files += [summary_archive]
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return
@@ -365,9 +384,6 @@ def run(args) -> None:
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 
-        # TODO: I need to create summary but from the read_array instead of via error
-        # correction
-        # TODO: generate a printout of these for the summary
         if mutt:
             email_body = (
                 '<font face="Courier New, Courier, monospace">'

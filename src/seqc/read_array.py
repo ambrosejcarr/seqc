@@ -10,6 +10,7 @@ from seqc import multialignment
 from seqc.sparse_frame import SparseFrame
 from seqc import log
 from scipy.stats import hypergeom
+from collections import OrderedDict
 
 
 class ReadArray:
@@ -264,7 +265,7 @@ class ReadArray:
 
         # determine which positions in idx are the start of new groups (boolean, True)
         # convert boolean positions to indices, add start and end points.
-        breaks = np.where( np.diff(self.data['cell'][idx]))[0] + 1
+        breaks = np.where(np.diff(self.data['cell'][idx]))[0] + 1
         # use these break points to split the filtered index according to "by"
         return np.split(idx, breaks)
 
@@ -435,17 +436,19 @@ class ReadArray:
     def resolve_ambiguous_alignments(self):
         """
 
-        :return:
+        :return dict mm_results: dictionary containing information on how many molecules
+          were resolved by this algorithm
         """
 
         # Resolve alignments
         indices_grouped_by_cells = self.group_indices_by_cell(multimapping=True)
-        self._resolve_alignments(indices_grouped_by_cells)
+        mm_results = self._resolve_alignments(indices_grouped_by_cells)
 
         # Reset genes and positions to be an array
         self._ambiguous_genes = False
         self.genes = np.ravel(self.genes.tocsc()[:, 0].todense()) 
         self.positions = np.ravel(self.positions.tocsc()[:, 0].todense())
+        return mm_results
 
     # todo reconcile documentation with new method
     def _resolve_alignments(self, indices_grouped_by_cells):
@@ -461,11 +464,21 @@ class ReadArray:
 
         :param list indices_grouped_by_cells: list of numpy arrays containing indices to
           ReadArray rows that correspond to each cell
-        :return None:
+        :return dict results: dictionary containing information on how many molecules
+          were resolved by this algorithm
         """
         
         # Mask for reseting status on resolved genes
         mask = self.filtering_mask('gene_not_unique')
+
+        # results dictionary for tracking effect of algorithm
+        results = OrderedDict((
+            ('unique molecules', 0),
+            ('cell/rmt barcode collisions', 0),
+            ('resolved molecules: disjoint', 0),
+            ('resolved molecules: model', 0),
+            ('ambiguous molecules', 0)
+        ))
 
         for cell_group in indices_grouped_by_cells:
 
@@ -488,7 +501,11 @@ class ReadArray:
 
                 # Return if there is only one gene group
                 if len(gene_groups) == 1:
+                    results['unique molecules'] += 1
                     continue
+
+                # if it was not unique, there is a collision
+                results['cell/rmt barcode collisions'] += 1
 
                 # Divide into disjoint sets
                 uf = multialignment.UnionFind()
@@ -502,6 +519,7 @@ class ReadArray:
 
                     # Return if the set contains only one group
                     if len(set_groups) == 1:
+                        results['resolved molecules: disjoint'] += 1
                         continue
 
                     # Disambiguate if possible
@@ -509,6 +527,7 @@ class ReadArray:
 
                     # Resolved if there is only one common gene
                     if len(common) == 1:
+                        results['resolved molecules: model'] += 1
                         for group in set_groups:
                             # Update status
                             self.data['status'][gene_groups[tuple(group)]] &= mask
@@ -521,8 +540,9 @@ class ReadArray:
                                 self.genes[ind, 0] = self.genes[ind, gene_index]
                                 self.positions[ind, 0] = self.positions[ind, gene_index]
                     else:
-                        continue
+                        results['ambiguous molecules'] += 1
                         # Todo: Likelihood model goes here
+        return results
 
     def filter_low_coverage(self):
 
@@ -615,7 +635,7 @@ class ReadArray:
         keep = pd.DataFrame(adj_p[0])
         total['keep'] = keep
 
-        remove = total[total['keep'] == True]
+        remove = total[total['keep'] is True]
 
         return remove
 
@@ -629,7 +649,6 @@ class ReadArray:
         """
         p = hypergeom.cdf(x['lonely triplets at pos'], x['Num Triplets at Gene'],
                           x['lonely triplets at gen'], x['Num Triplets at Pos'])
-        # print(p)
         return p
 
     def to_count_matrix(self, csv_path=None, sparse_frame=False, genes_to_symbols=False):

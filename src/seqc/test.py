@@ -5,13 +5,10 @@ import pandas as pd
 import numpy as np
 import ftplib
 import nose2
-import time
 from nose2.tools import params
 from seqc.sequence import index, gtf
 from seqc.core import SEQC
 from seqc.read_array import ReadArray
-from seqc.io import S3
-import sys
 import seqc
 import logging
 
@@ -69,8 +66,8 @@ class TestSEQC(unittest.TestCase):
         SEQC.main(argv)
         os.remove('./seqc_log.txt')  # clean up the dummy log we made.
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_raw_fastq(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_raw_fastq(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
         if 'EMAIL' in globals():
             email = globals()['EMAIL']

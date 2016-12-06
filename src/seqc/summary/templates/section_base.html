@@ -12,10 +12,10 @@
     <title>SEQC report</title>  <!-- consider adding variable here -->
 
     <!-- Bootstrap Core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="../css/bootstrap.min.css" rel="stylesheet">
 
     <!-- Custom CSS -->
-    <link href="css/simple-sidebar.css" rel="stylesheet">
+    <link href="../css/simple-sidebar.css" rel="stylesheet">
 
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
@@ -38,7 +38,7 @@
                 </li>
                 {% for s in sections %}
                 <li>
-                    <a href="{{s.name}}.html">{{s.name}}</a>
+                    <a href="{{s.filename}}">{{s.name}}</a>
                 </li>
                 {% endfor %}
             </ul>
@@ -54,10 +54,10 @@
 
 
     <!-- jQuery -->
-    <script src="js/jquery.js"></script>
+    <script src="../js/jquery.js"></script>
 
     <!-- Bootstrap Core JavaScript -->
-    <script src="js/bootstrap.min.js"></script>
+    <script src="../js/bootstrap.min.js"></script>
 
 </body>
 
