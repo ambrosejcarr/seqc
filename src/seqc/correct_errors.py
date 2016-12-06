@@ -5,6 +5,8 @@ from seqc import log
 from seqc.read_array import ReadArray
 import time
 
+# todo PROPOSAL: RENAME MODULE TO rmt_correction
+
 
 # todo document me
 def generate_close_seq(seq):
@@ -35,7 +37,7 @@ def generate_close_seq(seq):
     return res
 
 
-#todo document me
+# todo document me
 def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
     """
     Return the probability of d_seq turning into r_seq based on the err_rate table
@@ -52,7 +54,6 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
     p = 1.0
     while d_seq > 0:
         if d_seq & 0b111 != r_seq & 0b111:
-            # p *= err_rate[DNA3Bit.ints2int([d_seq & 0b111, r_seq & 0b111])]
             p *= err_rate[(d_seq & 0b111, r_seq & 0b111)]
         d_seq >>= 3
         r_seq >>= 3
