@@ -5,7 +5,6 @@ from collections import defaultdict
 from copy import deepcopy
 import pandas as pd
 from seqc import reader, log
-import time
 import intervaltree
 
 
@@ -200,7 +199,6 @@ class GeneIntervals:
         
     
     def build_pos_scid_dic(self, fname):
-        start = time.process_time()
         exons = {'-':[],'+':[]}
         res_dic = {} #The resulting dictionary holding two lists. the first is of positions sorted, the second is a list of scids relevant for that position onwards
         new_exons=False
@@ -256,9 +254,6 @@ class GeneIntervals:
                         #Keep track of the chr and strand
                         tx_strand = strand
                         tx_chr = chr
-                        
-        tot_time=time.process_time()-start
-        log.info('Translator completed in {} seconds.'.format(tot_time))
         return res_dic
 
                     
@@ -274,8 +269,16 @@ class GeneIntervals:
         # If we're here - tx is shorter than 1000 - return the start of the first exxon
         return ex_list[0][0]
     
-    
+    #todo return only one gene and a status
     def translate(self, chr, strand, pos):
+        '''
+        Find a gene associated with a genomic location
+
+        :param chr:  the chromosome - should be 1-25/chr1-chr25/X/Y/M,chrX,chrY,chrM
+        :param strand: '+' or '-'
+        :param pos: the bp position
+        :return: A list of genes mapped to that location. -1 means a scaffold.
+        '''
         if type(chr) is bytes:
             chr = chr.decode('utf-8')
         int_chr = self.strip_chr(chr)
@@ -444,6 +447,8 @@ def create_gene_id_to_official_gene_symbol_map(gtf: str):
     gene_id_map = defaultdict(set)
     with open(gtf, 'r') as f:
         for line in f:
+            if line[0] == '#':
+                continue
 
             fields = line.split('\t')  # speed-up, only run regex on gene lines
             if fields[2] != 'gene':

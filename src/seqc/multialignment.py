@@ -1,7 +1,5 @@
 import numpy as np
 import itertools
-import time
-import seqc
 
 # Some constants
 NO_DISAMBIGUATION = 0
@@ -32,17 +30,14 @@ def strip_model(mod):
         res[tuple(sorted(k))]=mod[k]
     return res
 
-def split_to_disjoint(obs):
+def split_to_disjoint(gene_lists):
     res = []
     uf = UnionFind()
-    uf.union_all(obs.keys())
-    set_membership, sets = uf.find_all(obs.keys())
+    uf.union_all(gene_lists)
+    set_membership, sets = uf.find_all(gene_lists)
     
     for s in sets:
-        d = {}
-        for k in np.array(list(obs.keys()))[set_membership == s]:
-            d[tuple(k)] = obs[tuple(k)]
-        res.append(d)
+        res.append(list(np.array(gene_lists)[set_membership==s]))
     return res
 
 def get_indices(inds, obs_subset):
@@ -56,11 +51,11 @@ def model_to_gene(model):
         if model[g]==1:
             return g
             
-def intersection(set_l):
-    res = set_l[0]
-    for s in set_l:
+def intersection(lists):
+    res = lists[0]
+    for s in lists:
         res = set(set(res) & set(s))
-    return res
+    return list(res)
     
 def get_combinations(l):
     res = []
@@ -176,6 +171,24 @@ def single_gene_list(obs):
         for g in genes:
             l.append(g)
     return list(set(l))
+
+def resolve_gene(gene_lists):
+    '''
+
+    :param gene_lists: A list of gene lists representing the genes that reads of the same cell/rmt are mapped to
+    :return: The gene explaining all of them if possible and a return status - No disambiguation, resolved, non resovable or competing models
+    '''
+    if len(gene_lists)==1:
+        if len(gene_lists[0])==1:
+            return gene_lists[0][0], NO_DISAMBIGUATION
+
+    intersect_genes = intersection(gene_lists)
+    if len(intersect_genes) == 1:
+        return intersect_genes[0], RESOLVED_GENE
+    if len(intersect_genes) > 1:
+        return -1, NO_GENE_RESOLVED
+    return -1, MULTIPLE_MODELS
+
 
 
 class UnionFind:

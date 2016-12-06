@@ -30,7 +30,7 @@ def validate_and_return_size(filename):
             return sum(filesize(filename + f) for f in os.listdir(filename))
         else:
             print(filename)
-            raise ValueError('%s does not point to a valid file')
+            raise ValueError('{} does not point to a valid file'.format(filename))
 
 
 def estimate_required_volume_size(args):
@@ -146,6 +146,9 @@ def run(args) -> float:
 
     if args.volume_size is None:
         setattr(args, 'volume_size', estimate_required_volume_size(args))
+
+    if args.low_coverage_filter_alpha>1 or low_coverage_filter_alpha<0:
+        raise ValueError('low-coverage-filter-alpha value must be between 0 and 1')
 
     return args
 
