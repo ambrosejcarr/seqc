@@ -105,10 +105,10 @@ class Section:
 
         keys = ('no gene', 'gene not unique', 'primer missing', 'low poly t')
         values = (
-            np.sum(ra.data['status'] & ra.filter_codes['no_gene']),
-            np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique']),
-            np.sum(ra.data['status'] & ra.filter_codes['primer_missing']),
-            np.sum(ra.data['status'] & ra.filter_codes['low_polyt'])
+            np.sum(ra.data['status'] & ra.filter_codes['no_gene'] > 0),
+            np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique'] > 0),
+            np.sum(ra.data['status'] & ra.filter_codes['primer_missing'] > 0),
+            np.sum(ra.data['status'] & ra.filter_codes['low_polyt'] > 0)
         )
         data_section = DataContent(keys, values)
         return cls(
@@ -131,7 +131,7 @@ class Section:
         description_section = TextContent(description)
         data_section = DataContent(
             ['cell error'],
-            [np.sum(ra.data['status'] & ra.filter_codes['cell_error'])])
+            [np.sum(ra.data['status'] & ra.filter_codes['cell_error'] > 0)])
         return cls(
             'Cell Barcode Correction',
             {'Description': description_section, 'Results': data_section},
