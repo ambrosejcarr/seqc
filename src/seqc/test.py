@@ -98,8 +98,8 @@ class TestSEQC(unittest.TestCase):
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         SEQC.main(argv)
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_merged(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_merged(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
         if 'EMAIL' in globals():
             email = globals()['EMAIL']

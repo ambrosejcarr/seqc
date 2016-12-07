@@ -63,18 +63,18 @@ def run(args) -> None:
         arguments.merged_fastq = (
             download.s3_data([arguments.merged_fastq], dir_ + '/')[0] if
             arguments.merged_fastq is not None else None)
-        if arguments.merged_fastq and arguments.merged_fastq.endswith('.gz'):
-            if pigz:
-                unzip_command = 'pigz -d -f %s' % arguments.merged_fastq
-            else:
-                unzip_command = 'gunzip -f %s' % arguments.merged_fastq
-            gunzip_proc = io.ProcessManager(unzip_command)
-            gunzip_proc.run_all()
-            gunzip_proc.wait_until_complete()
-            arguments.merged_fastq = arguments.merged_fastq.replace('.gz', '')
-            log.info(
-                'Merged fastq file %s successfully installed from S3 and unzipped.' %
-                arguments.merged_fastq)
+        # if arguments.merged_fastq and arguments.merged_fastq.endswith('.gz'):
+        #     if pigz:
+        #         unzip_command = 'pigz -d -f %s' % arguments.merged_fastq
+        #     else:
+        #         unzip_command = 'gunzip -f %s' % arguments.merged_fastq
+        #     gunzip_proc = io.ProcessManager(unzip_command)
+        #     gunzip_proc.run_all()
+        #     gunzip_proc.wait_until_complete()
+        #     arguments.merged_fastq = arguments.merged_fastq.replace('.gz', '')
+        #     log.info(
+        #         'Merged fastq file %s successfully installed from S3 and unzipped.' %
+        #         arguments.merged_fastq)
 
         # check if the index must be downloaded
         if any((arguments.samfile, arguments.read_array)):
@@ -257,6 +257,12 @@ def run(args) -> None:
         else:
             input_fastq_records = None  # todo remove this return value if not used
 
+        # SEQC was started from input other than fastq files
+        if args.min_poly_t is None:
+            args.min_poly_t = 0
+            log.notify('Warning: SEQC started from step other than unmerged fastq with '
+                       'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
+
         if align:
             upload_merged = args.upload_prefix if merge else None
             args.samfile, manage_merged = align_fastq_records(
@@ -275,12 +281,6 @@ def run(args) -> None:
 
         # create the first summary section here
         status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
-
-        # SEQC was started from input other than fastq files
-        if args.min_poly_t is None:
-            args.min_poly_t = 0
-            log.notify('Warning: SEQC started from step other than unmerged fastq with '
-                       'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
 
         # todo fix all these logging messages and determine where we want to time things
         log.info('Read array after reading sam file: {}'.format(ra))

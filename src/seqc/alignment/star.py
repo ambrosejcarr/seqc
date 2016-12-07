@@ -30,6 +30,10 @@ def default_alignment_args(
         '--outSAMprimaryFlag': 'AllBestScore',  # all equal-scoring reads are primary
         '--outFileNamePrefix': output_dir,
     }
+    if fastq_records.endswith('.gz'):
+        default_align_args['--readFilesCommand'] = 'gunzip -c'
+    if fastq_records.endswith('.bz2'):
+        default_align_args['--readFilesCommand'] = 'bunzip2 -c'
     return default_align_args
 
 
