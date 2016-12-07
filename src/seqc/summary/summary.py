@@ -250,7 +250,7 @@ class Summary:
 
     def import_image(self, image_path):
         filename = os.path.split(image_path)[1]
-        shutil.copy(image_path, self.reference_directory + '/img/' + filename)
+        shutil.copy(image_path, self.archive_name + '/img/' + filename)
 
     def render(self):
         """loop over sections and render them to filename keys within archive_name
