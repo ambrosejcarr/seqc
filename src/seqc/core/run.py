@@ -282,42 +282,37 @@ def run(args) -> None:
         # create the first summary section here
         status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
 
-        # todo fix all these logging messages and determine where we want to time things
-        log.info('Read array after reading sam file: {}'.format(ra))
-
         # Correct barcodes
         if platform.check_barcodes:
+            log.info('Correcting barcodes and estimating error rates.')
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
-                                                     max_ed=args.max_ed)
-            log.info('Read array after barcode correction: {}'.format(ra))
+                                max_ed=args.max_ed)
         else:
             error_rate = None
-            log.info('Skipping barcode correction')
+            log.info('Skipping barcode correction.')
 
         # Resolve multimapping
+        log.info('Resolving ambiguous alignments.')
         mm_results = ra.resolve_ambiguous_alignments()
-        log.info('Read array after multialignment resolution: {}'.format(ra))
 
         # correct errors
-        log.info('Filtering errors')
-        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
+        log.info('Identifying RMT errors.')
         platform.correct_errors(ra, error_rate)
-        log.info('Read array after error correction: {}'.format(ra))
 
         # Apply low coverage filter
         if 'mars' in args.platform:
-            log.info('Low coverage filter')
+            log.info('Mars-seq: Filtering low coverage reads')
             platform.filter_low_coverage()
 
         # filter non-cells
-        log.info('Filtering non cells')
+        log.info('Creating counts matrix.')
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
+        log.info('Saving read array.')
         ra.save(args.output_prefix + '.h5')
-        log.notify('ReadArray saved.')
 
-        log.info('Creating filtered counts matrix')
+        log.info('Creating filtered counts matrix.')
         cell_filter_figure = 'cell_filters.png'
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(

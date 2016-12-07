@@ -103,8 +103,9 @@ class Section:
             'the poly-a tail of an mRNA molecule.')
         description_section = TextContent(description)
 
-        keys = ('no gene', 'gene not unique', 'primer missing', 'low poly t')
+        keys = ('length of read array',  'no gene', 'gene not unique', 'primer missing', 'low poly t')
         values = (
+            len(ra.data),
             np.sum(ra.data['status'] & ra.filter_codes['no_gene'] > 0),
             np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique'] > 0),
             np.sum(ra.data['status'] & ra.filter_codes['primer_missing'] > 0),
