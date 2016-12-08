@@ -3,6 +3,8 @@ import shutil
 from jinja2 import Environment, PackageLoader
 from collections import OrderedDict, namedtuple
 import numpy as np
+import pandas as pd
+from seqc import plot
 
 
 ImageContent = namedtuple('ImageContent', ['image', 'caption', 'legend'])
@@ -27,12 +29,13 @@ class Section:
         self.content = content
         self.filename = filename
 
-    def render(self, prefix='', link_sections=None):
+    def render(self, prefix='', link_sections=None, index_section=None):
         """renders this sub-section
 
         :param str prefix: prefix for the rendered html file
         :param list link_sections: list of Section objects to link to in the sidebar
           of this section
+        :param index_section: section which serves as index.html file
         :return None:
         """
         env = Environment(loader=PackageLoader('seqc.summary', 'templates'))
@@ -40,7 +43,8 @@ class Section:
         if link_sections is None:
             link_sections = [self]
         rendered_section = section_template.render(
-            sections=link_sections, section=self)
+            sections=link_sections, section=self,
+            index_section_link=index_section.filename)
         with open(prefix + self.filename, 'w') as f:
             f.write(rendered_section)
 
@@ -198,13 +202,32 @@ class Section:
             filename)
 
     @classmethod
-    def from_run_time(cls, log_file):
+    def from_final_matrix(cls, counts_matrix, figure_path, filename):
+        """Create a histogram of cell sizes, a tSNE projection, and a diffusion map.
+
+        save this data in a .h5 file accessible to pandas.
+
+        :param pd.DataFrame counts_matrix:
+        :return:
+        """
+        plot.Diagnostics.cell_size_histogram(counts_matrix, save=figure_path)
+        image_legend = 'histogram legend'
+        image_section = ImageContent(figure_path, 'cell size figure', image_legend)
+        return cls('Cell Summary',
+                   {'Library Size Distribution': image_section},
+                   filename)
+
+    @classmethod
+    def from_run_time(cls, log_file, filename):
         """
 
         :param log_file:  seqc log file
         :return:
         """
-        raise NotImplementedError  # todo create a run time graph
+        with open(log_file) as f:
+            log = f.readlines()
+        text_section = TextContent('<br>'.join(log))
+        return cls('SEQC Log', {'Log Content': text_section}, filename)
 
     @classmethod
     def from_basic_clustering_and_projection(cls):
@@ -230,15 +253,17 @@ class Section:
 
 class Summary:
 
-    def __init__(self, archive_name, sections):
+    def __init__(self, archive_name, sections, index_section=None):
         """
 
         :param str archive_name: filepath for the archive to be constructed
         :param list sections: dictionary of str filename: Section objects
+        :param index_section: section to be produced as the index.html page.
         """
-        self.archive_name = archive_name  # might need to add/strip '/'
+        self.archive_name = archive_name
         self.sections = sections
         self.reference_directory = os.path.dirname(__file__)
+        self.index_section = index_section
 
     def prepare_archive(self):
         """
@@ -259,9 +284,11 @@ class Summary:
         :return str zipped_archive_location:
         """
         html_location = self.archive_name + '/html/'
+        self.index_section.render(html_location, self.sections, self.index_section)
         for section in self.sections:
-            section.render(html_location, self.sections)
-        # todo create an index.html document
+            section.render(html_location, self.sections, self.index_section)
+        os.symlink(html_location + self.index_section.filename,
+                   self.archive_name + '/index.html')
 
     def compress_archive(self):
         shutil.make_archive(

@@ -338,11 +338,16 @@ def run(args) -> None:
             Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
             Section.from_rmt_correction(ra, 'rmt_correction.html'),
             Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html'),
-            Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html')]
+            Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html'),
+            Section.from_run_time(args.log_name, 'seqc_log.html')]
 
-        seqc_summary = Summary(output_dir + '/summary', sections)
+        cell_size_figure = 'cell_size_distribution.png'
+        index_section = Section.from_final_matrix(
+            sp_csv, cell_size_figure, 'cell_distribution.html')
+        seqc_summary = Summary(output_dir + '/summary', sections, index_section)
         seqc_summary.prepare_archive()
         seqc_summary.import_image(cell_filter_figure)
+        seqc_summary.import_image(cell_size_figure)
         seqc_summary.render()
         summary_archive = seqc_summary.compress_archive()
 

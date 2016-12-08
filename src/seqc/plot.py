@@ -401,3 +401,24 @@ class Diagnostics:
         despine(ax)
         return ax
 
+    @staticmethod
+    def cell_size_histogram(data, f=None, ax=None, save=None):
+        if ax is None:
+            f, ax = plt.subplots(figsize=(2, 2))
+        if f is None:
+            f = plt.gcf()
+
+        cell_size = data.sum(axis=1)
+
+        plt.hist(np.log(cell_size), bins=25, log=True)
+        ax.set_xlabel('ln(cell size)')
+        ax.set_ylabel('frequency')
+        despine(ax)
+        xtick_vertical(ax)
+
+        if save is not None:
+            if not isinstance(save, str):
+                raise TypeError('save must be the string filename of the '
+                                'figure-to-be-saved')
+            plt.tight_layout()
+            f.savefig(save, dpi=200)
