@@ -93,7 +93,7 @@ class TestSEQC(unittest.TestCase):
             '-g', GENOMIC_FASTQ % platform,
             '--instance-type', 'c4.large',
             '--spot-bid', '1.0',
-            '-k', rsa_key]
+            '-k', rsa_key, '--debug']
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         SEQC.main(argv)

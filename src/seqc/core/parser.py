@@ -196,6 +196,9 @@ def parse_args(args):
             '-e', '--email', metavar='E', default=None,
             help='Email address to receive run summary or errors when running remotely. '
                  'Optional only if running locally.')
+        r.add_argument('--debug', default=False, action='store_true',
+                       help='If debug is set, runs that throw errors do not '
+                            'terminate the instance they were run on.')
         r.add_argument(
             '-k', '--rsa-key', metavar='K', default=None,
             help='RSA key registered to your aws account that allowed access to ec2 '
@@ -220,7 +223,6 @@ def parse_args(args):
                 pass
 
     return parsed
-
 
 
 def generate_remote_cmdline_args(argv: list) -> str:
