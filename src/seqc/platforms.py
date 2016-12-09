@@ -31,6 +31,8 @@ class AbstractPlatform:
             return mars1_seq()
         if type == "mars2_seq":
             return mars2_seq()
+        if type == "mars_germany":
+            return mars_germany()
         if type == "ten_x":
             return ten_x()
         if type == "ten_x_v2":
@@ -356,6 +358,26 @@ class mars2_seq(AbstractPlatform):
         rmt = seq[7:15]
         poly_t = seq[15:]
         g.add_annotation((b'', pool + cell, rmt, poly_t))
+        return g
+
+
+class mars_germany(AbstractPlatform):
+
+    def __init__(self):
+        AbstractPlatform.__init__(self, [10], True, correct_errors.in_drop)
+
+    def primer_length(self):
+        return 15
+
+    def merge_function(self, g, b):
+        pool = g.sequence.strip()[3:7]  # 4 bp
+        g.sequence = g.sequence.strip()[7:] + b'\n'  # strip() is necessary in case there is a truncated read. \n=good, \n\n=bad
+        # Need to skip over the quality as well
+        g.quality = g.quality.strip()[7:] + b'\n'
+        seq = b.sequence.strip()
+        cell = seq[:6]  # 6 bp
+        rmt = seq[6:12]  # 6 bp
+        g.add_annotation((b'', pool + cell, rmt, b''))
         return g
 
 
