@@ -76,8 +76,9 @@ class S3:
             log.info(repr(line))
             raise
 
+    # todo make sure recursive is acting properly. Right now it is unused.
     @classmethod
-    def awscli_omit_existing_files(cls, link, prefix):
+    def awscli_omit_existing_files(cls, link, prefix, recursive=False):
         """check if file or files at link exist given prefix
 
         :param link:
