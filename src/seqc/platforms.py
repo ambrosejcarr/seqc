@@ -3,6 +3,8 @@ from seqc import correct_errors
 import regex as re
 from seqc.sequence.encodings import DNA3Bit
 
+# todo REMOVE POOL FROM ALL THESE CLASSES
+
 
 class AbstractPlatform:
 
@@ -12,8 +14,9 @@ class AbstractPlatform:
         filter_lonely_triplets=False, filter_low_count=True):
         """
         Ctor for the abstract class. barcodes_len is a list of barcodes lengths, 
-        check_barcodes is a flag signalling wether or not the barcodes are known apriori and so can be filtered and corrected
-        correct_errors_func points to the correct function for error correction
+        check_barcodes is a flag signalling whether or not the barcodes are known apriori
+        and so can be filtered and corrected. correct_errors_func points to the correct
+        function for error correction
         """
         self._correct_errors = correct_errors_func
         self._barcodes_lengths = barcodes_len
@@ -102,22 +105,23 @@ class AbstractPlatform:
     @abstractmethod
     def extract_barcodes(self, seq):
         """
-        Return a list of barcodes from the sequence. The number of barcodes and the way they are stored in 'cell' is platform dependant.
+        Return a list of barcodes from the sequence. The number of barcodes and the way
+        they are stored in 'cell' is platform dependant.
         """
         res = []
         for bc_len in reversed(self._barcodes_lengths):
-            if bc_len == -1:    #Return the rest of the MSb's
-                res.insert(0,seq)
+            if bc_len == -1:  # Return the rest of the MSb's
+                res.insert(0, seq)
                 return res
-            res.insert(0,seq&((1<<bc_len*DNA3Bit.bits_per_base())-1))
-            seq>>=bc_len*DNA3Bit.bits_per_base()
+            res.insert(0, seq & ((1 << bc_len * DNA3Bit.bits_per_base()) - 1))
+            seq >>= bc_len * DNA3Bit.bits_per_base()
         return res
 
 
 class in_drop(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1,8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [-1, 8], True, correct_errors.in_drop)
         
     @classmethod
     def check_spacer(cls, sequence):
@@ -185,7 +189,7 @@ class in_drop(AbstractPlatform):
 class in_drop_v2(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1,8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [-1, 8], True, correct_errors.in_drop)
         
     @classmethod
     def check_spacer(cls, sequence):
@@ -229,9 +233,9 @@ class in_drop_v2(AbstractPlatform):
 
     def merge_function(self, g, b):
         """
-        merge forward and reverse in-drop v2 reads, annotating the reverse read (containing
-        genomic information) with the cell barcode, rmt, and number of poly_t. Pool is left
-        empty.
+        merge forward and reverse in-drop v2 reads, annotating the reverse read
+        (containing genomic information) with the cell barcode, rmt, and number of poly_t.
+        Pool is left empty.
 
         :param g: genomic fastq sequence data
         :param b: barcode fastq sequence data
@@ -253,7 +257,7 @@ class in_drop_v2(AbstractPlatform):
 class in_drop_v3(AbstractPlatform):
     
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1,8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [-1, 8], True, correct_errors.in_drop)
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -263,8 +267,8 @@ class in_drop_v3(AbstractPlatform):
 
     def merge_function(self, g, b):
         """
-        merge forward and reverse in-drop v3 reads, annotating the reverse read (containing
-        genomic information) with the rmt and number of poly_t from the
+        merge forward and reverse in-drop v3 reads, annotating the reverse read
+        (containing genomic information) with the rmt and number of poly_t from the
         forward read. Pool is left empty, and the cell barcode is reconstructed from the
         second index and the second barcode.
 
@@ -315,7 +319,7 @@ class drop_seq(AbstractPlatform):
 class mars1_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4,8], True, correct_errors.in_drop, True, False)
+        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop, True, False)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -345,7 +349,7 @@ class mars1_seq(AbstractPlatform):
 class mars2_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4,8], True, correct_errors.in_drop, True, False)
+        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop, True, False)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.

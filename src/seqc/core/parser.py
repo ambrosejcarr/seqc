@@ -3,8 +3,6 @@ import argparse
 import sys
 from subprocess import Popen, PIPE
 from seqc import version
-from seqc.exceptions import ArgumentParserError
-
 
 
 def parse_args(args):

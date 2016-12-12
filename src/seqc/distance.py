@@ -4,8 +4,8 @@ import numpy as np
 def jsd(p, q) -> float:
     """Jensen Shannon distance of two variables normalized variables p and q
 
-    Note that if p and q are not normalized, this function will not return a proper distance,
-    so matrices should be normalized prior to use
+    Note that if p and q are not normalized, this function will not return a proper
+    distance, so matrices should be normalized prior to use
 
     use with sklearn.NearestNeighbors:
 
@@ -38,8 +38,9 @@ def jsd(p, q) -> float:
 def kldiv(x: np.ndarray, m: np.ndarray) -> float:
     """Modified Kullback-Liebler divergence of two variables x and m.
 
-    depends upon normalization done by jsd parent function, namely that (1) there are no zero-
-    valued entries in m, and (2) both x and m are probability distributions that sum to 1
+    depends upon normalization done by jsd parent function, namely that (1) there are no
+    zero-valued entries in m, and (2) both x and m are probability distributions that
+    sum to 1
 
     Parameters
     ----------
