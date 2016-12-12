@@ -289,7 +289,7 @@ def run(args) -> None:
         platform.correct_errors(ra, error_rate)
 
         # Apply low coverage filter
-        if platform.filter_lonely_triplets():
+        if platform.filter_lonely_triplets:
             log.info('Filtering lonely triplet reads')
             ra.filter_low_coverage(alpha=args.low_coverage_alpha)
 
@@ -308,7 +308,7 @@ def run(args) -> None:
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
                 sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
-                filter_low_count=platform.filter_low_count(), 
+                filter_low_count=platform.filter_low_count, 
                 filter_mitochondrial_rna=args.filter_mitochondrial_rna))
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)

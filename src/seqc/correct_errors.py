@@ -4,6 +4,7 @@ import numpy as np
 from seqc import log
 from seqc.read_array import ReadArray
 import time
+import pandas as pd
 
 # todo PROPOSAL: RENAME MODULE TO rmt_correction
 
@@ -59,148 +60,110 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
         r_seq >>= 3
     return p
 
-# def group_for_dropseq(ra):
-#     """
-#
-#     This function is likely deprecated and will be replaced by proper grouping method
-#     based on array sorting.
-#
-#     Prepare the RA for the dropSeq error correction. Apply filters and group by gene/cell
-#     :param seqc.read_array.ReadArray ra:  ReadArray object to be grouped
-#     """
-#     res = {}
-#
-#     for i, v in enumerate(ra.data):
-#         if not ReadArray.is_active_read(v):
-#             continue
-#
-#         # Build a dictionary of {cell11b:{rmt1:{gene1,cell1:#reads,
-#         # gene2,cell2:#reads},rmt2:{...}},cell211b:{...}}
-#         cell = v['cell']
-#         cell_header = cell >> 3   # we only look at the first 11 bases
-#         rmt = v['rmt']
-#         gene = v['gene']
-#         try:
-#             res[cell_header][rmt][gene, cell].append(i)
-#         except KeyError:
-#             try:
-#                 res[cell_header][rmt][gene, cell] = [i]
-#             except KeyError:
-#                 try:
-#                     res[cell_header][rmt] = {(gene, cell): [i]}
-#                 except KeyError:
-#                     res[cell_header] = {rmt: {(gene, cell): [i]}}
-#     return res
-
 
 # todo document me
-def drop_seq(alignments_ra, *args, **kwargs):
-    raise NotImplementedError  # todo port to use gene/position csr
+def drop_seq(ra, *args, min_rmt_cutoff=10, rmt_error_frequency=0.8, barcode_base_shift_threshold=0.9):
 
-    """pass-through function that groups the read_array for count matrix construction but
-    does not perform any error correction. To be replaced by Ashley's function.
+    """Drop-seq barcode correction suggested by Ashley
+    1. Barcodes can be truncated to 11 bases because of synthesis error. Therefore a single
+       barcode can be potentially be split to 4 barcodes
+       Solution: Fix barcode: At the 8th position of RMT, if the fraction of T > 80%,
+                 replace the 12th position of the cell barcode with N
+                 Fix RMT: Remove the T in the last position of the RMT and prepend the 
+                 first base from the uncorrected cell barcode
+    2. If a particular base dominates any of the positions of the RMT,
+       remove that cell barcode
+    3. TODO: Primer match
 
     :param alignments_ra: seqc.read_array.ReadArray object
-    :param args:
-    :param kwargs:
+    :param min_rmt_cutoff: Minimum number of RMTs to apply barcode correction
+    :param rmt_error_frequency: If a base appears with this frequency across the RMTs associated with the barcode
+           in any position, the barcode is removed
+    :param barcode_base_shift_threshold: Thresholds for detecting barcode shift 
     :return:
     """
     
-    start = time.process_time()
-    pos_filter_threshold = 0.8
-    barcode_base_shift_threshold = 0.9
-    umi_len = 8
-    min_umi_cutoff = 10
-    # todo:
-    # 4. collapse UMI's that are 1 ED from one another (This requires more thought as
-    # there are plenty of edge cases)
-    
-    res_dic = {}
-    
-    grouped_ra = group_for_dropseq(alignments_ra)
-    if 'min_umi_cutoff' in kwargs:
-        min_umi_cutoff = kwargs['min_umi_cutoff']
-        
-    base_shift_count = 0
-    pos_bias_count = 0
-    small_cell_groups = 0
-    
-    # close_pairs = 0
-    
-    for cell in grouped_ra:
-        retain = True
-        base_shift = False
-        # correct_cell = cell
-        size = len(grouped_ra[cell])
-        # close_pairs += count_close_umi(grouped_ra[cell])
-        
-        # Check minimum size of cell group
-        # if the number of UMI's for this cell don't meet the threshold, we have to
-        # retain them
-        if size < min_umi_cutoff:
-            retain = True
-            small_cell_groups += 1
-            
-        else:
-            # Check for bias in any single base of the UMI (1-7)
-            base_mat = base_count(grouped_ra[cell])
-            for pos in range(umi_len-1):
-                for base in base_mat:
-                    if base_mat[base][pos] > pos_filter_threshold:
-                        retain = False
-                        pos_bias_count += 1
-                        continue
-            
-            # Check for base shift
-            if base_mat['T'][-1] > barcode_base_shift_threshold:
-                # Retain, but insert an 'N'
-                retain = True
-                base_shift = True
-                base_shift_count += 1            
-                
-        if retain:
-            for rmt in grouped_ra[cell]:
-                for gene, full_cell in grouped_ra[cell][rmt]:
-                    if base_shift:
-                        # replace the last base of cell with 'N'
-                        correct_cell = DNA3Bit.ints2int([cell, DNA3Bit.encode(b'N')])
-                        # todo next line unnecessary now that rmts are not being stored
-                        # correct the rmt with the last base of cb, remove the last 'T'
-                        # correct_rmt = BinRep.ints2int([full_cell & 0b111, rmt]) >> 3
-                    else:
-                        correct_cell = full_cell
-                    for read_idx in grouped_ra[cell][rmt][gene, full_cell]:
-                        alignments_ra.data[read_idx]['cell'] = correct_cell
-        
-        else:
-            for rmt in grouped_ra[cell]:
-                for gene, full_cell in grouped_ra[cell][rmt]:
-                    for read_idx in grouped_ra[cell][rmt][gene, full_cell]:
-                        ReadArray.set_error_status_on(alignments_ra.data[read_idx])     
-                    
-    log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
-    log.info('Error correction finished in {}'.format(time.process_time() - start))
-    return
+    # Cell header [First 11 bases only - this should be parametrized]
+    cell_header = ra.data['cell'] >> 3
+    idx = np.argsort( cell_header )
+    # Active reads
+    passing = ra.data['status'][idx] == 0
+    idx = idx[passing]
+    breaks = np.where(np.diff(cell_header[idx]))[0] + 1
+    indices_grouped_by_cell_headers = np.split(idx, breaks)
 
-# todo document me
-def base_count(seq_dic, umi_len=8):
-    """
+    # RMT length
+    rmt_length = DNA3Bit.seq_len( ra.data['rmt'][idx[0]] )
 
-    :param seq_dic:
-    :param umi_len:
-    :return:
-    """
-    count_mat = {'A': np.zeros(umi_len), 'C': np.zeros(umi_len), 'G': np.zeros(umi_len),
-                 'T': np.zeros(umi_len)}
-    for seq in seq_dic:
-        for i, base in enumerate(DNA3Bit.decode(seq).decode()):
-            if base == 'N':
-                continue
-            count_mat[base][i] += 1
-    tot = len(seq_dic)
-    for base in count_mat:
-        count_mat[base] /= tot
-    return count_mat
+    # 1. Barcode synthesis errors
+    for header_group in indices_grouped_by_cell_headers:
+
+        # RMT set
+        # todo this could potentially be used in RMT correction / barcode correction in indrop
+        all_rmts = list(set(ra.data['rmt'][header_group]))
+        if len(all_rmts) < min_rmt_cutoff:
+            continue
+
+        # Count Ts in the last RMT position
+        nuc_counts = dict(zip(DNA3Bit.bin2strdict.keys(), np.zeros(len(DNA3Bit.bin2strdict))))
+        for rmt in all_rmts:
+            nuc_counts[rmt & 0b0111] += 1
+
+        # Correct cell barcode if necessary
+        if nuc_counts[DNA3Bit.str2bindict['T']] > barcode_base_shift_threshold * len(all_rmts):
+
+            # Correct the RMTs [This needs to done for each cell/RMT combination]
+            idx = header_group[np.argsort(ra.data['cell'][header_group])]
+            breaks = np.where(np.diff(ra.data['cell'][idx]))[0] + 1
+            cell_groups = np.split(idx, breaks)
+
+            for cell_group in cell_groups:
+                last_base = ra.data['cell'][cell_group[0]] & 0b111
+
+                # Correct the RMTs
+                idx = cell_group[np.argsort(ra.data['rmt'][cell_group])]
+                breaks = np.where(np.diff(ra.data['rmt'][cell_group]))[0] + 1
+                rmt_groups = np.split(idx, breaks)
+
+                for rmt_group in rmt_groups:
+                    # Skip the last base
+                    new_rmt = ra.data['rmt'][rmt_group[0]] >> 3
+                    # Get the last base from the cell barcode
+                    new_rmt = DNA3Bit.ints2int([last_base, new_rmt ])
+                    ra.data['rmt'][rmt_group] = new_rmt
+
+            # Append N to the cell header
+            correct_barcode = DNA3Bit.ints2int([cell_header[header_group[0]], DNA3Bit.str2bindict('N')])
+            ra.data['cell'][header_group] = correct_barcode
+
+    # 2. Single UMI error
+    indices_grouped_by_cells = ra.group_indices_by_cell()
+    for cell_group in indices_grouped_by_cells:
+
+        # RMT set
+        all_rmts = list(set(ra.data['rmt'][cell_group]))
+        if len(all_rmts) < min_rmt_cutoff:
+            continue
+
+        # RMT nucleotide frequency per position
+        base_frequencies = dict()
+        for i in DNA3Bit.bin2strdict.keys():
+            base_frequencies[i] = np.zeros(rmt_length)
+        for i in range(len(all_rmts)):
+            rmt = all_rmts[i]
+            position = rmt_length-1
+            while rmt > 0:
+                base_frequencies[rmt & 0b111][position] += 1
+                rmt >>= 3
+                position -= 1
+
+        # Chuck N
+        base_frequencies = pd.DataFrame(base_frequencies).T
+        base_frequencies.ix[DNA3Bit.encode(b'N')] = 0
+
+        # Identify incorrect UMIs
+        if any( base_frequencies.iloc[:, 0:(rmt_length-1)].max() > rmt_error_frequency * len(all_rmts)):
+            ra.data['status'][cell_group] |= ra.filter_codes['cell_error']
 
 
 # todo document me
