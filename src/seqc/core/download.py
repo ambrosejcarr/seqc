@@ -1,5 +1,5 @@
 import os
-from seqc import io, log
+from seqc import io
 
 
 def s3_data(files_or_links, output_prefix):

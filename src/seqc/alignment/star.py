@@ -124,12 +124,3 @@ def create_index(
     out, err = p.communicate()
     if err:
         raise ChildProcessError(err)
-
-
-
-
-
-
-
-
-

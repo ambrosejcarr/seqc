@@ -21,7 +21,6 @@ def run(args) -> None:
     from seqc import filter
     from seqc.sequence.gtf import GeneIntervals
     from seqc.summary.summary import Section, Summary
-    from collections import OrderedDict
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -63,18 +62,6 @@ def run(args) -> None:
         arguments.merged_fastq = (
             download.s3_data([arguments.merged_fastq], dir_ + '/')[0] if
             arguments.merged_fastq is not None else None)
-        # if arguments.merged_fastq and arguments.merged_fastq.endswith('.gz'):
-        #     if pigz:
-        #         unzip_command = 'pigz -d -f %s' % arguments.merged_fastq
-        #     else:
-        #         unzip_command = 'gunzip -f %s' % arguments.merged_fastq
-        #     gunzip_proc = io.ProcessManager(unzip_command)
-        #     gunzip_proc.run_all()
-        #     gunzip_proc.wait_until_complete()
-        #     arguments.merged_fastq = arguments.merged_fastq.replace('.gz', '')
-        #     log.info(
-        #         'Merged fastq file %s successfully installed from S3 and unzipped.' %
-        #         arguments.merged_fastq)
 
         # check if the index must be downloaded
         if any((arguments.samfile, arguments.read_array)):
@@ -287,7 +274,7 @@ def run(args) -> None:
         if platform.check_barcodes:
             log.info('Correcting barcodes and estimating error rates.')
             error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
-                                max_ed=args.max_ed)
+                                                     max_ed=args.max_ed)
         else:
             error_rate = None
             log.info('Skipping barcode correction.')

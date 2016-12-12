@@ -207,6 +207,8 @@ class Section:
 
         save this data in a .h5 file accessible to pandas.
 
+        :param filename:
+        :param figure_path:
         :param pd.DataFrame counts_matrix:
         :return:
         """
@@ -221,6 +223,7 @@ class Section:
     def from_run_time(cls, log_file, filename):
         """
 
+        :param filename:
         :param log_file:  seqc log file
         :return:
         """

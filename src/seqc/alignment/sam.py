@@ -2,8 +2,6 @@ from collections import namedtuple
 from subprocess import Popen, PIPE
 import shutil
 import gzip
-from itertools import islice
-from collections import Counter
 
 
 class SamRecord:

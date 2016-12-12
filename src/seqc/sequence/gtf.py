@@ -6,6 +6,134 @@ from seqc import reader
 from intervaltree import IntervalTree
 
 
+class Record:
+    """
+    Simple namespace object that makes the fields of a GTF record available. Subclassed
+    to create records specific to exons, transcripts, and genes
+    """
+
+    __slots__ = ['_fields', '_attribute']
+
+    _del_letters = string.ascii_letters.encode()
+    _del_non_letters = ''.join(set(string.printable).difference(string.ascii_letters))\
+        .encode()
+
+    def __init__(self, fields: list):
+
+        self._fields = fields
+        self._attribute = {}
+
+    def __repr__(self) -> str:
+        return '<Record: %s>' % bytes(self).decode()
+
+    def __bytes__(self) -> bytes:
+        return b'\t'.join(self._fields)
+
+    def _parse_attribute(self) -> None:
+        for field in self._fields[8].rstrip(b';\n').split(b';'):
+            key, *value = field.strip().split()
+            self._attribute[key] = b' '.join(value).strip(b'"')
+
+    def __hash__(self) -> int:
+        """concatenate strand, start, end, and chromosome and hash the resulting bytes"""
+        return hash(self._fields[6] + self._fields[3] + self._fields[4] + self._fields[0])
+
+    @property
+    def seqname(self) -> bytes:
+        return self._fields[0]
+
+    @property
+    def chromosome(self) -> bytes:
+        return self._fields[0]  # synonym for seqname
+
+    @property
+    def source(self) -> bytes:
+        return self._fields[1]
+
+    @property
+    def feature(self) -> bytes:
+        return self._fields[2]
+
+    @property
+    def start(self) -> int:
+        return int(self._fields[3])
+
+    @property
+    def end(self) -> int:
+        return int(self._fields[4])
+
+    @property
+    def score(self) -> bytes:
+        return self._fields[5]
+
+    @property
+    def strand(self) -> bytes:
+        return self._fields[6]
+
+    @property
+    def frame(self) -> bytes:
+        return self._fields[7]
+
+    @property
+    def size(self) -> int:
+        return self.end - self.start
+
+    @property
+    def fields(self) -> list:
+        return self._fields
+
+    def attribute(self, item):
+        """
+        access an item from the attribute field of a GTF file.
+        :param item: item to access
+        :return: value of item
+        """
+        try:
+            return self._attribute[item]
+        except KeyError:
+            if not self._attribute:
+                self._parse_attribute()
+                return self._attribute[item]
+            else:
+                raise KeyError('%s is not a stored attribute of this gtf record' %
+                               repr(item))
+
+    @property
+    def integer_gene_id(self) -> int:
+        """ENSEMBL gene id without the organism specific prefix, encoded as an integer"""
+        return int(self.attribute(b'gene_id').split(b'.')[0]
+                   .translate(None, self._del_letters))
+
+    @property
+    def organism_prefix(self) -> bytes:
+        """Organism prefix of ENSEMBL gene id (e.g. ENSG for human, ENSMUSG)"""
+        return self.attribute(b'gene_id').translate(None, self._del_non_letters)
+
+    @property
+    def string_gene_id(self) -> bytes:
+        """ENSEMBL gene id, including organism prefix."""
+        return self.attribute(b'gene_id')
+
+    @staticmethod
+    def int2str_gene_id(integer_id: int, organism_prefix: bytes) -> bytes:
+        """
+        converts an integer gene id (suffix) to a string gene id (including organism-
+        specific suffix)
+        :param organism_prefix: bytes
+        :param integer_id: int
+        """
+        bytestring = str(integer_id).encode()
+        diff = 11 - len(bytestring)
+        return organism_prefix + (b'0' * diff) + bytestring
+
+    def __eq__(self, other):
+        """equivalent to testing if start, end, chrom and strand are the same."""
+        return hash(self) == hash(other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 def first(iterable):
     """simple function to return first object in an iterable"""
     return next(iter(iterable))
@@ -161,6 +289,7 @@ class GeneIntervals:
                 return None  # too many genes
         except KeyError:
             return None  # no gene
+
 
 class Reader(reader.Reader):
     """
