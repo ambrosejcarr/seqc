@@ -302,8 +302,8 @@ def run(args) -> None:
         platform.correct_errors(ra, error_rate)
 
         # Apply low coverage filter
-        if 'mars' in args.platform:
-            log.info('Mars-seq: Filtering low coverage reads')
+        if platform.filter_lonely_triplets():
+            log.info('Filtering lonely triplet reads')
             ra.filter_low_coverage(alpha=args.low_coverage_alpha)
 
         # filter non-cells
@@ -318,13 +318,10 @@ def run(args) -> None:
         cell_filter_figure = 'cell_filters.png'
         
         # By pass low count filter for mars seq
-        filter_low_count = True
-        if 'mars' in args.platform:
-            filter_low_count = False
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
                 sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
-                filter_low_count=filter_low_count, 
+                filter_low_count=platform.filter_low_count(), 
                 filter_mitochondrial_rna=args.filter_mitochondrial_rna))
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)
