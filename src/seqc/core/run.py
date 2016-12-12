@@ -167,7 +167,7 @@ def run(args) -> None:
             upload_manager = None
         return samfile, upload_manager
 
-    def create_read_array(samfile, dir_, index, aws_upload_key, min_poly_t):
+    def create_read_array(samfile, dir_, index, aws_upload_key, min_poly_t, max_transcript_length):
         """Create or download a ReadArray object.
 
         :param str samfile: filename of .sam file
@@ -180,7 +180,7 @@ def run(args) -> None:
         """
         log.info('Filtering aligned records and constructing record database.')
         # Construct translator
-        translator = GeneIntervals(index + 'annotations.gtf')
+        translator = GeneIntervals(index + 'annotations.gtf', max_transcript_length=max_transcript_length)
         read_array, sam_record_count = ReadArray.from_alignment_file(
             samfile, translator, min_poly_t)
 
@@ -262,7 +262,8 @@ def run(args) -> None:
         if process_samfile:
             upload_samfile = args.upload_prefix if align else None
             ra, manage_samfile, sam_records = create_read_array(
-                args.samfile, output_dir, args.index, upload_samfile, args.min_poly_t)
+                args.samfile, output_dir, args.index, upload_samfile, args.min_poly_t, 
+                args.max_insert_size)
         else:
             manage_samfile, sam_records = None, None
             ra = ReadArray.load(args.read_array)
@@ -288,9 +289,9 @@ def run(args) -> None:
         platform.correct_errors(ra, error_rate)
 
         # Apply low coverage filter
-        if 'mars' in args.platform:
-            log.info('Mars-seq: Filtering low coverage reads')
-            platform.filter_low_coverage()
+        if platform.filter_lonely_triplets():
+            log.info('Filtering lonely triplet reads')
+            ra.filter_low_coverage(alpha=args.low_coverage_alpha)
 
         # filter non-cells
         log.info('Creating counts matrix.')
@@ -302,9 +303,13 @@ def run(args) -> None:
 
         log.info('Creating filtered counts matrix.')
         cell_filter_figure = 'cell_filters.png'
+        
+        # By pass low count filter for mars seq
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
-                sp_mols, sp_reads, plot=True, figname=cell_filter_figure))
+                sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
+                filter_low_count=platform.filter_low_count(), 
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna))
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)
 

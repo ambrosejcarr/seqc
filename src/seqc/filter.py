@@ -276,7 +276,7 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
 
 def create_filtered_dense_count_matrix(
         molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2, plot=False,
-        figname=None, filter_mitochondrial_rna: bool=True):
+        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
     and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
@@ -284,6 +284,7 @@ def create_filtered_dense_count_matrix(
     (dict), and the number of cells lost with each filter (dict).
 
     :param filter_mitochondrial_rna: if True, run the mitochondrial RNA filter.
+    :param filter_low_count: if True, run the low count cell filter.
     :param molecules: SparseFrame
     :param reads: SparseFrame
     :param max_mt_content: the maximum percentage of mitochondrial RNA that is
@@ -329,9 +330,13 @@ def create_filtered_dense_count_matrix(
         fig, ax_count, ax_cov, ax_mt, ax_gene = [None] * 5  # dummy figure
 
     # filter low counts
-    count_invalid = low_count(molecules_data, is_invalid, plot, ax_count)
-    cells_lost['low_count'], molecules_lost['low_count'] = additional_loss(
-        count_invalid, is_invalid, molecules_data)
+    if filter_low_count:
+        count_invalid = low_count(molecules_data, is_invalid, plot, ax_count)
+        cells_lost['low_count'], molecules_lost['low_count'] = additional_loss(
+            count_invalid, is_invalid, molecules_data)
+    else:
+        count_invalid = is_invalid
+
 
     # filter low coverage
     cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov)

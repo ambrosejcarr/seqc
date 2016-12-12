@@ -10,7 +10,8 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, barcodes_len, check_barcodes, correct_errors_func):
+    def __init__(self, barcodes_len, check_barcodes, correct_errors_func, 
+        filter_lonely_triplets=False, filter_low_count=True):
         """
         Ctor for the abstract class. barcodes_len is a list of barcodes lengths, 
         check_barcodes is a flag signalling whether or not the barcodes are known apriori
@@ -20,6 +21,8 @@ class AbstractPlatform:
         self._correct_errors = correct_errors_func
         self._barcodes_lengths = barcodes_len
         self._check_barcodes = check_barcodes
+        self._filter_lonely_triplets = filter_lonely_triplets
+        self._filter_low_count = filter_low_count
 
     def factory(type):
         if type == "in_drop":
@@ -34,6 +37,8 @@ class AbstractPlatform:
             return mars1_seq()
         if type == "mars2_seq":
             return mars2_seq()
+        if type == "mars_germany":
+            return mars_germany()
         if type == "ten_x":
             return ten_x()
         if type == "ten_x_v2":
@@ -50,6 +55,14 @@ class AbstractPlatform:
     def check_barcodes(self):
         return self._check_barcodes
     
+    @property
+    def filter_lonely_triplets(self):
+        return self._filter_lonely_triplets
+
+    @property
+    def filter_low_count(self):
+        return self._filter_low_count
+
     @property
     def correct_errors(self):
         """Gets the error correction function sharing the same name as the platform.
@@ -306,7 +319,7 @@ class drop_seq(AbstractPlatform):
 class mars1_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop, True, False)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -336,7 +349,7 @@ class mars1_seq(AbstractPlatform):
 class mars2_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop, True, False)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -360,6 +373,26 @@ class mars2_seq(AbstractPlatform):
         rmt = seq[7:15]
         poly_t = seq[15:]
         g.add_annotation((b'', pool + cell, rmt, poly_t))
+        return g
+
+
+class mars_germany(AbstractPlatform):
+
+    def __init__(self):
+        AbstractPlatform.__init__(self, [10], True, correct_errors.in_drop, True, False)
+
+    def primer_length(self):
+        return 15
+
+    def merge_function(self, g, b):
+        pool = g.sequence.strip()[3:7]  # 4 bp
+        g.sequence = g.sequence.strip()[7:] + b'\n'  # strip() is necessary in case there is a truncated read. \n=good, \n\n=bad
+        # Need to skip over the quality as well
+        g.quality = g.quality.strip()[7:] + b'\n'
+        seq = b.sequence.strip()
+        cell = seq[:6]  # 6 bp
+        rmt = seq[6:12]  # 6 bp
+        g.add_annotation((b'', pool + cell, rmt, b''))
         return g
 
 

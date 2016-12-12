@@ -25,8 +25,8 @@ def parse_args(args):
     p = subparsers.add_parser('run', help='initiate SEQC runs')
 
     p.add_argument('platform',
-                   choices=['in_drop', 'drop_seq', 'mars1_seq',
-                            'mars2_seq', 'in_drop_v2', 'in_drop_v3', 'ten_x', 'ten_x_v2'],
+                   choices=['in_drop', 'drop_seq', 'mars1_seq', 'mars2_seq',
+                            'mars_germany', 'in_drop_v2', 'in_drop_v3', 'ten_x', 'ten_x_v2'],
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')
@@ -91,6 +91,10 @@ def parse_args(args):
                    dest='filter_mitochondrial_rna',
                    help='Do not filter cells with greater than 20 percent mitochondrial '
                         'RNA ')
+    f.add_argument('--low-coverage-alpha', metavar='LA',
+                   help='FDR rate for low coverage reads filter in mars-seq datasets. Float '
+                        'between 0 and 1, default=0.25',
+                   default=0.25, type=float) 
 
     s = p.add_argument_group('alignment arguments')
     s.add_argument('--star-args', default=None, nargs='*',

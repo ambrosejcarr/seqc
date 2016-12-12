@@ -548,10 +548,11 @@ class ReadArray:
     # Triplet filter from Adam
     def filter_low_coverage(self, alpha=0.25):
         
-        cell = self['cell']
-        position = self['position']
-        rmt = self['rmt']
-        genes = self['gene']
+        use_inds = np.where( self.data['status'] == 0 )[0]
+        cell = self.data['cell'][use_inds]
+        position = self.positions[use_inds]
+        rmt = self.data['rmt'][use_inds]
+        genes = self.genes[use_inds]
         
         # A triplet is a (cell, position, rmt) triplet in each gene
         df = pd.DataFrame({'gene': genes, 'cell': cell, 'position': position, 
@@ -631,12 +632,15 @@ class ReadArray:
         keep = pd.DataFrame(adj_p[0])
         total['remove'] = keep
         
-        remove = total[total['remove'] is True]
+        remove = total[total['remove'] == True]
         
         final = df.merge(remove, how="left")
-        final = final[final["remove"] is True]
+        final = final[final["remove"] == True]
+
+        # Indicies to remove
+        remove_inds = use_inds[final.index.values]
         
-        self.status[final] |= self.filter_codes['lonely_triplet']
+        self.data['status'][remove_inds] |= self.filter_codes['lonely_triplet']
 
 
     def _hypergeom_wrapper(self, x):
