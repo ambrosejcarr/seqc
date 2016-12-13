@@ -133,7 +133,7 @@ def drop_seq(ra, *args, min_rmt_cutoff=10, rmt_error_frequency=0.8, barcode_base
                     ra.data['rmt'][rmt_group] = new_rmt
 
             # Append N to the cell header
-            correct_barcode = DNA3Bit.ints2int([cell_header[header_group[0]], DNA3Bit.str2bindict('N')])
+            correct_barcode = DNA3Bit.ints2int([cell_header[header_group[0]], DNA3Bit.str2bindict['N']])
             ra.data['cell'][header_group] = correct_barcode
 
     # 2. Single UMI error
@@ -159,7 +159,7 @@ def drop_seq(ra, *args, min_rmt_cutoff=10, rmt_error_frequency=0.8, barcode_base
 
         # Chuck N
         base_frequencies = pd.DataFrame(base_frequencies).T
-        base_frequencies.ix[DNA3Bit.encode(b'N')] = 0
+        base_frequencies.ix[DNA3Bit.str2bindict['N']] = 0
 
         # Identify incorrect UMIs
         if any( base_frequencies.iloc[:, 0:(rmt_length-1)].max() > rmt_error_frequency * len(all_rmts)):
