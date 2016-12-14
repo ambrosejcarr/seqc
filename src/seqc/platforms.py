@@ -1,7 +1,9 @@
 from abc import ABCMeta, abstractmethod
-from seqc import correct_errors
+from seqc import rmt_correction
+from seqc import barcode_correction
 import regex as re
 from seqc.sequence.encodings import DNA3Bit
+from seqc import log
 
 # todo REMOVE POOL FROM ALL THESE CLASSES
 
@@ -10,17 +12,14 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, barcodes_len, check_barcodes, correct_errors_func, 
-        filter_lonely_triplets=False, filter_low_count=True):
+    def __init__(self, barcodes_len, filter_lonely_triplets=False, filter_low_count=True):
         """
         Ctor for the abstract class. barcodes_len is a list of barcodes lengths, 
         check_barcodes is a flag signalling whether or not the barcodes are known apriori
         and so can be filtered and corrected. correct_errors_func points to the correct
         function for error correction
         """
-        self._correct_errors = correct_errors_func
         self._barcodes_lengths = barcodes_len
-        self._check_barcodes = check_barcodes
         self._filter_lonely_triplets = filter_lonely_triplets
         self._filter_low_count = filter_low_count
 
@@ -50,11 +49,7 @@ class AbstractPlatform:
         return the number of barcodes used by this platform
         """
         return len(self._barcodes_lengths)
-        
-    @property
-    def check_barcodes(self):
-        return self._check_barcodes
-    
+            
     @property
     def filter_lonely_triplets(self):
         return self._filter_lonely_triplets
@@ -62,17 +57,6 @@ class AbstractPlatform:
     @property
     def filter_low_count(self):
         return self._filter_low_count
-
-    @property
-    def correct_errors(self):
-        """Gets the error correction function sharing the same name as the platform.
-        If self.name matches no error correction function, it is assumed that there is
-        no function implemented and calls pass_through(), which does not correct any
-        errors
-
-        :return function:
-        """
-        return self._correct_errors
 
     @property
     def resolve_alignments(self):
@@ -117,11 +101,26 @@ class AbstractPlatform:
             seq >>= bc_len * DNA3Bit.bits_per_base()
         return res
 
+    @abstractmethod
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply platform specific barcode correction. The read array should be modified in place
+        with status of reads with incorrect cell barcodes updated to 'cell_error'
+        """
+        pass
+
+    @abstractmethod
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply platform specific RMT correction. The read array should be modified in place
+        with status of reads with incorrect cell barcodes updated to 'rmt_error'
+        """
+        pass
 
 class in_drop(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1, 8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [-1, 8])
         
     @classmethod
     def check_spacer(cls, sequence):
@@ -185,11 +184,33 @@ class in_drop(AbstractPlatform):
         g.add_annotation((b'', cell, rmt, poly_t))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=1)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        rmt_correction.in_drop(ra, error_rate)
+
 
 class in_drop_v2(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1, 8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [-1, 8])
         
     @classmethod
     def check_spacer(cls, sequence):
@@ -253,11 +274,33 @@ class in_drop_v2(AbstractPlatform):
         g.add_annotation((b'', cell, rmt, poly_t))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=2)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        rmt_correction.in_drop(ra, error_rate)
+
 
 class in_drop_v3(AbstractPlatform):
     
     def __init__(self):
-        AbstractPlatform.__init__(self, [-1, 8], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [-1, 8])
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -287,11 +330,17 @@ class in_drop_v3(AbstractPlatform):
         g.add_annotation((b'', cell1 + cell2, rmt, poly_t))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+       raise NotImplementedError
+
+    def apply_rmt_correction(self, ra, error_rate):
+       raise NotImplementedError
+
 
 class drop_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [12], False, correct_errors.drop_seq)
+        AbstractPlatform.__init__(self, [12])
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -315,11 +364,33 @@ class drop_seq(AbstractPlatform):
         g.add_annotation((b'', cell, rmt, poly_t))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        barcode_correction.drop_seq(ra)
+        return None
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        log.info('Drop-seq barcodes do not support RMT correction')
+
 
 class mars1_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop, True, False)
+        AbstractPlatform.__init__(self, [4, 8], True, False)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -345,11 +416,34 @@ class mars1_seq(AbstractPlatform):
                   b':'.join(name_fields) + b'\n')
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        # todo: verify max edit distance 
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        log.info('Mars-seq barcodes do not support RMT correction')
+
 
 class mars2_seq(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [4, 8], True, correct_errors.in_drop, True, False)
+        AbstractPlatform.__init__(self, [4, 8], True, False)
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -375,11 +469,34 @@ class mars2_seq(AbstractPlatform):
         g.add_annotation((b'', pool + cell, rmt, poly_t))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        # todo: verify max edit distance 
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        log.info('Mars-seq barcodes do not support RMT correction')
+
 
 class mars_germany(AbstractPlatform):
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [10], True, correct_errors.in_drop, True, False)
+        AbstractPlatform.__init__(self, [10], True, False)
 
     def primer_length(self):
         return 15
@@ -395,12 +512,35 @@ class mars_germany(AbstractPlatform):
         g.add_annotation((b'', pool + cell, rmt, b''))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        # todo: verify max edit distance 
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        log.info('Mars-seq barcodes do not support RMT correction')
+
 
 class ten_x(AbstractPlatform):
     # 10X version 1 chemistry
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [14], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [14])
         
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -427,12 +567,18 @@ class ten_x(AbstractPlatform):
         g.add_annotation((b'', cell, rmt, b''))
         return g
 
+    def apply_barcode_correction(self, ra, barcode_files):
+       raise NotImplementedError
+
+    def apply_rmt_correction(self, ra, error_rate):
+       raise NotImplementedError
+
 
 class ten_x_v2(AbstractPlatform):
     # 10X version 2 chemistry
 
     def __init__(self):
-        AbstractPlatform.__init__(self, [16], True, correct_errors.in_drop)
+        AbstractPlatform.__init__(self, [16])
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
@@ -456,3 +602,26 @@ class ten_x_v2(AbstractPlatform):
         rmt = combined[16:]  # remaining 10 bp
         g.add_annotation((b'', cell, rmt, b''))
         return g
+
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        
+        """
+        # todo: verify max edit distance 
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        
+        """
+        log.info('TenX barcodes do not support RMT correction')

@@ -272,13 +272,9 @@ def run(args) -> None:
         status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
 
         # Correct barcodes
-        if platform.check_barcodes:
-            log.info('Correcting barcodes and estimating error rates.')
-            error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
-                                                     max_ed=args.max_ed)
-        else:
-            error_rate = None
-            log.info('Skipping barcode correction.')
+        log.info('Correcting barcodes and estimating error rates.')
+        error_rate = platform.apply_barcode_correction(platform, args.barcode_files,
+                                                 max_ed=args.max_ed)
 
         # Resolve multimapping
         log.info('Resolving ambiguous alignments.')
@@ -286,7 +282,7 @@ def run(args) -> None:
 
         # correct errors
         log.info('Identifying RMT errors.')
-        platform.correct_errors(ra, error_rate)
+        platform.apply_rmt_correction(ra, error_rate)
 
         # Apply low coverage filter
         if platform.filter_lonely_triplets:
