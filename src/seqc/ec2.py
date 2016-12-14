@@ -323,7 +323,7 @@ class AWSInstance(object):
                     raise
 
             try:  # test the installation
-                ssh.execute('SEQC.py -h')
+                ssh.execute('SEQC -h')
             except:
                 log.notify('SEQC installation failed.')
                 log.exception()

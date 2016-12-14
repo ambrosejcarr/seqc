@@ -52,7 +52,7 @@ setup(name='seqc',
           'jinja2',
           'pycrypto',
           'scikit_learn>=0.17'],
-      scripts=['src/seqc/core/SEQC.py'],
+      scripts=['src/scripts/SEQC'],
       extras_require={
           'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
       }

@@ -7,7 +7,7 @@ import ftplib
 import nose2
 from nose2.tools import params
 from seqc.sequence import index, gtf
-from seqc.core import SEQC
+from seqc.core import main
 from seqc.read_array import ReadArray
 import seqc
 import logging
@@ -63,7 +63,7 @@ class TestSEQC(unittest.TestCase):
             '--barcode-files', PLATFORM_BARCODES % platform,
             '-e', email,
             '--local']
-        SEQC.main(argv)
+        main.main(argv)
         os.remove('./seqc_log.txt')  # clean up the dummy log we made.
 
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
@@ -96,7 +96,7 @@ class TestSEQC(unittest.TestCase):
             '-k', rsa_key, '--debug']
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
-        SEQC.main(argv)
+        main.main(argv)
 
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_merged(self, platform='in_drop_v2'):
@@ -128,7 +128,7 @@ class TestSEQC(unittest.TestCase):
         ]
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
-        SEQC.main(argv)
+        main.main(argv)
 
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_samfile(self, platform='in_drop_v2'):
@@ -160,7 +160,7 @@ class TestSEQC(unittest.TestCase):
         ]
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
-        SEQC.main(argv)
+        main.main(argv)
 
 
 class TestIndex(unittest.TestCase):
