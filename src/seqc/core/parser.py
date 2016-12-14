@@ -66,22 +66,18 @@ def parse_args(args):
                         'is used.')
 
     f = p.add_argument_group('filter arguments')
-    f.add_argument('--max-insert-size', metavar='F',
-                   help='maximum distance from the TTS for a read to be considered valid'
-                        '. For multialignment correction. Not currently used.',
+    f.add_argument('--max-insert-size', metavar='F', type=int,
+                   help='the maximum fragment size in bp. Aligments that are further '
+                        'than this distance from a TTS are discarded. Default=1000',
                    default=1000)
     f.add_argument('--min-poly-t', metavar='T',
                    help='minimum size of poly-T tail that is required for a barcode to '
                         'be considered a valid record (default=None, automatically '
                         'estimates the parameter from the sequence length)',
                    default=None, type=int)
-    f.add_argument('--max-dust-score', metavar='D', default=10, type=int,
-                   help='maximum complexity score for a read to be considered valid. '
-                        '(default=10, higher scores indicate lower complexity.)')
-    f.add_argument('--max-ed', metavar='ED',
-                   help='Maximum hamming distance for correcting barcode errors. Should '
-                        'be set to 1 when running in_drop legacy barcodes. (Default=2).',
-                   default=2, type=int)
+    # f.add_argument('--max-dust-score', metavar='D', default=10, type=int,
+    #                help='maximum complexity score for a read to be considered valid. '
+    #                     '(default=10, higher scores indicate lower complexity.)')
     f.add_argument('--singleton-weight', metavar='SW',
                    help='Weight to apply to singletons in the count matrix. Float '
                         'between 0 and 1, default=1 (all molecules get full weight)',
@@ -92,8 +88,8 @@ def parse_args(args):
                    help='Do not filter cells with greater than 20 percent mitochondrial '
                         'RNA ')
     f.add_argument('--low-coverage-alpha', metavar='LA',
-                   help='FDR rate for low coverage reads filter in mars-seq datasets. Float '
-                        'between 0 and 1, default=0.25',
+                   help='FDR rate for low coverage reads filter in mars-seq datasets. '
+                        'Float between 0 and 1, default=0.25',
                    default=0.25, type=float) 
 
     s = p.add_argument_group('alignment arguments')
@@ -176,10 +172,6 @@ def parse_args(args):
         r.add_argument(
             '-u', '--upload-prefix', metavar='U', default=None,
             help='s3 location for data to be uploaded.')
-        r.add_argument(
-            '--no-terminate', action='store_false', dest='terminate',
-            help='Do not terminate the EC2 instance after program completes. Normally, '
-                 'the instance is terminated unless an error is encountered.')
         r.add_argument(
             '--instance-type', default='c4.8xlarge',
             help='AWS instance type to initialize for this job. '
