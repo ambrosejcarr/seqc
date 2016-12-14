@@ -273,8 +273,7 @@ def run(args) -> None:
 
         # Correct barcodes
         log.info('Correcting barcodes and estimating error rates.')
-        error_rate = platform.apply_barcode_correction(platform, args.barcode_files,
-                                                 max_ed=args.max_ed)
+        error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
 
         # Resolve multimapping
         log.info('Resolving ambiguous alignments.')

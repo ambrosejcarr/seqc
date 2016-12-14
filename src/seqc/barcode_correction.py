@@ -7,7 +7,7 @@ from seqc import log
 
 # todo document me
 def in_drop(ra, platform, barcode_files, max_ed=2,
-            efault_error_rate=0.02):
+            default_error_rate=0.02):
     """
     Correct reads with incorrect barcodes according to the correct barcodes files.
     Reads with barcodes that have too many errors are filtered out.
