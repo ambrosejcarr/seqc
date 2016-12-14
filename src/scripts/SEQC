@@ -1,0 +1,7 @@
+#!/usr/local/python3
+
+import sys
+from seqc.core.main import main
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
