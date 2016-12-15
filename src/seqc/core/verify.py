@@ -41,7 +41,7 @@ def estimate_required_volume_size(args):
     """
 
     # using worst-case estimates to make sure we don't run out of space, 35 = genome index
-    total = (35 * 1e9) + sum(validate_and_return_size(f) for f in args.barcode_files)
+    total = (35 * 1e10) + sum(validate_and_return_size(f) for f in args.barcode_files)
 
     # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
@@ -50,7 +50,7 @@ def estimate_required_volume_size(args):
         total += validate_and_return_size(args.index)
 
     elif args.samfile:
-        total += (validate_and_return_size(args.samfile) * 2) + 2e10
+        total += (validate_and_return_size(args.samfile) * 2) + 4e10
         total += validate_and_return_size(args.index)
 
     elif args.merged_fastq:
