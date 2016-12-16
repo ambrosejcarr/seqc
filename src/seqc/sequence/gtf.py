@@ -192,26 +192,28 @@ class GeneIntervals:
     # todo implement me.
     @staticmethod
     def _remove_overlapping_intervals(dictionary):
-        """The intervaltree automatically removes intervals with duplicate information
+        """
+        The intervaltree is a dictionary-based structure, so automatically stores a
+        unique set of intervals.
 
         we could parse the tree interval by interval by calling overlap queries using
         each interval. Then, we could update based on the result.
 
         removing duplicates within the same gene is very easy; we simply replace each
-        duplicate with their union.
+        duplicate with their union, as all alignments in these intervals correspond to a
+        unique assignment.
 
-        removing overlaps between exons of different genes is trickier; we need to
-        consider the cases where one gene overlaps the beginning of another, the end
-        of another, is enveloped by another, or evelops another. This gets progressively
-        more complex because evelopment causes intervals to split, which may require
-        some tricky programming or multiple passes to deal with.
+        removing overlaps between exons of different genes can be done using symmetric
+        difference, because we want to eliminate overlaps that are ambiguous between more
+        than one gene
 
         What follows is a skeleton that could be used to parse intervals. I suspect using
         bisection may be the quickest way to find out which category (above) an interval
-        is in.
+        is in. However, optimization of this function is not critical, as it need only
+        be called once per run.
 
-        :param dictionary:
-        :return:
+        :param dict dictionary: result of self.construct_translator()
+        :return dict: dictionary whose intervals correspond to unique gene assignments
         """
 
         def parse_intervals(query, other, tree):
@@ -222,7 +224,7 @@ class GeneIntervals:
             :param set other: set of Interval objects which overlapped the query
               interval
             :param tree: the tree which should be modified
-            :return None:
+            :return None: side-effecting function
             """
             raise NotImplementedError
 
