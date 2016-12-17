@@ -97,7 +97,7 @@ class S3:
         # parse the listed file(s)
         to_download = [
             cls._fileidentity_from_awscli(line, link, prefix)
-            for line in aws_out.decode().strip().split('\n')
+            for line in aws_out.decode().strip().split('\n') if len(line.split('\t'))>=4
             ]
 
         directory, prefix = os.path.split(prefix)  # todo this is not identifying existing files properly
@@ -732,11 +732,11 @@ class BaseSpace:
         dest_path += '/Data/Intensities/BaseCalls/'
 
         if 'mars' not in platform:
-            barcode_fastq = [dest_path + f for f in filenames if '_R1_' in f]
-            genomic_fastq = [dest_path + f for f in filenames if '_R2_' in f]
+            barcode_fastq = [f for f in filenames if '_R1_' in f]
+            genomic_fastq = [f for f in filenames if '_R2_' in f]
         else:
-            genomic_fastq = [dest_path + f for f in filenames if '_R1_' in f]
-            barcode_fastq = [dest_path + f for f in filenames if '_R2_' in f]
+            genomic_fastq = [f for f in filenames if '_R1_' in f]
+            barcode_fastq = [f for f in filenames if '_R2_' in f]
 
         return barcode_fastq, genomic_fastq
 

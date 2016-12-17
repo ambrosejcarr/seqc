@@ -30,7 +30,7 @@ def validate_and_return_size(filename):
             return sum(filesize(filename + f) for f in os.listdir(filename))
         else:
             print(filename)
-            raise ValueError('%s does not point to a valid file')
+            raise ValueError('{} does not point to a valid file'.format(filename))
 
 
 def estimate_required_volume_size(args):
@@ -40,9 +40,8 @@ def estimate_required_volume_size(args):
     :return int: size of volume in gb
     """
 
-    total = sum(validate_and_return_size(f) for f in args.barcode_files)
-
-    # using worst-case estimates to make sure we don't run out of space
+    # using worst-case estimates to make sure we don't run out of space, 35 = genome index
+    total = (35 * 1e9) + sum(validate_and_return_size(f) for f in args.barcode_files)
 
     # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
@@ -67,7 +66,7 @@ def estimate_required_volume_size(args):
                 'specified in the seqc config file or passed as --basespace-token')
 
         io.BaseSpace.check_sample(args.basespace, args.basespace_token)
-        total += io.BaseSpace.check_size(args.basespace, args.basespace_token)
+        total += io.BaseSpace.check_size(args.basespace, args.basespace_token) * 14 + 9e10
 
     return ceil(total * 1e-9)
 
@@ -147,6 +146,9 @@ def run(args) -> float:
 
     if args.volume_size is None:
         setattr(args, 'volume_size', estimate_required_volume_size(args))
+
+    if args.low_coverage_filter_alpha>1 or args.low_coverage_filter_alpha<0:
+        raise ValueError('low-coverage-filter-alpha value must be between 0 and 1')
 
     return args
 

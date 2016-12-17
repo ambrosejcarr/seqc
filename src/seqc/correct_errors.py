@@ -3,7 +3,6 @@ from seqc.sequence.encodings import DNA3Bit
 import numpy as np
 from seqc import log
 from seqc.read_array import ReadArray
-import time
 
 def prepare_for_ec(ra):
     """
@@ -122,8 +121,7 @@ def drop_seq(alignments_ra, *args, **kwargs):
     :param kwargs:
     :return:
     """
-    
-    start = time.process_time()
+
     pos_filter_threshold = 0.8
     barcode_base_shift_threshold = 0.9
     umi_len = 8
@@ -196,7 +194,6 @@ def drop_seq(alignments_ra, *args, **kwargs):
                         ReadArray.set_error_status_on(alignments_ra.data[read_idx])     
                     
     log.info('base shift: {}, pos_bias: {}, small cell groups: {}'.format(base_shift_count, pos_bias_count, small_cell_groups))
-    log.info('Error correction finished in {}'.format(time.process_time() - start))
     return
 
 def base_count(seq_dic, umi_len=8):
@@ -240,7 +237,6 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
     :param apply_likelihood: apply the likelihood method in addition to the Jaitin et al method (Allons)
     :return:
     """
-    start = time.process_time()
     d = ra_grouped
     grouped_res_dic = {}
     rmt_N = 0
@@ -312,7 +308,5 @@ def correct_errors(ra, ra_grouped, err_rate, p_value=0.05, apply_likelihood=True
         grouped_res_dic[feature, cell] = retained_rmts, retained_reads
     
     log.info('Molecules with N that were ignored: {}'.format(rmt_N))
-    tot_time=time.process_time() - start
-    log.info('total error correction runtime: {}'.format(tot_time))    
     
     return grouped_res_dic
