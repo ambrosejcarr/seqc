@@ -21,6 +21,7 @@ def run(args) -> None:
     from seqc import filter
     from seqc.sequence.gtf import GeneIntervals
     from seqc.summary.summary import Section, Summary
+    import pickle
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -293,6 +294,13 @@ def run(args) -> None:
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
+        # Save sparse matrices
+        log.info('Saving sparse matrices')
+        sp_dict = dict()
+        sp_dict['reads'] = sp_reads
+        sp_dict['molecules'] = sp_mols
+        pickle.dump(sp_dict, open(args.output_prefix + '_read_and_count_matrices.p', 'wb'))
+
         log.info('Saving read array.')
         ra.save(args.output_prefix + '.h5')
 
@@ -316,7 +324,8 @@ def run(args) -> None:
         files = [output_dir + '/alignment_summary.txt',
                  dense_csv,
                  cell_filter_figure,
-                 args.output_prefix + '.h5']
+                 args.output_prefix + '.h5',
+                 args.output_prefix + '_read_and_count_matrices.p']
 
         # create the sections for the summary object
         sections = [
