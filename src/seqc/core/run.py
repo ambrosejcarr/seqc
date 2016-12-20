@@ -311,27 +311,31 @@ def run(args) -> None:
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)
 
-        # get alignment summary
-        if os.path.isfile(output_dir + '/alignments/Log.final.out'):
-            os.rename(output_dir + '/alignments/Log.final.out',
-                      output_dir + '/alignment_summary.txt')
-
-        files = [output_dir + '/alignment_summary.txt',
-                 dense_csv,
+        # Output files
+        files = [dense_csv,
                  cell_filter_figure,
                  args.output_prefix + '.h5',
                  args.output_prefix + '_read_and_count_matrices.p']
 
+        # Summary sections
         # create the sections for the summary object
         sections = [
-            Section.from_alignment_summary(
-                output_dir + '/alignment_summary.txt', 'alignment_summary.html'),
             status_filters_section,
             Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
             Section.from_rmt_correction(ra, 'rmt_correction.html'),
             Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html'),
             Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html'),
             Section.from_run_time(args.log_name, 'seqc_log.html')]
+
+        # get alignment summary
+        if os.path.isfile(output_dir + '/alignments/Log.final.out'):
+            os.rename(output_dir + '/alignments/Log.final.out',
+                      output_dir + '/alignment_summary.txt')
+
+            # Upload files and summary sections
+            files += [output_dir + '/alignment_summary.txt']
+            sections.insert(0, Section.from_alignment_summary(
+                            output_dir + '/alignment_summary.txt', 'alignment_summary.html'))
 
         cell_size_figure = 'cell_size_distribution.png'
         index_section = Section.from_final_matrix(
