@@ -153,9 +153,10 @@ class TestSEQC(unittest.TestCase):
             '-u', UPLOAD % (bucket, test_name),
             '-i', 's3://seqc-pub/genomes/hg38_long_polya/',
             '-e', email,
-            '-s', SAMFILE % platform,
+            '-a', SAMFILE % platform,
             '-k', rsa_key,
             '--instance-type', 'c4.8xlarge',
+            '--debug',
             # '--spot-bid', '1.0'
         ]
         if platform != 'drop_seq':

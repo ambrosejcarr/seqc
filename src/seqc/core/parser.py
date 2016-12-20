@@ -50,9 +50,9 @@ def parse_args(args):
     i.add_argument('-m', '--merged-fastq', nargs='?', metavar='M', default='',
                    help='Filename or s3 link to a fastq file containing genomic '
                         'information annotated with barcode data.')
-    i.add_argument('-s', '--samfile', nargs='?', metavar='S', default='',
-                   help='Filename or s3 link to a .sam file containing aligned, merged '
-                        'sequence records.')
+    i.add_argument('-a', '--alignment-file', nargs='?', metavar='A', default='',
+                   help='Filename or s3 link to a .sam or .bam file containing aligned, '
+                        'merged sequence records.')
     i.add_argument('-r', '--read-array', nargs='?', metavar='RA', default='',
                    help='Filename or s3 link to a ReadArray (.h5) archive containing '
                         'processed sam records.')
@@ -217,13 +217,3 @@ def parse_args(args):
                 pass
 
     return parsed
-
-
-def generate_remote_cmdline_args(argv: list) -> str:
-    """recreate the command line arguments for a remote run, appending --local and --aws
-
-    :param argv: the output of sys.argv[1:], in other words, all parameters passed to
-      the script, omitting the script name (process_experiment.py)
-    :return str: command line arguments for a remote run
-    """
-    return 'process_experiment.py ' + ' '.join(argv) + ' --local --aws'

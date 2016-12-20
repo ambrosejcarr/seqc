@@ -49,8 +49,8 @@ def estimate_required_volume_size(args):
         total += sum(validate_and_return_size(f) for f in args.genomic_fastq) * 14 + 9e10
         total += validate_and_return_size(args.index)
 
-    elif args.samfile:
-        total += (validate_and_return_size(args.samfile) * 2) + 4e10
+    elif args.alignment_file:
+        total += (validate_and_return_size(args.alignment_file) * 2) + 4e10
         total += validate_and_return_size(args.index)
 
     elif args.merged_fastq:
@@ -107,7 +107,7 @@ def run(args) -> float:
 
     # make sure at least one input has been passed
     valid_inputs = (
-        args.barcode_fastq, args.genomic_fastq, args.merged_fastq, args.samfile,
+        args.barcode_fastq, args.genomic_fastq, args.merged_fastq, args.alignment_file,
         args.basespace, args.read_array)
     if not any(valid_inputs):
         raise ValueError(
@@ -124,7 +124,7 @@ def run(args) -> float:
             raise ValueError(
                 'if either genomic or barcode fastq are provided, both must be provided')
         num_inputs += 1
-    num_inputs += sum(1 for i in (args.merged_fastq, args.samfile,
+    num_inputs += sum(1 for i in (args.merged_fastq, args.alignment_file,
                                   args.basespace, args.read_array) if i)
     if num_inputs > 1:
         raise ValueError(
