@@ -28,12 +28,12 @@ def run(args) -> None:
         determine where seqc should start based on which parameters were passed.
 
         :param arguments: Namespace object, result of ArgumentParser.parse_args()
-        :returns merge, align, process_samfile: indicates whether merging, alignment, and
-          processing samfiles should be executed.
+        :returns merge, align, process_bamfile: indicates whether merging, alignment, and
+          processing bamfiles should be executed.
         """
         if arguments.read_array:
             return False, False, False
-        if arguments.samfile:
+        if arguments.alignment_file:
             return False, False, True
         if arguments.merged_fastq:
             return False, True, True
@@ -65,7 +65,7 @@ def run(args) -> None:
             arguments.merged_fastq is not None else None)
 
         # check if the index must be downloaded
-        if any((arguments.samfile, arguments.read_array)):
+        if any((arguments.alignment_file, arguments.read_array)):
             index_link = arguments.index + 'annotations.gtf'
         else:
             index_link = arguments.index
@@ -76,9 +76,10 @@ def run(args) -> None:
         arguments.barcode_files = download.s3_data(
             arguments.barcode_files, dir_ + '/barcodes/')
 
-        # check if samfile needs downloading
-        if arguments.samfile:
-            arguments.samfile = download.s3_data([arguments.samfile], dir_ + '/')[0]
+        # check if alignment_file needs downloading
+        if arguments.alignment_file:
+            arguments.alignment_file = download.s3_data(
+                [arguments.alignment_file], dir_ + '/')[0]
 
         # check if readarray needs downloading
         if arguments.read_array:
@@ -98,12 +99,11 @@ def run(args) -> None:
         :param output_stem: str, stem for output files
         :param genomic_fastq: list of str names of fastq files containing genomic
           information
-        :returns merged_fastq, fastq_records: (str, int) name of merged fastq file and the
-          number of fastq records that were processed.
+        :returns str merged_fastq: name of merged fastq file
         """
 
         log.info('Merging genomic reads and barcode annotations.')
-        merged_fastq, fastq_records = fastq.merge_paired(
+        merged_fastq = fastq.merge_paired(
             merge_function=technology_platform.merge_function,
             fout=output_stem + '_merged.fastq',
             genomic=genomic_fastq,
@@ -114,7 +114,7 @@ def run(args) -> None:
         delete_fastq = ' '.join(['rm'] + genomic_fastq + barcode_fastq)
         io.ProcessManager(delete_fastq).run_all()
 
-        return merged_fastq, fastq_records
+        return merged_fastq
 
     def align_fastq_records(
             merged_fastq, dir_, star_args, star_index, n_proc,
@@ -129,7 +129,7 @@ def run(args) -> None:
         :param n_proc: int, number of STAR processes to initiate
         :param aws_upload_key: str, location to upload files, or None if seqc was
           initiated from a merged fastq file.
-        :return samfile, input_data, upload_manager: (str, str, io.ProcessManager)
+        :return bamfile, input_data, upload_manager: (str, str, io.ProcessManager)
           name of .sam file containing aligned reads, indicator of which data was used as
           input, and a ProcessManager for merged fastq files
         """
@@ -140,7 +140,7 @@ def run(args) -> None:
             star_kwargs = dict(a.strip().split('=') for a in star_args)
         else:
             star_kwargs = {}
-        samfile = star.align(
+        bamfile = star.align(
             merged_fastq, star_index, n_proc, alignment_directory,
             **star_kwargs)
 
@@ -166,42 +166,39 @@ def run(args) -> None:
             io.ProcessManager(rm_merged).run_all()
 
             upload_manager = None
-        return samfile, upload_manager
+        return bamfile, upload_manager
 
-    def create_read_array(samfile, dir_, index, aws_upload_key, min_poly_t, max_transcript_length):
+    def create_read_array(bamfile, index, aws_upload_key, min_poly_t,
+                          max_transcript_length):
         """Create or download a ReadArray object.
 
-        :param str samfile: filename of .sam file
-        :param str dir_: directory for output files
+        :param max_transcript_length:
+        :param str bamfile: filename of .bam file
         :param str index: directory containing index files
         :param str aws_upload_key: key where aws files should be uploaded
         :param int min_poly_t: minimum number of poly_t nucleotides for a read to be valid
-        :returns ReadArray, UploadManager, int: ReadArray object,
-          samfile ProcessManager, and number of processed sam records
+        :returns ReadArray, UploadManager: ReadArray object, bamfile ProcessManager
         """
         log.info('Filtering aligned records and constructing record database.')
         # Construct translator
-        translator = GeneIntervals(index + 'annotations.gtf', max_transcript_length=max_transcript_length)
-        read_array, sam_record_count = ReadArray.from_alignment_file(
-            samfile, translator, min_poly_t)
+        translator = GeneIntervals(
+            index + 'annotations.gtf', max_transcript_length=max_transcript_length)
+        read_array = ReadArray.from_alignment_file(
+            bamfile, translator, min_poly_t)
 
-        # converting sam to bam and uploading to S3, else removing samfile
+        # converting sam to bam and uploading to S3, else removing bamfile
         if aws_upload_key:
-            log.info('Converting samfile to bamfile and uploading to S3.')
-            bamfile = dir_ + '/alignments/Aligned.out.bam'
-            convert_sam = 'samtools view -bS -o {bamfile} {samfile}' \
-                .format(bamfile=bamfile, samfile=samfile)
+            log.info('Uploading bam file to S3.')
             upload_bam = 'aws s3 mv {fname} {s3link}'.format(
                 fname=bamfile, s3link=aws_upload_key)
-            upload_manager = io.ProcessManager(convert_sam, upload_bam)
+            upload_manager = io.ProcessManager(upload_bam)
             upload_manager.run_all()
         else:
-            log.info('Removing samfile for memory management.')
-            rm_samfile = 'rm %s' % samfile
-            io.ProcessManager(rm_samfile).run_all()
+            log.info('Removing bamfile for memory management.')
+            rm_bamfile = 'rm %s' % bamfile
+            io.ProcessManager(rm_bamfile).run_all()
             upload_manager = None
-            # todo I think the sam upload manager breaks and produces truncated files
-        return read_array, upload_manager, sam_record_count
+        return read_array, upload_manager
 
     # ######################## MAIN FUNCTION BEGINS HERE ################################
 
@@ -230,7 +227,7 @@ def run(args) -> None:
 
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
-        merge, align, process_samfile = determine_start_point(args)
+        merge, align, process_bamfile = determine_start_point(args)
 
         args = download_input(output_dir, args)
 
@@ -240,11 +237,8 @@ def run(args) -> None:
                     args.barcode_fastq, platform)
                 log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
-            args.merged_fastq, input_fastq_records = merge_fastq_files(
-                platform, args.barcode_fastq, args.output_prefix,
-                args.genomic_fastq)
-        else:
-            input_fastq_records = None  # todo remove this return value if not used
+            args.merged_fastq = merge_fastq_files(
+                platform, args.barcode_fastq, args.output_prefix, args.genomic_fastq)
 
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
@@ -254,19 +248,19 @@ def run(args) -> None:
 
         if align:
             upload_merged = args.upload_prefix if merge else None
-            args.samfile, manage_merged = align_fastq_records(
+            args.alignment_file, manage_merged = align_fastq_records(
                 args.merged_fastq, output_dir, args.star_args,
                 args.index, n_processes, upload_merged)
         else:
             manage_merged = None
 
-        if process_samfile:
-            upload_samfile = args.upload_prefix if align else None
-            ra, manage_samfile, sam_records = create_read_array(
-                args.samfile, output_dir, args.index, upload_samfile, args.min_poly_t, 
+        if process_bamfile:
+            upload_bamfile = args.upload_prefix if align else None
+            ra, manage_bamfile, = create_read_array(
+                args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
                 args.max_insert_size)
         else:
-            manage_samfile, sam_records = None, None
+            manage_bamfile = None
             ra = ReadArray.load(args.read_array)
 
         # create the first summary section here
@@ -299,7 +293,8 @@ def run(args) -> None:
         sp_dict = dict()
         sp_dict['reads'] = sp_reads
         sp_dict['molecules'] = sp_mols
-        pickle.dump(sp_dict, open(args.output_prefix + '_read_and_count_matrices.p', 'wb'))
+        pickle.dump(sp_dict,
+                    open(args.output_prefix + '_read_and_count_matrices.p', 'wb'))
 
         log.info('Saving read array.')
         ra.save(args.output_prefix + '.h5')
@@ -366,10 +361,10 @@ def run(args) -> None:
             manage_merged.wait_until_complete()
             log.info('Successfully uploaded %s to the specified S3 location "%s"' %
                      (args.merged_fastq, args.upload_prefix))
-        if manage_samfile:
-            manage_samfile.wait_until_complete()
+        if manage_bamfile:
+            manage_bamfile.wait_until_complete()
             log.info('Successfully uploaded %s to the specified S3 location "%s"'
-                     % (args.samfile, args.upload_prefix))
+                     % (args.alignment_file, args.upload_prefix))
 
         log.info('SEQC run complete. Cluster will be terminated')
 
