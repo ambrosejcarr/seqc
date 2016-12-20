@@ -48,7 +48,7 @@ Please note that to avoid passing the -k/--rsa-key command when you execute SEQC
 
 After SEQC is installed, help can be listed:
 
-    SEQC.py [-h] [-v] {run,progress,terminate,instances,start,index} ...
+    SEQC [-h] [-v] {run,progress,terminate,instances,start,index} ...
     
     Processing Tools for scRNA-seq Experiments
     
