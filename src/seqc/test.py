@@ -7,8 +7,12 @@ import ftplib
 import nose2
 from nose2.tools import params
 from seqc.sequence import index, gtf
-from seqc.core import SEQC
+from seqc.core import main
+from seqc.read_array import ReadArray
 import seqc
+import logging
+
+logging.basicConfig()
 
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
@@ -37,8 +41,8 @@ def makedirs(output):
 
 class TestSEQC(unittest.TestCase):
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_local(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_local(self, platform='in_drop_v2'):
         """test seqc after pre-downloading all files"""
         with open('seqc_log.txt', 'w') as f:
             f.write('Dummy log. nose2 captures input, so no log is produced. This causes '
@@ -59,11 +63,11 @@ class TestSEQC(unittest.TestCase):
             '--barcode-files', PLATFORM_BARCODES % platform,
             '-e', email,
             '--local']
-        SEQC.main(argv)
+        main.main(argv)
         os.remove('./seqc_log.txt')  # clean up the dummy log we made.
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_raw_fastq(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_raw_fastq(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
         if 'EMAIL' in globals():
             email = globals()['EMAIL']
@@ -89,13 +93,13 @@ class TestSEQC(unittest.TestCase):
             '-g', GENOMIC_FASTQ % platform,
             '--instance-type', 'c4.large',
             '--spot-bid', '1.0',
-            '-k', rsa_key]
+            '-k', rsa_key, '--debug']
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
-        SEQC.main(argv)
+        main.main(argv)
 
-    @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_merged(self, platform):
+    # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
+    def test_remote_from_merged(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
         if 'EMAIL' in globals():
             email = globals()['EMAIL']
@@ -124,7 +128,7 @@ class TestSEQC(unittest.TestCase):
         ]
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
-        SEQC.main(argv)
+        main.main(argv)
 
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_samfile(self, platform='in_drop_v2'):
@@ -149,14 +153,15 @@ class TestSEQC(unittest.TestCase):
             '-u', UPLOAD % (bucket, test_name),
             '-i', 's3://seqc-pub/genomes/hg38_long_polya/',
             '-e', email,
-            '-s', SAMFILE % platform,
+            '-a', SAMFILE % platform,
             '-k', rsa_key,
             '--instance-type', 'c4.8xlarge',
+            '--debug',
             # '--spot-bid', '1.0'
         ]
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
-        SEQC.main(argv)
+        main.main(argv)
 
 
 class TestIndex(unittest.TestCase):
@@ -350,6 +355,47 @@ class TestIndex(unittest.TestCase):
         organism = 'ciona_intestinalis'
         idx = index.Index(organism, ['entrezgene'], self.outdir)
         idx.create_index(s3_location='s3://%s/genomes/%s/' % (bucket, idx.organism))
+
+
+class TestReadArrayCreation(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        platform='in_drop_v2'
+        # cls.bamfile = LOCAL_OUTPUT % platform + '_bamfile.bam'
+        # cls.annotation = LOCAL_OUTPUT % platform + '_annotations.gtf'
+        # S3.download(SAMFILE % platform, cls.bamfile, recursive=False)
+        # S3.download(INDEX + 'annotations.gtf', cls.annotation, recursive=False)
+
+        cls.bamfile = os.path.expanduser('~/Downloads/mm_test_short.bam')
+        cls.annotation = os.path.expanduser('~/Downloads/annotations.gtf')
+        cls.summary = os.path.expanduser('~/Downloads/mm_test_summary.txt')
+        cls.total_input_reads = 12242659
+        cls.translator = gtf.GeneIntervals(cls.annotation, 10000)
+
+    def test_read_array_creation(self):
+        ra = ReadArray.from_alignment_file(self.bamfile, self.translator,
+                                           required_poly_t=0)
+        print(repr(ra.data.shape[0]))
+        print(repr(ra.genes))
+        ra.save(os.path.expanduser('~/Downloads/test.ra'))
+
+
+class TestTranslator(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.annotation = os.path.expanduser('~/Downloads/annotations.gtf')
+
+    def test_construct_translator(self):
+        translator = gtf.GeneIntervals(self.annotation)
+        print(len(translator._chromosomes_to_genes))
+
+    def get_length_of_gtf(self):
+        rd = gtf.Reader(self.annotation)
+        # print(len(rd))
+        print(sum(1 for _ in rd.iter_transcripts()))
+
 
 #########################################################################################
 

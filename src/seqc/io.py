@@ -13,9 +13,7 @@ import boto3
 from botocore.exceptions import ClientError
 import logging
 import requests
-import datetime
 import time
-from math import floor
 from seqc import log
 import shutil
 
@@ -72,23 +70,22 @@ class S3:
     def _fileidentity_from_ls(cls, line):
         line = line.strip().split()
         try:
-            return cls._FileIdentity(line[8], line[4], line[5], line[6].rpartition('.')[0])
+            return cls._FileIdentity(
+                line[8], line[4], line[5], line[6].rpartition('.')[0])
         except:
             log.info(repr(line))
             raise
 
+    # todo make sure recursive is acting properly. Right now it is unused.
     @classmethod
-    def awscli_omit_existing_files(cls, link, prefix, recursive):
+    def awscli_omit_existing_files(cls, link, prefix, recursive=False):
         """check if file or files at link exist given prefix
 
         :param link:
         :param prefix:
-        :param recursive:
         :return:
         """
         aws_cmd = 'aws s3 ls %s' % link  # get filenames
-        # if recursive:
-        #     aws_cmd += ' --recursive'
         p = Popen(aws_cmd, shell=True, stdout=PIPE, stderr=PIPE)
         aws_out, aws_err = p.communicate()
         if aws_err:
@@ -97,10 +94,11 @@ class S3:
         # parse the listed file(s)
         to_download = [
             cls._fileidentity_from_awscli(line, link, prefix)
-            for line in aws_out.decode().strip().split('\n') if len(line.split('\t'))>=4
+            for line in aws_out.decode().strip().split('\n') if aws_out
             ]
 
-        directory, prefix = os.path.split(prefix)  # todo this is not identifying existing files properly
+        # todo this is not identifying existing files properly
+        directory, prefix = os.path.split(prefix)
         try:
             files = os.listdir(directory)
             if prefix:
@@ -109,24 +107,6 @@ class S3:
                       for f in files]
         except FileNotFoundError:
             exists = []
-
-        # # existing files
-        # ls_cmd = 'ls -l --full-time %s' % prefix
-        # if not prefix.endswith('/'):
-        #     prefix += '*'
-        # p = Popen(ls_cmd, shell=True, stdout=PIPE, stderr=PIPE)
-        # ls_out, ls_err = p.communicate()
-        # if ls_err:
-        #     if b'No such file or directory' in ls_err:
-        #         exists = []
-        #     else:
-        #         raise ChildProcessError(
-        #             'ls error:\n%s\nls output:\n%s' % (
-        #                 ls_err.decode(), ls_out.decode()))
-        # else:
-        #     exists = [
-        #         cls._fileidentity_from_ls(line)
-        #         for line in ls_out.decode().strip().split('\n')[1:]]
 
         omission_string = ''
         for f in to_download:
@@ -239,6 +219,7 @@ class S3:
         s3://MyBucket/tmp/dir1/file3
         s3://MyBucket/tmp/dir2/dir3/file4
 
+        :param boto:
         :param cut_dirs: number of leading directories to remove
         :param key_prefix: key of S3 bucket to upload
         :param bucket: name of S3 bucket

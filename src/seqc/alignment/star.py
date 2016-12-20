@@ -1,6 +1,7 @@
 from subprocess import Popen, PIPE
 from multiprocessing import cpu_count
 from os import makedirs
+import shlex
 
 
 def default_alignment_args(
@@ -28,8 +29,13 @@ def default_alignment_args(
         '--alignIntronMax': '1000000',
         '--readFilesIn': fastq_records,
         '--outSAMprimaryFlag': 'AllBestScore',  # all equal-scoring reads are primary
+        '--outSAMtype': 'BAM Unsorted',
         '--outFileNamePrefix': output_dir,
     }
+    if fastq_records.endswith('.gz'):
+        default_align_args['--readFilesCommand'] = 'gunzip -c'
+    if fastq_records.endswith('.bz2'):
+        default_align_args['--readFilesCommand'] = 'bunzip2 -c'
     return default_align_args
 
 
@@ -75,12 +81,13 @@ def align(fastq_file: str, index: str, n_threads: int, alignment_dir: str,
         for pair in runtime_args.items():
             cmd.extend(pair)
 
+    cmd = shlex.split(' '.join(cmd))
     aln = Popen(cmd, stderr=PIPE, stdout=PIPE)
     out, err = aln.communicate()
     if err:
         raise ChildProcessError(err)
 
-    return alignment_dir + 'Aligned.out.sam'
+    return alignment_dir + 'Aligned.out.bam'
 
 
 def create_index(
@@ -120,12 +127,3 @@ def create_index(
     out, err = p.communicate()
     if err:
         raise ChildProcessError(err)
-
-
-
-
-
-
-
-
-

@@ -323,7 +323,7 @@ class AWSInstance(object):
                     raise
 
             try:  # test the installation
-                ssh.execute('SEQC.py -h')
+                ssh.execute('SEQC -h')
             except:
                 log.notify('SEQC installation failed.')
                 log.exception()
@@ -443,8 +443,9 @@ class AWSInstance(object):
             dill.dump(dict(function=function, args=args, kwargs=kwargs), f)
         return filename
 
+    # todo this doesn't work; it gets THIS module's imports, but not the calling module!
     @staticmethod
-    def get_imports():  # todo this doesn't work; it gets THIS module's imports, but not the calling module!
+    def get_imports():
         for alias, val in globals().items():
             if isinstance(val, types.ModuleType):
                 yield (val.__name__, alias)
@@ -640,7 +641,9 @@ class SSHConnection:
 
 class instance_clean_up:
 
-    def __init__(self, email=None, upload=None, log_name='seqc.log', terminate=True):
+    # todo in the pipeline, self.terminate is always True
+    def __init__(self, email=None, upload=None, log_name='seqc.log', terminate=True,
+                 debug=False):
         """Execution context for on-server code execution with defined clean-up practices.
 
         This is the cognate context manager to aws_setup, and when used with aws_setup(),
@@ -658,6 +661,7 @@ class instance_clean_up:
         :param log_name: name of the log object
         :param terminate: if True, terminate the instance upon completion, provided that
           no errors occurred.
+        :param debug: if True, instance is not terminated when an error is raised
         """
         self.email = email
         self.log_name = log_name  # changed mount point to ~, cwd is good.
@@ -665,6 +669,7 @@ class instance_clean_up:
         self.aws_upload_key = upload
         self.err_status = False
         self.mutt = verify.executables('mutt')[0]  # unpacking necessary for singleton
+        self.debug = debug
 
     @staticmethod
     def email_user(attachment: str, email_body: str, email_address: str) -> None:
@@ -733,6 +738,7 @@ class instance_clean_up:
             log.info('Execution completed successfully, but user requested no '
                      'termination. Instance will continue to run.')
 
+        # todo this is the source of the second email for successful runs
         # email user if possible; catch exceptions if email fails.
         if self.email and self.mutt:
             log.notify('Emailing user.')
@@ -753,21 +759,19 @@ class instance_clean_up:
                 io.S3.upload_file(self.log_name, bucket, key)
             upload_file()
 
-        # terminate if requested and no errors
-        if self.terminate and not exc_type:
+        # terminate if no errors and debug is False
+        if self.terminate:
+            if exc_type and self.debug:
+                return  # don't terminate if an error was raised and debug was set
             instance_id = self._get_instance_id()
             if instance_id is None:
-                # todo notify if verbose
-                return
+                return  # todo notify if verbose
             ec2 = boto3.resource('ec2')
             instance = ec2.Instance(instance_id)
             log.notify('instance %s termination requested. If successful, this is the '
                        'final log entry.' % instance_id)
             instance.terminate()
             instance.wait_until_terminated()
-            log.notify('instance %s terminated' % instance_id)  # should never run
-
-        # log.notify('Exiting remote execution context.')  # todo only run if verbose
 
 
 def remove_inactive_security_groups():

@@ -1,4 +1,3 @@
-import sys
 
 def run(args) -> None:
     """Run SEQC on the files provided in args, given specifications provided on the
@@ -10,29 +9,32 @@ def run(args) -> None:
 
     # import inside module for pickle functionality
     # top 2 only needed for post-filtering
-    # from seqc.filter import create_filtered_dense_count_matrix  # todo can remove this?
-    # from seqc.sparse_frame import SparseFrame  # todo can remove this?
 
     import os
     import multiprocessing
-    from seqc import log, ec2, platforms, filter, io
+    from seqc import log, ec2, platforms, io
     from seqc.sequence import fastq
     from seqc.alignment import star
     from seqc.email import email_user
     from seqc.read_array import ReadArray
     from seqc.core import verify, download
+    from seqc import filter
+    from seqc.sequence.gtf import GeneIntervals
+    from seqc.summary.summary import Section, Summary
+    import numpy as np
+    import scipy.io
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
         determine where seqc should start based on which parameters were passed.
 
         :param arguments: Namespace object, result of ArgumentParser.parse_args()
-        :returns merge, align, process_samfile: indicates whether merging, alignment, and
-          processing samfiles should be executed.
+        :returns merge, align, process_bamfile: indicates whether merging, alignment, and
+          processing bamfiles should be executed.
         """
         if arguments.read_array:
             return False, False, False
-        if arguments.samfile:
+        if arguments.alignment_file:
             return False, False, True
         if arguments.merged_fastq:
             return False, True, True
@@ -62,21 +64,9 @@ def run(args) -> None:
         arguments.merged_fastq = (
             download.s3_data([arguments.merged_fastq], dir_ + '/')[0] if
             arguments.merged_fastq is not None else None)
-        if arguments.merged_fastq and arguments.merged_fastq.endswith('.gz'):
-            if pigz:
-                unzip_command = 'pigz -d -f %s' % arguments.merged_fastq
-            else:
-                unzip_command = 'gunzip -f %s' % arguments.merged_fastq
-            gunzip_proc = io.ProcessManager(unzip_command)
-            gunzip_proc.run_all()
-            gunzip_proc.wait_until_complete()
-            arguments.merged_fastq = arguments.merged_fastq.replace('.gz', '')
-            log.info(
-                'Merged fastq file %s successfully installed from S3 and unzipped.' %
-                arguments.merged_fastq)
 
         # check if the index must be downloaded
-        if any((arguments.samfile, arguments.read_array)):
+        if any((arguments.alignment_file, arguments.read_array)):
             index_link = arguments.index + 'annotations.gtf'
         else:
             index_link = arguments.index
@@ -87,9 +77,10 @@ def run(args) -> None:
         arguments.barcode_files = download.s3_data(
             arguments.barcode_files, dir_ + '/barcodes/')
 
-        # check if samfile needs downloading
-        if arguments.samfile:
-            arguments.samfile = download.s3_data([arguments.samfile], dir_ + '/')[0]
+        # check if alignment_file needs downloading
+        if arguments.alignment_file:
+            arguments.alignment_file = download.s3_data(
+                [arguments.alignment_file], dir_ + '/')[0]
 
         # check if readarray needs downloading
         if arguments.read_array:
@@ -109,12 +100,11 @@ def run(args) -> None:
         :param output_stem: str, stem for output files
         :param genomic_fastq: list of str names of fastq files containing genomic
           information
-        :returns merged_fastq, fastq_records: (str, int) name of merged fastq file and the
-          number of fastq records that were processed.
+        :returns str merged_fastq: name of merged fastq file
         """
 
         log.info('Merging genomic reads and barcode annotations.')
-        merged_fastq, fastq_records = fastq.merge_paired(
+        merged_fastq = fastq.merge_paired(
             merge_function=technology_platform.merge_function,
             fout=output_stem + '_merged.fastq',
             genomic=genomic_fastq,
@@ -125,7 +115,7 @@ def run(args) -> None:
         delete_fastq = ' '.join(['rm'] + genomic_fastq + barcode_fastq)
         io.ProcessManager(delete_fastq).run_all()
 
-        return merged_fastq, fastq_records
+        return merged_fastq
 
     def align_fastq_records(
             merged_fastq, dir_, star_args, star_index, n_proc,
@@ -140,7 +130,7 @@ def run(args) -> None:
         :param n_proc: int, number of STAR processes to initiate
         :param aws_upload_key: str, location to upload files, or None if seqc was
           initiated from a merged fastq file.
-        :return samfile, input_data, upload_manager: (str, str, io.ProcessManager)
+        :return bamfile, input_data, upload_manager: (str, str, io.ProcessManager)
           name of .sam file containing aligned reads, indicator of which data was used as
           input, and a ProcessManager for merged fastq files
         """
@@ -151,7 +141,7 @@ def run(args) -> None:
             star_kwargs = dict(a.strip().split('=') for a in star_args)
         else:
             star_kwargs = {}
-        samfile = star.align(
+        bamfile = star.align(
             merged_fastq, star_index, n_proc, alignment_directory,
             **star_kwargs)
 
@@ -177,50 +167,47 @@ def run(args) -> None:
             io.ProcessManager(rm_merged).run_all()
 
             upload_manager = None
-        return samfile, upload_manager
+        return bamfile, upload_manager
 
-    def create_read_array(
-            samfile, dir_, index, aws_upload_key) -> (str, str, io.ProcessManager, int):
+    def create_read_array(bamfile, index, aws_upload_key, min_poly_t,
+                          max_transcript_length):
         """Create or download a ReadArray object.
 
-        :param samfile: str, filename of .sam file
-        :param dir_: str, directory for output files
-        :param index: str, directory containing index files
-        :param aws_upload_key: str, key where aws files should be uploaded
-        :returns read_array, input_data, upload_manager: ReadArray object,
-          samfile ProcessManager, and number of processed sam records
+        :param max_transcript_length:
+        :param str bamfile: filename of .bam file
+        :param str index: directory containing index files
+        :param str aws_upload_key: key where aws files should be uploaded
+        :param int min_poly_t: minimum number of poly_t nucleotides for a read to be valid
+        :returns ReadArray, UploadManager: ReadArray object, bamfile ProcessManager
         """
-        log.info('Reading records from sam file into ReadArray.')
-        read_array = ReadArray.from_samfile(
-            samfile, index + 'annotations.gtf')
-        log.info('Reading sam file complete.')
+        log.info('Filtering aligned records and constructing record database.')
+        # Construct translator
+        translator = GeneIntervals(
+            index + 'annotations.gtf', max_transcript_length=max_transcript_length)
+        read_array = ReadArray.from_alignment_file(
+            bamfile, translator, min_poly_t)
 
-
-        # TODO save the created ReadArray object
-
-        # converting sam to bam and uploading to S3, else removing samfile
+        # converting sam to bam and uploading to S3, else removing bamfile
         if aws_upload_key:
-            log.info('Converting samfile to bamfile and uploading to S3.')
-            bamfile = dir_ + '/alignments/Aligned.out.bam'
-            convert_sam = 'samtools view -bS -o {bamfile} {samfile}' \
-                .format(bamfile=bamfile, samfile=samfile)
+            log.info('Uploading bam file to S3.')
             upload_bam = 'aws s3 mv {fname} {s3link}'.format(
                 fname=bamfile, s3link=aws_upload_key)
-            upload_manager = io.ProcessManager(convert_sam, upload_bam)
+            upload_manager = io.ProcessManager(upload_bam)
             upload_manager.run_all()
         else:
-            log.info('Removing samfile for memory management.')
-            rm_samfile = 'rm %s' % samfile
-            io.ProcessManager(rm_samfile).run_all()
+            log.info('Removing bamfile for memory management.')
+            rm_bamfile = 'rm %s' % bamfile
+            io.ProcessManager(rm_bamfile).run_all()
             upload_manager = None
-        return read_array, upload_manager, read_array._total_alignments
+        return read_array, upload_manager
 
     # ######################## MAIN FUNCTION BEGINS HERE ################################
 
     log.setup_logger(args.log_name)
 
     with ec2.instance_clean_up(
-            email=args.email, upload=args.upload_prefix, log_name=args.log_name):
+            email=args.email, upload=args.upload_prefix, log_name=args.log_name,
+            debug=args.debug):
         pigz, mutt = verify.executables('pigz', 'mutt')
         if mutt:
             log.notify('mutt executable identified, email will be sent when run '
@@ -241,7 +228,7 @@ def run(args) -> None:
 
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
-        merge, align, process_samfile = determine_start_point(args)
+        merge, align, process_bamfile = determine_start_point(args)
 
         args = download_input(output_dir, args)
 
@@ -251,29 +238,8 @@ def run(args) -> None:
                     args.barcode_fastq, platform)
                 log.notify('Estimated min_poly_t={!s}'.format(args.min_poly_t))
 
-            args.merged_fastq, input_fastq_records = merge_fastq_files(
-                platform, args.barcode_fastq, args.output_prefix,
-                args.genomic_fastq)
-        else:
-            input_fastq_records = None
-
-        if align:
-            upload_merged = args.upload_prefix if merge else None
-            args.samfile, manage_merged = align_fastq_records(
-                args.merged_fastq, output_dir, args.star_args,
-                args.index, n_processes, upload_merged)
-        else:
-            manage_merged = None
-
-        if process_samfile:
-            upload_samfile = args.upload_prefix if align else None
-            ra, manage_samfile, sam_records = create_read_array(
-                args.samfile, output_dir, args.index, upload_samfile)
-        else:
-            manage_samfile, sam_records = None, None
-            ra = ReadArray.load(args.read_array)
-
-        log.info('ReadArray construction complete.\n{}'.format(ra))
+            args.merged_fastq = merge_fastq_files(
+                platform, args.barcode_fastq, args.output_prefix, args.genomic_fastq)
 
         # SEQC was started from input other than fastq files
         if args.min_poly_t is None:
@@ -281,70 +247,116 @@ def run(args) -> None:
             log.notify('Warning: SEQC started from step other than unmerged fastq with '
                        'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
 
-        files = []
-        #files += ra.to_count_matrix(args.output_prefix + '_phase1_')
+        if align:
+            upload_merged = args.upload_prefix if merge else None
+            args.alignment_file, manage_merged = align_fastq_records(
+                args.merged_fastq, output_dir, args.star_args,
+                args.index, n_processes, upload_merged)
+        else:
+            manage_merged = None
 
+        if process_bamfile:
+            upload_bamfile = args.upload_prefix if align else None
+            ra, manage_bamfile, = create_read_array(
+                args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
+                args.max_insert_size)
+        else:
+            manage_bamfile = None
+            ra = ReadArray.load(args.read_array)
 
-        log.info('Applying filters')
-        ra.apply_filters(required_poly_t=args.min_poly_t, max_dust_score=args.max_dust_score)
-        #files += ra.to_count_matrix(args.output_prefix + '_phase2_')
-        log.info('Filterring complete.\n{}'.format(ra))
+        # create the first summary section here
+        status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
 
         # Correct barcodes
-        if platform.check_barcodes:
-            log.info('Applying barcode correction')
-            error_rate = ra.apply_barcode_correction(platform, args.barcode_files,
-                                                     max_ed=args.max_ed)
-            #files += ra.to_count_matrix(args. output_prefix + '_phase3_')
-            log.info('Barcode correction complete.\n{}'.format(ra))
-        else:
-            error_rate = None
-            log.info('Skipping barcode correction')
+        log.info('Correcting barcodes and estimating error rates.')
+        error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
 
-        log.info('Resolving multi aligned reads.')
         # Resolve multimapping
-        ra.resolve_alignments()
-        #files += ra.to_count_matrix(args.output_prefix + '_phase4_')
-        log.info('Multialignment resolution complete.\n{}'.format(ra))
-
-        # For mars-seq we apply low coverage filter
-        if platform.apply_low_coverage_filter:
-            log.info('Applying low coverage filter')
-            ra.filter_low_coverage(args.low_coverage_filter_alpha)
-            log.info('Low coverage filtering complete.\n{}'.format(ra))
+        log.info('Resolving ambiguous alignments.')
+        mm_results = ra.resolve_ambiguous_alignments()
 
         # correct errors
-        log.info('Filtering errors')
-        # for in-drop and mars-seq, summary is a dict. for drop-seq, it may be None
-        platform.correct_errors(ra, error_rate, singleton_weight=args.singleton_weight)
-        log.info('Error correction complete.\n{}'.format(ra))
+        log.info('Identifying RMT errors.')
+        platform.apply_rmt_correction(ra, error_rate)
 
-        log.info('Converting ReadArray to count matrix.')
-        files += ra.to_count_matrix(args.output_prefix + '_phase5_')
+        # Apply low coverage filter
+        if platform.filter_lonely_triplets:
+            log.info('Filtering lonely triplet reads')
+            ra.filter_low_coverage(alpha=args.low_coverage_alpha)
 
         # filter non-cells
+        log.info('Creating counts matrix.')
         sp_reads, sp_mols = ra.to_count_matrix(
             sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
 
-        ra.save(args.output_prefix + '.h5')
-        log.info('Count matrix conversion complete.')
-        log.notify('ReadArray saved.')
+        # Save sparse matrices
+        log.info('Saving sparse matrices')
+        scipy.io.mmwrite(args.output_prefix + '_sparse_read_counts.mtx', sp_reads.data)
+        scipy.io.mmwrite(args.output_prefix + '_sparse_molecule_counts.mtx', sp_mols.data)
+        # Indices
+        df = np.array([np.arange(sp_reads.shape[0]), sp_reads.index]).T
+        np.savetxt(args.output_prefix + '_sparse_counts_barcodes.csv', df, 
+            fmt='%d', delimiter=',')
+        # Columns
+        df = np.array([np.arange(sp_reads.shape[1]), sp_reads.columns]).T
+        np.savetxt(args.output_prefix + '_sparse_counts_genes.csv', df, 
+            fmt='%s', delimiter=',')
 
-        # todo fold all this output into a summary page
+        log.info('Saving read array.')
+        ra.save(args.output_prefix + '.h5')
+
+        log.info('Creating filtered counts matrix.')
         cell_filter_figure = 'cell_filters.png'
+        
+        # By pass low count filter for mars seq
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
-                sp_mols, sp_reads, plot=True, figname=cell_filter_figure))
+                sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
+                filter_low_count=platform.filter_low_count, 
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna))
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)
+
+        # Output files
+        files = [dense_csv,
+                 cell_filter_figure,
+                 args.output_prefix + '.h5',
+                 args.output_prefix + '_sparse_read_counts.mtx', 
+                 args.output_prefix + '_sparse_molecule_counts.mtx',
+                 args.output_prefix + '_sparse_counts_barcodes.csv',
+                 args.output_prefix + '_sparse_counts_genes.csv']
+
+        # Summary sections
+        # create the sections for the summary object
+        sections = [
+            status_filters_section,
+            Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
+            Section.from_rmt_correction(ra, 'rmt_correction.html'),
+            Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html'),
+            Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html'),
+            Section.from_run_time(args.log_name, 'seqc_log.html')]
 
         # get alignment summary
         if os.path.isfile(output_dir + '/alignments/Log.final.out'):
             os.rename(output_dir + '/alignments/Log.final.out',
                       output_dir + '/alignment_summary.txt')
-            files += [output_dir + '/alignment_summary.txt']
 
-        files += [dense_csv, cell_filter_figure, args.output_prefix + '.h5']
+            # Upload files and summary sections
+            files += [output_dir + '/alignment_summary.txt']
+            sections.insert(0, Section.from_alignment_summary(
+                            output_dir + '/alignment_summary.txt', 'alignment_summary.html'))
+
+        cell_size_figure = 'cell_size_distribution.png'
+        index_section = Section.from_final_matrix(
+            sp_csv, cell_size_figure, 'cell_distribution.html')
+        seqc_summary = Summary(output_dir + '/summary', sections, index_section)
+        seqc_summary.prepare_archive()
+        seqc_summary.import_image(cell_filter_figure)
+        seqc_summary.import_image(cell_size_figure)
+        seqc_summary.render()
+        summary_archive = seqc_summary.compress_archive()
+
+        files += [summary_archive]
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return
@@ -358,27 +370,14 @@ def run(args) -> None:
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 
-            # todo read-array does not exist, no need to remove. waste of time
-            # # uploading read array to S3 if created, else removing read array
-            # if not process_samfile:
-            #     log.info('Removing .h5 file for memory management.')
-            #     rm_ra = 'rm {fname}'.format(fname=args.read_array)
-            #     io.ProcessManager(rm_ra).run_all()
-
         if manage_merged:
             manage_merged.wait_until_complete()
             log.info('Successfully uploaded %s to the specified S3 location "%s"' %
                      (args.merged_fastq, args.upload_prefix))
-        if manage_samfile:
-            manage_samfile.wait_until_complete()
+        if manage_bamfile:
+            manage_bamfile.wait_until_complete()
             log.info('Successfully uploaded %s to the specified S3 location "%s"'
-                     % (args.samfile, args.upload_prefix))
-
-        # todo we have no read_array now
-        # if manage_ra:
-        #     manage_ra.wait_until_complete()
-        #     log.info('Successfully uploaded %s to the specified S3 location "%s"' %
-        #              (args.read_array, args.aws_upload_key))
+                     % (args.alignment_file, args.upload_prefix))
 
         log.info('SEQC run complete. Cluster will be terminated')
 
@@ -395,9 +394,7 @@ def run(args) -> None:
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 
-        # TODO: I need to create summary but from the read_array instead of via error
-        # correction
-        # TODO: generate a printout of these for the summary
+        # todo local test does not send this email
         if mutt:
             email_body = (
                 '<font face="Courier New, Courier, monospace">'
@@ -406,4 +403,4 @@ def run(args) -> None:
                 'results are now available in the S3 location you specified: '
                 '"%s"\n\n' % args.upload_prefix)
             email_body = email_body.replace('\n', '<br>').replace('\t', '&emsp;')
-            email_user(args.log_name, email_body, args.email)
+            email_user(summary_archive, email_body, args.email)

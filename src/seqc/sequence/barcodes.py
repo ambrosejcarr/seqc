@@ -1,19 +1,28 @@
 from seqc.sequence.encodings import DNA3Bit
 from sys import maxsize
 
-def find_correct_barcode(code, barcodes_list):
+
+def find_correct_barcode(code, barcodes_list, exact_match=False):
     """
     For a given barcode find the closest correct barcode to it from the list (limited to
     one ED), a string representing the error and the edit distance
     NOTE: for now this function looks for a barcode with ED==1 and does not bother
     looking for the minimum
 
+    :param exact_match:
     :param barcodes_list:
     :param code:
     :returns:
     """
+
+    # Return the barcode if it exists
     if code in barcodes_list:
         return code, 0
+
+    # If perfect match is required, return an error since the barcode does not appear
+    # in the correct barcode list
+    if exact_match:
+        return 0, maxsize
 
     min_ed = maxsize
     cor_code = 0
@@ -64,8 +73,7 @@ def list_errors(s1, s2):
     err_list = []
     while s1 > 0:
         if s1 & 0b111 != s2 & 0b111:
-            err_list.append(DNA3Bit.ints2int([s1 & 0b111, s2 & 0b111]))
+            err_list.append((s1 & 0b111, s2 & 0b111))
         s1 >>= 3
         s2 >>= 3
     return err_list
-

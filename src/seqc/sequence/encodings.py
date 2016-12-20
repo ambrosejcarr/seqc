@@ -9,24 +9,24 @@ class DNA3Bit(object):
         return 3
 
 # TODO: The sam reader needs to be fixed so text files are read as text not binary
-    _str2bindict = {65: 0b100, 67: 0b110, 71: 0b101, 84: 0b011, 78: 0b111,
-                    97: 0b100, 99: 0b110, 103: 0b101, 116: 0b011, 110: 0b111,
-                    'A': 0b100, 'C': 0b110, 'G': 0b101, 'T': 0b011, 'N': 0b111,
-                    'a': 0b100, 'c': 0b110, 'g': 0b101, 't': 0b011, 'n': 0b111}
-    _bin2strdict = {0b100: b'A', 0b110: b'C', 0b101: b'G', 0b011: b'T', 0b111: b'N'}
+    str2bindict = {65: 0b100, 67: 0b110, 71: 0b101, 84: 0b011, 78: 0b111,
+                   97: 0b100, 99: 0b110, 103: 0b101, 116: 0b011, 110: 0b111,
+                   'A': 0b100, 'C': 0b110, 'G': 0b101, 'T': 0b011, 'N': 0b111,
+                   'a': 0b100, 'c': 0b110, 'g': 0b101, 't': 0b011, 'n': 0b111}
+    bin2strdict = {0b100: b'A', 0b110: b'C', 0b101: b'G', 0b011: b'T', 0b111: b'N'}
     
     @staticmethod
-    def encode(b: bytes) -> int:
+    def encode(b) -> int:
         """
         Convert string nucleotide sequence into binary, note: string is stored so
         that the first nucleotide is in the MSB position
 
-        :param b: bytes, sequence containing nucleotides to be encoded
+        :param bytes|str b: sequence containing nucleotides to be encoded
         """
         res = 0
         for c in b:
             res <<= 3
-            res += DNA3Bit._str2bindict[c]
+            res += DNA3Bit.str2bindict[c]
         return res
         
     @staticmethod
@@ -41,11 +41,11 @@ class DNA3Bit(object):
             raise ValueError(message)
         r = b''
         while i > 0:
-            r = DNA3Bit._bin2strdict[i & 0b111] + r
+            r = DNA3Bit.bin2strdict[i & 0b111] + r
             i >>= 3
         return r
         
-    #TODO: another ooption is to use i.bit_length and take into account preceding 0's
+    # TODO: another ooption is to use i.bit_length and take into account preceding 0's
     @staticmethod
     def seq_len(i: int) -> int:
         """
@@ -102,8 +102,9 @@ class DNA3Bit(object):
         count how many times char is in seq.
         char needs to be an encoded value of one of the bases.
         """
-        if char_bin not in DNA3Bit._bin2strdict.keys():
-            raise ValueError("DNA3Bit.count was called with an invalid char code - {}".format(char_bin))
+        if char_bin not in DNA3Bit.bin2strdict.keys():
+            raise ValueError("DNA3Bit.count was called with an invalid char code - "
+                             "{}".format(char_bin))
         res = 0
         while seq > 0:
             if seq & 0b111 == char_bin:
@@ -112,7 +113,7 @@ class DNA3Bit(object):
         return res
     
 
-#TODO: this was written for ome tests, not sure it's being used anymore
+# TODO: this was written for tests, not sure it's being used anymore
 #   @staticmethod
 #    def gc_content(i: int) -> float:
 #        """

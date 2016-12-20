@@ -30,7 +30,7 @@ def validate_and_return_size(filename):
             return sum(filesize(filename + f) for f in os.listdir(filename))
         else:
             print(filename)
-            raise ValueError('{} does not point to a valid file'.format(filename))
+            raise ValueError('%s does not point to a valid file')
 
 
 def estimate_required_volume_size(args):
@@ -41,7 +41,7 @@ def estimate_required_volume_size(args):
     """
 
     # using worst-case estimates to make sure we don't run out of space, 35 = genome index
-    total = (35 * 1e9) + sum(validate_and_return_size(f) for f in args.barcode_files)
+    total = (35 * 1e10) + sum(validate_and_return_size(f) for f in args.barcode_files)
 
     # todo stopped here; remove aws dependency
     if args.barcode_fastq and args.genomic_fastq:
@@ -49,8 +49,8 @@ def estimate_required_volume_size(args):
         total += sum(validate_and_return_size(f) for f in args.genomic_fastq) * 14 + 9e10
         total += validate_and_return_size(args.index)
 
-    elif args.samfile:
-        total += (validate_and_return_size(args.samfile) * 2) + 2e10
+    elif args.alignment_file:
+        total += (validate_and_return_size(args.alignment_file) * 2) + 4e10
         total += validate_and_return_size(args.index)
 
     elif args.merged_fastq:
@@ -107,7 +107,7 @@ def run(args) -> float:
 
     # make sure at least one input has been passed
     valid_inputs = (
-        args.barcode_fastq, args.genomic_fastq, args.merged_fastq, args.samfile,
+        args.barcode_fastq, args.genomic_fastq, args.merged_fastq, args.alignment_file,
         args.basespace, args.read_array)
     if not any(valid_inputs):
         raise ValueError(
@@ -124,7 +124,7 @@ def run(args) -> float:
             raise ValueError(
                 'if either genomic or barcode fastq are provided, both must be provided')
         num_inputs += 1
-    num_inputs += sum(1 for i in (args.merged_fastq, args.samfile,
+    num_inputs += sum(1 for i in (args.merged_fastq, args.alignment_file,
                                   args.basespace, args.read_array) if i)
     if num_inputs > 1:
         raise ValueError(
@@ -146,9 +146,6 @@ def run(args) -> float:
 
     if args.volume_size is None:
         setattr(args, 'volume_size', estimate_required_volume_size(args))
-
-    if args.low_coverage_filter_alpha>1 or args.low_coverage_filter_alpha<0:
-        raise ValueError('low-coverage-filter-alpha value must be between 0 and 1')
 
     return args
 
