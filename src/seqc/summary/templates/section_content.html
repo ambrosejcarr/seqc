@@ -1,0 +1,36 @@
+{% extends "section_base.html" %}}
+{% block content %}
+    <h2>{{section.name}}</h2>
+
+    <div class="row">
+        {% for name, c in section.content.items() %}
+
+        <h3>{{name}}</h3>
+
+        {% if c.keys is defined %}
+        <div align="right" class="col-sm-4">
+            {% for k in c.keys %}
+            {{k}}<br>
+            {% endfor %}
+        </div>
+        <div align="left" class="col-sm-8">
+            {% for v in c.values %}
+            {{v}}<br>
+            {% endfor %}
+        </div>
+        {% elif c.text is defined %}
+        <div align="left" class="col-sm-12">
+            {{c.text}}
+        </div>
+        {% elif c.image is defined %}
+        <div class="col-sm-8">
+            <img src="../img/{{c.image}}" alt="{{c.caption}}">  <!-- need style here to set size in pixels -->
+        </div>
+        <div align="left" class="col-sm-4">
+            {{c.legend}}
+        </div>
+        {% endif %}
+
+        {% endfor %}
+    </div>
+{% endblock %}

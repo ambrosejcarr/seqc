@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import seqc
+from seqc import reader
 
 
 class FastqRecord:
@@ -111,7 +111,7 @@ class FastqRecord:
             .astype(int) - 33
 
 
-class Reader(seqc.reader.Reader):
+class Reader(reader.Reader):
     """
     Fastq Reader, defines some special methods for reading and summarizing fastq data:
 
@@ -159,37 +159,33 @@ class Reader(seqc.reader.Reader):
         return np.mean(data), np.std(data), np.unique(data, return_counts=True)
 
 
-def merge_paired(merge_function, fout, genomic, barcode=None):
+def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
     """
     General function to annotate genomic fastq with barcode information from reverse read.
     Takes a merge_function which indicates which kind of platform was used to generate
     the data, and specifies how the merging should be done.
 
-    args:
-    -----
-    :arg merge_function: function from merge_functions.py
-    :arg fout: merged output file name
-    :arg genomic: fastq containing genomic data
-    :arg barcode: fastq containing barcode data
-    :return: fout
+    :param merge_function: function from merge_functions.py
+    :param fout: merged output file name
+    :param genomic: fastq containing genomic data
+    :param barcode: fastq containing barcode data
+    :return str fout, filename of merged fastq file
+
     """
     directory, filename = os.path.split(fout)
-    if not os.path.isdir(directory):
+    if directory and not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
     genomic = Reader(genomic)
-    num_records = 0
     if barcode:
         barcode = Reader(barcode)
         with open(fout, 'wb') as f:
             for g, b in zip(genomic, barcode):
-                num_records += 1
                 r = merge_function(g, b)
                 f.write(bytes(r))
     else:
         with open(fout, 'wb') as f:
             for g in genomic:
-                num_records += 1
                 r = merge_function(g)
                 f.write(bytes(r))
 
-    return fout, num_records
+    return fout
