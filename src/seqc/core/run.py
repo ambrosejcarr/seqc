@@ -385,6 +385,7 @@ def run(args) -> None:
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 
+        # todo local test does not send this email
         if mutt:
             email_body = (
                 '<font face="Courier New, Courier, monospace">'
@@ -393,4 +394,4 @@ def run(args) -> None:
                 'results are now available in the S3 location you specified: '
                 '"%s"\n\n' % args.upload_prefix)
             email_body = email_body.replace('\n', '<br>').replace('\t', '&emsp;')
-            email_user(args.log_name, email_body, args.email)
+            email_user(summary_archive, email_body, args.email)
