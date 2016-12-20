@@ -21,7 +21,8 @@ def run(args) -> None:
     from seqc import filter
     from seqc.sequence.gtf import GeneIntervals
     from seqc.summary.summary import Section, Summary
-    import pickle
+    import numpy as np
+    import scipy.io
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -290,11 +291,16 @@ def run(args) -> None:
 
         # Save sparse matrices
         log.info('Saving sparse matrices')
-        sp_dict = dict()
-        sp_dict['reads'] = sp_reads
-        sp_dict['molecules'] = sp_mols
-        pickle.dump(sp_dict,
-                    open(args.output_prefix + '_read_and_count_matrices.p', 'wb'))
+        scipy.io.mmwrite(args.output_prefix + '_sparse_read_counts.mtx', sp_reads.data)
+        scipy.io.mmwrite(args.output_prefix + '_sparse_molecule_counts.mtx', sp_mols.data)
+        # Indices
+        df = np.array([np.arange(sp_reads.shape[0]), sp_reads.index]).T
+        np.savetxt(args.output_prefix + '_sparse_counts_barcodes.csv', df, 
+            fmt='%d', delimiter=',')
+        # Columns
+        df = np.array([np.arange(sp_reads.shape[1]), sp_reads.columns]).T
+        np.savetxt(args.output_prefix + '_sparse_counts_genes.csv', df, 
+            fmt='%s', delimiter=',')
 
         log.info('Saving read array.')
         ra.save(args.output_prefix + '.h5')
@@ -315,7 +321,10 @@ def run(args) -> None:
         files = [dense_csv,
                  cell_filter_figure,
                  args.output_prefix + '.h5',
-                 args.output_prefix + '_read_and_count_matrices.p']
+                 args.output_prefix + '_sparse_read_counts.mtx', 
+                 args.output_prefix + '_sparse_molecule_counts.mtx',
+                 args.output_prefix + '_sparse_counts_barcodes.csv',
+                 args.output_prefix + '_sparse_counts_genes.csv']
 
         # Summary sections
         # create the sections for the summary object
