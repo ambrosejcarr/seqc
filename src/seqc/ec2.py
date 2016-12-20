@@ -443,8 +443,9 @@ class AWSInstance(object):
             dill.dump(dict(function=function, args=args, kwargs=kwargs), f)
         return filename
 
+    # todo this doesn't work; it gets THIS module's imports, but not the calling module!
     @staticmethod
-    def get_imports():  # todo this doesn't work; it gets THIS module's imports, but not the calling module!
+    def get_imports():
         for alias, val in globals().items():
             if isinstance(val, types.ModuleType):
                 yield (val.__name__, alias)
@@ -640,6 +641,7 @@ class SSHConnection:
 
 class instance_clean_up:
 
+    # todo in the pipeline, self.terminate is always True
     def __init__(self, email=None, upload=None, log_name='seqc.log', terminate=True,
                  debug=False):
         """Execution context for on-server code execution with defined clean-up practices.
@@ -736,6 +738,7 @@ class instance_clean_up:
             log.info('Execution completed successfully, but user requested no '
                      'termination. Instance will continue to run.')
 
+        # todo this is the source of the second email for successful runs
         # email user if possible; catch exceptions if email fails.
         if self.email and self.mutt:
             log.notify('Emailing user.')
@@ -756,7 +759,7 @@ class instance_clean_up:
                 io.S3.upload_file(self.log_name, bucket, key)
             upload_file()
 
-        # terminate if requested and no errors
+        # terminate if no errors and debug is False
         if self.terminate:
             if exc_type and self.debug:
                 return  # don't terminate if an error was raised and debug was set

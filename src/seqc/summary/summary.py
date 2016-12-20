@@ -290,10 +290,12 @@ class Summary:
         self.index_section.render(html_location, self.sections, self.index_section)
         for section in self.sections:
             section.render(html_location, self.sections, self.index_section)
-        os.symlink(html_location + self.index_section.filename,
-                   self.archive_name + '/index.html')
+        # todo this is not currently working.
+        # os.symlink(html_location + self.index_section.filename,
+        #            self.archive_name + '/index.html')
 
     def compress_archive(self):
+        root_dir, _, base_dir = self.archive_name.rpartition('/')
         shutil.make_archive(
-            self.archive_name, 'gztar', self.archive_name)
+            self.archive_name, 'gztar', root_dir, base_dir)
         return self.archive_name + '.tar.gz'
