@@ -41,6 +41,26 @@ def makedirs(output):
 
 class TestSEQC(unittest.TestCase):
 
+    email = globals()['EMAIL'] if 'EMAIL' in globals() else None
+    bucket = globals()['TEST_BUCKET'] if 'TEST_BUCKET' in globals() else None
+    rsa_key = globals()['RSA_KEY'] if 'RSA_KEY' in globals() else None
+    if rsa_key is None:
+        try:
+            rsa_key = os.environ['AWS_RSA_KEY']
+        except KeyError:
+            pass
+
+    def check_parameters(self):
+        if self.email is None:
+            self.email = input('please provide an email address for SEQC to mail '
+                               'results: ')
+        if self.bucket is None:
+            self.bucket = input('please provide an amazon s3 bucket to upload test '
+                                'results: ')
+        if self.rsa_key is None:
+            self.rsa_key = input('please provide an RSA key with permission to create '
+                                 'aws instances: ')
+
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_local(self, platform='in_drop_v2'):
         """test seqc after pre-downloading all files"""
@@ -49,10 +69,8 @@ class TestSEQC(unittest.TestCase):
                     'pipeline errors.\n')
         test_name = 'test_no_aws_%s' % platform
         makedirs(LOCAL_OUTPUT % test_name)
-        if 'EMAIL' in globals():
-            email = globals()['EMAIL']
-        else:
-            email = input('please provide an email address for SEQC to mail results: ')
+        if self.email is None:
+            self.email = input('please provide an email address for SEQC to mail results: ')
         argv = [
             'run',
             platform,
@@ -61,7 +79,7 @@ class TestSEQC(unittest.TestCase):
             '-b', BARCODE_FASTQ % platform,
             '-g', GENOMIC_FASTQ % platform,
             '--barcode-files', PLATFORM_BARCODES % platform,
-            '-e', email,
+            '-e', self.email,
             '--local']
         main.main(argv)
         os.remove('./seqc_log.txt')  # clean up the dummy log we made.
@@ -69,31 +87,19 @@ class TestSEQC(unittest.TestCase):
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_raw_fastq(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
-        if 'EMAIL' in globals():
-            email = globals()['EMAIL']
-        else:
-            email = input('please provide an email address for SEQC to mail results: ')
-        if 'TEST_BUCKET' in globals():
-            bucket = globals()['TEST_BUCKET']
-        else:
-            bucket = input('please provide an amazon s3 bucket to upload test results: ')
-        if 'RSA_KEY' in globals():
-            rsa_key = globals()['RSA_KEY']
-        else:
-            rsa_key = input('please provide an RSA key with permission to create aws '
-                            'instances: ')
+        self.check_parameters()
         argv = [
             'run',
             platform,
             '-o', REMOTE_OUTPUT,
-            '-u', UPLOAD % (bucket, test_name),
+            '-u', UPLOAD % (self.bucket, test_name),
             '-i', INDEX,
-            '-e', email,
+            '-e', self.email,
             '-b', BARCODE_FASTQ % platform,
             '-g', GENOMIC_FASTQ % platform,
             '--instance-type', 'c4.large',
             '--spot-bid', '1.0',
-            '-k', rsa_key, '--debug']
+            '-k', self.rsa_key, '--debug']
         if platform != 'drop_seq':
             argv += ['--barcode-files', PLATFORM_BARCODES % platform]
         main.main(argv)
@@ -101,28 +107,16 @@ class TestSEQC(unittest.TestCase):
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_merged(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
-        if 'EMAIL' in globals():
-            email = globals()['EMAIL']
-        else:
-            email = input('please provide an email address for SEQC to mail results: ')
-        if 'TEST_BUCKET' in globals():
-            bucket = globals()['TEST_BUCKET']
-        else:
-            bucket = input('please provide an amazon s3 bucket to upload test results: ')
-        if 'RSA_KEY' in globals():
-            rsa_key = globals()['RSA_KEY']
-        else:
-            rsa_key = input('please provide an RSA key with permission to create aws '
-                            'instances: ')
+        self.check_parameters()
         argv = [
             'run',
             platform,
             '-o', REMOTE_OUTPUT,
-            '-u', UPLOAD % (bucket, test_name),
+            '-u', UPLOAD % (self.bucket, test_name),
             '-i', INDEX,
-            '-e', email,
+            '-e', self.email,
             '-m', MERGED % (platform, platform),
-            '-k', rsa_key,
+            '-k', self.rsa_key,
             '--instance-type', 'c4.large',
             # '--spot-bid', '1.0'
         ]
@@ -133,28 +127,16 @@ class TestSEQC(unittest.TestCase):
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
     def test_remote_from_samfile(self, platform='in_drop_v2'):
         test_name = 'test_remote_%s' % platform
-        if 'EMAIL' in globals():
-            email = globals()['EMAIL']
-        else:
-            email = input('please provide an email address for SEQC to mail results: ')
-        if 'TEST_BUCKET' in globals():
-            bucket = globals()['TEST_BUCKET']
-        else:
-            bucket = input('please provide an amazon s3 bucket to upload test results: ')
-        if 'RSA_KEY' in globals():
-            rsa_key = globals()['RSA_KEY']
-        else:
-            rsa_key = input('please provide an RSA key with permission to create aws '
-                            'instances: ')
+        self.check_parameters()
         argv = [
             'run',
             platform,
             '-o', REMOTE_OUTPUT,
-            '-u', UPLOAD % (bucket, test_name),
+            '-u', UPLOAD % (self.bucket, test_name),
             '-i', 's3://seqc-pub/genomes/hg38_long_polya/',
-            '-e', email,
+            '-e', self.email,
             '-a', SAMFILE % platform,
-            '-k', rsa_key,
+            '-k', self.rsa_key,
             '--instance-type', 'c4.8xlarge',
             '--debug',
             # '--spot-bid', '1.0'
@@ -361,7 +343,7 @@ class TestReadArrayCreation(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        platform='in_drop_v2'
+        platform = 'in_drop_v2'
         # cls.bamfile = LOCAL_OUTPUT % platform + '_bamfile.bam'
         # cls.annotation = LOCAL_OUTPUT % platform + '_annotations.gtf'
         # S3.download(SAMFILE % platform, cls.bamfile, recursive=False)
