@@ -107,13 +107,19 @@ class Section:
             'the poly-a tail of an mRNA molecule.')
         description_section = TextContent(description)
 
-        keys = ('length of read array',  'no gene', 'gene not unique', 'primer missing', 'low poly t')
+        # Get counts 
+        no_gene = np.sum(ra.data['status'] & ra.filter_codes['no_gene'] > 0)
+        gene_not_unique = np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique'] > 0)
+        primer_missing = np.sum(ra.data['status'] & ra.filter_codes['primer_missing'] > 0)
+        low_polyt = np.sum(ra.data['status'] & ra.filter_codes['low_polyt'] > 0)
+
+        keys = ('length of read array',  'reads with genomic alignments alone', 'reads mapping to multiple genes', 'primer missing', 'low poly t')
         values = (
             len(ra.data),
-            np.sum(ra.data['status'] & ra.filter_codes['no_gene'] > 0),
-            np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique'] > 0),
-            np.sum(ra.data['status'] & ra.filter_codes['primer_missing'] > 0),
-            np.sum(ra.data['status'] & ra.filter_codes['low_polyt'] > 0)
+            '%d (%.2f%%)' % (no_gene, no_gene / len(ra.data) * 100),
+            '%d (%.2f%%)' % (gene_not_unique, gene_not_unique / len(ra.data) * 100),
+            '%d (%.2f%%)' % (primer_missing, primer_missing / len(ra.data) * 100),
+            '%d (%.2f%%)' % (low_polyt, low_polyt / len(ra.data) * 100),
         )
         data_section = DataContent(keys, values)
         return cls(
@@ -134,9 +140,10 @@ class Section:
         """
         description = 'description for cell barcode correction'  # todo implement
         description_section = TextContent(description)
+        count = np.sum(ra.data['status'] & ra.filter_codes['cell_error'] > 0)
         data_section = DataContent(
             ['cell error'],
-            [np.sum(ra.data['status'] & ra.filter_codes['cell_error'] > 0)])
+            ['%d (%.2f%%)' % (count, count / len(ra.data) * 100)])
         return cls(
             'Cell Barcode Correction',
             {'Description': description_section, 'Results': data_section},
@@ -155,9 +162,10 @@ class Section:
 
         description = 'description for rmt correction'  # todo implement
         description_section = TextContent(description)
+        count = np.sum(ra.data['status'] & ra.filter_codes['rmt_error'])
         data_section = DataContent(
             ['rmt error'],
-            [np.sum(ra.data['status'] & ra.filter_codes['rmt_error'])])
+            ['%d (%.2f%%)' % (count, count / len(ra.data) * 100)])
         return cls(
             'RMT Barcode Correction',
             {'Description': description_section, 'Results': data_section},
