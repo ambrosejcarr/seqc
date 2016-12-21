@@ -467,7 +467,8 @@ class AWSInstance(object):
         :param object function: function to be called
         :return str: filename of the python script
         """
-        script_name = '{}{}.py'.format(os.environ['TMPDIR'], function.__name__)
+        script_name = '{}{!s}_{}.py'.format(
+            os.environ['TMPDIR'], random.randint(0, 1e9), function.__name__)
         script_body = (
             '{imports}'
             'with open("func.p", "rb") as fin:\n'
