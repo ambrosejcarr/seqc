@@ -438,7 +438,9 @@ class AWSInstance(object):
         :param dict kwargs: keyword arguments for the function
         :return str: filename of the pickled function
         """
-        filename = '{}{}.p'.format(os.environ['TMPDIR'], function.__name__)
+        filename = '{}{!s}_{}.p'.format(
+            os.environ['TMPDIR'], random.randint(0, 1e9), function.__name__)
+
         with open(filename, 'wb') as f:
             dill.dump(dict(function=function, args=args, kwargs=kwargs), f)
         return filename
