@@ -93,15 +93,15 @@ class Section:
         description = (
             'Initial filters are run over the sam file while our ReadArray database is '
             'being constructed. These filters indicate heuristic reasons why reads '
-            'should be omitted from downstream operations:\n'
-            'no gene: Regardless of the read\'s genomic alignment status, there was no '
-            'transcriptomic alignment for this read.\n'
-            'gene not unique: this indicates that more than one alignment was recovered '
-            'for this read. We attempt to resolve these multi-alignments downstream. '
-            'primer missing: This is an in-drop specific filter, it indices that the '
+            'should be omitted from downstream operations:<br><br>'
+            '<b>no gene</b>: Regardless of the read\'s genomic alignment status, there was no '
+            'transcriptomic alignment for this read.<br>'
+            '<b>gene not unique</b>: this indicates that more than one alignment was recovered '
+            'for this read. We attempt to resolve these multi-alignments downstream. <br>'
+            '<b>primer missing</b>: This is an in-drop specific filter, it indices that the '
             'spacer sequence could not be identified, and thus neither a cell barcode '
-            'nor an rmt were recorded for this read.\n'
-            'low poly t: the primer did not display enough t-sequence in the primer '
+            'nor an rmt were recorded for this read.<br>'
+            '<b>low poly t</b>: the primer did not display enough t-sequence in the primer '
             'tail, where these nucleotides are expected. This indicates an increased '
             'probability that this primer randomly primed, instead of hybridizing with '
             'the poly-a tail of an mRNA molecule.')
@@ -221,7 +221,15 @@ class Section:
         :return:
         """
         plot.Diagnostics.cell_size_histogram(counts_matrix, save=figure_path)
-        image_legend = 'histogram legend'
+        
+        # Number of cells and molecule count distributions
+        image_legend = "Number of cells: {} <br>".format(counts_matrix.shape[0])
+        ms = counts_matrix.sum(axis=1)
+        image_legend += "Min number of molecules: {}<br>".format(ms.min())
+        for prctile in [25, 50, 75]:
+            image_legend += '{}th percentile: {}<br>'.format(prctile, np.percentile(ms, prctile))
+        image_legend += "Max number of molecules: {}<br>".format(ms.max())
+
         image_section = ImageContent(figure_path, 'cell size figure', image_legend)
         return cls('Cell Summary',
                    {'Library Size Distribution': image_section},
