@@ -23,6 +23,7 @@ def run(args) -> None:
     from seqc.summary.summary import Section, Summary
     import numpy as np
     import scipy.io
+    from shutil import copyfile
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -190,8 +191,9 @@ def run(args) -> None:
         # converting sam to bam and uploading to S3, else removing bamfile
         if aws_upload_key:
             log.info('Uploading bam file to S3.')
-            upload_bam = 'aws s3 mv {fname} {s3link}'.format(
-                fname=bamfile, s3link=aws_upload_key)
+            upload_bam = 'aws s3 mv {fname} {s3link}{prefix}_Aligned.out.bam'.format(
+                fname=bamfile, s3link=aws_upload_key, prefix=args.output_prefix)
+            print(upload_bam)
             upload_manager = io.ProcessManager(upload_bam)
             upload_manager.run_all()
         else:
@@ -306,7 +308,7 @@ def run(args) -> None:
         ra.save(args.output_prefix + '.h5')
 
         log.info('Creating filtered counts matrix.')
-        cell_filter_figure = 'cell_filters.png'
+        cell_filter_figure = args.output_prefix +  '_cell_filters.png'
         
         # By pass low count filter for mars seq
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
@@ -339,17 +341,17 @@ def run(args) -> None:
         # get alignment summary
         if os.path.isfile(output_dir + '/alignments/Log.final.out'):
             os.rename(output_dir + '/alignments/Log.final.out',
-                      output_dir + '/alignment_summary.txt')
+                      output_dir + '/' + args.output_prefix + '_alignment_summary.txt')
 
             # Upload files and summary sections
-            files += [output_dir + '/alignment_summary.txt']
+            files += [output_dir + '/' + args.output_prefix + '_alignment_summary.txt']
             sections.insert(0, Section.from_alignment_summary(
-                            output_dir + '/alignment_summary.txt', 'alignment_summary.html'))
+                            output_dir + '/' + args.output_prefix + '_alignment_summary.txt', 'alignment_summary.html'))
 
         cell_size_figure = 'cell_size_distribution.png'
         index_section = Section.from_final_matrix(
             sp_csv, cell_size_figure, 'cell_distribution.html')
-        seqc_summary = Summary(output_dir + '/summary', sections, index_section)
+        seqc_summary = Summary(output_dir + '/' + args.output_prefix +  '_summary', sections, index_section)
         seqc_summary.prepare_archive()
         seqc_summary.import_image(cell_filter_figure)
         seqc_summary.import_image(cell_size_figure)
@@ -387,10 +389,13 @@ def run(args) -> None:
             bucket, key = io.S3.split_link(args.upload_prefix)
             for item in [args.log_name, './nohup.log']:
                 try:
-                    ec2.Retry(retries=5)(io.S3.upload_file)(item, bucket, key)
+                    # Make a copy of the file with the output prefix
+                    copyfile(item, args.output_prefix + '_' + item)
+                    print(args.output_prefix + '_' + item)
+                    ec2.Retry(retries=5)(io.S3.upload_file)(args.output_prefix + '_' + item, bucket, key)
                     item_name = item.split('/')[-1]
                     log.info('Successfully uploaded %s to the specified S3 location '
-                             '"%s%s".' % (item, args.upload_prefix, item_name))
+                             '"%s".' % (item, args.upload_prefix))
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 
