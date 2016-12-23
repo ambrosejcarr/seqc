@@ -387,9 +387,8 @@ class Reader(reader.Reader):
             if record[2] == 'exon':
                 exons.append(record)
             elif record[2] == 'transcript':
-                # we want exons in inverse order, - is already in inverse order.
-                if transcript_strand == '+':
-                    exons = exons[::-1]
+                # we want exons in inverse order
+                exons = exons[::-1]
                 yield (
                     (transcript_chromosome, transcript_strand, transcript_gene_id), exons)
                 exons = []
@@ -398,8 +397,7 @@ class Reader(reader.Reader):
                 transcript_gene_id = self.strip_gene_num(record[8])
 
         # yield the final transcript
-        if transcript_strand == '+':
-            exons = exons[::-1]
+        exons = exons[::-1]
         yield (transcript_chromosome, transcript_strand, transcript_gene_id), exons
 
 
