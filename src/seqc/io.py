@@ -153,8 +153,8 @@ class S3:
         out, err = d.communicate()
         if err:
             raise ChildProcessError(err.decode())
-        downloaded_files = [line.strip().split()[-1] for line in
-                            out.decode().strip().split('\n') if line.strip()]
+        downloaded_files = sorted([line.strip().split()[-1] for line in
+                                   out.decode().strip().split('\n') if line.strip()])
         if log:
             log.notify('downloaded files:\n\t[%s]' % ',\n\t'.join(
                 downloaded_files))
@@ -719,7 +719,7 @@ class BaseSpace:
             genomic_fastq = [f for f in filenames if '_R1_' in f]
             barcode_fastq = [f for f in filenames if '_R2_' in f]
 
-        return barcode_fastq, genomic_fastq
+        return sorted(barcode_fastq), sorted(genomic_fastq)
 
 
 class ProcessManager:

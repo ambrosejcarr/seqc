@@ -93,27 +93,33 @@ class Section:
         description = (
             'Initial filters are run over the sam file while our ReadArray database is '
             'being constructed. These filters indicate heuristic reasons why reads '
-            'should be omitted from downstream operations:\n'
-            'no gene: Regardless of the read\'s genomic alignment status, there was no '
-            'transcriptomic alignment for this read.\n'
-            'gene not unique: this indicates that more than one alignment was recovered '
-            'for this read. We attempt to resolve these multi-alignments downstream. '
-            'primer missing: This is an in-drop specific filter, it indices that the '
+            'should be omitted from downstream operations:<br><br>'
+            '<b>no gene</b>: Regardless of the read\'s genomic alignment status, there was no '
+            'transcriptomic alignment for this read.<br>'
+            '<b>gene not unique</b>: this indicates that more than one alignment was recovered '
+            'for this read. We attempt to resolve these multi-alignments downstream. <br>'
+            '<b>primer missing</b>: This is an in-drop specific filter, it indices that the '
             'spacer sequence could not be identified, and thus neither a cell barcode '
-            'nor an rmt were recorded for this read.\n'
-            'low poly t: the primer did not display enough t-sequence in the primer '
+            'nor an rmt were recorded for this read.<br>'
+            '<b>low poly t</b>: the primer did not display enough t-sequence in the primer '
             'tail, where these nucleotides are expected. This indicates an increased '
             'probability that this primer randomly primed, instead of hybridizing with '
             'the poly-a tail of an mRNA molecule.')
         description_section = TextContent(description)
 
-        keys = ('length of read array',  'no gene', 'gene not unique', 'primer missing', 'low poly t')
+        # Get counts 
+        no_gene = np.sum(ra.data['status'] & ra.filter_codes['no_gene'] > 0)
+        gene_not_unique = np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique'] > 0)
+        primer_missing = np.sum(ra.data['status'] & ra.filter_codes['primer_missing'] > 0)
+        low_polyt = np.sum(ra.data['status'] & ra.filter_codes['low_polyt'] > 0)
+
+        keys = ('length of read array',  'reads with genomic alignments alone', 'reads mapping to multiple genes', 'primer missing', 'low poly t')
         values = (
             len(ra.data),
-            np.sum(ra.data['status'] & ra.filter_codes['no_gene'] > 0),
-            np.sum(ra.data['status'] & ra.filter_codes['gene_not_unique'] > 0),
-            np.sum(ra.data['status'] & ra.filter_codes['primer_missing'] > 0),
-            np.sum(ra.data['status'] & ra.filter_codes['low_polyt'] > 0)
+            '%d (%.2f%%)' % (no_gene, no_gene / len(ra.data) * 100),
+            '%d (%.2f%%)' % (gene_not_unique, gene_not_unique / len(ra.data) * 100),
+            '%d (%.2f%%)' % (primer_missing, primer_missing / len(ra.data) * 100),
+            '%d (%.2f%%)' % (low_polyt, low_polyt / len(ra.data) * 100),
         )
         data_section = DataContent(keys, values)
         return cls(
@@ -134,9 +140,10 @@ class Section:
         """
         description = 'description for cell barcode correction'  # todo implement
         description_section = TextContent(description)
+        count = np.sum(ra.data['status'] & ra.filter_codes['cell_error'] > 0)
         data_section = DataContent(
             ['cell error'],
-            [np.sum(ra.data['status'] & ra.filter_codes['cell_error'] > 0)])
+            ['%d (%.2f%%)' % (count, count / len(ra.data) * 100)])
         return cls(
             'Cell Barcode Correction',
             {'Description': description_section, 'Results': data_section},
@@ -155,9 +162,10 @@ class Section:
 
         description = 'description for rmt correction'  # todo implement
         description_section = TextContent(description)
+        count = np.sum(ra.data['status'] & ra.filter_codes['rmt_error'])
         data_section = DataContent(
             ['rmt error'],
-            [np.sum(ra.data['status'] & ra.filter_codes['rmt_error'])])
+            ['%d (%.2f%%)' % (count, count / len(ra.data) * 100)])
         return cls(
             'RMT Barcode Correction',
             {'Description': description_section, 'Results': data_section},
@@ -213,7 +221,15 @@ class Section:
         :return:
         """
         plot.Diagnostics.cell_size_histogram(counts_matrix, save=figure_path)
-        image_legend = 'histogram legend'
+        
+        # Number of cells and molecule count distributions
+        image_legend = "Number of cells: {} <br>".format(counts_matrix.shape[0])
+        ms = counts_matrix.sum(axis=1)
+        image_legend += "Min number of molecules: {}<br>".format(ms.min())
+        for prctile in [25, 50, 75]:
+            image_legend += '{}th percentile: {}<br>'.format(prctile, np.percentile(ms, prctile))
+        image_legend += "Max number of molecules: {}<br>".format(ms.max())
+
         image_section = ImageContent(figure_path, 'cell size figure', image_legend)
         return cls('Cell Summary',
                    {'Library Size Distribution': image_section},
