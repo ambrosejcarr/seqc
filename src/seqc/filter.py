@@ -132,7 +132,10 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
     # check if adding a second component is necessary; if not, filter is pass-through
     if gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95:
         res = gmm2.fit_predict(col_ratio)
-        failing = np.where(res == np.argmin(gmm2.means_))[0]
+
+        # Molecule sum means
+        means = [np.mean(ms[res == 0]), np.mean(ms[res == 1])]
+        failing = np.where(res == np.argmin(means))[0]
 
         # set smaller mean as invalid
         is_invalid = is_invalid.copy()

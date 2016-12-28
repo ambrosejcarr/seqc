@@ -268,23 +268,38 @@ def run(args) -> None:
 
         # create the first summary section here
         status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
+        sections = [status_filters_section]
 
-        # Correct barcodes
-        log.info('Correcting barcodes and estimating error rates.')
-        error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
+        # Skip over the corrections if read array is specified by the user
+        if not args.read_array:
 
-        # Resolve multimapping
-        log.info('Resolving ambiguous alignments.')
-        mm_results = ra.resolve_ambiguous_alignments()
+            # Correct barcodes
+            log.info('Correcting barcodes and estimating error rates.')
+            error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
 
-        # correct errors
-        log.info('Identifying RMT errors.')
-        platform.apply_rmt_correction(ra, error_rate)
+            # Resolve multimapping
+            log.info('Resolving ambiguous alignments.')
+            mm_results = ra.resolve_ambiguous_alignments()
 
-        # Apply low coverage filter
-        if platform.filter_lonely_triplets:
-            log.info('Filtering lonely triplet reads')
-            ra.filter_low_coverage(alpha=args.low_coverage_alpha)
+            # correct errors
+            log.info('Identifying RMT errors.')
+            platform.apply_rmt_correction(ra, error_rate)
+
+            # Apply low coverage filter
+            if platform.filter_lonely_triplets:
+                log.info('Filtering lonely triplet reads')
+                ra.filter_low_coverage(alpha=args.low_coverage_alpha)
+
+            log.info('Saving read array.')
+            ra.save(args.output_prefix + '.h5')
+
+            # Summary sections
+            # create the sections for the summary object
+            sections += [
+                Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
+                Section.from_rmt_correction(ra, 'rmt_correction.html'),
+                Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html')]
+
 
         # filter non-cells
         log.info('Creating counts matrix.')
@@ -303,9 +318,6 @@ def run(args) -> None:
         df = np.array([np.arange(sp_reads.shape[1]), sp_reads.columns]).T
         np.savetxt(args.output_prefix + '_sparse_counts_genes.csv', df, 
             fmt='%s', delimiter=',')
-
-        log.info('Saving read array.')
-        ra.save(args.output_prefix + '.h5')
 
         log.info('Creating filtered counts matrix.')
         cell_filter_figure = args.output_prefix +  '_cell_filters.png'
@@ -330,11 +342,7 @@ def run(args) -> None:
 
         # Summary sections
         # create the sections for the summary object
-        sections = [
-            status_filters_section,
-            Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
-            Section.from_rmt_correction(ra, 'rmt_correction.html'),
-            Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html'),
+        sections += [
             Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html'),
             Section.from_run_time(args.log_name, 'seqc_log.html')]
 
