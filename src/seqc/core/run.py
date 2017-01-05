@@ -15,7 +15,7 @@ def run(args) -> None:
     from seqc import log, ec2, platforms, io
     from seqc.sequence import fastq
     from seqc.alignment import star
-    from seqc.email import email_user
+    from seqc.email_ import email_user
     from seqc.read_array import ReadArray
     from seqc.core import verify, download
     from seqc import filter
