@@ -302,7 +302,7 @@ class Summary:
 
         :return str zipped_archive_location:
         """
-        html_location = self.archive_name + '/html/'
+        html_location = self.archive_name + '/html_/'
         self.index_section.render(html_location, self.sections, self.index_section)
         for section in self.sections:
             section.render(html_location, self.sections, self.index_section)
