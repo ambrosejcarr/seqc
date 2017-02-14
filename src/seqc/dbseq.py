@@ -138,7 +138,7 @@ def worker_multi(chunk, archive_name, bam_name, translator):
             i = 0
             storage = np.zeros((ARRAY_CHUNKSIZE, len(DT)), dtype=DT)
         else:
-            storage[i]= sam_record(aligned_segment, translator)
+            storage[i]= from_sam_record(aligned_segment, translator)
         i += 1
 
     storage = storage[:i % ARRAY_CHUNKSIZE]
@@ -148,34 +148,8 @@ def worker_multi(chunk, archive_name, bam_name, translator):
                 table.append(storage)
                 table.flush()
 
-def worker3(chunk, archive_name, bam_name, translator):
-    """
-    :param (str, int, int) chunk:
-    :param str archive_file:
-    :param str bam_name:
-    :return:
-    """
-    h5 = tb.open_file(archive_name, mode='a')
-    print('processing', *chunk)
-    table = h5.root.records
-    rec = table.row
-    i = 0
-    for aligned_segment in bam_iterator(bam_name, *chunk):
-        if i == ARRAY_CHUNKSIZE:
-            with LOCK:
-                table.flush()
-            i = 0
-            rec = table.row
-        else:
-            #rec['status'] = 0
-            rec['cell'], rec['rmt'], rec['n_poly_t'], rec['gene'], rec['position'], rec['n_aligned'] = sam_record(aligned_segment, translator)
-            rec.append()            
-        i += 1
 
-    with LOCK:
-        table.flush()
-
-def sam_record(seg, translator):
+def from_sam_record(seg, translator):
     NameField = namedtuple(
         'NameField', ['pool', 'cell', 'rmt', 'poly_t', 'name'])
     qname = seg.query_name
@@ -206,7 +180,6 @@ def sam_record(seg, translator):
     rmt = DNA3Bit.encode(processed_fields.rmt)
     n_poly_t = processed_fields.poly_t.count('T') + processed_fields.poly_t.count('N')
 
-    #return cell, rmt, n_poly_t, gene, pos, n_aligned
     return np.array([(0, cell, rmt, n_poly_t, gene, pos, n_aligned)], dtype=DT)
 
 
