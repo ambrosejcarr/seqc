@@ -341,7 +341,8 @@ class NCBIGeneSummary:
         return self._summaries[identifier]
 
     def describe(self, identifiers, attr='long'):
-        """return the GeneSummar(y/ies) associated with uid(s)
+        """
+        return the GeneSummar(y/ies) associated with uid(s)
 
         :param identifiers: the identifiers to display summaries for
         :param attr: the GeneSummary attribute to return (e.g. short, long, or chromosome)
@@ -350,9 +351,14 @@ class NCBIGeneSummary:
         """
         if isinstance(identifiers, str):
             identifiers = [identifiers]
-        gs = list(map(lambda i: self._summaries[i], identifiers))
-        if attr:
-            gs = list(map(lambda i: getattr(i, attr), gs))
+        gs = []
+        for i in identifiers:
+            try:
+                id_ = self._summaries[i]
+            except KeyError:
+                gs.append('')
+                continue  # No ID, will not be able to fetch attr
+            gs.append(getattr(id_, attr))
         return GeneSummarySeries(gs, index=identifiers)
 
     def all(self, attr='long'):
