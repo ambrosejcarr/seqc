@@ -10,16 +10,17 @@ from scipy.special import expit
 
 class GSEA:
 
-    def __init__(self, correlations):
+    def __init__(self, correlations, output_stem=None):
         """initialize a gsea object
-        :param correlations: a pandas series of correlations in the range of [-1, 1] whose
-          index contains gene names
+        :param pd.Series correlations: correlations in the range of [-1, 1] whose index
+          contains gene names
+        :param str output_stem: the filestem for the output data
 
         :method linear_scale: method to linearly scale a vector to lie on the interval
           [-1, 1]
         :method logisitc_scale: method to scale a vector by the logistic function to lie
           on the interval [-1, 1]
-        :method run: run GSEA
+        :method run: run GSEA on these correlations
         """
         if not isinstance(correlations, pd.Series):
             raise TypeError('correlations must be a pandas series')
@@ -30,8 +31,15 @@ class GSEA:
                 'scale values to this interval before running.')
         self._correlations = correlations.sort_values()
         self._rnk = None
-        self._output_stem = os.environ['TMPDIR'] + 'gsea_corr_{!s}'.format(
-            np.random.randint(0, 1000000))
+        if output_stem is None:
+            self._output_stem = os.environ['TMPDIR'] + 'gsea_corr_{!s}'.format(
+                np.random.randint(0, 1000000))
+        elif not isinstance(output_stem, str):
+            raise TypeError('output stem must be a str reference to a file prefix')
+        elif output_stem.find('-') > -1:
+            raise ValueError('output_stem cannot contain the dash (-) character.')
+        else:
+            self._output_stem = output_stem
         self._results = {}
 
     @property
@@ -65,10 +73,7 @@ class GSEA:
         return pd.Series((expit(data.values) * 2) - 1, index=data.index)
 
     def _save_rank_file(self) -> None:
-        """save the correlations to a .rnk file in TMPDIR
-
-        :return: None
-        """
+        """save the correlations to a .rnk file"""
         self._rnk = self._output_stem + '.rnk'
         df = pd.DataFrame(self._correlations).fillna(0)
         df.to_csv(self._rnk, sep='\t', header=False)
@@ -87,25 +92,15 @@ class GSEA:
                 h='\n'.join(human_options)))
         print('Please specify the gmt_file parameter as gmt_file=(organism, filename)')
 
-    def run(self, gmt_file: (str, str) = None, output_stem: str = None) -> (
-            pd.DataFrame, pd.DataFrame):
+    def run(self, gmt_file):
         """
         Helper function. Run GSEA on an already-ranked list of corrleations. To see
         available files, leave gmt_file parameter empty
 
-        :param output_stem: location for GSEA output
-        :param gmt_file: (organism: str, filename: str) organism and filename of the gmt
-          file to use
-        :return: positive, negative: pd.DataFrames containing GSEA enrichment results
+        :param (str, str) gmt_file: organism and filename of gmt file to use
+        :return (pd.DataFrame, pd.DataFrame): positive and negative GSEA enrichments
         """
-
-        if output_stem is None:
-            output_stem = self._output_stem
-
-        if output_stem.find('-') > -1:
-            raise ValueError('ouptput_stem cannot contain special characters such as -')
-
-        out_dir, out_prefix = os.path.split(output_stem)
+        out_dir, out_prefix = os.path.split(self._output_stem)
         os.makedirs(out_dir, exist_ok=True)
 
         if self._rnk is None:
@@ -145,7 +140,7 @@ class GSEA:
             for f in files:
                 mo = re.match(pattern, f)
                 if mo:
-                    folder = os.environ['TMPDIR'] + mo.group(0)
+                    folder = out_dir + '/' + mo.group(0)
         if folder is None:
             raise RuntimeError(
                 'seqc.JavaGSEA was not able to recover the output of the Java '
@@ -162,4 +157,4 @@ class GSEA:
         neg.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
         pos.columns, neg.columns = names, names
         self._results[gmt_file] = {'positive': pos, 'negative': neg}
-        return self._results[gmt_file].values()
+        return list(self._results[gmt_file].values())
