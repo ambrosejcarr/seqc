@@ -47,12 +47,18 @@ class DBSeq:
     def cell_selector(self, row):
         return row['cell']
 
-    def cell_counts(self):
-        cells_0 = {}
-        cells_not_0 = {}
-        for cell, rows_grouped_by_cell in itertools.groupby(self.table, self.cell_selector):
-            cells[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] > 0)
+    def cell_counts(self,mapping):
+        cells = {}
 
+        if mapping == "multimapped":
+            for cell, rows_grouped_by_cell in itertools.groupby(self.table, self.cell_selector):
+                cells[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] > 1)
+        if mapping == "mapped":
+            for cell, rows_grouped_by_cell in itertools.groupby(self.table, self.cell_selector):
+                cells[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] == 1)
+        if mapping == "unmapped":
+            for cell, rows_grouped_by_cell in itertools.groupby(self.table, self.cell_selector):
+                cells[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] == 0)
         return cells
 
 
@@ -219,7 +225,9 @@ def test_class_2():
         archive_name, bamfile, chrnamefile, translator)
     
     with d as database:
-        cells = a.cell_counts()
+        cells_unmapped = database.cell_counts("unmapped")
+        cells_mapped = database.cell_counts("mapped")
+        cells_multimapped = database.cell_counts("multimapped")
 
 
 if __name__ == "__main__":
