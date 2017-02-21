@@ -51,8 +51,7 @@ class DBSeq:
         cells_0 = {}
         cells_not_0 = {}
         for cell, rows_grouped_by_cell in itertools.groupby(self.table, self.cell_selector):
-            cells_0[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] == 0)
-            cells_not_0[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] > 0)
+            cells[cell] = sum(1 for r in rows_grouped_by_cell if r['n_aligned'] > 0)
 
         return cells
 
