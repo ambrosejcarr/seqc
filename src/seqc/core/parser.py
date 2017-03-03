@@ -26,7 +26,7 @@ def parse_args(args):
 
     p.add_argument('platform',
                    choices=['in_drop', 'drop_seq', 'mars1_seq', 'mars2_seq',
-                            'mars_germany', 'in_drop_v2', 'in_drop_v3', 'ten_x', 'ten_x_v2'],
+                            'mars_germany', 'in_drop_v2', 'in_drop_v3', 'in_drop_v4', 'ten_x', 'ten_x_v2'],
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')

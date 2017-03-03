@@ -30,6 +30,8 @@ class AbstractPlatform:
             return in_drop_v2()
         if type == "in_drop_v3":
             return in_drop_v3()
+        if type == "in_drop_v4":
+            return in_drop_v4()
         if type == "drop_seq":
             return drop_seq()
         if type == "mars1_seq":
@@ -335,6 +337,60 @@ class in_drop_v3(AbstractPlatform):
 
     def apply_rmt_correction(self, ra, error_rate):
        raise NotImplementedError
+
+
+class in_drop_v4(AbstractPlatform):
+
+    def __init__(self):
+        AbstractPlatform.__init__(self, [-1, 8])
+
+    def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for in_drop_v3
+        """
+        return 28
+
+    def merge_function(self, g, b):
+        """
+        merge forward and reverse in-drop v3 reads, annotating the reverse read
+        (containing genomic information) with the rmt and number of poly_t from the
+        forward read. Pool is left empty, and the cell barcode is reconstructed from the
+        second index and the second barcode.
+
+        Please note that R1 is genomic, and R2 is barcode, unlike previous iterations
+
+        :param g: genomic fastq sequence data
+        :param b: barcode fastq sequence data
+        :return: annotated genomic sequence.
+        """
+        seq = b.sequence.strip()
+        cell1 = seq[:8]
+        cell2 = seq[12:20]
+        rmt = seq[20:28]
+        poly_t = seq[28:]
+        g.add_annotation((b'', cell1 + cell2, rmt, poly_t))
+        return g
+
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+        """
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=2)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+        """
+        rmt_correction.in_drop(ra, error_rate)
+
 
 
 class drop_seq(AbstractPlatform):
