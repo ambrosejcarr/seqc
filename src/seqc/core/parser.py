@@ -1,8 +1,9 @@
 import os
 import argparse
 import sys
+import inspect
 from subprocess import Popen, PIPE
-from seqc import version
+from seqc import version, platforms
 
 
 def parse_args(args):
@@ -24,9 +25,11 @@ def parse_args(args):
     # can use to make prettier: formatter_class=partial(argparse.HelpFormatter, width=200)
     p = subparsers.add_parser('run', help='initiate SEQC runs')
 
+    # Platform choices
+    choices = [x[0] for x in inspect.getmembers(platforms, inspect.isclass) if
+           issubclass(x[1], platforms.AbstractPlatform)][1:]
     p.add_argument('platform',
-                   choices=['in_drop', 'drop_seq', 'mars1_seq', 'mars2_seq',
-                            'mars_germany', 'in_drop_v2', 'in_drop_v3', 'in_drop_v4', 'ten_x', 'ten_x_v2'],
+                   choices=choices,
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')
