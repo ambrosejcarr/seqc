@@ -165,8 +165,8 @@ class DBSeq:
         # Get read ID
         name = processed_fields.name
         name = name.split(':')
-        ID = name[len(name)-3] + name[len(name)-2] + name[len(name)-1]
-        ID = int(ID)
+        r_ID = name[len(name)-3] + name[len(name)-2] + name[len(name)-1]
+        r_ID = int(r_ID)
 
         pos = seg.reference_start
         minus_strand = seg.is_reverse
@@ -189,7 +189,7 @@ class DBSeq:
         n_poly_t = processed_fields.poly_t.count(
             'T') + processed_fields.poly_t.count('N')
 
-        return np.array([(0, cell, rmt, n_poly_t, gene, pos, n_aligned, ID)], dtype=cls.__DT)
+        return np.array([(0, cell, rmt, n_poly_t, gene, pos, n_aligned, r_ID)], dtype=cls.__DT)
 
 
 #OLD DON'T USE 
