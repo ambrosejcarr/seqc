@@ -655,7 +655,7 @@ class ten_x_v2(AbstractPlatform):
         """
         combined = b.sequence.strip()
         cell = combined[0:16]  # v2 chemistry has 16bp barcodes
-        rmt = combined[16:]  # remaining 10 bp
+        rmt = combined[16:26]  # 10 baselength RMT
         g.add_annotation((b'', cell, rmt, b''))
         return g
 
