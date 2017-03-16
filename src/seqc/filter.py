@@ -211,7 +211,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
         ax.hlines(max_mt_content, *ax.get_xlim(), linestyle='--', colors='indianred')
         ax.set_xlabel('total molecules')
         ax.set_ylabel('fraction mitochondrial\nmolecules')
-        ax.set_title('MT-RNA Fraction')
+        ax.set_title('MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100 ))
         seqc.plot.xtick_vertical(ax=ax)
 
     return is_invalid
