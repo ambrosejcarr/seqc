@@ -404,7 +404,7 @@ class Diagnostics:
     @staticmethod
     def cell_size_histogram(data, f=None, ax=None, save=None):
         if ax is None:
-            f, ax = plt.subplots(figsize=(2, 2))
+            f, ax = plt.subplots(figsize=(3.5, 3.5))
         if f is None:
             f = plt.gcf()
 
