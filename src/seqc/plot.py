@@ -212,6 +212,17 @@ def xtick_vertical(ax=None):
         xt = xt.astype(int)
     ax.set_xticklabels(xt, rotation='vertical')
 
+
+def equalize_numerical_tick_number(ax=None):
+    if ax is None:
+        ax = plt.gca()
+    xticks = ax.get_xticks()
+    yticks = ax.get_yticks()
+    nticks = min(len(xticks), len(yticks))
+    ax.set_xticks(np.round(np.linspace(min(xticks), max(xticks), nticks), 1))
+    ax.set_yticks(np.round(np.linspace(min(yticks), max(yticks), nticks), 1))
+
+
 # todo does not work
 # def nticks(axis: str, n: int=5, ax=None):
 #     current_ax = plt.gca()
