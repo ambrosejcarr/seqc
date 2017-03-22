@@ -21,7 +21,7 @@ class ReadArray:
         ('rmt', np.int32),
         ('n_poly_t', np.uint8)]
 
-    def __init__(self, data, genes, positions):
+    def __init__(self, data, genes, positions, chromosomes):
         """
         Enhanced np.ndarray (structured array) with several companion functions to hold
         filter, sort, and access compressed fastq read information.
@@ -42,7 +42,11 @@ class ReadArray:
                 'positions must be a scipy csr_matrix or np.array, not %s'
                 % repr(type(positions)))
         self._positions = positions
-
+        if not isinstance(chromosomes, (csr_matrix, np.ndarray)):
+            raise TypeError(
+                'chromosomes must be a scipy csr_matrix or np.array, not %s'
+                % repr(type(chromosomes)))
+        self._chromosomes = chromosomes
         if not isinstance(data, np.ndarray):
             raise TypeError(
                 'data must be a structured np.array object, not %s' % repr(type(data)))
@@ -74,6 +78,15 @@ class ReadArray:
     def positions(self, item):
         # todo: error check
         self._positions = item
+    
+    @property
+    def chromosomes(self):
+        return self._chromosomes
+
+    @chromosomes.setter
+    def chromosomes(self, item):
+        #todo: error check
+        self._chromosomes = item
 
     def __len__(self):
         return len(self.data)
@@ -159,15 +172,15 @@ class ReadArray:
         """
 
         if not ignore:  # save a bit of work by not &ing with mask
-            for i, (data, gene, position) in enumerate(self):
+            for i, (data, gene, position, chromosome) in enumerate(self):
                 if data['status'] == 0:
-                    yield i, data, gene, position
+                    yield i, data, gene, position, chromosome
 
         else:  # create the appropriate mask for filters we want to ignore
             mask = self.filtering_mask(*ignore)
-            for i, (data, gene, position) in enumerate(self):
+            for i, (data, gene, position, chromosome) in enumerate(self):
                 if not data['status'] & mask:  # ignores fields in ignore
-                    yield i, data, gene, position
+                    yield i, data, gene, position, chromosome
 
     @classmethod
     def from_alignment_file(cls, alignment_file, translator, required_poly_t):
@@ -204,6 +217,7 @@ class ReadArray:
         col = np.zeros(num_reads, dtype=np.int8)
         position = np.zeros(num_reads, dtype=np.int32)
         gene = np.zeros(num_reads, dtype=np.int32)
+        chromosome = np.zeros(num_reads, dtype=np.int32)
 
         # loop over multialignments
         row_idx = 0  # identifies the read index
@@ -221,6 +235,7 @@ class ReadArray:
                     col[arr_idx] = col_idx
                     gene[arr_idx] = genes
                     position[arr_idx] = a.pos
+                    chromosome[arr_idx] = a.rname
                     arr_idx += 1
                     col_idx += 1
             max_ma = max(max_ma, col_idx)
@@ -233,14 +248,16 @@ class ReadArray:
 
         # some reads will not have aligned, throw away excess allocated space before
         # creating the ReadArray
-        row, col, position, gene = (
-            row[:arr_idx], col[:arr_idx], position[:arr_idx], gene[:arr_idx])
+        row, col, position, chromosome, gene = (
+            row[:arr_idx], col[:arr_idx], position[:arr_idx], chromosome[:arr_idx], gene[:arr_idx])
 
         gene = coo_matrix((gene, (row, col)), shape=(row_idx, max_ma), dtype=np.int32)
         position = coo_matrix((position, (row, col)), shape=(row_idx, max_ma),
                               dtype=np.int32)
+        chromosome = coo_matrix((chromosome, (row, col)), shape=(row_idx, max_ma),
+                                dtype=np.int32)
 
-        ra = cls(data, gene.tocsr(), position.tocsr())
+        ra = cls(data, gene.tocsr(), position.tocsr(), chromosome.tocsr())
         ra.initial_filtering(required_poly_t=required_poly_t)
         return ra
 
@@ -299,9 +316,11 @@ class ReadArray:
             store_carray(f, self.genes.indptr, 'indptr')
             store_carray(f, self.genes.data, 'gene_data')
             store_carray(f, self.positions.data, 'positions_data')
+            store_carray(f, self.chromosomes.data, 'chromosome_data')
         else:
             store_carray(f, self.genes, 'genes')
             store_carray(f, self.positions, 'positions')
+            store_carray(f, self.chromosomes, 'chromosomes')
 
         f.close()
 
@@ -321,15 +340,18 @@ class ReadArray:
             f.get_node('/genes')
             genes = f.root.genes.read()
             positions = f.root.positions.read()
+            chromosomes = f.root.chromosomes.read()
         except tb.NoSuchNodeError:
             indptr = f.root.indptr.read()
             indices = f.root.indices.read()
             genes = f.root.gene_data.read()
             positions = f.root.positions_data.read()
+            chromosomes = f.root.chromosome_data.read()
             genes = csr_matrix((genes, indices, indptr))
             positions = csr_matrix((positions, indices, indptr))
+            chromosomes = csr_matrix((chromosomes, indices, indptr))
 
-        return cls(data, genes, positions)
+        return cls(data, genes, positions, chromosomes)
 
     # todo document me
     def resolve_ambiguous_alignments(self):
@@ -347,6 +369,7 @@ class ReadArray:
         self._ambiguous_genes = False
         self.genes = np.ravel(self.genes.tocsc()[:, 0].todense()) 
         self.positions = np.ravel(self.positions.tocsc()[:, 0].todense())
+        self.chromosomes = np.ravel(self.chromosomes.tocsc()[:, 0].todense())
         return mm_results
 
     # todo reconcile documentation with new method
@@ -438,6 +461,7 @@ class ReadArray:
                                     self.genes[ind] == common[0]).nonzero()[1][0]
                                 self.genes[ind, 0] = self.genes[ind, gene_index]
                                 self.positions[ind, 0] = self.positions[ind, gene_index]
+                                self.chromosomes[ind, 0] = self.chromosomes[ind, gene_index]
                     else:
                         results['ambiguous molecules'] += 1
                         # Todo: Likelihood model goes here
@@ -450,12 +474,13 @@ class ReadArray:
         use_inds = np.where( self.data['status'] == 0 )[0]
         cell = self.data['cell'][use_inds]
         position = self.positions[use_inds]
+        chromosome = self.chromosomes[use_inds]
         rmt = self.data['rmt'][use_inds]
         genes = self.genes[use_inds]
         
         # A triplet is a (cell, position, rmt) triplet in each gene
         df = pd.DataFrame({'gene': genes, 'cell': cell, 'position': position, 
-                           'rmt': rmt})
+                           'rmt': rmt, 'chromosome': chromosome})
         grouped = df.groupby(['gene', 'position'])
         # This gives the gene followed by the number of triplets at each position
         # Summing across each gene will give the number of total triplets in gene
@@ -568,7 +593,7 @@ class ReadArray:
         """
         reads_mat = {}
         mols_mat = {}
-        for i, data, gene, pos in self.iter_active():
+        for i, data, gene, pos, chrom in self.iter_active():
 
             try:
                 reads_mat[data['cell'], gene] += 1
@@ -597,3 +622,24 @@ class ReadArray:
             f.write('{},{},{}\n'.format(data['cell'], gene, reads_mat[data['cell'], gene]))
 
         f.close()
+
+
+    def to_density_matrix(self):
+        """Convert the ReadArray into a position density matrix
+        
+        :return dict:
+            dict of (cell, chrom) -> read counts
+            #TODO add counts by position windows in addition to whole chromosome counts
+        """
+
+        
+        reads_mat = {}
+
+        for i, data, gene, pos, chrom in self.iter_active():
+
+            try:
+                reads_mat[data['cell'], chrom] += 1
+            except KeyError:
+                reads_mat[data['cell'] chrom] = 1
+
+        return reads_mat
