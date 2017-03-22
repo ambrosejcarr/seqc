@@ -4,6 +4,15 @@ import shutil
 from subprocess import call, check_output
 from setuptools import setup
 from warnings import warn
+import py_compile
+
+# Replace py_compile.compile with a function that calls it with doraise=True so stop when there is a syntax error
+orig_py_compile = py_compile.compile
+
+def doraise_py_compile(file, cfile=None, dfile=None, doraise=False):
+    orig_py_compile(file, cfile=cfile, dfile=dfile, doraise=True)
+
+py_compile.compile = doraise_py_compile
 
 if sys.version_info.major != 3:
     raise RuntimeError('SEQC requires Python 3')
@@ -24,7 +33,7 @@ setup(name='seqc',
       author='Ambrose J. Carr',
       author_email='mail@ambrosejcarr.com',
       package_dir={'': 'src'},
-      packages=['seqc', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
+      packages=['seqc', 'seqc.utils', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
                 'seqc.summary'],
       install_requires=[
           'numpy>=1.10.0',
