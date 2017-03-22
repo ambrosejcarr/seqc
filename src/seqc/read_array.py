@@ -218,6 +218,7 @@ class ReadArray:
         position = np.zeros(num_reads, dtype=np.int32)
         gene = np.zeros(num_reads, dtype=np.int32)
         chromosome = np.zeros(num_reads, dtype=np.int32)
+        chrom_dict = {'X': 23, 'Y': 24, 'MT': 25}
 
         # loop over multialignments
         row_idx = 0  # identifies the read index
@@ -235,7 +236,7 @@ class ReadArray:
                     col[arr_idx] = col_idx
                     gene[arr_idx] = genes
                     position[arr_idx] = a.pos
-                    chromosome[arr_idx] = a.rname
+                    chromosome[arr_idx] = chrom_dict[a.rname] if a.rname in chrom_dict.keys() else a.rname
                     arr_idx += 1
                     col_idx += 1
             max_ma = max(max_ma, col_idx)
@@ -640,6 +641,6 @@ class ReadArray:
             try:
                 reads_mat[data['cell'], chrom] += 1
             except KeyError:
-                reads_mat[data['cell'] chrom] = 1
+                reads_mat[data['cell'], chrom] = 1
 
         return reads_mat
