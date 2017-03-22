@@ -223,13 +223,15 @@ def equalize_numerical_tick_number(ax=None):
     ax.set_yticks(np.round(np.linspace(min(yticks), max(yticks), nticks), 1))
 
 
-# todo does not work
-# def nticks(axis: str, n: int=5, ax=None):
-#     current_ax = plt.gca()
-#     if ax is not None:
-#         plt.sca(ax)
-#     plt.locator_params(axis=axis, nbins=n)
-#     plt.sca(current_ax)  # reset axis to current axis before function call
+def equalize_axis_size(ax=None):
+    if ax is None:
+        ax = plt.gca()
+    xlim = ax.xlim()
+    ylim = ax.ylim()
+    ax_min = min(xlim[0], ylim[0])
+    ax_max = max(xlim[1], ylim[1])
+    ax.set_xlim((ax_min, ax_max))
+    ax.set_ylim((ax_min, ax_max))
 
 
 def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
