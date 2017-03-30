@@ -226,8 +226,8 @@ def equalize_numerical_tick_number(ax=None):
 def equalize_axis_size(ax=None):
     if ax is None:
         ax = plt.gca()
-    xlim = ax.xlim()
-    ylim = ax.ylim()
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
     ax_min = min(xlim[0], ylim[0])
     ax_max = max(xlim[1], ylim[1])
     ax.set_xlim((ax_min, ax_max))
@@ -239,12 +239,15 @@ def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
     create a discrete colormap from cmap appropriate for data
 
     :param data: categorical vector to map to colormap
-    :param cmap: cmap to discretize
+    :param cmap: cmap to discretize, or 'random'
     :return:
     """
     categories = np.unique(data)
     n = len(categories)
-    colors = cmap(np.linspace(0, 1, n))
+    if isinstance(cmap, str) and 'random' in cmap:
+        colors = np.random.rand(n, 3)
+    else:
+        colors = cmap(np.linspace(0, 1, n))
     category_to_color = dict(zip(categories, colors))
     return np.array([category_to_color[i] for i in data]), category_to_color
 
@@ -297,14 +300,7 @@ class scatter:
         if legend_kwargs is None:
             legend_kwargs = dict()
 
-        if cmap == 'tatarize':
-            categories = np.unique(c)
-            n = len(categories)
-            colors = tatarize(n)
-            category_to_color = dict(zip(categories, colors))
-            color_vector = np.array([category_to_color[i] for i in c])
-        else:
-            color_vector, category_to_color = map_categorical_to_cmap(c, cmap)
+        color_vector, category_to_color = map_categorical_to_cmap(c, cmap)
 
         if randomize:
             ind = np.random.permutation(len(x))
