@@ -42,7 +42,7 @@ style_dictionary = {
     'font.family': ['sans-serif'],
     'font.serif': ['Computer Modern Roman', 'serif'],
     'font.monospace': ['Inconsolata', 'Computer Modern Typewriter', 'Monaco'],
-    'font.sans-serif': ['Lato', 'sans-serif'],
+    'font.sans-serif': ['Helvetica', 'Lato', 'sans-serif'],
 
     'patch.facecolor': _colors[0],
     'patch.edgecolor': 'none',
@@ -240,7 +240,8 @@ def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
 
     :param data: categorical vector to map to colormap
     :param cmap: cmap to discretize, or 'random'
-    :return:
+    :return np.ndarray, dict: vector of colors matching input data, dictionary of labels
+      to their respective colors
     """
     categories = np.unique(data)
     n = len(categories)
