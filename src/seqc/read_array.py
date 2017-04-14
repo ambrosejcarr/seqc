@@ -103,10 +103,10 @@ class ReadArray:
         # todo test out speed loss with chain(), compare to numpy.concatenate, None
         if self._ambiguous_genes:  # genes, positions are scipy.sparse.csr_matrix
             for i in np.arange(self.data.shape[0]):
-                yield self.data[i], self.genes[i, 0], self.positions[i, 0]
+                yield self.data[i], self.genes[i, 0], self.positions[i, 0], self.chromosomes[i, 0]
         else:  # genes, positions are np.array
             for i in np.arange(self.data.shape[0]):
-                yield self.data[i], self.genes[i], self.positions[i]
+                yield self.data[i], self.genes[i], self.positions[i], self.chromosomes[i]
 
     filter_codes = {
         'no_gene': 0b1,
@@ -236,7 +236,13 @@ class ReadArray:
                     col[arr_idx] = col_idx
                     gene[arr_idx] = genes
                     position[arr_idx] = a.pos
-                    chromosome[arr_idx] = chrom_dict[a.rname] if a.rname in chrom_dict.keys() else a.rname
+                    if a.rname in chrom_dict.keys():
+                        chrom = chrom_dict[a.rname]
+                    elif a.rname in np.arange(1, 23):
+                        chrom = a.rname
+                    else:
+                        chrom = 26
+                    chromosome[arr_idx] = chrom
                     arr_idx += 1
                     col_idx += 1
             max_ma = max(max_ma, col_idx)
@@ -625,7 +631,7 @@ class ReadArray:
         f.close()
 
 
-    def to_density_matrix(self):
+    def to_density_matrix(self, csv_path=None):
         """Convert the ReadArray into a position density matrix
         
         :return dict:
@@ -635,6 +641,7 @@ class ReadArray:
 
         
         reads_mat = {}
+        mols_mat = {}
 
         for i, data, gene, pos, chrom in self.iter_active():
 
@@ -643,4 +650,19 @@ class ReadArray:
             except KeyError:
                 reads_mat[data['cell'], chrom] = 1
 
-        return reads_mat
+            try:
+                rmt = data['rmt']
+                if rmt not in mols_mat[data['cell'], chrom]:
+                    mols_mat[data['cell'], chrom].append(rmt)
+            except KeyError:
+                mols_mat[data['cell'], chrom] = [rmt]
+       
+        if csv_path is None:
+            return reads_mat, mols_mat
+        
+        f = open(csv_path + 'reads_count.csv', 'w')
+        for data['cell'], chrom in reads_mat:
+            f.write('{},{},{}\n'.format(data['cell'], gene, reads_mat[data['cell'], gene])) 
+
+        f.close()
+
