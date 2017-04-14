@@ -1,29 +1,37 @@
 import os
 import warnings
 import numpy as np
+import pandas as pd
 import matplotlib
+from matplotlib.colors import hex2color
+from matplotlib import font_manager
 from scipy.stats import gaussian_kde
+from cycler import cycler
+
 try:
     os.environ['DISPLAY']
 except KeyError:
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 with warnings.catch_warnings():
-    warnings.simplefilter('ignore')  # catch experimental ipython widget warning
-    import seaborn as sns
+    warnings.simplefilter('ignore')  # catch warnings that system can't find fonts
+    fm = font_manager.fontManager
+    fm.findfont('Raleway')
+    fm.findfont('Lato')
 
-fm = matplotlib.font_manager.fontManager
-fm.findfont('Raleway')
-fm.findfont('Lato')
+warnings.filterwarnings(action="ignore", module="matplotlib", message="^tight_layout")
 
 dark_gray = '.15'
+
+_colors = ['#4C72B0', '#55A868', '#C44E52',
+           '#8172B2', '#CCB974', '#64B5CD']
 
 style_dictionary = {
     'figure.figsize': (3, 3),
     'figure.facecolor': 'white',
 
-    'figure.dpi': 150,
-    'savefig.dpi': 150,
+    'figure.dpi': 200,
+    'savefig.dpi': 200,
 
     'text.color': 'k',
 
@@ -34,36 +42,46 @@ style_dictionary = {
     'font.family': ['sans-serif'],
     'font.serif': ['Computer Modern Roman', 'serif'],
     'font.monospace': ['Inconsolata', 'Computer Modern Typewriter', 'Monaco'],
-    'font.sans-serif': ['Lato', 'sans-serif'],
+    'font.sans-serif': ['Helvetica', 'Lato', 'sans-serif'],
 
-    'patch.facecolor': 'royalblue',
+    'patch.facecolor': _colors[0],
     'patch.edgecolor': 'none',
 
-    "grid.linestyle": "-",
+    'grid.linestyle': "-",
 
-    "axes.labelcolor": dark_gray,
-    "axes.axisbelow": True,
+    'axes.labelcolor': dark_gray,
+    'axes.facecolor': 'white',
+    'axes.linewidth': 1.,
+    'axes.grid': False,
+    'axes.axisbelow': False,
     'axes.edgecolor': dark_gray,
+    'axes.prop_cycle': cycler('color', _colors),
 
-    "lines.solid_capstyle": "round",
-    'lines.color': 'royalblue',
-    'lines.markersize': 7,
+    'lines.solid_capstyle': 'round',
+    'lines.color': _colors[0],
+    'lines.markersize': 4,
 
     'image.cmap': 'viridis',
     'image.interpolation': 'none',
 
-    'xtick.direction': 'out',
-    'xtick.major.size': 5,
-    'xtick.minor.size': 2.5,
-    "xtick.color": dark_gray,
+    'xtick.direction': 'in',
+    'xtick.major.size': 4,
+    'xtick.minor.size': 2,
+    'xtick.color': dark_gray,
 
-    'ytick.direction': 'out',
-    'ytick.major.size': 5,
-    'ytick.minor.size': 2.5,
+    'ytick.direction': 'in',
+    'ytick.major.size': 4,
+    'ytick.minor.size': 2,
     "ytick.color": dark_gray,
+    
 }
 
 matplotlib.rcParams.update(style_dictionary)
+
+
+def refresh_rc():
+    matplotlib.rcParams.update(style_dictionary)
+    print('rcParams updated')
 
 
 class FigureGrid:
@@ -82,7 +100,7 @@ class FigureGrid:
     >>> ax3.set_title("I'm axis 3")
     """
 
-    def __init__(self, n: int, max_cols=3):
+    def __init__(self, n: int, max_cols=3, scale=3):
         """
         :param n: number of axes to generate
         :param max_cols: maximum number of axes in a given row
@@ -91,7 +109,7 @@ class FigureGrid:
         self.n = n
         self.nrows = int(np.ceil(n / max_cols))
         self.ncols = int(min((max_cols, n)))
-        figsize = self.ncols * 3, self.nrows * 3
+        figsize = self.ncols * scale, self.nrows * scale
 
         # create figure
         self.gs = plt.GridSpec(nrows=self.nrows, ncols=self.ncols)
@@ -111,14 +129,13 @@ class FigureGrid:
         for i in range(self.n):
             yield self[i]
 
-    def tight_layout(self):
+    def tight_layout(self, **kwargs):
         """wrapper for plt.tight_layout"""
-        self.gs.tight_layout(self.figure)
+        self.gs.tight_layout(self.figure, **kwargs)
 
-    def despine(self, top=True, right=True, **kwargs):
-        """wrapper for seaborn despine, removes right and top spines by default"""
-        for i in range(self.n):
-            sns.despine(ax=self[i], top=top, right=right, **kwargs)
+    def despine(self, top=True, right=True, bottom=False, left=False):
+        """removes axis spines (default=remove top and right)"""
+        despine(ax=self, top=top, right=right, bottom=bottom, left=left)
 
     def detick(self, x=True, y=True):
         """
@@ -146,18 +163,75 @@ class FigureGrid:
             filename, pad_inches=pad_inches, bbox_inches=bbox_inches, *args, **kwargs)
 
 
-def detick(ax, x=True, y=True):
+def detick(ax=None, x=True, y=True):
     """helper function for removing tick labels from an axis"""
+    if not ax:
+        ax = plt.gca()
     if x:
         ax.xaxis.set_major_locator(plt.NullLocator())
     if y:
         ax.yaxis.set_major_locator(plt.NullLocator())
 
 
-def xtick_vertical(ax):
+def despine(ax=None, top=True, right=True, bottom=False, left=False) -> None:
+    """helper function for removing axis spines"""
+    if not ax:
+        ax = plt.gca()
+
+    # set spines
+    if top:
+        ax.spines['top'].set_visible(False)
+    if right:
+        ax.spines['right'].set_visible(False)
+    if bottom:
+        ax.spines['bottom'].set_visible(False)
+    if left:
+        ax.spines['left'].set_visible(False)
+
+    # set ticks
+    if top and bottom:
+        ax.xaxis.set_ticks_position('none')
+    elif top:
+        ax.xaxis.set_ticks_position('bottom')
+    elif bottom:
+        ax.xaxis.set_ticks_position('top')
+    if left and right:
+        ax.yaxis.set_ticks_position('none')
+    elif left:
+        ax.yaxis.set_ticks_position('right')
+    elif right:
+        ax.yaxis.set_ticks_position('left')
+
+
+def xtick_vertical(ax=None):
     """set xticklabels on ax to vertical instead of the horizontal default orientation"""
+    if ax is None:
+        ax = plt.gca()
     xt = ax.get_xticks()
+    if np.all(xt.astype(int) == xt):  # ax.get_xticks() returns floats
+        xt = xt.astype(int)
     ax.set_xticklabels(xt, rotation='vertical')
+
+
+def equalize_numerical_tick_number(ax=None):
+    if ax is None:
+        ax = plt.gca()
+    xticks = ax.get_xticks()
+    yticks = ax.get_yticks()
+    nticks = min(len(xticks), len(yticks))
+    ax.set_xticks(np.round(np.linspace(min(xticks), max(xticks), nticks), 1))
+    ax.set_yticks(np.round(np.linspace(min(yticks), max(yticks), nticks), 1))
+
+
+def equalize_axis_size(ax=None):
+    if ax is None:
+        ax = plt.gca()
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    ax_min = min(xlim[0], ylim[0])
+    ax_max = max(xlim[1], ylim[1])
+    ax.set_xlim((ax_min, ax_max))
+    ax.set_ylim((ax_min, ax_max))
 
 
 def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
@@ -165,12 +239,16 @@ def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
     create a discrete colormap from cmap appropriate for data
 
     :param data: categorical vector to map to colormap
-    :param cmap: cmap to discretize
-    :return:
+    :param cmap: cmap to discretize, or 'random'
+    :return np.ndarray, dict: vector of colors matching input data, dictionary of labels
+      to their respective colors
     """
     categories = np.unique(data)
     n = len(categories)
-    colors = cmap(np.linspace(0, 1, n))
+    if isinstance(cmap, str) and 'random' in cmap:
+        colors = np.random.rand(n, 3)
+    else:
+        colors = cmap(np.linspace(0, 1, n))
     category_to_color = dict(zip(categories, colors))
     return np.array([category_to_color[i] for i in data]), category_to_color
 
@@ -200,7 +278,7 @@ class scatter:
     @staticmethod
     def categorical(
             x, y, c, ax=None, cmap=plt.get_cmap(), legend=True, legend_kwargs=None,
-            randomize=True, *args, **kwargs):
+            randomize=True, remove_ticks=False, *args, **kwargs):
         """
         wrapper for scatter wherein the output should be colored by a categorical vector
         c
@@ -209,7 +287,10 @@ class scatter:
         :param c: categories for data
         :param ax: axis on which to scatter data
         :param cmap: color map
+        :param legend: bool, if True, plot legend
         :param legend_kwargs: additional kwargs for legend
+        :param randomize: if True, randomize order of plotting
+        :param remove_ticks: if True, removes axes ticks and labels
         :param args: additional args for scatter
         :param kwargs: additional kwargs for scatter
         :return: ax
@@ -219,6 +300,7 @@ class scatter:
 
         if legend_kwargs is None:
             legend_kwargs = dict()
+
         color_vector, category_to_color = map_categorical_to_cmap(c, cmap)
 
         if randomize:
@@ -228,20 +310,25 @@ class scatter:
 
         ax.scatter(np.ravel(x)[ind], np.ravel(y)[ind], c=color_vector[ind], *args,
                    **kwargs)
+        if remove_ticks:
+            ax.xaxis.set_major_locator(plt.NullLocator())
+            ax.yaxis.set_major_locator(plt.NullLocator())
 
         labels, colors = zip(*sorted(category_to_color.items()))
-        sns.despine(ax=ax)
         if legend:
-            add_legend_to_categorical_vector(colors, labels, ax, **legend_kwargs)
+            add_legend_to_categorical_vector(colors, labels, ax, markerscale=2,
+                                             **legend_kwargs)
         return ax
 
     @staticmethod
-    def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True, **kwargs):
+    def continuous(x, y, c=None, ax=None, colorbar=True, randomize=True,
+                   remove_ticks=False, **kwargs):
         """
         wrapper for scatter wherein the coordinates x and y are colored according to a
         continuous vector c
         :param x, y: np.ndarray, coordinate data
         :param c: np.ndarray, continuous vector by which to color data points
+        :param remove_ticks: remove axis ticks and labels
         :param args: additional args for scatter
         :param kwargs: additional kwargs for scatter
         :return: ax
@@ -259,8 +346,9 @@ class scatter:
             ind = np.argsort(c)
 
         sm = ax.scatter(x[ind], y[ind], c=c[ind], **kwargs)
-        ax.xaxis.set_major_locator(plt.NullLocator())
-        ax.yaxis.set_major_locator(plt.NullLocator())
+        if remove_ticks:
+            ax.xaxis.set_major_locator(plt.NullLocator())
+            ax.yaxis.set_major_locator(plt.NullLocator())
         if colorbar:
             cb = plt.colorbar(sm)
             cb.ax.xaxis.set_major_locator(plt.NullLocator())
@@ -277,3 +365,70 @@ class scatter:
         xy = np.vstack([np.ravel(x), np.ravel(y)])
         z = gaussian_kde(xy)(xy)
         return np.ravel(x), np.ravel(y), np.arcsinh(z)
+
+
+def tatarize(n):
+    """
+    Return n-by-3 RGB color matrix using the "tatarize" color alphabet (n <= 269)
+    :param n:
+    :return:
+    """
+
+    with open(os.path.expanduser('~/.seqc/tools/tatarize_269.txt')) as f:
+        s = f.read().split('","')
+    s[0] = s[0].replace('{"', '')
+    s[-1] = s[-1].replace('"}', '')
+    s = [hex2color(s) for s in s]
+    return s[:n]
+
+
+class Diagnostics:
+
+    @staticmethod
+    def mitochondrial_fraction(data: pd.DataFrame, ax=None):
+        """plot the fraction of mRNA that are of mitochondrial origin for each cell.
+
+        :param data: DataFrame of cells x genes containing gene expression information
+        :param ax: matplotlib axis
+        :return: ax
+        """
+
+        mt_genes = data.molecules.columns[data.molecules.columns.str.contains('MT-')]
+        mt_counts = data.molecules[mt_genes].sum(axis=1)
+        library_size = data.molecules.sum(axis=1)
+
+        if ax is None:
+            ax = plt.gca()
+
+        scatter.continuous(library_size, mt_counts / library_size)
+        ax.set_title('Mitochondrial Fraction')
+        ax.set_xlabel('Total Gene Expression')
+        ax.set_ylabel('Mitochondrial Gene Expression')
+        _, xmax = ax.get_xlim()
+        ax.set_xlim((None, xmax))
+        _, ymax = ax.get_ylim()
+        ax.set_ylim((None, ymax))
+        despine(ax)
+        return ax
+
+    @staticmethod
+    def cell_size_histogram(data, f=None, ax=None, save=None):
+        if ax is None:
+            f, ax = plt.subplots(figsize=(3.5, 3.5))
+        if f is None:
+            f = plt.gcf()
+
+        cell_size = data.sum(axis=1)
+
+        plt.hist(np.log(cell_size), bins=25, log=True)
+        ax.set_xlabel('ln(cell size)')
+        ax.set_ylabel('frequency')
+        despine(ax)
+        xtick_vertical(ax)
+
+        if save is not None:
+            if not isinstance(save, str):
+                raise TypeError('save must be the string filename of the '
+                                'figure-to-be-saved')
+            plt.tight_layout()
+            f.savefig(save, dpi=200)

@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import seqc
+from seqc import reader
 
 
 class FastqRecord:
@@ -111,7 +111,7 @@ class FastqRecord:
             .astype(int) - 33
 
 
-class Reader(seqc.reader.Reader):
+class Reader(reader.Reader):
     """
     Fastq Reader, defines some special methods for reading and summarizing fastq data:
 
@@ -169,26 +169,23 @@ def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
     :param fout: merged output file name
     :param genomic: fastq containing genomic data
     :param barcode: fastq containing barcode data
-    :return fout, num_records: (str, int), filename of merged fastq file and number of
-      fastq records that were processed.
+    :return str fout, filename of merged fastq file
+
     """
     directory, filename = os.path.split(fout)
-    if not os.path.isdir(directory):
+    if directory and not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
     genomic = Reader(genomic)
-    num_records = 0
     if barcode:
         barcode = Reader(barcode)
         with open(fout, 'wb') as f:
             for g, b in zip(genomic, barcode):
-                num_records += 1
                 r = merge_function(g, b)
                 f.write(bytes(r))
     else:
         with open(fout, 'wb') as f:
             for g in genomic:
-                num_records += 1
                 r = merge_function(g)
                 f.write(bytes(r))
 
-    return fout, num_records
+    return fout

@@ -2,8 +2,7 @@ import json
 import logging
 from datetime import datetime
 import pandas as pd
-import seqc.stats
-import seqc.exceptions
+from seqc.stats.experimental_yield import ExperimentalYield
 from collections import defaultdict
 import os
 import re
@@ -32,6 +31,11 @@ def notify(message):
     print('SEQC: ' + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ': %s' % message)
 
 
+def debug(message):
+    logging.debug(datetime.now().strftime("%Y-%m-%d %H:%M:%S") +
+                  ':%(module)s:%(funcName)s:' + ': %s' % message)
+
+
 def args(arguments):
     """
     log namespace object from argument parser to file.
@@ -41,7 +45,7 @@ def args(arguments):
     """
     arguments = vars(arguments)
     info('Passed command line arguments: {}'.format(
-            json.dumps(arguments, separators=(',', ': '), indent=4)))
+            json.dumps(arguments, separators=(',', ': '), indent=4, sort_keys=True)))
 
 
 class LogData:
@@ -91,7 +95,7 @@ class LogData:
         :return summary: str, a regex object that may contain errors
         """
         if not summary:
-            summary = seqc.stats.ExperimentalYield.output
+            summary = ExperimentalYield.output
         replacements = [
             ('{divide}', '-*?'),
             ('(', '\('),
@@ -137,7 +141,6 @@ class LogData:
         idx = regex.find(old) + len(old)
         return regex[:idx] + regex[idx:].replace(old, new)
 
-
     @classmethod
     def dictionary_to_dataframe(cls, groupdict, col_label) -> pd.DataFrame:
         """
@@ -160,15 +163,17 @@ class LogData:
             ('filtered', 'phi_x'),
             ('filtered', 'incorrect_barcodes'),
             ('filtered', 'no_barcodes'),
+            ('filtered', 'CB_contains_N'),
             ('filtered', 'RMT_contains_N'),
             ('filtered', 'broken_capture_primer'),
+            ('filtered', 'low_complexity'),
             ('summary', 'reads_retained'),
             ('summary', 'reads_not_aligned'),
             ('summary', 'reads_filtered'),
             ('summary', 'total_molecules')
         )
         data_list = ('n_fastq', 'n_sam', 'genomic', 'phi_x', 'trans', 'genomic', 'phi_x',
-                     'wrong_cb', 'no_cell', 'rmt_N', 'poly_t', 'n_good',
+                     'wrong_cb', 'no_cell', 'cell_N', 'rmt_N', 'poly_t', 'dust', 'n_good',
                      'lost_al', 'n_bad', 'tot_mc')
 
         # account for older log version
@@ -252,7 +257,7 @@ class LogData:
         :param log_file: name of the seqc log to extract information from
         :param pattern: str, optional, the value of seqc.stats.ExperimentYield.output.
           useful to parse seqc logs from older versions
-        :return data: dict, argument names and values from seqc.log summary
+        :return match_results: dict, argument names and values from seqc.log summary
         """
         if pattern is None:
             pattern = cls.string_to_regex()
@@ -268,8 +273,8 @@ class LogData:
             with open(log_file, 'r') as f:
                 summary_data = f.read()
                 mo = re.match(pattern_, summary_data, re.M | re.DOTALL)
-                data = mo.groupdict()
-            return data
+                match_results = mo.groupdict()
+            return match_results
 
         try:
             data = get_match_object(pattern)
@@ -286,17 +291,9 @@ class LogData:
         :param logfile: str, path to log file
         :returns df: pd.DataFrame, dataframe containing log information
         """
-        mo = seqc.log.LogData.match_log(logfile)
-        return seqc.log.LogData.dictionary_to_dataframe(
+        mo = LogData.match_log(logfile)
+        return LogData.dictionary_to_dataframe(
             mo, logfile.split('/')[-1].replace('.log', ''))
-
-    @classmethod
-    def add_log(cls, filenames, df=None):
-        if not filenames:
-            return df
-        if df is None:
-            df = cls.parse_log()
-
 
     @classmethod
     def parse_multiple(cls, directory: str, exclude: str='') -> pd.DataFrame:
@@ -326,7 +323,3 @@ class LogData:
         df = pd.concat(frames, 1)
         df.columns = cols
         return df
-
-
-
-

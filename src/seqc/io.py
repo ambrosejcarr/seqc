@@ -1,4 +1,3 @@
-import sys
 import os
 import ftplib
 import shlex
@@ -6,14 +5,18 @@ from glob import glob
 from functools import partial
 from multiprocessing import Process, Pool
 from queue import Queue, Empty
-from subprocess import Popen, check_output, PIPE
+from subprocess import Popen, check_output, PIPE, CalledProcessError
 from itertools import zip_longest
+from collections import namedtuple
 import fcntl
 import boto3
+from botocore.exceptions import ClientError
 import logging
 import requests
-import seqc
 import time
+from seqc import log
+import shutil
+
 
 # turn off boto3 non-error logging, otherwise it logs tons of spurious information
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
@@ -25,116 +28,151 @@ logging.getLogger('requests').setLevel(logging.CRITICAL)
 class S3:
     """A series of methods to upload and download files from amazon s3"""
 
+    # determine which system should be used to upload and download
+    boto = False if shutil.which('aws') else True
+
     @staticmethod
-    def download_file(bucket: str, key: str, fout: str=None, overwrite: bool=False,
-                      boto: bool=False):
+    def download_boto(link, prefix='', overwrite=False, recursive=False):
+        raise NotImplementedError('please download and configure aws cli.')
+
+    _FileIdentity = namedtuple('_FileIdentity', ['name', 'size'])
+
+    @staticmethod
+    def split_link(link_or_prefix: str):
+        """take an amazon s3 link or link prefix and return the bucket and key
+
+        :param link_or_prefix: str, an amazon s3 link
+        :returns: tuple, (bucket, key_or_prefix)
         """
-        download the file key located in bucket, sending output to filename fout
-
-        :param overwrite: True if overwrite existing file
-        :param fout: name of output file
-        :param key: key of S3 bucket
-        :param bucket: name of S3 bucket
-        :param boto: True if download using boto3 (default=False, uses awscli)
-        """
-
-        if not overwrite:
-            if os.path.isfile(fout):
-                seqc.log.info('Skipped download of file "{fout}" because it already '
-                              'exists.'.format(fout=fout))
-                return fout
-
-        # key should not start with a forward slash
-        if key.startswith('/'):
-            key = key[1:]
-
-        # if fout is not provided, download the key, cutting all directories
-        if fout is None:
-            fout = key.split('/')[-1]
-
-        # check if all directories exist. if not, create them.
-        *dirs, filename = fout.split('/')
-        dirs = '/'.join(dirs)
-        if not os.path.isdir(dirs):
-            os.makedirs(dirs)
-
-        # download the file
-        if not boto:
-            s3link = 's3://' + bucket + '/' + key
-            cmd = 'aws s3 cp {s3link} {fout}'.format(s3link=s3link, fout=fout)
-            download_cmd = shlex.split(cmd)
-            Popen(download_cmd).wait()
-        else:
-            client = boto3.client('s3')
-            client.download_file(bucket, key, fout)
-
-        return fout
+        if not link_or_prefix.startswith('s3://'):
+            raise ValueError('aws s3 links must start with s3://')
+        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
+        bucket, *key_or_prefix = link_or_prefix.split('/')
+        return bucket, '/'.join(key_or_prefix)
 
     @classmethod
-    def download_files(cls, bucket, key_prefix, output_prefix='./', cut_dirs=0,
-                       overwrite=False, boto=False, filters=None):
+    def _fileidentity_from_awscli(cls, line, link, prefix):
+        line = line.strip().split()
+        bucket, key = cls.split_link(link)
+        name = prefix + line[3].replace(key, '')
+        return cls._FileIdentity(name, line[2])
+
+    @classmethod
+    def _fileidentity_from_python(cls, filehandle):
+        name = filehandle
+        # timestamp = floor(os.path.getmtime(filehandle))
+        # date, mtime = datetime.datetime.fromtimestamp(timestamp).strftime(
+        #     '%Y-%m-%d %H:%m:%S').split()
+        size = os.stat(filehandle).st_size
+        return cls._FileIdentity(name, str(size))
+
+    @classmethod
+    def _fileidentity_from_ls(cls, line):
+        line = line.strip().split()
+        try:
+            return cls._FileIdentity(
+                line[8], line[4], line[5], line[6].rpartition('.')[0])
+        except:
+            log.info(repr(line))
+            raise
+
+    # todo make sure recursive is acting properly. Right now it is unused.
+    @classmethod
+    def awscli_omit_existing_files(cls, link, prefix, recursive=False):
+        """check if file or files at link exist given prefix
+
+        :param link:
+        :param prefix:
+        :return:
         """
-        recursively download objects from amazon s3
-        recursively downloads objects from bucket starting with key_prefix.
-        If desired, removes a number of leading directories equal to cut_dirs. Finally,
-        can overwrite files lying in the download path if overwrite is True.
+        aws_cmd = 'aws s3 ls %s' % link  # get filenames
+        p = Popen(aws_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        aws_out, aws_err = p.communicate()
+        if aws_err:
+            raise ChildProcessError(aws_err.decode())
 
-        :param overwrite: True if overwrite existing file
-        :param cut_dirs: number of leading directories to remove
-        :param output_prefix: location to download file
-        :param key_prefix: key of S3 bucket to download
-        :param bucket: name of S3 bucket
-        :param boto: use boto3 to download files from S3 (takes longer than awscli)
-        :param filters: a list of file extensions to download without the period
-        (ex) ['h5', 'log'] for .h5 and .log files
-        :return: sorted list of file names that were downloaded
+        # parse the listed file(s)
+        to_download = [
+            cls._fileidentity_from_awscli(line, link, prefix)
+            for line in aws_out.decode().strip().split('\n') if aws_out
+            ]
+
+        # todo this is not identifying existing files properly
+        directory, prefix = os.path.split(prefix)
+        try:
+            files = os.listdir(directory)
+            if prefix:
+                files = [f for f in files if f.startswith(prefix)]
+            exists = [cls._fileidentity_from_python('%s/%s' % (directory, f))
+                      for f in files]
+        except FileNotFoundError:
+            exists = []
+
+        omission_string = ''
+        for f in to_download:
+            if f in exists:
+                omission_string += ' --exclude "*%s"' % os.path.split(f.name)[-1]
+
+        return omission_string
+
+    @classmethod
+    def download_awscli(cls, link, prefix='./', overwrite=True, recursive=False):
+        """download file(s) at s3 address link to prefix using aws cli
+
+        :param link:
+        :param prefix:
+        :param overwrite:
+        :param recursive:
+        :return list: all downloaded filenames
         """
+        if prefix is '':
+            prefix = './'
 
-        # get bucket and file names
-        client = boto3.client('s3')
-        keys = cls.listdir(bucket, key_prefix)
+        if overwrite is False:
+            raise ValueError('downloads with awscli cannot control override behavior, '
+                             'any existing files will be overwritten.')
+        if not recursive and link.endswith('/'):
+            raise ValueError(
+                'provided link %s was a prefix but download was not called recursively. '
+                'Please provide a filename or download recursively.' % link)
 
-        if filters:
-            to_download = []
-            for f_ext in filters:
-                to_download += [item for item in keys if f_ext in item]
-            keys = to_download
+        cmd = 'aws s3 cp %s %s' % (link, prefix)
+        if recursive:
+            cmd += ' --recursive'
 
-        # output prefix needs to end in '/'
-        if not output_prefix.endswith('/'):
-            output_prefix += '/'
+        omit_cmd = cmd + cls.awscli_omit_existing_files(link, prefix, recursive)
 
-        # download data
-        output_files = []
-        for k in keys:
+        # download the files
+        p = Popen(omit_cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        out, err = p.communicate()
+        if err:
+            raise ChildProcessError(err.decode())
 
-            # drop first directory from output name, place in data folder
-            fout = output_prefix + '/'.join(k.split('/')[cut_dirs:])
-            dirs = '/'.join(fout.split('/')[:-1])
+        # get the names of the files that were downloaded or already present
+        d = Popen(cmd + ' --dryrun', shell=True, stdout=PIPE, stderr=PIPE)
+        out, err = d.communicate()
+        if err:
+            raise ChildProcessError(err.decode())
+        downloaded_files = sorted([line.strip().split()[-1] for line in
+                                   out.decode().strip().split('\n') if line.strip()])
+        if log:
+            log.notify('downloaded files:\n\t[%s]' % ',\n\t'.join(
+                downloaded_files))
+        return downloaded_files
 
-            # make directories if they don't exist
-            if not os.path.isdir(dirs):
-                os.makedirs(dirs)
-
-            # check for overwriting
-            if os.path.isfile(fout):
-                if overwrite is False:
-                    seqc.log.info('Skipped download of file "{fout}" because it already '
-                                  'exists.'.format(fout=fout))
-                    output_files.append(fout)
-                    continue
-
-            # download file
-            if not boto:
-                s3link = 's3://' + bucket + '/' + k
-                cmd = 'aws s3 cp {s3link} {fout}'.format(s3link=s3link, fout=fout)
-                download_cmd = shlex.split(cmd)
-                Popen(download_cmd).wait()
-            else:
-                client.download_file(bucket, k, fout)
-
-            output_files.append(fout)
-        return sorted(output_files)
+    @classmethod
+    def download(cls, link, prefix='', overwrite=True, recursive=False):
+        """
+        :param link:
+        :param prefix:
+        :param overwrite:
+        :param recursive:
+        :return:
+        """
+        if cls.boto:
+            return cls.download_boto(link, prefix, overwrite, recursive)
+        else:
+            return cls.download_awscli(link, prefix, overwrite, recursive)
 
     @staticmethod
     def upload_file(filename, bucket, key, boto=False):
@@ -181,6 +219,7 @@ class S3:
         s3://MyBucket/tmp/dir1/file3
         s3://MyBucket/tmp/dir2/dir3/file4
 
+        :param boto:
         :param cut_dirs: number of leading directories to remove
         :param key_prefix: key of S3 bucket to upload
         :param bucket: name of S3 bucket
@@ -269,20 +308,50 @@ class S3:
         for k in keys:
             _ = client.delete_object(Bucket=bucket, Key=k)
 
-    @staticmethod
-    def split_link(link_or_prefix: str):
-        """
-        take an amazon s3 link or link prefix and return the bucket and key for use with
-        S3.download_file() or S3.download_files()
+    @classmethod
+    def check_links(cls, input_args: list) -> None:
+        """determine if valid arguments were passed before initiating run,
+        specifically whether s3 links exist
 
-        :param link_or_prefix: str, an amazon s3 link
-        :returns: tuple, (bucket, key_or_prefix)
+        :param input_args: list of files that should be checked
         """
-        if not link_or_prefix.startswith('s3://'):
-            raise ValueError('aws s3 links must start with s3://')
-        link_or_prefix = link_or_prefix[5:]  # strip leading s3://
-        bucket, *key_or_prefix = link_or_prefix.split('/')
-        return bucket, '/'.join(key_or_prefix)
+
+        s3 = boto3.resource('s3')
+        for infile in input_args:
+            try:
+                if infile.startswith('s3://'):
+                    if not infile.endswith('/'):  # check that s3 link for file exists
+                        bucket, key = cls.split_link(infile)
+                        s3.meta.client.head_object(Bucket=bucket, Key=key)
+                    else:
+                        cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
+                        res = check_output(cmd.split())
+                        if b'PRE ' in res:  # subdirectories present
+                            raise ValueError
+            except CalledProcessError:
+                log.notify(
+                    'Failed to access %s with "aws s3 ls", check your link' % infile)
+                raise
+            except ValueError:
+                log.notify(
+                    'Error: Provided s3 link "%s" does not contain the proper '
+                    'input files to SEQC.' % infile)
+                raise
+            except ClientError:
+                raise ValueError('s3 file %s not found.' % infile)
+
+    @staticmethod
+    def obtain_size(item: str) -> int:
+        """
+        obtains the size of desired item, used to determine how much volume
+        should be allocated for the remote AWS instance
+
+        :param item: str, name of file input
+        """
+
+        cmd = 'aws s3 ls --summarize --recursive ' + item + ' | grep "Total Size"'
+        obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
+        return obj_size
 
 
 class GEO:
@@ -633,8 +702,7 @@ class BaseSpace:
 
         func = partial(cls._download_basespace_content, data['Response']['Items'],
                        access_token, dest_path)
-        seqc.log.info('BaseSpace API link provided, downloading files from '
-                      'BaseSpace.')
+        log.info('BaseSpace API link provided, downloading files from BaseSpace.')
         with Pool(len(data['Response']['Items'])) as pool:
             pool.map(func, range(len(data['Response']['Items'])))
 
@@ -645,13 +713,13 @@ class BaseSpace:
         dest_path += '/Data/Intensities/BaseCalls/'
 
         if 'mars' not in platform:
-            barcode_fastq = [dest_path + f for f in filenames if '_R1_' in f]
-            genomic_fastq = [dest_path + f for f in filenames if '_R2_' in f]
+            barcode_fastq = [f for f in filenames if '_R1_' in f]
+            genomic_fastq = [f for f in filenames if '_R2_' in f]
         else:
-            genomic_fastq = [dest_path + f for f in filenames if '_R1_' in f]
-            barcode_fastq = [dest_path + f for f in filenames if '_R2_' in f]
+            genomic_fastq = [f for f in filenames if '_R1_' in f]
+            barcode_fastq = [f for f in filenames if '_R2_' in f]
 
-        return barcode_fastq, genomic_fastq
+        return sorted(barcode_fastq), sorted(genomic_fastq)
 
 
 class ProcessManager:
@@ -756,39 +824,3 @@ class ProcessManager:
             out = out.decode().strip()
             output.append(out)
         return output
-
-
-def check_s3links(input_args: list):
-    """determine if valid arguments were passed before initiating run,
-    specifically whether s3 links exist
-    :param input_args: list of files that should be checked
-    """
-
-    s3 = boto3.resource('s3')
-    for infile in input_args:
-        try:
-            if infile.startswith('s3://'):
-                if not infile.endswith('/'):  # check that s3 link for file exists
-                    bucket, key = seqc.io.S3.split_link(infile)
-                    s3.meta.client.head_object(Bucket=bucket, Key=key)
-                else:
-                    cmd = 'aws s3 ls ' + infile  # directory specified in s3 link
-                    res = check_output(cmd.split())
-                    if b'PRE ' in res:  # subdirectories present
-                        raise ValueError
-        except:
-            seqc.log.notify('Error: Provided s3 link "%s" does not contain the proper '
-                            'input files to SEQC.' % infile)
-            sys.exit(2)
-
-
-def obtain_size(item):
-    """
-    obtains the size of desired item, used to determine how much volume
-    should be allocated for the remote AWS instance
-    :param item: name of file input
-    """
-
-    cmd = 'aws s3 ls --summarize --recursive ' + item + ' | grep "Total Size"'
-    obj_size = int(check_output(cmd, shell=True).decode().split()[-1])
-    return obj_size
