@@ -600,6 +600,7 @@ class ReadArray:
         """
         reads_mat = {}
         mols_mat = {}
+
         for i, data, gene, pos, chrom in self.iter_active():
 
             try:
@@ -631,11 +632,12 @@ class ReadArray:
         f.close()
 
 
-    def to_density_matrix(self, csv_path=None):
+    def to_density_matrix(self, csv_path=None, filter_by='no_gene'):
         """Convert the ReadArray into a position density matrix
         
         :return dict:
             dict of (cell, chrom) -> read counts
+            dict of (cell, chrom) -> molecule counts
             #TODO add counts by position windows in addition to whole chromosome counts
         """
 
@@ -643,7 +645,7 @@ class ReadArray:
         reads_mat = {}
         mols_mat = {}
 
-        for i, data, gene, pos, chrom in self.iter_active():
+        for i, data, gene, pos, chrom in self.iter_active(filter_by):
 
             try:
                 reads_mat[data['cell'], chrom] += 1

@@ -275,7 +275,7 @@ def run(args) -> None:
 
             # Correct barcodes
             log.info('Correcting barcodes and estimating error rates.')
-            error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
+            # error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
 
             # Resolve multimapping
             log.info('Resolving ambiguous alignments.')
@@ -283,7 +283,7 @@ def run(args) -> None:
 
             # correct errors
             log.info('Identifying RMT errors.')
-            platform.apply_rmt_correction(ra, error_rate)
+            # platform.apply_rmt_correction(ra, error_rate)
 
             # Apply low coverage filter
             if platform.filter_lonely_triplets:
@@ -304,7 +304,7 @@ def run(args) -> None:
         # filter non-cells
         log.info('Creating counts matrix.')
         sp_reads, sp_mols = ra.to_count_matrix(
-            sparse_frame=True, genes_to_symbols=args.index + 'annotations.gtf')
+            sparse_frame=True, genes_to_symbols=False)
 
         # Save sparse matrices
         log.info('Saving sparse matrices')
