@@ -53,7 +53,10 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
     p = 1.0
     while d_seq > 0:
         if d_seq & 0b111 != r_seq & 0b111:
-            p *= err_rate[(d_seq & 0b111, r_seq & 0b111)]
+            if isinstance(err_rate,float):
+                p *= err_rate
+            else:
+                p *= err_rate[(d_seq & 0b111, r_seq & 0b111)]
         d_seq >>= 3
         r_seq >>= 3
     return p
