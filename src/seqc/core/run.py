@@ -259,9 +259,14 @@ def run(args) -> None:
 
         if process_bamfile:
             upload_bamfile = args.upload_prefix if align else None
-            ra, manage_bamfile, = create_read_array(
-                args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
-                args.max_insert_size)
+            if (args.platform=="ten_x") or (args.platform=="ten_x_v2"):
+                ra, manage_bamfile, = create_read_array(
+                    args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
+                    10000000)
+            else:
+                ra, manage_bamfile, = create_read_array(
+                    args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
+                    args.max_insert_size)
         else:
             manage_bamfile = None
             ra = ReadArray.load(args.read_array)
