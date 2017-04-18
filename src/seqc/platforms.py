@@ -624,10 +624,11 @@ class ten_x(AbstractPlatform):
         return g
 
     def apply_barcode_correction(self, ra, barcode_files):
-       raise NotImplementedError
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        return error_rate
 
     def apply_rmt_correction(self, ra, error_rate):
-       raise NotImplementedError
+        rmt_correction.in_drop(ra, error_rate=0.02)
 
 
 class ten_x_v2(AbstractPlatform):
@@ -680,4 +681,4 @@ class ten_x_v2(AbstractPlatform):
         :param error_rate: Error rate table from apply_barcode_correction
         
         """
-        log.info('TenX barcodes do not support RMT correction')
+        rmt_correction.in_drop(ra, error_rate=0.02)
