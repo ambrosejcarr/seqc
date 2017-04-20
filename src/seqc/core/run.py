@@ -233,6 +233,12 @@ def run(args) -> None:
         merge, align, process_bamfile = determine_start_point(args)
 
         args = download_input(output_dir, args)
+        
+        max_insert_size=args.max_insert_size
+        if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
+            max_insert_size=10000000
+        log.notify("Full length transcripts are used for read mapping in 10x data.")
+        
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
@@ -259,11 +265,7 @@ def run(args) -> None:
 
         if process_bamfile:
             upload_bamfile = args.upload_prefix if align else None
-            max_insert_size=1000
-            if (args.max_insert_size is None) and ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
-                max_insert_size=10000000
-            else:
-                max_insert_size=args.max_insert_size
+            
             
             ra, manage_bamfile, = create_read_array(
                 args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
