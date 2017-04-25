@@ -237,7 +237,7 @@ def run(args) -> None:
         max_insert_size=args.max_insert_size
         if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
             max_insert_size=10000000
-        log.notify("Full length transcripts are used for read mapping in 10x data.")
+            log.notify("Full length transcripts are used for read mapping in 10x data.")
         
 
         if merge:
