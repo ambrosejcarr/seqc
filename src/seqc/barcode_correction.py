@@ -58,40 +58,6 @@ def ten_x_barcode_correction(ra, platform, barcode_files, max_ed=2,
             # Update the read array with the correct barcode
             ra.data['cell'][inds] = fat_bc
 
-            # Iterating through the sequences
-            '''
-            while tmp_bc > 0:
-                if tmp_bc & 0b111 == tmp_cor & 0b111:
-                    cor_instance_table[tmp_bc & 0b111] += 1
-                elif sum(edit_dist) == 1:
-                    error_table[(tmp_cor & 0b111, tmp_bc & 0b111)] += 1
-                tmp_bc >>= 3
-                tmp_cor >>= 3
-            '''
-            
-    # Create error rate table
-    '''
-    if sum(error_table.values()) == 0:
-        log.info('No errors were detected or barcodes do not support error '
-                 'correction, using %f uniform error chance.' % default_error_rate)
-        err_rate = dict(zip(errors, [default_error_rate] * len(errors)))
-    # todo @Manu bug here, we're always setting the error rate even if there are
-    # no detected errors. should the following line be in an "else" clause?
-    err_rate = dict(zip(errors, [0.0] * len(errors)))
-    for k, v in error_table.items():
-        if DNA3Bit.decode(k[0]) in b'Nn':
-            continue
-        try:
-            err_rate[k] = v / (sum(n for err_type, n in error_table.items()
-                                   if err_type[0] == k[0]) + cor_instance_table[k[0]])
-        except ZeroDivisionError:
-            log.info('Warning: too few reads to estimate error rate for %s, setting '
-                     'default rate of %f' %
-                     (str(DNA3Bit.decode(k)), default_error_rate))
-            err_rate[k] = default_error_rate
-
-    return err_rate
-    '''
                 
 # todo document me
 def in_drop(ra, platform, barcode_files, max_ed=2,
