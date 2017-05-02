@@ -20,11 +20,6 @@ def ten_x_barcode_correction(ra, platform, barcode_files, max_ed=2,
             valid_barcodes=set([DNA3Bit.encode(line.strip()) for line in
                                       f.readlines()])
         
-    # Check if the barcode has to be an exact match
-    exact_match = False
-    if max_ed == 0:
-        exact_match = True
-
     # Group reads by cells
     indices_grouped_by_cells = ra.group_indices_by_cell(multimapping=True)
     
@@ -41,23 +36,21 @@ def ten_x_barcode_correction(ra, platform, barcode_files, max_ed=2,
 
         # Extract barcodes for one of the reads
         barcode = platform.extract_barcodes(ra.data['cell'][inds[0]])[0]
-
+        if barcode not in valid_barcode_count:
         # Identify correct barcode as one Hamming distance away with most reads
-        hammind_dist_1_barcodes=seqc.sequence.barcodes.generate_hamming_dist_1(barcode)
-        fat_bc=-1
-        fat_bc_count=0
-        for bc in hammind_dist_1_barcodes:
-            if (bc in valid_barcode_count) and (valid_barcode_count[bc]>fat_bc_count):
-                fat_bc=bc
-                fat_bc_count=valid_barcode_count[bc]
+            hammind_dist_1_barcodes=seqc.sequence.barcodes.generate_hamming_dist_1(barcode)
+            fat_bc=-1
+            fat_bc_count=0
+            for bc in hammind_dist_1_barcodes:
+                if (bc in valid_barcode_count) and (valid_barcode_count[bc]>fat_bc_count):
+                    fat_bc=bc
+                    fat_bc_count=valid_barcode_count[bc]
             
-        if fat_bc < 0:
-            ra.data['status'][inds] |= ra.filter_codes['cell_error']
-            continue
-        else:              
-            # Update the read array with the correct barcode
-            ra.data['cell'][inds] = fat_bc
-
+            if fat_bc < 0:
+                ra.data['status'][inds] |= ra.filter_codes['cell_error']
+            else:              
+                # Update the read array with the correct barcode
+                ra.data['cell'][inds] = fat_bc
                 
 # todo document me
 def in_drop(ra, platform, barcode_files, max_ed=2,
