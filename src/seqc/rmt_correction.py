@@ -5,7 +5,8 @@ from seqc import log
 from seqc.read_array import ReadArray
 import time
 import pandas as pd
-
+import multiprocessing_on_dill as multi
+from multiprocessing_on_dill import Manager
 
 # todo document me
 def generate_close_seq(seq):
@@ -76,7 +77,6 @@ def in_drop(ra, error_rate, alpha=0.05):
     _correct_errors(indices_grouped_by_cells, ra, error_rate, alpha)
 
 
-# todo document me
 def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     """Calculate and correct errors in RMTs
 
@@ -86,9 +86,17 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     :param p_value: The p_value used for the likelihood method
     :return None:
     """
+    
+    # A shared array among the parallel processes
+    # Each entry represent a molecule RMT barcode with
+    # -1: can't be corrected or already valid, >=0: represent the donor RMT 
+    manager = Manager()
+    shared_rmt_array = manager.Array('i',[-1 for i in range(len(ra.data['rmt']))])
 
-    for cell_group in indices_grouped_by_cells:
-
+        
+    # a method called by each process to correct RMT for each cell
+    def _correct_errors_by_cell_group(cell_group):
+        
         # Breaks for each gene
         gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
         breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
@@ -127,7 +135,7 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
                     # Build likelihood
                     # Probability of converting donor to target
                     p_dtr = probability_for_convert_d_to_r(donor_rmt, rmt, err_rate)
-                    # Number of occurances
+                    # Number of occurrences
                     expected_errors += donor_count * p_dtr
 
                     # Check if jaitin correction is feasible
@@ -145,6 +153,23 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
 
                 # Remove Jaitin corrected reads if probability of RMT == error is high
                 if p_val_err > p_value and jaitin_corrected:
-                    # Mark as error
-                    ra.data['status'][rmt_groups[rmt]] |= ra.filter_codes['rmt_error']
-                    ra.data['rmt'][rmt_groups[rmt]] = jaitin_donor
+                    # Save the RMT donor
+                    shared_rmt_array[rmt_groups[rmt]]=jaitin_donor
+                    #ra.data['status'][rmt_groups[rmt]] |= ra.filter_codes['rmt_error']
+                    #ra.data['rmt'][rmt_groups[rmt]] = jaitin_donor
+    
+    # create a pool of workers and let each work on each single cell
+    p=multi.Pool(processes=multi.cpu_count())
+    #p.map(partial(_correct_errors_by_cell_group, shared_bc_correction_array=shared_rmt_array), indices_grouped_by_cells)
+    p.map(_correct_errors_by_cell_group,indices_grouped_by_cells)
+    #for cell_group in indices_grouped_by_cells:
+        #p.apply_async(_correct_errors_by_cell_group, cell_group)
+    p.close()
+    p.join()
+        
+    # iterate through each RMT and do correction 
+    # if it is indicated by the shared_rmt_array
+    for i in range(len(shared_rmt_array)):
+        if shared_rmt_array[i]>=0:
+            ra.data['rmt'][i]=shared_rmt_array[i]
+            ra.data['status'][i]|= ra.filter_codes['rmt_error']
