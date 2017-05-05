@@ -7,6 +7,7 @@ import time
 import pandas as pd
 import multiprocessing_on_dill as multi
 from multiprocessing_on_dill import Manager
+import ctypes
 
 # todo document me
 def generate_close_seq(seq):
@@ -91,7 +92,7 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     # Each entry represent a molecule RMT barcode with
     # -1: can't be corrected or already valid, >=0: represent the donor RMT 
     manager = Manager()
-    shared_rmt_array = manager.Array('i',[-1 for i in range(len(ra.data['rmt']))])
+    shared_rmt_array = manager.Array('l',[-1 for i in range(len(ra.data['rmt']))])
 
         
     # a method called by each process to correct RMT for each cell
@@ -154,7 +155,8 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
                 # Remove Jaitin corrected reads if probability of RMT == error is high
                 if p_val_err > p_value and jaitin_corrected:
                     # Save the RMT donor
-                    shared_rmt_array[rmt_groups[rmt]]=jaitin_donor
+                    for i in rmt_groups[rmt]:
+                        shared_rmt_array[i]=jaitin_donor
                     #ra.data['status'][rmt_groups[rmt]] |= ra.filter_codes['rmt_error']
                     #ra.data['rmt'][rmt_groups[rmt]] = jaitin_donor
     
