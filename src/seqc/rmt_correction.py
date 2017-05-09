@@ -140,8 +140,9 @@ def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
             # Remove Jaitin corrected reads if probability of RMT == error is high
             if p_val_err > p_value and jaitin_corrected:
                 # Save the RMT donor
+                log.notify("yes got here")
                 for i in rmt_groups[rmt]:
-                    shared_rmt_array[i]=jaitin_donor
+                    shared_rmt_array[i]=rmt_groups[jaitin_donor][0]
 
 # create a global shared array for rmt correction            
 def init_shared_rmt_array(shared_rmt_array_):
@@ -161,7 +162,9 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     # A shared array among the parallel processes
     # Each entry represent a molecule RMT barcode with
     # -1: can't be corrected or already valid, >=0: represent the donor RMT 
-    shared_rmt_array = multi.Array(ctypes.c_int64, len(ra.data['rmt']))
+    shared_rmt_array = multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
+    if (len(shared_rmt_array)!=len(ra.data['rmt'])) or (shared_rmt_array==None):
+        log.notify("memory problem ???")
     #manager = Manager()
     #shared_rmt_array = manager.Array('l',[-1 for i in range(len(ra.data['rmt']))])
         
@@ -181,5 +184,6 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     # if it is indicated by the shared_rmt_array
     for i in range(len(shared_rmt_array)):
         if shared_rmt_array[i]>=0:
-            ra.data['rmt'][i]=shared_rmt_array[i]
+            log.notify("got here")
+            ra.data['rmt'][i]=ra.data['rmt'][shared_rmt_array[i]]
             ra.data['status'][i]|= ra.filter_codes['rmt_error']
