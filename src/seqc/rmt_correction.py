@@ -87,10 +87,10 @@ def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
     gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
     breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
     splits = np.split(gene_inds, breaks)
-
+    rmt_groups = {}
+    
     for inds in splits:
         # RMT groups
-        rmt_groups = {}
         for ind in inds:
             rmt = ra.data['rmt'][ind]
             try:
@@ -144,6 +144,9 @@ def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
                 for i in rmt_groups[rmt]:
                     shared_rmt_array[i]=rmt_groups[jaitin_donor][0]
 
+        rmt_groups.clear()
+        
+
 # create a global shared array for rmt correction            
 def init_shared_rmt_array(shared_rmt_array_):
     global shared_rmt_array
@@ -162,7 +165,9 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     # A shared array among the parallel processes
     # Each entry represent a molecule RMT barcode with
     # -1: can't be corrected or already valid, >=0: represent the donor RMT 
-    shared_rmt_array = multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
+    #shared_rmt_array = multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
+    global shared_rmt_array
+    shared_rmt_array=multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
     if (len(shared_rmt_array)!=len(ra.data['rmt'])) or (shared_rmt_array==None):
         log.notify("memory problem ???")
     #manager = Manager()
@@ -170,8 +175,13 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
         
     # create a pool of workers and let each work on each single cell
     lfunc = partial(_correct_errors_by_cell_group, ra, err_rate, p_value)
+    '''
     with closing(multi.Pool(initializer=init_shared_rmt_array, initargs=(shared_rmt_array,))) as p:
         p.map_async(lfunc, indices_grouped_by_cells)
+    '''
+    p = multi.Pool(processes=32)
+    p.imap_unordered(lfunc, indices_grouped_by_cells,chunksize=32)
+    p.close()
     p.join()
     
     #p=multi.Pool(processes=multi.cpu_count())
