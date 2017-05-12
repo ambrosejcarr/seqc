@@ -7,6 +7,7 @@ import time
 import pandas as pd
 import multiprocessing as multi
 #from multiprocessing_on_dill import Manager
+from itertools import repeat
 import ctypes
 from contextlib import closing
 from functools import partial
@@ -82,12 +83,17 @@ def in_drop(ra, error_rate, alpha=0.05):
 
 # a method called by each process to correct RMT for each cell
 def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
-    
+#def _correct_errors_by_cell_group(params):
+    #ra=params[0]
+    #err_rate=params[1]
+    #p_value=params[2]
+    #cell_group=params[3]
     # Breaks for each gene
     gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
     breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
     splits = np.split(gene_inds, breaks)
     rmt_groups = {}
+    #log.notify("does get here")
     
     for inds in splits:
         # RMT groups
@@ -133,6 +139,7 @@ def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
                     if (set(ref_positions)).issubset(donor_positions):
                         jaitin_corrected = True
                         jaitin_donor = donor_rmt
+                        #log.notify("got jaitin")
 
             # Probability that the RMT is an error
             p_val_err = gammainc(len(rmt_groups[rmt]), expected_errors)
@@ -140,11 +147,13 @@ def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
             # Remove Jaitin corrected reads if probability of RMT == error is high
             if p_val_err > p_value and jaitin_corrected:
                 # Save the RMT donor
-                log.notify("yes got here")
+                #log.notify("yes got here")
                 for i in rmt_groups[rmt]:
                     shared_rmt_array[i]=rmt_groups[jaitin_donor][0]
 
         rmt_groups.clear()
+
+    return 0
         
 
 # create a global shared array for rmt correction            
@@ -170,19 +179,48 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     shared_rmt_array=multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
     if (len(shared_rmt_array)!=len(ra.data['rmt'])) or (shared_rmt_array==None):
         log.notify("memory problem ???")
+    log.notify("shared rmt array size "+str(len(shared_rmt_array)))
     #manager = Manager()
     #shared_rmt_array = manager.Array('l',[-1 for i in range(len(ra.data['rmt']))])
         
     # create a pool of workers and let each work on each single cell
-    lfunc = partial(_correct_errors_by_cell_group, ra, err_rate, p_value)
+    #lfunc = partial(_correct_errors_by_cell_group, ra, err_rate, p_value)
     '''
     with closing(multi.Pool(initializer=init_shared_rmt_array, initargs=(shared_rmt_array,))) as p:
         p.map_async(lfunc, indices_grouped_by_cells)
     '''
-    p = multi.Pool(processes=32)
-    p.imap_unordered(lfunc, indices_grouped_by_cells,chunksize=32)
+    log.notify("number of cell groups: "+str(len(indices_grouped_by_cells)))
+    
+    #p.imap_unordered(lfunc, indices_grouped_by_cells,chunksize=32)
+    
+    #maxperproc=100
+    #csize=multi.cpu_count()*maxperproc
+    '''
+    csize=5000
+    if csize>len(indices_grouped_by_cells):
+        csize=len(indices_grouped_by_cells)
+    numi=int(len(indices_grouped_by_cells)/csize)
+    for i in range(numi):
+        starti=csize*i
+        if i==numi-1:
+            endi=len(indices_grouped_by_cells)
+        else:
+            endi=(csize)*(i+1)
+            
+        p = multi.Pool(processes=multi.cpu_count())
+        results=p.starmap_async(_correct_errors_by_cell_group,zip(repeat(ra),repeat(err_rate),repeat(p_value),indices_grouped_by_cells[starti:endi]))
+        p.close()
+        p.join()
+        log.notify(results.get())
+        log.notify("finished "+str(endi))
+    '''
+    p = multi.Pool(processes=multi.cpu_count())
+    results=p.map_async(_correct_errors_by_cell_group,zip(repeat(ra),repeat(err_rate),repeat(p_value),indices_grouped_by_cells),chunksize=32768)
     p.close()
     p.join()
+    for r in results:
+        log.notify(r)
+    
     
     #p=multi.Pool(processes=multi.cpu_count())
     #p.map(partial(_correct_errors_by_cell_group, shared_bc_correction_array=shared_rmt_array), indices_grouped_by_cells)
@@ -194,6 +232,6 @@ def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
     # if it is indicated by the shared_rmt_array
     for i in range(len(shared_rmt_array)):
         if shared_rmt_array[i]>=0:
-            log.notify("got here")
+            #log.notify("got here")
             ra.data['rmt'][i]=ra.data['rmt'][shared_rmt_array[i]]
             ra.data['status'][i]|= ra.filter_codes['rmt_error']
