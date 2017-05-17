@@ -66,34 +66,32 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
         r_seq >>= 3
     return p
 
-
-# todo document me
-def in_drop(ra, error_rate, alpha=0.05):
+def in_drop(read_array, error_rate, alpha=0.05):
     """ Tag any RMT errors
 
-    :param ra: Read array
+    :param read_array: Read array
     :param error_rate: Sequencing error rate determined during barcode correction
     :param alpha: Tolerance for errors
     """
 
-    # Group read array by cells and submit indices of each cell to a different processor
+    global ra
+    global indices_grouped_by_cells
+        
+    ra=read_array
     indices_grouped_by_cells = ra.group_indices_by_cell()
-    _correct_errors(indices_grouped_by_cells, ra, error_rate, alpha)
+    _correct_errors(error_rate, alpha)
 
 
 # a method called by each process to correct RMT for each cell
-def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
-#def _correct_errors_by_cell_group(params):
-    #ra=params[0]
-    #err_rate=params[1]
-    #p_value=params[2]
-    #cell_group=params[3]
+def _correct_errors_by_cell_group(err_rate, p_value, cell_index):
+
+    cell_group=indices_grouped_by_cells[cell_index]
     # Breaks for each gene
     gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
     breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
     splits = np.split(gene_inds, breaks)
     rmt_groups = {}
-    #log.notify("does get here")
+    res=[]
     
     for inds in splits:
         # RMT groups
@@ -147,91 +145,28 @@ def _correct_errors_by_cell_group(ra, err_rate, p_value, cell_group):
             # Remove Jaitin corrected reads if probability of RMT == error is high
             if p_val_err > p_value and jaitin_corrected:
                 # Save the RMT donor
-                #log.notify("yes got here")
+                # save the index of the read and index of donor rmt read
                 for i in rmt_groups[rmt]:
-                    shared_rmt_array[i]=rmt_groups[jaitin_donor][0]
+                    res.append(i)
+                    res.append(rmt_groups[jaitin_donor][0])
 
         rmt_groups.clear()
 
-    return 0
-        
+    return res
 
-# create a global shared array for rmt correction            
-def init_shared_rmt_array(shared_rmt_array_):
-    global shared_rmt_array
-    shared_rmt_array = shared_rmt_array_ 
-
-def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
-    """Calculate and correct errors in RMTs
-
-    :param ra:
-    :param err_rate: A table of the estimate base switch error rate, produced
-      ReadArray.apply_barcode_correction().
-    :param p_value: The p_value used for the likelihood method
-    :return None:
-    """
-    
-    # A shared array among the parallel processes
-    # Each entry represent a molecule RMT barcode with
-    # -1: can't be corrected or already valid, >=0: represent the donor RMT 
-    #shared_rmt_array = multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
-    global shared_rmt_array
-    shared_rmt_array=multi.Array(ctypes.c_int32, [-1 for i in range(len(ra.data['rmt']))])
-    if (len(shared_rmt_array)!=len(ra.data['rmt'])) or (shared_rmt_array==None):
-        log.notify("memory problem ???")
-    log.notify("shared rmt array size "+str(len(shared_rmt_array)))
-    #manager = Manager()
-    #shared_rmt_array = manager.Array('l',[-1 for i in range(len(ra.data['rmt']))])
-        
-    # create a pool of workers and let each work on each single cell
-    #lfunc = partial(_correct_errors_by_cell_group, ra, err_rate, p_value)
-    '''
-    with closing(multi.Pool(initializer=init_shared_rmt_array, initargs=(shared_rmt_array,))) as p:
-        p.map_async(lfunc, indices_grouped_by_cells)
-    '''
-    log.notify("number of cell groups: "+str(len(indices_grouped_by_cells)))
-    
-    #p.imap_unordered(lfunc, indices_grouped_by_cells,chunksize=32)
-    
-    #maxperproc=100
-    #csize=multi.cpu_count()*maxperproc
-    '''
-    csize=5000
-    if csize>len(indices_grouped_by_cells):
-        csize=len(indices_grouped_by_cells)
-    numi=int(len(indices_grouped_by_cells)/csize)
-    for i in range(numi):
-        starti=csize*i
-        if i==numi-1:
-            endi=len(indices_grouped_by_cells)
-        else:
-            endi=(csize)*(i+1)
-            
+def _correct_errors(err_rate, p_value=0.05):
+    #Calculate and correct errors in RMTs
+    with multi.Pool(processes=multi.cpu_count()) as p: 
         p = multi.Pool(processes=multi.cpu_count())
-        results=p.starmap_async(_correct_errors_by_cell_group,zip(repeat(ra),repeat(err_rate),repeat(p_value),indices_grouped_by_cells[starti:endi]))
+        results=p.starmap(_correct_errors_by_cell_group,zip(repeat(err_rate),repeat(p_value),range(len(indices_grouped_by_cells))))
         p.close()
         p.join()
-        log.notify(results.get())
-        log.notify("finished "+str(endi))
-    '''
-    p = multi.Pool(processes=multi.cpu_count())
-    results=p.map_async(_correct_errors_by_cell_group,zip(repeat(ra),repeat(err_rate),repeat(p_value),indices_grouped_by_cells),chunksize=32768)
-    p.close()
-    p.join()
-    for r in results:
-        log.notify(r)
-    
-    
-    #p=multi.Pool(processes=multi.cpu_count())
-    #p.map(partial(_correct_errors_by_cell_group, shared_bc_correction_array=shared_rmt_array), indices_grouped_by_cells)
-    #p.map(_correct_errors_by_cell_group,indices_grouped_by_cells)
-    #for cell_group in indices_grouped_by_cells:
-        #p.apply_async(_correct_errors_by_cell_group, cell_group)
         
-    # iterate through each RMT and do correction 
-    # if it is indicated by the shared_rmt_array
-    for i in range(len(shared_rmt_array)):
-        if shared_rmt_array[i]>=0:
-            #log.notify("got here")
-            ra.data['rmt'][i]=ra.data['rmt'][shared_rmt_array[i]]
-            ra.data['status'][i]|= ra.filter_codes['rmt_error']
+        # iterate through the list of returned read indices and donor rmts 
+        for i in range(len(results)):
+            res=results[i]
+            if len(res)>0:
+                #log.notify("got here")
+                for i in range(0,len(res),2):
+                    ra.data['rmt'][res[i]]=ra.data['rmt'][res[i+1]]
+                    ra.data['status'][res[i]]|= ra.filter_codes['rmt_error']
