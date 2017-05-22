@@ -262,7 +262,7 @@ def run(args) -> None:
                 args.index, n_processes, upload_merged)
         else:
             manage_merged = None
-
+        
         if process_bamfile:
             upload_bamfile = args.upload_prefix if align else None
             

@@ -1,6 +1,24 @@
 from seqc.sequence.encodings import DNA3Bit
 from sys import maxsize
 
+# todo document me
+def generate_hamming_dist_1(seq):
+    """ Return a list of all sequences that are up to 1 hamming distance from seq
+    :param seq:
+    """
+    res = []
+    l = DNA3Bit.seq_len(seq)
+    #=barcode
+    
+    # generate all sequences that are dist 1
+    for i in range(l):
+        mask = 0b111 << (i * 3)
+        cur_chr = (seq & mask) >> (i * 3)
+        res += [seq & (~mask) | (new_chr << (i * 3))
+                for new_chr in DNA3Bit.bin2strdict.keys() if new_chr != cur_chr]
+
+    return res
+
 
 def find_correct_barcode(code, barcodes_list, exact_match=False):
     """

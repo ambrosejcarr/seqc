@@ -5,7 +5,12 @@ from seqc import log
 from seqc.read_array import ReadArray
 import time
 import pandas as pd
-
+import multiprocessing as multi
+#from multiprocessing_on_dill import Manager
+from itertools import repeat
+import ctypes
+from contextlib import closing
+from functools import partial
 
 # todo document me
 def generate_close_seq(seq):
@@ -61,90 +66,107 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
         r_seq >>= 3
     return p
 
-
-# todo document me
-def in_drop(ra, error_rate, alpha=0.05):
+def in_drop(read_array, error_rate, alpha=0.05):
     """ Tag any RMT errors
 
-    :param ra: Read array
+    :param read_array: Read array
     :param error_rate: Sequencing error rate determined during barcode correction
     :param alpha: Tolerance for errors
     """
 
-    # Group read array by cells and submit indices of each cell to a different processor
+    global ra
+    global indices_grouped_by_cells
+        
+    ra=read_array
     indices_grouped_by_cells = ra.group_indices_by_cell()
-    _correct_errors(indices_grouped_by_cells, ra, error_rate, alpha)
+    _correct_errors(error_rate, alpha)
 
 
-# todo document me
-def _correct_errors(indices_grouped_by_cells, ra, err_rate, p_value=0.05):
-    """Calculate and correct errors in RMTs
+# a method called by each process to correct RMT for each cell
+def _correct_errors_by_cell_group(err_rate, p_value, cell_index):
 
-    :param ra:
-    :param err_rate: A table of the estimate base switch error rate, produced
-      ReadArray.apply_barcode_correction().
-    :param p_value: The p_value used for the likelihood method
-    :return None:
-    """
+    cell_group=indices_grouped_by_cells[cell_index]
+    # Breaks for each gene
+    gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
+    breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
+    splits = np.split(gene_inds, breaks)
+    rmt_groups = {}
+    res=[]
+    
+    for inds in splits:
+        # RMT groups
+        for ind in inds:
+            rmt = ra.data['rmt'][ind]
+            try:
+                rmt_groups[rmt].append(ind)
+            except KeyError:
+                rmt_groups[rmt] = [ind]
 
-    for cell_group in indices_grouped_by_cells:
+        if len(rmt_groups) == 1:
+            continue
 
-        # Breaks for each gene
-        gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
-        breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
-        splits = np.split(gene_inds, breaks)
+        # This logic retains RMTs with N if no donor is found and contributes to the
+        # molecule count
+        for rmt in rmt_groups.keys():
 
-        for inds in splits:
-            # RMT groups
-            rmt_groups = {}
-            for ind in inds:
-                rmt = ra.data['rmt'][ind]
+            # Enumerate all possible RMTs with hamming distances 1 and/or 2
+            # to build a probablitiy that this particular RMT was not an error
+            # Simulatenously, check if Jaitin error correction can be applied
+            jaitin_corrected = False
+            expected_errors = 0
+            for donor_rmt in generate_close_seq(rmt):
+
+                # Check if donor is detected
                 try:
-                    rmt_groups[rmt].append(ind)
+                    donor_count = len(rmt_groups[donor_rmt])
                 except KeyError:
-                    rmt_groups[rmt] = [ind]
+                    continue
 
-            if len(rmt_groups) == 1:
-                continue
+                # Build likelihood
+                # Probability of converting donor to target
+                p_dtr = probability_for_convert_d_to_r(donor_rmt, rmt, err_rate)
+                # Number of occurrences
+                expected_errors += donor_count * p_dtr
 
-            # This logic retains RMTs with N if no donor is found and contributes to the
-            # molecule count
-            for rmt in rmt_groups.keys():
+                # Check if jaitin correction is feasible
+                if not jaitin_corrected: 
+                    ref_positions = ra.positions[rmt_groups[rmt]]
+                    donor_positions = ra.positions[rmt_groups[donor_rmt]]
 
-                # Enumerate all possible RMTs with hamming distances 1 and/or 2
-                # to build a probablitiy that this particular RMT was not an error
-                # Simulatenously, check if Jaitin error correction can be applied
-                jaitin_corrected = False
-                expected_errors = 0
-                for donor_rmt in generate_close_seq(rmt):
+                    # Is reference a subset of the donor ? 
+                    if (set(ref_positions)).issubset(donor_positions):
+                        jaitin_corrected = True
+                        jaitin_donor = donor_rmt
+                        #log.notify("got jaitin")
 
-                    # Check if donor is detected
-                    try:
-                        donor_count = len(rmt_groups[donor_rmt])
-                    except KeyError:
-                        continue
+            # Probability that the RMT is an error
+            p_val_err = gammainc(len(rmt_groups[rmt]), expected_errors)
 
-                    # Build likelihood
-                    # Probability of converting donor to target
-                    p_dtr = probability_for_convert_d_to_r(donor_rmt, rmt, err_rate)
-                    # Number of occurances
-                    expected_errors += donor_count * p_dtr
+            # Remove Jaitin corrected reads if probability of RMT == error is high
+            if p_val_err > p_value and jaitin_corrected:
+                # Save the RMT donor
+                # save the index of the read and index of donor rmt read
+                for i in rmt_groups[rmt]:
+                    res.append(i)
+                    res.append(rmt_groups[jaitin_donor][0])
 
-                    # Check if jaitin correction is feasible
-                    if not jaitin_corrected: 
-                        ref_positions = ra.positions[rmt_groups[rmt]]
-                        donor_positions = ra.positions[rmt_groups[donor_rmt]]
+        rmt_groups.clear()
 
-                        # Is reference a subset of the donor ? 
-                        if (set(ref_positions)).issubset(donor_positions):
-                            jaitin_corrected = True
-                            jaitin_donor = donor_rmt
+    return res
 
-                # Probability that the RMT is an error
-                p_val_err = gammainc(len(rmt_groups[rmt]), expected_errors)
-
-                # Remove Jaitin corrected reads if probability of RMT == error is high
-                if p_val_err > p_value and jaitin_corrected:
-                    # Mark as error
-                    ra.data['status'][rmt_groups[rmt]] |= ra.filter_codes['rmt_error']
-                    ra.data['rmt'][rmt_groups[rmt]] = jaitin_donor
+def _correct_errors(err_rate, p_value=0.05):
+    #Calculate and correct errors in RMTs
+    with multi.Pool(processes=multi.cpu_count()) as p: 
+        p = multi.Pool(processes=multi.cpu_count())
+        results=p.starmap(_correct_errors_by_cell_group,zip(repeat(err_rate),repeat(p_value),range(len(indices_grouped_by_cells))))
+        p.close()
+        p.join()
+        
+        # iterate through the list of returned read indices and donor rmts 
+        for i in range(len(results)):
+            res=results[i]
+            if len(res)>0:
+                #log.notify("got here")
+                for i in range(0,len(res),2):
+                    ra.data['rmt'][res[i]]=ra.data['rmt'][res[i+1]]
+                    ra.data['status'][res[i]]|= ra.filter_codes['rmt_error']

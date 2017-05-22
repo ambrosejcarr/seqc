@@ -624,7 +624,7 @@ class ten_x(AbstractPlatform):
         return g
 
     def apply_barcode_correction(self, ra, barcode_files):
-        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        error_rate = barcode_correction.ten_x_barcode_correction(ra, self, barcode_files, max_ed=0)
         return error_rate
 
     def apply_rmt_correction(self, ra, error_rate):
@@ -670,7 +670,7 @@ class ten_x_v2(AbstractPlatform):
         
         """
         # todo: verify max edit distance 
-        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
+        error_rate = barcode_correction.ten_x_barcode_correction(ra, self, barcode_files, max_ed=0)
         return error_rate
 
     def apply_rmt_correction(self, ra, error_rate):
