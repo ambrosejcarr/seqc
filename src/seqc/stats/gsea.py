@@ -150,10 +150,10 @@ class GSEA:
         names = ['size', 'es', 'nes', 'p', 'fdr_q', 'fwer_p', 'rank_at_max',
                  'leading_edge']
         pos = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*pos*xls')[0],
-                                    sep='\t').iloc[:, :-1]
+                                    sep='\t', infer_datetime_format=False, parse_dates=False).iloc[:, :-1]
         pos.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
         neg = pd.DataFrame.from_csv(glob.glob(folder + '/gsea*neg*xls')[0],
-                                    sep='\t').iloc[:, :-1]
+                                    sep='\t', infer_datetime_format=False, parse_dates=False).iloc[:, :-1]
         neg.drop(['GS<br> follow link to MSigDB', 'GS DETAILS'], axis=1, inplace=True)
         pos.columns, neg.columns = names, names
         self._results[gmt_file] = {'positive': pos, 'negative': neg}
