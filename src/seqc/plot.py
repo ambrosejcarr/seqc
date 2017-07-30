@@ -76,7 +76,7 @@ style_dictionary = {
     
 }
 
-matplotlib.rcParams.update(style_dictionary)
+# matplotlib.rcParams.update(style_dictionary)
 
 
 def refresh_rc():
@@ -254,7 +254,7 @@ def map_categorical_to_cmap(data: np.ndarray, cmap=plt.get_cmap()):
 
 
 def add_legend_to_categorical_vector(
-        colors: np.ndarray, labels, ax, loc='center left', bbox_to_anchor=(0.98, 0.5),
+        colors: np.ndarray, labels, ax, loc='best',  # bbox_to_anchor=(0.98, 0.5),
         markerscale=0.75, **kwargs):
     """
     Add a legend to a plot where the color scale was set by discretizing a colormap.
@@ -269,7 +269,7 @@ def add_legend_to_categorical_vector(
     for c in colors:
         artists.append(plt.Line2D((0, 1), (0, 0), color=c, marker='o', linestyle=''))
     ax.legend(
-        artists, labels, loc=loc, bbox_to_anchor=bbox_to_anchor, markerscale=markerscale,
+        artists, labels, loc=loc, markerscale=markerscale,  # bbox_to_anchor=bbox_to_anchor,
         **kwargs)
 
 
