@@ -2,7 +2,7 @@ import os
 import shutil
 import inspect
 from math import ceil
-from seqc import io, platforms
+from seqc import io, platforms, ec2
 
 
 def filesize(filename):
@@ -150,10 +150,14 @@ def run(args) -> float:
     if args.upload_prefix and not args.upload_prefix.startswith('s3://'):
         raise ValueError('upload_prefix should be an s3 address beginning with s3://')
 
+    if args.upload_prefix.startswith('s3://'):
+        ec2.check_bucket(args.upload_prefix)
+
     if args.volume_size is None:
         setattr(args, 'volume_size', estimate_required_volume_size(args))
 
     return args
+
 
 def demultiplex(args) -> float:
     """

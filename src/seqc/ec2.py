@@ -789,3 +789,18 @@ def remove_inactive_security_groups():
             s.delete()
         except ClientError:  # is in use
             pass
+
+
+def check_bucket(s3_uri):
+    """Check whether a bucket exists and you have access.
+
+    :param str s3_uri: name of uri in a bucket to check
+    """
+    if not s3_uri.startswith('s3://'):
+        raise ValueError('%s is not a valid s3 URI' % s3_uri)
+    bucket = s3_uri[5:].split('/')[0]
+    s3 = boto3.resource('s3')
+    try:
+        s3.meta.client.head_bucket(Bucket=bucket)
+    except ClientError:
+        raise ValueError('Bucket %s for s3 URI %s does not exist' % (bucket, s3_uri))
