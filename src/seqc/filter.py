@@ -4,7 +4,7 @@ from seqc.sequence.fastq import Reader
 from math import floor
 import numpy as np
 import pandas as pd
-from sklearn.mixture import GMM
+from sklearn.mixture import GaussianMixture
 from sklearn.linear_model import LinearRegression
 from seqc.exceptions import EmptyMatrixError
 from seqc.sparse_frame import SparseFrame
@@ -82,14 +82,16 @@ def low_count(molecules, is_invalid, plot=False, ax=None):
 
     if plot and ax:
         cms /= np.max(cms)  # normalize to one
-        ax.plot(np.arange(len(cms))[:inflection_pt], cms[:inflection_pt], c='royalblue')
+        ax.plot(np.arange(len(cms))[:inflection_pt], cms[:inflection_pt])
         ax.plot(np.arange(len(cms))[inflection_pt:], cms[inflection_pt:], c='indianred')
-        ax.hlines(cms[inflection_pt], *ax.get_xlim(), linestyle='--', colors='indianred')
-        ax.vlines(inflection_pt, *ax.get_ylim(), linestyle='--', colors='indianred')
+        ax.hlines(cms[inflection_pt], *ax.get_xlim(), linestyle='--')
+        ax.vlines(inflection_pt, *ax.get_ylim(), linestyle='--')
         ax.set_xticklabels([])
         ax.set_xlabel('putative cell')
         ax.set_ylabel('ECDF (Cell Size)')
         ax.set_title('Cell Size')
+        ax.set_ylim((0, 1))
+        ax.set_xlim((0, len(cms)))
 
     return is_invalid
 
@@ -124,14 +126,16 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
 
     # fit two GMMs on one and two modes
     col_ratio = ratio[:, np.newaxis]
-    gmm1 = GMM(n_components=1)
-    gmm2 = GMM(n_components=2)
+    gmm1 = GaussianMixture(n_components=1)
+    gmm2 = GaussianMixture(n_components=2)
     gmm1.fit(col_ratio)
     gmm2.fit(col_ratio)
 
     # check if adding a second component is necessary; if not, filter is pass-through
-    if gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95:
-        res = gmm2.fit_predict(col_ratio)
+    filter_on = gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95
+
+    if filter_on:
+        res = gmm2.predict(col_ratio)
 
         # Molecule sum means
         means = [np.mean(ms[res == 0]), np.mean(ms[res == 1])]
@@ -140,6 +144,8 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
         # set smaller mean as invalid
         is_invalid = is_invalid.copy()
         is_invalid[np.where(~is_invalid)[0][failing]] = True
+    else:
+        res, means = None, None
 
     if plot and ax:
         logms = np.log10(ms)
@@ -160,6 +166,12 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
 
         # plot 1d conditional densities of two-component model
         # todo figure out how to do this!!
+
+        # plot the discarded cells in red, like other filters
+        if filter_on:
+            ax.scatter(
+                logms[res == np.argmin(means)], ratio[res == np.argmin(means)],
+                s=4, c='indianred')
 
     return is_invalid
 
@@ -211,7 +223,8 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
         ax.hlines(max_mt_content, *ax.get_xlim(), linestyle='--', colors='indianred')
         ax.set_xlabel('total molecules')
         ax.set_ylabel('fraction mitochondrial\nmolecules')
-        ax.set_title('MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100 ))
+        ax.set_title(
+            'MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
         seqc.plot.xtick_vertical(ax=ax)
 
     return is_invalid
@@ -375,6 +388,6 @@ def create_filtered_dense_count_matrix(
 
     if plot:
         fig.tight_layout()
-        fig.savefig(figname)
+        fig.savefig(figname, dpi=300, transparent=True)
 
     return dense, total_molecules, molecules_lost, cells_lost, cell_description
