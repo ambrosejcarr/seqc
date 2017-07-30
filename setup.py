@@ -27,46 +27,48 @@ if shutil.which('pip3'):
 with open('src/seqc/version.py') as f:
     exec(f.read())
 
-setup(name='seqc',
-      version=__version__,  # read in from the exec of version.py; ignore error
-      description='Single Cell Sequencing Processing and QC Suite',
-      author='Ambrose J. Carr',
-      author_email='mail@ambrosejcarr.com',
-      package_dir={'': 'src'},
-      packages=['seqc', 'seqc.utils', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
-                'seqc.summary'],
-      install_requires=[
-          'numpy>=1.10.0',
-          'bhtsne',
-          'wikipedia',
-          'awscli',
-          'Cython>0.14',
-          'numexpr>=2.4',
-          'pandas>=0.18.1',
-          'paramiko>=2.0.2',
-          'regex',
-          'requests',
-          'nose2',
-          'scipy>=0.14.0',
-          'boto3',
-          'intervaltree',
-          'matplotlib',
-          'tinydb',
-          'tables',
-          #'pysam',
-          'fastcluster',
-          'statsmodels',
-          'ecdsa',
-          'dill',
-          'multiprocessing_on_dill',
-          'jinja2',
-          'pycrypto',
-          'scikit_learn>=0.17'],
-      scripts=['src/scripts/SEQC'],
-      extras_require={
-          'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
-      }
-      )
+setup(
+    name='seqc',
+    version=__version__,  # read in from the exec of version.py; ignore error
+    description='Single Cell Sequencing Processing and QC Suite',
+    author='Ambrose J. Carr',
+    author_email='mail@ambrosejcarr.com',
+    package_dir={'': 'src'},
+    packages=['seqc', 'seqc.utils', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
+            'seqc.summary'],
+    install_requires=[
+      'numpy>=1.10.0',
+      'bhtsne',
+      'wikipedia',
+      'awscli',
+      'Cython>0.14',
+      'numexpr>=2.4',
+      'pandas>=0.18.1',
+      'paramiko>=2.0.2',
+      'regex',
+      'requests',
+      'nose2',
+      'scipy>=0.14.0',
+      'boto3',
+      'intervaltree',
+      'matplotlib',
+      'tinydb',
+      'tables',
+      #'pysam',
+      'fastcluster',
+      'statsmodels',
+      'ecdsa',
+      'dill',
+      'multiprocessing_on_dill',
+      'jinja2',
+      'pycrypto',
+      'scikit_learn>=0.17'],
+    scripts=['src/scripts/SEQC'],
+    extras_require={
+      'GSEA_XML': ['html5lib', 'lxml', 'BeautifulSoup4'],
+    },
+    include_package_data=True
+)
 
 # look for star
 if not shutil.which('STAR'):
