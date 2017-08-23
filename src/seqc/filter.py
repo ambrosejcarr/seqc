@@ -110,6 +110,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=Tr
     :param bool plot: if True, plot a summary of the filter
     :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
       summary.
+    :param filter_on: indicate whether low coverage filter is on
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
@@ -131,7 +132,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=Tr
     gmm1.fit(col_ratio)
     gmm2.fit(col_ratio)
 
-    if not filter_on:
+    if filter_on:
     # check if adding a second component is necessary; if not, filter is pass-through
         filter_on = gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95
 
@@ -302,6 +303,7 @@ def create_filtered_dense_count_matrix(
 
     :param filter_mitochondrial_rna: if True, run the mitochondrial RNA filter.
     :param filter_low_count: if True, run the low count cell filter.
+    :param filter_low_coverage: if True, run the low coverage filter.
     :param molecules: SparseFrame
     :param reads: SparseFrame
     :param max_mt_content: the maximum percentage of mitochondrial RNA that is
