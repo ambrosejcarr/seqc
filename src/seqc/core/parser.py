@@ -114,6 +114,10 @@ def parse_args(args):
                    dest='filter_mitochondrial_rna',
                    help='Do not filter cells with greater than 20 percent mitochondrial '
                         'RNA ')
+    f.set_defaults(filter_low_coverage=True)
+    f.add_argument('--no-filter_low_coverage', action='store_false',
+                   dest='filter_low_coverage',
+                   help='Do not filter cells with low coverage')
     f.add_argument('--low-coverage-alpha', metavar='LA',
                    help='FDR rate for low coverage reads filter in mars-seq datasets. '
                         'Float between 0 and 1, default=0.25',
