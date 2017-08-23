@@ -336,7 +336,7 @@ def run(args) -> None:
             filter.create_filtered_dense_count_matrix(
                 sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
                 filter_low_count=platform.filter_low_count, 
-                filter_mitochondrial_rna=args.filter_mitochondrial_rna))
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna,filter_low_coverage=args.filter_low_coverage))
         dense_csv = args.output_prefix + '_dense.csv'
         sp_csv.to_csv(dense_csv)
 

@@ -617,10 +617,15 @@ class ten_x(AbstractPlatform):
         :param b: barcode fastq sequence data
         :return: annotated genomic sequence.
         """
-        rmt = b.sequence.strip()
+        combined = b.sequence.strip()
+        rmt = combined[:10]
         # bc is in a fixed position in the name; assumes 10bp indices.
         cell = g.name.strip()[-23:-9]
-        g.add_annotation((b'', cell, rmt, b''))
+        if len(combined)>=11:
+            poly_t = combined[10:]
+        else:
+            poly_t = b''
+        g.add_annotation((b'', cell, rmt, poly_t))
         return g
 
     def apply_barcode_correction(self, ra, barcode_files):
@@ -657,7 +662,11 @@ class ten_x_v2(AbstractPlatform):
         combined = b.sequence.strip()
         cell = combined[0:16]  # v2 chemistry has 16bp barcodes
         rmt = combined[16:26]  # 10 baselength RMT
-        g.add_annotation((b'', cell, rmt, b''))
+        if len(combined)>=27:
+            poly_t = combined[26:]
+        else:
+            poly_t = b''
+        g.add_annotation((b'', cell, rmt, poly_t))
         return g
 
     def apply_barcode_correction(self, ra, barcode_files):

@@ -157,8 +157,7 @@ class Reader(reader.Reader):
             data[i] = len(seq) - 1  # last character is a newline
             i += 1
         return np.mean(data), np.std(data), np.unique(data, return_counts=True)
-
-
+    
 def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
     """
     General function to annotate genomic fastq with barcode information from reverse read.

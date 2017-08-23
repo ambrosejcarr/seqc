@@ -96,7 +96,7 @@ def low_count(molecules, is_invalid, plot=False, ax=None):
     return is_invalid
 
 
-def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
+def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=True):
     """
     Fits a two-component gaussian mixture model to the data. If a component is found
     to fit a low-coverage fraction of the data, this fraction is set as invalid. Not
@@ -131,8 +131,9 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
     gmm1.fit(col_ratio)
     gmm2.fit(col_ratio)
 
+    if not filter_on:
     # check if adding a second component is necessary; if not, filter is pass-through
-    filter_on = gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95
+        filter_on = gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95
 
     if filter_on:
         res = gmm2.predict(col_ratio)
@@ -292,7 +293,7 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
 
 def create_filtered_dense_count_matrix(
         molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2, plot=False,
-        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True):
+        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True, filter_low_coverage: bool=True):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
     and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
@@ -355,7 +356,7 @@ def create_filtered_dense_count_matrix(
 
 
     # filter low coverage
-    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov)
+    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov,filter_low_coverage)
     cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
         cov_invalid, count_invalid, molecules_data)
 
