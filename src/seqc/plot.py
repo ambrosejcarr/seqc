@@ -76,7 +76,7 @@ style_dictionary = {
     
 }
 
-# matplotlib.rcParams.update(style_dictionary)
+matplotlib.rcParams.update(style_dictionary)
 
 
 def refresh_rc():
