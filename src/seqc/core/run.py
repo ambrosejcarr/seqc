@@ -383,14 +383,14 @@ def run(args) -> None:
         seqc_summary.import_image(cell_size_figure)
         seqc_summary.render()
         summary_archive = seqc_summary.compress_archive()
+        files += [summary_archive]
 
         # Create a mini summary section
         alignment_summary_file=output_dir + '/' + args.output_prefix + '_alignment_summary.txt'
         seqc_mini_summary = MiniSummary(args.output_prefix, mini_summary_d, alignment_summary_file, cell_filter_figure, cell_size_figure)
         seqc_mini_summary.compute_summary_fields(ra,sp_csv)
-        seqc_mini_summary.render()
-
-        files += [summary_archive]
+        seqc_mini_summary_file=seqc_mini_summary.render()
+        files+=[seqc_mini_summary_file]
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return

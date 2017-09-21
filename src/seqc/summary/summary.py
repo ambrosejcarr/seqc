@@ -338,6 +338,7 @@ class MiniSummary:
         
     def compute_summary_fields(self,read_array,count_mat):
         self.count_mat=pd.DataFrame(count_mat)
+        self.mini_summary_d['unmapped_pct']=0.0
         with open(self.alignment_summary_file, "r") as f:
             for line in f:
                 arr=re.split("[\|:\t ]+", line)
@@ -347,6 +348,12 @@ class MiniSummary:
                     self.mini_summary_d['uniqmapped_pct']=float(arr[-1].strip().strip("%"))
                 elif "% of reads mapped to multiple loci" in line:
                     self.mini_summary_d['multimapped_pct']=float(arr[-1].strip().strip("%"))
+                elif "% of reads unmapped: too many mismatches" in line:
+                    self.mini_summary_d['unmapped_pct']+=float(arr[-1].strip().strip("%"))
+                elif "% of reads unmapped: too short" in line:
+                    self.mini_summary_d['unmapped_pct']+=float(arr[-1].strip().strip("%"))
+                elif "% of reads unmapped: other" in line:
+                    self.mini_summary_d['unmapped_pct']+=float(arr[-1].strip().strip("%"))
         
         no_gene = np.sum(read_array.data['status'] & read_array.filter_codes['no_gene'] > 0)
         self.mini_summary_d['genomic_read_pct']=no_gene / len(read_array.data) * 100
@@ -396,7 +403,9 @@ class MiniSummary:
         html+='\n<tr><td># Reads:</td><td>%d</td></tr>' % (self.mini_summary_d['n_reads'])
         html+='\n<tr><td>%% of uniquely mapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['uniqmapped_pct'])
         html+='\n<tr><td>%% of multi-mapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['multimapped_pct'])
+        html+='\n<tr><td>%% of unmapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['unmapped_pct'])
         html+='\n<tr><td>%% of filtered reads mapping to genome:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['genomic_read_pct'])
+        html+='\n<tr><td>Sequencing saturation rate:</td><td>%.2f%%</td></tr>' % ((self.mini_summary_d['avg_reads_per_molc']-1.0)/self.mini_summary_d['avg_reads_per_molc'])
         html+='\n<tr><td>&nbsp</td></tr>'
         html+='\n<tr><td># Cells:</td><td>%d</td></tr>' % (self.mini_summary_d['n_cells'])
         html+='\n<tr><td>Median molecules per cell:</td><td>%d</td></tr>' % (self.mini_summary_d['med_molcs_per_cell'])
@@ -491,16 +500,18 @@ class MiniSummary:
         warning_d=dict()
         self.mini_summary_d['mt_rna_fraction']=30.0
         if self.mini_summary_d['mt_rna_fraction']>=30:
-            warning_d["High percentage of cell death"]="Yes (%s%%)" % (self.mini_summary_d['mt_rna_fraction'])
+            warning_d["High percentage of cell death"]="Yes (%.2f%%)" % (self.mini_summary_d['mt_rna_fraction'])
         else:
             warning_d["High percentage of cell death"]="No"
         
         warning_d["Noisy first few principle components"]="Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
         
+        self.mini_summary_d['seq_sat_rate']=((self.mini_summary_d['avg_reads_per_molc']-1.0)/self.mini_summary_d['avg_reads_per_molc'])
+        warning_d["Low sequencing saturation rate"]=("Yes (%.2f%%)" % (self.mini_summary_d['seq_sat_rate'])) if self.mini_summary_d['seq_sat_rate']<=5.00 else "No"
+        
         html+='\n<table>'
         
         for w in warning_d:
-            #html+="\n"+w+"<br>"
             html+='\n<tr><td>%s:</td><td>%s</td></tr>' % (w,warning_d[w])
         html+='\n</table>'
                 
@@ -510,3 +521,5 @@ class MiniSummary:
         f.write(html)
         f.close()
         HTML(self.output_prefix+"_mini_summary.html").write_pdf(self.output_prefix+"_mini_summary.pdf")
+        
+        return self.output_prefix+"_mini_summary.pdf"
