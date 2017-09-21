@@ -5,7 +5,12 @@ from collections import OrderedDict, namedtuple
 import numpy as np
 import pandas as pd
 from seqc import plot
-
+import re
+from weasyprint import HTML
+from seqc.stats.tsne import TSNE
+from sklearn.decomposition import PCA
+import phenograph
+from matplotlib import pyplot as plt
 
 ImageContent = namedtuple('ImageContent', ['image', 'caption', 'legend'])
 
@@ -274,7 +279,6 @@ class Summary:
 
     def __init__(self, archive_name, sections, index_section=None):
         """
-
         :param str archive_name: filepath for the archive to be constructed
         :param list sections: dictionary of str filename: Section objects
         :param index_section: section to be produced as the index.html page.
@@ -315,3 +319,194 @@ class Summary:
         shutil.make_archive(
             self.archive_name, 'gztar', root_dir, base_dir)
         return self.archive_name + '.tar.gz'
+
+class MiniSummary:
+    def __init__(self, output_prefix, mini_summary_d, alignment_summary_file, filter_fig, cellsize_fig):
+        """
+        :param mini_summary_d: 
+        :param count_mat: 
+        :param filter_fig: 
+        :param cellsize_fig: 
+        """
+        self.output_prefix=output_prefix
+        self.mini_summary_d=mini_summary_d
+        self.alignment_summary_file=alignment_summary_file
+        self.filter_fig=filter_fig
+        self.cellsize_fig=cellsize_fig
+        self.pca_fig=output_prefix+"_pca.png"
+        self.tsne_and_phenograph_fig=output_prefix+"_phenograph.png" 
+        
+    def compute_summary_fields(self,read_array,count_mat):
+        self.count_mat=pd.DataFrame(count_mat)
+        with open(self.alignment_summary_file, "r") as f:
+            for line in f:
+                arr=re.split("[\|:\t ]+", line)
+                if "Number of input reads" in line:
+                    self.mini_summary_d['n_reads']=int(arr[-1].strip())
+                elif "Uniquely mapped reads %" in line:
+                    self.mini_summary_d['uniqmapped_pct']=float(arr[-1].strip().strip("%"))
+                elif "% of reads mapped to multiple loci" in line:
+                    self.mini_summary_d['multimapped_pct']=float(arr[-1].strip().strip("%"))
+        
+        no_gene = np.sum(read_array.data['status'] & read_array.filter_codes['no_gene'] > 0)
+        self.mini_summary_d['genomic_read_pct']=no_gene / len(read_array.data) * 100
+        
+        ###    Calculate statistics from count matrix
+        self.mini_summary_d['med_molcs_per_cell']=np.median(count_mat.sum(1))
+        self.mini_summary_d['n_cells']=len(count_mat.index)
+        
+        ###    filtered low occurrence genes and median normalization
+        counts_filtered=self.count_mat.loc[:,(self.count_mat>0).sum(0)>=10]
+        median_counts=np.median(counts_filtered.sum(1))
+        counts_normalized=counts_filtered.divide(counts_filtered.sum(1),axis=0).multiply(median_counts)
+        
+        ###    Doing PCA transformation
+        pcaModel = PCA(n_components=50)
+        counts_pca_reduced = pcaModel.fit_transform(counts_normalized.as_matrix())
+        nComps=0
+        tv=0.0
+        while (tv<80.0) and (nComps<=19):
+            tv+=pcaModel.explained_variance_ratio_[nComps]
+            nComps+=1
+        else:
+            nComps=20
+        
+        self.counts_after_pca = counts_pca_reduced[:,0:nComps]
+        self.explained_variance_ratio=pcaModel.explained_variance_ratio_
+        
+        ###    Doing TSNE transformation
+        tsne = TSNE(n_components=2)
+        self.counts_after_tsne = tsne.fit_transform(self.counts_after_pca)
+        
+        self.clustering_communities, _, _ = phenograph.cluster(self.counts_after_pca,k=50)
+
+        
+    
+    def render(self):
+        html='<!DOCTYPE html><html lang="en">'
+        html+='\n<head>'
+        html+='\n<title>%s Mini Summary</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' % (self.output_prefix)
+        html+='\n<style> .pagebreak { page-break-before: always; } </style>'
+        html+='\n</head>'
+        html+='\n<body>'
+        html+="\n<center><h2>%s</h2></center>" % (self.output_prefix+" Mini Summary")
+        
+        html+="\n<h3>Overall Statistics</h3>"
+        html+='\n<table>'
+        html+='\n<tr><td># Reads:</td><td>%d</td></tr>' % (self.mini_summary_d['n_reads'])
+        html+='\n<tr><td>%% of uniquely mapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['uniqmapped_pct'])
+        html+='\n<tr><td>%% of multi-mapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['multimapped_pct'])
+        html+='\n<tr><td>%% of filtered reads mapping to genome:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['genomic_read_pct'])
+        html+='\n<tr><td>&nbsp</td></tr>'
+        html+='\n<tr><td># Cells:</td><td>%d</td></tr>' % (self.mini_summary_d['n_cells'])
+        html+='\n<tr><td>Median molecules per cell:</td><td>%d</td></tr>' % (self.mini_summary_d['med_molcs_per_cell'])
+        html+='\n<tr><td>Average reads per cell:</td><td>%d</td></tr>' % (self.mini_summary_d['avg_reads_per_cell'])
+        html+='\n<tr><td>Average reads per molecule:</td><td>%.2f</td></tr>' % (self.mini_summary_d['avg_reads_per_molc'])
+        html+='\n<tr><td>%% of cells filtered by high mt-RNA content:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['mt_rna_fraction'])
+        html+='\n</table>'
+        
+        # plotting cell size distribution figure
+        html+="\n<h3>Cell Size Distribution</h3>"
+        html+='\n<center><img src="%s" style="width:40%%;height:40%%;"></center>' % (self.cellsize_fig)
+        
+        # plotting filtering figure
+        html+='<div class="pagebreak"> </div>'      # add a pagebreak here
+        html+="\n<h3>Filtering</h3>"
+        html+="\nIndian red indicates cells that have been filtered<br>"
+        html+='\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.filter_fig)
+        
+        # plotting PCA components
+        fig = plot.FigureGrid(4, max_cols=2)
+        ax_pca, ax_pca12, ax_pca13, ax_pca23 = iter(fig)
+        ax_pca.plot(self.explained_variance_ratio[0:20]*100.0)
+        ax_pca.set_xlabel('pca components')
+        ax_pca.set_ylabel('explained variance')
+        ax_pca.set_xlim([0,20.5])
+        
+        ax_pca12.scatter(self.counts_after_pca[:,0], self.counts_after_pca[:,1], s=5)
+        ax_pca12.set_xlabel("pca 1")
+        ax_pca12.set_ylabel("pca 2")
+        
+        ax_pca13.scatter(self.counts_after_pca[:,0], self.counts_after_pca[:,2], s=5)
+        ax_pca13.set_xlabel("pca 1")
+        ax_pca13.set_ylabel("pca 3")
+        
+        ax_pca23.scatter(self.counts_after_pca[:,1], self.counts_after_pca[:,2], s=5)
+        ax_pca23.set_xlabel("pca 2")
+        ax_pca23.set_ylabel("pca 3")
+                
+        fig.tight_layout()
+        fig.savefig(self.pca_fig, dpi=300, transparent=True)
+        html+='<div class="pagebreak"> </div>'          # add a pagebreak here
+        html+="\n<h3>PCA Components</h3>"
+        html+='\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.pca_fig)
+        
+        # sketching tSNE and Phenograph figure
+        fig = plot.FigureGrid(2, max_cols=2)
+        ax_tsne, ax_phenograph = iter(fig)
+                
+        cl=np.log10(self.count_mat.sum(1))
+        splot=ax_tsne.scatter(self.counts_after_tsne[:,0], self.counts_after_tsne[:,1], c=cl, s=3, cmap=plt.cm.coolwarm,vmin=np.min(cl), vmax=np.percentile(cl,98))
+        ax_tsne.set_title("UMI Counts (log_10)")
+        #ax_tsne.set_xlabel("tsne 1")
+        #ax_tsne.set_ylabel("tsne 2")
+        ax_tsne.set_xticks([])
+        ax_tsne.set_yticks([])
+        fig.figure.colorbar(splot, ax=ax_tsne, orientation='vertical')
+
+        cmap=["#010067","#D5FF00","#FF0056","#9E008E","#0E4CA1","#FFE502","#005F39","#00FF00","#95003A","#FF937E","#A42400","#001544","#91D0CB","#620E00","#6B6882","#0000FF","#007DB5","#6A826C","#00AE7E","#C28C9F","#BE9970","#008F9C","#5FAD4E","#FF0000","#FF00F6","#FF029D","#683D3B","#FF74A3","#968AE8","#98FF52","#A75740","#01FFFE","#FFEEE8","#FE8900","#BDC6FF","#01D0FF","#BB8800","#7544B1","#A5FFD2","#FFA6FE","#774D00","#7A4782","#263400","#004754","#43002C","#B500FF","#FFB167","#FFDB66","#90FB92","#7E2DD2","#BDD393","#E56FFE","#DEFF74","#00FF78","#009BFF","#006401","#0076FF","#85A900","#00B917","#788231","#00FFC6","#FF6E41","#E85EBE"]
+        
+        colors=[]
+        for i in range(len(self.clustering_communities)):
+            colors.append(cmap[self.clustering_communities[i]])
+    
+        for ci in range(np.min(self.clustering_communities),np.max(self.clustering_communities)+1):
+            x1=[]
+            y1=[]
+            for i in range(len(self.clustering_communities)):
+                if self.clustering_communities[i]==ci:
+                    x1.append(self.counts_after_tsne[i,0])
+                    y1.append(self.counts_after_tsne[i,1])
+                    cl=colors[i]
+            ax_phenograph.scatter(x1, y1, c=cl, s=3, label="C"+str(ci+1))
+        ax_phenograph.set_title('Phenograph Clustering')
+        #ax_phenograph.set_xlabel('tsne 1')
+        #ax_phenograph.set_ylabel('tsne 2')
+        ax_phenograph.set_xticks([])
+        ax_phenograph.set_yticks([])
+        ax_phenograph.legend(bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., markerscale=2)
+                
+        #fig.tight_layout()
+        fig.savefig(self.tsne_and_phenograph_fig, dpi=300, transparent=True)
+        
+        # plotting filtering figure
+        html+='<div class="pagebreak"> </div>'      # add a pagebreak here
+        html+="\n<h3>Phenograph Clustering</h3>"
+        html+='\nRunning Phenograph clustering algorithm with 50 nearest neighbors<br>'
+        html+='<br>'
+        html+='\n<center><img src="%s" style="width:99%%;height:99%%;"></center>' % (self.tsne_and_phenograph_fig)
+        html+="\n<h3>Warnings</h3>"
+
+
+        warning_d=dict()
+        self.mini_summary_d['mt_rna_fraction']=30.0
+        if self.mini_summary_d['mt_rna_fraction']>=30:
+            warning_d["High percentage of cell death"]="Yes (%s%%)" % (self.mini_summary_d['mt_rna_fraction'])
+        else:
+            warning_d["High percentage of cell death"]="No"
+        
+        warning_d["Noisy first few principle components"]="Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
+        
+        html+='\n<table>'
+        
+        for w in warning_d:
+            #html+="\n"+w+"<br>"
+            html+='\n<tr><td>%s:</td><td>%s</td></tr>' % (w,warning_d[w])
+        html+='\n</table>'
+                
+        html+="\n</body>"
+        
+        f=open(self.output_prefix+"_mini_summary.html","w")
+        f.write(html)
+        f.close()
+        HTML(self.output_prefix+"_mini_summary.html").write_pdf(self.output_prefix+"_mini_summary.pdf")
