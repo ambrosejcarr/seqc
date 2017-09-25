@@ -523,7 +523,6 @@ class MiniSummary:
         warning_d=dict()
         html+="\n<h3>Warnings</h3>"
         txt+="\n\nWARNINGS\n"
-        self.mini_summary_d['mt_rna_fraction']=30.0
         if self.mini_summary_d['mt_rna_fraction']>=30:
             warning_d["High percentage of cell death"]="Yes (%.2f%%)" % (self.mini_summary_d['mt_rna_fraction'])
         else:
