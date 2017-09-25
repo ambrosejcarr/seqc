@@ -54,7 +54,6 @@ setup(
       'matplotlib',
       'tinydb',
       'tables',
-      #'pysam',
       'fastcluster',
       'statsmodels',
       'ecdsa',

@@ -3,6 +3,7 @@ import shutil
 import re
 import numpy as np
 import pandas as pd
+import json
 from matplotlib import pyplot as plt
 from jinja2 import Environment, PackageLoader
 from collections import OrderedDict, namedtuple
@@ -10,7 +11,7 @@ from weasyprint import HTML
 from seqc.stats.tsne import TSNE
 from sklearn.decomposition import PCA
 import phenograph
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from sklearn.linear_model import LinearRegression
 from seqc import plot
 
 
@@ -366,37 +367,75 @@ class MiniSummary:
         self.mini_summary_d['n_cells'] = len(count_mat.index)
 
         # Filter low occurrence genes and median normalization
-        counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0)>=10]
-        median_counts = np.median(counts_filtered.sum(1))
-        counts_normalized = counts_filtered.divide(counts_filtered.sum(1),axis=0).multiply(median_counts)
+        self.counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0) >= 10]
+        median_counts = np.median(self.counts_filtered.sum(1))
+        counts_normalized = self.counts_filtered.divide(self.counts_filtered.sum(1),axis=0).multiply(median_counts)
 
         # Doing PCA transformation
         pcaModel = PCA(n_components=50)
         counts_pca_reduced = pcaModel.fit_transform(counts_normalized.as_matrix())
-        nComps = 0
-        tv = 0.0
-        while (tv < 80.0) and (nComps <= 19):
-            tv += pcaModel.explained_variance_ratio_[nComps]
-            nComps += 1
+        
+        # taking at most 20 components or total variance is greater than 80%
+        num_comps = 0
+        total_variance = 0.0
+        while (total_variance < 80.0) and (num_comps <= 19):
+            total_variance += pcaModel.explained_variance_ratio_[num_comps]
+            num_comps += 1
         else:
-            nComps = 20
+            num_comps = 20
 
-        self.counts_after_pca = counts_pca_reduced[:, :nComps]
+        self.counts_after_pca = counts_pca_reduced[:, :num_comps]
         self.explained_variance_ratio = pcaModel.explained_variance_ratio_
 
+        # regressed library size out of principal components 
+        for c in range(num_comps):
+            lm = LinearRegression(normalize=False)
+            X=self.counts_filtered.sum(1).reshape(len(self.counts_filtered),1)
+            Y=counts_pca_reduced[:, c]
+            lm.fit(X, Y)
+            if c == 0:
+                self.counts_pca_regressed_out_lib_size = Y-lm.predict(X)
+            else:
+                self.counts_pca_regressed_out_lib_size = np.column_stack((self.counts_pca_regressed_out_lib_size,
+                                                                         Y-lm.predict(X)))
+
+        from scipy.stats import spearmanr
+        for c in range(num_comps):
+            print(" %d revised correlation: %s" % (c,spearmanr(self.counts_pca_regressed_out_lib_size[:,c], 
+                                                           self.counts_filtered.sum(1))[0]))
+            print(" %d original correlation with lib size: %s" % (c,spearmanr(self.counts_filtered.sum(1), 
+                                                           counts_pca_reduced[:, c])[0]))
+            print(" %d correlation: %s" % (c,spearmanr(self.counts_pca_regressed_out_lib_size[:,c], 
+                                                           counts_pca_reduced[:, c])[0]))
+ 
+ 
         # Doing TSNE transformation
         tsne = TSNE(n_components=2)
-        self.counts_after_tsne = tsne.fit_transform(self.counts_after_pca)
-
-        self.clustering_communities, _, _ = phenograph.cluster(self.counts_after_pca,k=50)
+        self.counts_after_tsne = tsne.fit_transform(self.counts_pca_regressed_out_lib_size)
+        self.clustering_communities, _, _ = phenograph.cluster(self.counts_pca_regressed_out_lib_size,k=50)
 
     def render(self):
-        self.mini_summary_d['seq_sat_rate'] = ((self.mini_summary_d['avg_reads_per_molc']-1.0)*100.0
+        plot.Diagnostics.pca_components(self.pca_fig, self.explained_variance_ratio, self.counts_after_pca)
+        plot.Diagnostics.phenograph_clustering(self.tsne_and_phenograph_fig, self.counts_filtered.sum(1), 
+                                               self.clustering_communities, self.counts_after_tsne)
+
+        self.mini_summary_d['seq_sat_rate'] = ((self.mini_summary_d['avg_reads_per_molc'] - 1.0) * 100.0
                                               /self.mini_summary_d['avg_reads_per_molc'])
 
-        html = '<!DOCTYPE html><html lang="en">'
-        txt = ''
+        warning_d = dict()
+        if self.mini_summary_d['mt_rna_fraction'] >= 30:
+            warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
+                                                        % (self.mini_summary_d['mt_rna_fraction'])
+        else:
+            warning_d["High percentage of cell death"] = "No"
+        warning_d["Noisy first few principle components"] = "Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
+        if self.mini_summary_d['seq_sat_rate'] <= 5.00:
+            warning_d["Low sequencing saturation rate"] = ("Yes (%.2f%%)" % (self.mini_summary_d['seq_sat_rate'])) 
+        else:
+            warning_d["Low sequencing saturation rate"] = "No"
 
+        """
+        html = '<!DOCTYPE html><html lang="en">'
         html += '\n<head>'
         html += '\n<title>%s Mini Summary</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' % (self.output_prefix)
         html += '\n<style> .pagebreak { page-break-before: always; } </style>'
@@ -419,6 +458,71 @@ class MiniSummary:
         html += '\n<tr><td>%% of cells filtered by high mt-RNA content:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['mt_rna_fraction'])
         html += '\n</table>'
 
+        # plotting cell size distribution figure
+        html += "\n<h3>Cell Size Distribution</h3>"
+        html += '\n<center><img src="%s" style="width:40%%;height:40%%;"></center>' % (self.cellsize_fig)
+
+        # plotting filtering figure
+        html += '<div class="pagebreak"> </div>'      # add a pagebreak here
+        html += "\n<h3>Filtering</h3>"
+        html += "\nIndian red indicates cells that have been filtered<br>"
+        html += '\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.filter_fig)
+
+        # plotting pca components
+        html += '<div class="pagebreak"> </div>'
+        html += "\n<h3>PCA Components</h3>"
+        html += '\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.pca_fig)
+
+        # plotting filtering figure
+        html += '<div class="pagebreak"> </div>'
+        html += "\n<h3>Phenograph Clustering</h3>"
+        html += '\nRunning Phenograph clustering algorithm with 50 nearest neighbors<br>'
+        html += '<br>'
+        html += '\n<center><img src="%s" style="width:99%%;height:99%%;"></center>' \
+                % (self.tsne_and_phenograph_fig)
+
+        # Adding a warning section
+        warning_d = dict()
+        html += "\n<h3>Warnings</h3>"
+        self.mini_summary_d['mt_rna_fraction'] = 30.0
+        if self.mini_summary_d['mt_rna_fraction'] >= 30:
+            warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
+                                                        % (self.mini_summary_d['mt_rna_fraction'])
+        else:
+            warning_d["High percentage of cell death"] = "No"
+        warning_d["Noisy first few principle components"] = "Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
+        if self.mini_summary_d['seq_sat_rate'] <= 5.00:
+            warning_d["Low sequencing saturation rate"] = ("Yes (%.2f%%)" % (self.mini_summary_d['seq_sat_rate'])) 
+        else:
+            warning_d["Low sequencing saturation rate"] = "No"
+
+        html += '\n<table>'
+        for w in warning_d:
+            html += '\n<tr><td>%s:</td><td>%s</td></tr>' % (w, warning_d[w])
+        html += '\n</table>'
+
+        html += "\n</body>"
+
+        f = open(self.output_prefix+"_mini_summary.html","w")
+        f.write(html)
+        f.close()
+        """
+
+        env = Environment(loader=PackageLoader('seqc.summary', 'templates'))
+        section_template = env.get_template('mini_summary_base.html')
+        rendered_section = section_template.render(output_prefix=self.output_prefix, warning_d=warning_d, 
+                                                   mini_summary_d=self.mini_summary_d, cellsize_fig=self.cellsize_fig,
+                                                   pca_fig=self.pca_fig, filter_fig=self.filter_fig,
+                                                   tsne_and_phenograph_fig=self.tsne_and_phenograph_fig)
+        with open(self.output_prefix + "_mini_summary.html", 'w') as f:
+            f.write(rendered_section)
+
+        HTML(self.output_prefix + "_mini_summary.html").write_pdf(self.output_prefix + "_mini_summary.pdf")
+
+        with open(self.output_prefix + " _mini_summary.json","w") as f:
+            json.dump(self.mini_summary_d,f)
+        """
+        txt = ''
         txt += self.output_prefix+' MINI SUMMARY\n'
         txt += '\n\nOVERALL STATISTICS\n'
         txt += '\n{:55s} {:d}'.format('# Reads:', self.mini_summary_d['n_reads'])
@@ -433,130 +537,12 @@ class MiniSummary:
         txt += '\n{:55s} {:.2f}'.format('Average reads per cell:', self.mini_summary_d['avg_reads_per_cell'])
         txt += '\n{:55s} {:.2f}'.format('Average reads per molecule:', self.mini_summary_d['avg_reads_per_molc'])
         txt += '\n{:55s} {:.2f}%'.format('% of cells filtered by high mt-RNA content:', self.mini_summary_d['mt_rna_fraction'])
-
-        # plotting cell size distribution figure
-        html += "\n<h3>Cell Size Distribution</h3>"
-        html += '\n<center><img src="%s" style="width:40%%;height:40%%;"></center>' % (self.cellsize_fig)
-
-        # plotting filtering figure
-        html += '<div class="pagebreak"> </div>'      # add a pagebreak here
-        html += "\n<h3>Filtering</h3>"
-        html += "\nIndian red indicates cells that have been filtered<br>"
-        html += '\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.filter_fig)
-
-        # plotting PCA components
-        fig = plot.FigureGrid(4, max_cols=2)
-        ax_pca, ax_pca12, ax_pca13, ax_pca23 = iter(fig)
-        ax_pca.plot(self.explained_variance_ratio[0:20]*100.0)
-        ax_pca.set_xlabel('pca components')
-        ax_pca.set_ylabel('explained variance')
-        ax_pca.set_xlim([0,20.5])
-
-        ax_pca12.scatter(self.counts_after_pca[:, 0], self.counts_after_pca[:, 1], s=3)
-        ax_pca12.set_xlabel("pca 1")
-        ax_pca12.set_ylabel("pca 2")
-        plot.xtick_vertical(ax=ax_pca12)
-
-        ax_pca13.scatter(self.counts_after_pca[:, 0], self.counts_after_pca[:, 2], s=3)
-        ax_pca13.set_xlabel("pca 1")
-        ax_pca13.set_ylabel("pca 3")
-        plot.xtick_vertical(ax=ax_pca13)
-
-        ax_pca23.scatter(self.counts_after_pca[:, 1], self.counts_after_pca[:, 2], s=3)
-        ax_pca23.set_xlabel("pca 2")
-        ax_pca23.set_ylabel("pca 3")
-        plot.xtick_vertical(ax=ax_pca23)
-
-        fig.tight_layout()
-        fig.savefig(self.pca_fig, dpi=300, transparent=True)
-        html += '<div class="pagebreak"> </div>'          # add a pagebreak here
-        html += "\n<h3>PCA Components</h3>"
-        html += '\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.pca_fig)
-
-
-        # sketching tSNE and Phenograph figure
-        fig = plot.FigureGrid(2, max_cols=2)
-        ax_tsne, ax_phenograph = iter(fig)
-
-        cl = np.log10(self.count_mat.sum(1))
-        splot = ax_tsne.scatter(self.counts_after_tsne[:, 0], self.counts_after_tsne[:, 1],
-                                c=cl, s=3, cmap=plt.cm.coolwarm, vmin = np.min(cl),
-                                vmax=np.percentile(cl, 98))
-
-        ax_tsne.set_title("UMI Counts (log_10)")
-        ax_tsne.set_xticks([])
-        ax_tsne.set_yticks([])
-        divider = make_axes_locatable(ax_tsne)
-        cax = divider.append_axes('right', size='3%', pad=0.04)
-        fig.figure.colorbar(splot, cax=cax, orientation='vertical')
-
-        cmap=["#010067","#D5FF00","#FF0056","#9E008E","#0E4CA1","#FFE502","#005F39","#00FF00","#95003A",
-              "#FF937E","#A42400","#001544","#91D0CB","#620E00","#6B6882","#0000FF","#007DB5","#6A826C",
-              "#00AE7E","#C28C9F","#BE9970","#008F9C","#5FAD4E","#FF0000","#FF00F6","#FF029D","#683D3B",
-              "#FF74A3","#968AE8","#98FF52","#A75740","#01FFFE","#FFEEE8","#FE8900","#BDC6FF","#01D0FF",
-              "#BB8800","#7544B1","#A5FFD2","#FFA6FE","#774D00","#7A4782","#263400","#004754","#43002C",
-              "#B500FF","#FFB167","#FFDB66","#90FB92","#7E2DD2","#BDD393","#E56FFE","#DEFF74","#00FF78",
-              "#009BFF","#006401","#0076FF","#85A900","#00B917","#788231","#00FFC6","#FF6E41","#E85EBE"]
-
-        colors = []
-        for i in range(len(self.clustering_communities)):
-            colors.append(cmap[self.clustering_communities[i]])
-
-        for ci in range(np.min(self.clustering_communities),np.max(self.clustering_communities)+1):
-            x1 = []
-            y1 = []
-            for i in range(len(self.clustering_communities)):
-                if self.clustering_communities[i] == ci:
-                    x1.append(self.counts_after_tsne[i, 0])
-                    y1.append(self.counts_after_tsne[i, 1])
-                    cl = colors[i]
-            ax_phenograph.scatter(x1, y1, c=cl, s=3, label="C"+str(ci+1))
-        ax_phenograph.set_title('Phenograph Clustering')
-        ax_phenograph.set_xticks([])
-        ax_phenograph.set_yticks([])
-        ax_phenograph.legend(bbox_to_anchor=(1, 1), loc=2, borderaxespad=0., markerscale=2)
-
-        fig.tight_layout()
-        fig.savefig(self.tsne_and_phenograph_fig, dpi=300, transparent=True)
-
-        # plotting filtering figure
-        html += '<div class="pagebreak"> </div>'      # add a pagebreak here
-        html += "\n<h3>Phenograph Clustering</h3>"
-        html += '\nRunning Phenograph clustering algorithm with 50 nearest neighbors<br>'
-        html += '<br>'
-        html += '\n<center><img src="%s" style="width:99%%;height:99%%;"></center>' \
-                % (self.tsne_and_phenograph_fig)
-
-        # Adding a warning section
-        warning_d = dict()
-        html += "\n<h3>Warnings</h3>"
         txt += "\n\nWARNINGS\n"
-        self.mini_summary_d['mt_rna_fraction']=30.0
-        if self.mini_summary_d['mt_rna_fraction']>=30:
-            warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
-                                                        % (self.mini_summary_d['mt_rna_fraction'])
-        else:
-            warning_d["High percentage of cell death"] = "No"
-
-        warning_d["Noisy first few principle components"] = "Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
-
-        warning_d["Low sequencing saturation rate"] = ("Yes (%.2f%%)" % (self.mini_summary_d['seq_sat_rate'])) if self.mini_summary_d['seq_sat_rate']<=5.00 else "No"
-
-        html += '\n<table>'
         for w in warning_d:
-            html += '\n<tr><td>%s:</td><td>%s</td></tr>' % (w, warning_d[w])
             txt += '\n{:55s} {:s}'.format(w, warning_d[w])
-        html += '\n</table>'
-
-        html += "\n</body>"
-
-        f = open(self.output_prefix+"_mini_summary.html","w")
-        f.write(html)
-        f.close()
-        HTML(self.output_prefix + "_mini_summary.html").write_pdf(self.output_prefix + "_mini_summary.pdf")
-
         f = open(self.output_prefix + " _mini_summary.txt","w")
         f.write(txt)
         f.close()
+        """
 
-        return self.output_prefix + "_mini_summary.txt", self.output_prefix + "_mini_summary.pdf"
+        return self.output_prefix + "_mini_summary.json", self.output_prefix + "_mini_summary.pdf"
