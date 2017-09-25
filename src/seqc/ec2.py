@@ -18,8 +18,6 @@ from seqc.exceptions import (
     RetryLimitExceeded, InstanceNotRunningError, EC2RuntimeError)
 from botocore.exceptions import ClientError
 
-
-
 # change some logging defaults
 log.logging.getLogger('paramiko').setLevel(log.logging.CRITICAL)
 log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
@@ -317,7 +315,8 @@ class AWSInstance(object):
                 'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
             log.notify("Sources are uploaded and decompressed, installing seqc.")
             try:
-                ssh.execute('sudo yum install cairo cairo-devel cairomm-devel libjpeg-turbo-devel pango pango-devel pangomm pangomm-devel giflib-devel -y')
+                ssh.execute('sudo yum install cairo cairo-devel cairomm-devel libjpeg-turbo-devel 
+                            pango pango-devel pangomm pangomm-devel giflib-devel -y')
                 ssh.execute('sudo -H pip3 install -e software/seqc/')
             except ChildProcessError as e:
                 if 'pip install --upgrade pip' in str(e):

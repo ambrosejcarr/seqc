@@ -230,7 +230,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_
             'MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
         seqc.plot.xtick_vertical(ax=ax)
         
-        mini_summary_d['mt_rna_fraction']=(np.sum(failing)*1.0/len(failing)) * 100.0
+        mini_summary_d['mt_rna_fraction'] = (np.sum(failing)*1.0/len(failing)) * 100.0
 
     return is_invalid
 
@@ -360,7 +360,6 @@ def create_filtered_dense_count_matrix(
     else:
         count_invalid = is_invalid
 
-
     # filter low coverage
     cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov,filter_low_coverage)
     cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
@@ -380,7 +379,7 @@ def create_filtered_dense_count_matrix(
     cells_lost['low_gene_detection'], molecules_lost[
         'low_gene_detection'] = additional_loss(
         gene_invalid, mt_invalid, molecules_data)
-        
+
     ms = np.ravel(molecules_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
     rs = np.ravel(reads_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
     mini_summary_d['avg_reads_per_molc']=rs/ms
@@ -393,7 +392,7 @@ def create_filtered_dense_count_matrix(
         dense,
         index=molecules.index[~gene_invalid],
         columns=molecules.columns[nonzero_gene_count])
-    
+
     mini_summary_d['avg_reads_per_cell']=rs/len(dense.index)
 
     # describe cells
