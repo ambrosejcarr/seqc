@@ -115,7 +115,7 @@ def parse_args(args):
                    help='Do not filter cells with greater than 20 percent mitochondrial '
                         'RNA ')
     f.set_defaults(filter_low_coverage=True)
-    f.add_argument('--no-filter_low_coverage', action='store_false',
+    f.add_argument('--no-filter-low-coverage', action='store_false',
                    dest='filter_low_coverage',
                    help='Do not filter cells with low coverage')
     f.add_argument('--low-coverage-alpha', metavar='LA',
