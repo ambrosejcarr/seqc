@@ -4,13 +4,13 @@ import re
 import numpy as np
 import pandas as pd
 import json
+import phenograph
 from matplotlib import pyplot as plt
 from jinja2 import Environment, PackageLoader
 from collections import OrderedDict, namedtuple
 from weasyprint import HTML
 from seqc.stats.tsne import TSNE
 from sklearn.decomposition import PCA
-import phenograph
 from sklearn.linear_model import LinearRegression
 from seqc import plot
 
@@ -327,10 +327,10 @@ class Summary:
 class MiniSummary:
     def __init__(self, output_prefix, mini_summary_d, alignment_summary_file, filter_fig, cellsize_fig):
         """
-        :param mini_summary_d: 
-        :param count_mat: 
-        :param filter_fig: 
-        :param cellsize_fig: 
+        :param mini_summary_d: dictionary containing output parameters
+        :param count_mat: count matrix after filtered
+        :param filter_fig: filtering figure
+        :param cellsize_fig: cell size figure
         """
         self.output_prefix = output_prefix
         self.mini_summary_d = mini_summary_d
@@ -364,6 +364,10 @@ class MiniSummary:
 
         # Calculate statistics from count matrix
         self.mini_summary_d['med_molcs_per_cell'] = np.median(count_mat.sum(1))
+        self.mini_summary_d['molcs_per_cell_25p'] = np.percentile(count_mat.sum(1), 25)
+        self.mini_summary_d['molcs_per_cell_75p'] = np.percentile(count_mat.sum(1), 75)
+        self.mini_summary_d['molcs_per_cell_min'] = np.asscalar(np.min(count_mat.sum(1)))
+        self.mini_summary_d['molcs_per_cell_max'] = np.asscalar(np.max(count_mat.sum(1)))
         self.mini_summary_d['n_cells'] = len(count_mat.index)
 
         # Filter low occurrence genes and median normalization
@@ -374,7 +378,7 @@ class MiniSummary:
         # Doing PCA transformation
         pcaModel = PCA(n_components=50)
         counts_pca_reduced = pcaModel.fit_transform(counts_normalized.as_matrix())
-        
+
         # taking at most 20 components or total variance is greater than 80%
         num_comps = 0
         total_variance = 0.0
@@ -390,29 +394,19 @@ class MiniSummary:
         # regressed library size out of principal components 
         for c in range(num_comps):
             lm = LinearRegression(normalize=False)
-            X=self.counts_filtered.sum(1).reshape(len(self.counts_filtered),1)
-            Y=counts_pca_reduced[:, c]
+            X = self.counts_filtered.sum(1).reshape(len(self.counts_filtered), 1)
+            Y = counts_pca_reduced[:, c]
             lm.fit(X, Y)
             if c == 0:
                 self.counts_pca_regressed_out_lib_size = Y-lm.predict(X)
             else:
                 self.counts_pca_regressed_out_lib_size = np.column_stack((self.counts_pca_regressed_out_lib_size,
-                                                                         Y-lm.predict(X)))
+                                                                         Y - lm.predict(X)))
 
-        from scipy.stats import spearmanr
-        for c in range(num_comps):
-            print(" %d revised correlation: %s" % (c,spearmanr(self.counts_pca_regressed_out_lib_size[:,c], 
-                                                           self.counts_filtered.sum(1))[0]))
-            print(" %d original correlation with lib size: %s" % (c,spearmanr(self.counts_filtered.sum(1), 
-                                                           counts_pca_reduced[:, c])[0]))
-            print(" %d correlation: %s" % (c,spearmanr(self.counts_pca_regressed_out_lib_size[:,c], 
-                                                           counts_pca_reduced[:, c])[0]))
- 
- 
         # Doing TSNE transformation
         tsne = TSNE(n_components=2)
         self.counts_after_tsne = tsne.fit_transform(self.counts_pca_regressed_out_lib_size)
-        self.clustering_communities, _, _ = phenograph.cluster(self.counts_pca_regressed_out_lib_size,k=50)
+        self.clustering_communities, _, _ = phenograph.cluster(self.counts_pca_regressed_out_lib_size, k=50)
 
     def render(self):
         plot.Diagnostics.pca_components(self.pca_fig, self.explained_variance_ratio, self.counts_after_pca)
@@ -434,115 +428,17 @@ class MiniSummary:
         else:
             warning_d["Low sequencing saturation rate"] = "No"
 
-        """
-        html = '<!DOCTYPE html><html lang="en">'
-        html += '\n<head>'
-        html += '\n<title>%s Mini Summary</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' % (self.output_prefix)
-        html += '\n<style> .pagebreak { page-break-before: always; } </style>'
-        html += '\n</head>'
-        html += '\n<body>'
-        html += "\n<center><h2>%s</h2></center>" % (self.output_prefix+" Mini Summary")
-        html += "\n<h3>Overall Statistics</h3>"
-        html += '\n<table>'
-        html += '\n<tr><td># Reads:</td><td>%d</td></tr>' % (self.mini_summary_d['n_reads'])
-        html += '\n<tr><td>%% of uniquely mapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['uniqmapped_pct'])
-        html += '\n<tr><td>%% of multi-mapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['multimapped_pct'])
-        html += '\n<tr><td>%% of unmapped reads:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['unmapped_pct'])
-        html += '\n<tr><td>%% of filtered reads mapping to genome:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['genomic_read_pct'])
-        html += '\n<tr><td>Sequencing saturation rate:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['seq_sat_rate'])
-        html += '\n<tr><td>&nbsp</td></tr>'
-        html += '\n<tr><td># Cells:</td><td>%d</td></tr>' % (self.mini_summary_d['n_cells'])
-        html += '\n<tr><td>Median molecules per cell:</td><td>%d</td></tr>' % (self.mini_summary_d['med_molcs_per_cell'])
-        html += '\n<tr><td>Average reads per cell:</td><td>%d</td></tr>' % (self.mini_summary_d['avg_reads_per_cell'])
-        html += '\n<tr><td>Average reads per molecule:</td><td>%.2f</td></tr>' % (self.mini_summary_d['avg_reads_per_molc'])
-        html += '\n<tr><td>%% of cells filtered by high mt-RNA content:</td><td>%.2f%%</td></tr>' % (self.mini_summary_d['mt_rna_fraction'])
-        html += '\n</table>'
-
-        # plotting cell size distribution figure
-        html += "\n<h3>Cell Size Distribution</h3>"
-        html += '\n<center><img src="%s" style="width:40%%;height:40%%;"></center>' % (self.cellsize_fig)
-
-        # plotting filtering figure
-        html += '<div class="pagebreak"> </div>'      # add a pagebreak here
-        html += "\n<h3>Filtering</h3>"
-        html += "\nIndian red indicates cells that have been filtered<br>"
-        html += '\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.filter_fig)
-
-        # plotting pca components
-        html += '<div class="pagebreak"> </div>'
-        html += "\n<h3>PCA Components</h3>"
-        html += '\n<center><img src="%s" style="width:95%%;height:95%%;"></center>' % (self.pca_fig)
-
-        # plotting filtering figure
-        html += '<div class="pagebreak"> </div>'
-        html += "\n<h3>Phenograph Clustering</h3>"
-        html += '\nRunning Phenograph clustering algorithm with 50 nearest neighbors<br>'
-        html += '<br>'
-        html += '\n<center><img src="%s" style="width:99%%;height:99%%;"></center>' \
-                % (self.tsne_and_phenograph_fig)
-
-        # Adding a warning section
-        warning_d = dict()
-        html += "\n<h3>Warnings</h3>"
-        self.mini_summary_d['mt_rna_fraction'] = 30.0
-        if self.mini_summary_d['mt_rna_fraction'] >= 30:
-            warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
-                                                        % (self.mini_summary_d['mt_rna_fraction'])
-        else:
-            warning_d["High percentage of cell death"] = "No"
-        warning_d["Noisy first few principle components"] = "Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
-        if self.mini_summary_d['seq_sat_rate'] <= 5.00:
-            warning_d["Low sequencing saturation rate"] = ("Yes (%.2f%%)" % (self.mini_summary_d['seq_sat_rate'])) 
-        else:
-            warning_d["Low sequencing saturation rate"] = "No"
-
-        html += '\n<table>'
-        for w in warning_d:
-            html += '\n<tr><td>%s:</td><td>%s</td></tr>' % (w, warning_d[w])
-        html += '\n</table>'
-
-        html += "\n</body>"
-
-        f = open(self.output_prefix+"_mini_summary.html","w")
-        f.write(html)
-        f.close()
-        """
-
         env = Environment(loader=PackageLoader('seqc.summary', 'templates'))
         section_template = env.get_template('mini_summary_base.html')
-        rendered_section = section_template.render(output_prefix=self.output_prefix, warning_d=warning_d, 
-                                                   mini_summary_d=self.mini_summary_d, cellsize_fig=self.cellsize_fig,
-                                                   pca_fig=self.pca_fig, filter_fig=self.filter_fig,
-                                                   tsne_and_phenograph_fig=self.tsne_and_phenograph_fig)
+        rendered_section = section_template.render(output_prefix = self.output_prefix, warning_d = warning_d, 
+                                                   mini_summary_d = self.mini_summary_d, cellsize_fig = self.cellsize_fig,
+                                                   pca_fig = self.pca_fig, filter_fig = self.filter_fig,
+                                                   tsne_and_phenograph_fig = self.tsne_and_phenograph_fig)
         with open(self.output_prefix + "_mini_summary.html", 'w') as f:
             f.write(rendered_section)
 
         HTML(self.output_prefix + "_mini_summary.html").write_pdf(self.output_prefix + "_mini_summary.pdf")
 
-        with open(self.output_prefix + " _mini_summary.json","w") as f:
-            json.dump(self.mini_summary_d,f)
-        """
-        txt = ''
-        txt += self.output_prefix+' MINI SUMMARY\n'
-        txt += '\n\nOVERALL STATISTICS\n'
-        txt += '\n{:55s} {:d}'.format('# Reads:', self.mini_summary_d['n_reads'])
-        txt += '\n{:55s} {:.2f}%'.format('% of uniquely mapped reads:', self.mini_summary_d['uniqmapped_pct'])
-        txt += '\n{:55s} {:.2f}%'.format('% of multi-mapped reads:', self.mini_summary_d['multimapped_pct'])
-        txt += '\n{:55s} {:.2f}%'.format('% of unmapped reads:', self.mini_summary_d['unmapped_pct'])
-        txt += '\n{:55s} {:.2f}%'.format('% of filtered reads mapping to genome:', self.mini_summary_d['genomic_read_pct'])
-        txt += '\n{:55s} {:.2f}%'.format('Sequencing saturation rate:', self.mini_summary_d['seq_sat_rate'])
-        txt += '\n'
-        txt += '\n{:55s} {:d}'.format('# Reads:', self.mini_summary_d['n_cells'])
-        txt += '\n{:55s} {:d}'.format('Median molecules per cell:', int(self.mini_summary_d['med_molcs_per_cell']))
-        txt += '\n{:55s} {:.2f}'.format('Average reads per cell:', self.mini_summary_d['avg_reads_per_cell'])
-        txt += '\n{:55s} {:.2f}'.format('Average reads per molecule:', self.mini_summary_d['avg_reads_per_molc'])
-        txt += '\n{:55s} {:.2f}%'.format('% of cells filtered by high mt-RNA content:', self.mini_summary_d['mt_rna_fraction'])
-        txt += "\n\nWARNINGS\n"
-        for w in warning_d:
-            txt += '\n{:55s} {:s}'.format(w, warning_d[w])
-        f = open(self.output_prefix + " _mini_summary.txt","w")
-        f.write(txt)
-        f.close()
-        """
-
+        with open(self.output_prefix + "_mini_summary.json","w") as f:
+            json.dump(self.mini_summary_d, f)
         return self.output_prefix + "_mini_summary.json", self.output_prefix + "_mini_summary.pdf"

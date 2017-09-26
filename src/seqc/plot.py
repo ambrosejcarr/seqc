@@ -502,8 +502,8 @@ class Diagnostics:
 
         cell_size = data.sum(axis=1)
 
-        plt.hist(np.log(cell_size), bins=25, log=True)
-        ax.set_xlabel('ln(cell size)')
+        plt.hist(np.log10(cell_size), bins=25, log=True)
+        ax.set_xlabel('log_10(cell size)')
         ax.set_ylabel('frequency')
         despine(ax)
         xtick_vertical(ax)
@@ -513,4 +513,4 @@ class Diagnostics:
                 raise TypeError('save must be the string filename of the '
                                 'figure-to-be-saved')
             plt.tight_layout()
-            f.savefig(save, dpi=200)
+            f.savefig(save, dpi=300)
