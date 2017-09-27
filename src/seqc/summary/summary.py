@@ -376,17 +376,15 @@ class MiniSummary:
         counts_normalized = self.counts_filtered.divide(self.counts_filtered.sum(1),axis=0).multiply(median_counts)
 
         # Doing PCA transformation
-        pcaModel = PCA(n_components=50)
+        pcaModel = PCA(n_components=20)
         counts_pca_reduced = pcaModel.fit_transform(counts_normalized.as_matrix())
 
         # taking at most 20 components or total variance is greater than 80%
         num_comps = 0
         total_variance = 0.0
-        while (total_variance < 80.0) and (num_comps <= 19):
+        while (total_variance < 80.0) and (num_comps < len(pcaModel.explained_variance_ratio_)):
             total_variance += pcaModel.explained_variance_ratio_[num_comps]
             num_comps += 1
-        else:
-            num_comps = 20
 
         self.counts_after_pca = counts_pca_reduced[:, :num_comps]
         self.explained_variance_ratio = pcaModel.explained_variance_ratio_
@@ -414,7 +412,7 @@ class MiniSummary:
                                                self.clustering_communities, self.counts_after_tsne)
 
         self.mini_summary_d['seq_sat_rate'] = ((self.mini_summary_d['avg_reads_per_molc'] - 1.0) * 100.0
-                                              /self.mini_summary_d['avg_reads_per_molc'])
+                                              / self.mini_summary_d['avg_reads_per_molc'])
 
         warning_d = dict()
         if self.mini_summary_d['mt_rna_fraction'] >= 30:

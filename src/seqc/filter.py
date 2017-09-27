@@ -230,7 +230,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_
             'MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
         seqc.plot.xtick_vertical(ax=ax)
         
-        mini_summary_d['mt_rna_fraction'] = (np.sum(failing)*1.0/len(failing)) * 100.0
+        mini_summary_d['mt_rna_fraction'] = (np.sum(failing) *1.0 / len(failing)) * 100.0
 
     return is_invalid
 
@@ -368,7 +368,7 @@ def create_filtered_dense_count_matrix(
     # filter high_mt_content if requested
     if filter_mitochondrial_rna:
         mt_invalid = high_mitochondrial_rna(
-            molecules_data, molecules_columns, cov_invalid, mini_summary_d,max_mt_content, plot, ax_mt)
+            molecules_data, molecules_columns, cov_invalid, mini_summary_d, max_mt_content, plot, ax_mt)
         cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
             mt_invalid, cov_invalid, molecules_data)
     else:
@@ -382,7 +382,7 @@ def create_filtered_dense_count_matrix(
 
     ms = np.ravel(molecules_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
     rs = np.ravel(reads_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
-    mini_summary_d['avg_reads_per_molc']=rs/ms
+    mini_summary_d['avg_reads_per_molc'] = rs / ms
 
     # construct dense matrix
     dense = molecules_data.tocsr()[~gene_invalid, :].todense()
@@ -393,7 +393,7 @@ def create_filtered_dense_count_matrix(
         index=molecules.index[~gene_invalid],
         columns=molecules.columns[nonzero_gene_count])
 
-    mini_summary_d['avg_reads_per_cell']=rs/len(dense.index)
+    mini_summary_d['avg_reads_per_cell'] = rs / len(dense.index)
 
     # describe cells
     cell_description = dense.sum(axis=1).describe()
