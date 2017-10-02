@@ -24,7 +24,7 @@ log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
 
 # set default values for a few parameters
-IMAGE_ID = 'ami-5bcbe54c'
+IMAGE_ID = 'ami-e9b4a1ff'
 
 
 def _get_ec2_configuration():
