@@ -1,4 +1,5 @@
 
+
 def run(args) -> None:
     """Run SEQC on the files provided in args, given specifications provided on the
     command line
@@ -24,6 +25,12 @@ def run(args) -> None:
     import numpy as np
     import scipy.io
     from shutil import copyfile
+    from seqc.summary.summary import MiniSummary
+    import logging
+    logger = logging.getLogger('weasyprint')
+    logger.handlers = []  # Remove the default stderr handler
+    logger.setLevel(100)
+    logger.addHandler(logging.FileHandler('weasyprint.log'))
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -253,7 +260,7 @@ def run(args) -> None:
         if args.min_poly_t is None:
             args.min_poly_t = 0
             log.notify('Warning: SEQC started from step other than unmerged fastq with '
-                       'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
+                       'empty --min-poly-t parameter. Continuing with --min-poly-t 0.')
 
         if align:
             upload_merged = args.upload_prefix if merge else None
@@ -309,6 +316,8 @@ def run(args) -> None:
                 Section.from_rmt_correction(ra, 'rmt_correction.html'),
                 Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html')]
 
+        # create a dictionary to store output parameters
+        mini_summary_d=dict()    
 
         # filter non-cells
         log.info('Creating counts matrix.')
@@ -334,7 +343,7 @@ def run(args) -> None:
         # By pass low count filter for mars seq
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
-                sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
+                sp_mols, sp_reads, mini_summary_d, plot=True, figname=cell_filter_figure, 
                 filter_low_count=platform.filter_low_count, 
                 filter_mitochondrial_rna=args.filter_mitochondrial_rna,filter_low_coverage=args.filter_low_coverage))
         dense_csv = args.output_prefix + '_dense.csv'
@@ -374,8 +383,14 @@ def run(args) -> None:
         seqc_summary.import_image(cell_size_figure)
         seqc_summary.render()
         summary_archive = seqc_summary.compress_archive()
-
         files += [summary_archive]
+
+        # Create a mini summary section
+        alignment_summary_file=output_dir + '/' + args.output_prefix + '_alignment_summary.txt'
+        seqc_mini_summary = MiniSummary(args.output_prefix, mini_summary_d, alignment_summary_file, cell_filter_figure, cell_size_figure)
+        seqc_mini_summary.compute_summary_fields(ra,sp_csv)
+        seqc_mini_summary_json,seqc_mini_summary_pdf=seqc_mini_summary.render()
+        files+=[seqc_mini_summary_json, seqc_mini_summary_pdf]
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return

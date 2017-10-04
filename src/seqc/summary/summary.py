@@ -1,9 +1,17 @@
 import os
 import shutil
-from jinja2 import Environment, PackageLoader
-from collections import OrderedDict, namedtuple
+import re
 import numpy as np
 import pandas as pd
+import json
+import phenograph
+from matplotlib import pyplot as plt
+from jinja2 import Environment, PackageLoader
+from collections import OrderedDict, namedtuple
+from weasyprint import HTML
+from seqc.stats.tsne import TSNE
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
 from seqc import plot
 
 
@@ -274,7 +282,6 @@ class Summary:
 
     def __init__(self, archive_name, sections, index_section=None):
         """
-
         :param str archive_name: filepath for the archive to be constructed
         :param list sections: dictionary of str filename: Section objects
         :param index_section: section to be produced as the index.html page.
@@ -315,3 +322,121 @@ class Summary:
         shutil.make_archive(
             self.archive_name, 'gztar', root_dir, base_dir)
         return self.archive_name + '.tar.gz'
+
+
+class MiniSummary:
+    def __init__(self, output_prefix, mini_summary_d, alignment_summary_file, filter_fig, cellsize_fig):
+        """
+        :param mini_summary_d: dictionary containing output parameters
+        :param count_mat: count matrix after filtered
+        :param filter_fig: filtering figure
+        :param cellsize_fig: cell size figure
+        """
+        self.output_prefix = output_prefix
+        self.mini_summary_d = mini_summary_d
+        self.alignment_summary_file = alignment_summary_file
+        self.filter_fig = filter_fig
+        self.cellsize_fig = cellsize_fig
+        self.pca_fig = output_prefix+"_pca.png"
+        self.tsne_and_phenograph_fig = output_prefix+"_phenograph.png" 
+
+    def compute_summary_fields(self, read_array, count_mat):
+        self.count_mat = pd.DataFrame(count_mat)
+        self.mini_summary_d['unmapped_pct'] = 0.0
+        with open(self.alignment_summary_file, "r") as f:
+            for line in f:
+                arr = re.split("[\|:\t ]+", line)
+                if "Number of input reads" in line:
+                    self.mini_summary_d['n_reads'] = int(arr[-1].strip())
+                elif "Uniquely mapped reads %" in line:
+                    self.mini_summary_d['uniqmapped_pct'] = float(arr[-1].strip().strip("%"))
+                elif "% of reads mapped to multiple loci" in line:
+                    self.mini_summary_d['multimapped_pct'] = float(arr[-1].strip().strip("%"))
+                elif "% of reads unmapped: too many mismatches" in line:
+                    self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+                elif "% of reads unmapped: too short" in line:
+                    self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+                elif "% of reads unmapped: other" in line:
+                    self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+
+        no_gene = np.sum(read_array.data['status'] & read_array.filter_codes['no_gene'] > 0)
+        self.mini_summary_d['genomic_read_pct'] = no_gene / len(read_array.data) * 100
+
+        # Calculate statistics from count matrix
+        self.mini_summary_d['med_molcs_per_cell'] = np.median(count_mat.sum(1))
+        self.mini_summary_d['molcs_per_cell_25p'] = np.percentile(count_mat.sum(1), 25)
+        self.mini_summary_d['molcs_per_cell_75p'] = np.percentile(count_mat.sum(1), 75)
+        self.mini_summary_d['molcs_per_cell_min'] = np.asscalar(np.min(count_mat.sum(1)))
+        self.mini_summary_d['molcs_per_cell_max'] = np.asscalar(np.max(count_mat.sum(1)))
+        self.mini_summary_d['n_cells'] = len(count_mat.index)
+
+        # Filter low occurrence genes and median normalization
+        self.counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0) >= 10]
+        median_counts = np.median(self.counts_filtered.sum(1))
+        counts_normalized = self.counts_filtered.divide(self.counts_filtered.sum(1),axis=0).multiply(median_counts)
+
+        # Doing PCA transformation
+        pcaModel = PCA(n_components=20)
+        counts_pca_reduced = pcaModel.fit_transform(counts_normalized.as_matrix())
+
+        # taking at most 20 components or total variance is greater than 80%
+        num_comps = 0
+        total_variance = 0.0
+        while (total_variance < 80.0) and (num_comps < len(pcaModel.explained_variance_ratio_)):
+            total_variance += pcaModel.explained_variance_ratio_[num_comps]
+            num_comps += 1
+
+        self.counts_after_pca = counts_pca_reduced[:, :num_comps]
+        self.explained_variance_ratio = pcaModel.explained_variance_ratio_
+
+        # regressed library size out of principal components 
+        for c in range(num_comps):
+            lm = LinearRegression(normalize=False)
+            X = self.counts_filtered.sum(1).values.reshape(len(self.counts_filtered), 1)
+            Y = counts_pca_reduced[:, c]
+            lm.fit(X, Y)
+            if c == 0:
+                self.counts_pca_regressed_out_lib_size = Y-lm.predict(X)
+            else:
+                self.counts_pca_regressed_out_lib_size = np.column_stack((self.counts_pca_regressed_out_lib_size,
+                                                                         Y - lm.predict(X)))
+
+        # Doing TSNE transformation
+        tsne = TSNE(n_components=2)
+        self.counts_after_tsne = tsne.fit_transform(self.counts_pca_regressed_out_lib_size)
+        self.clustering_communities, _, _ = phenograph.cluster(self.counts_pca_regressed_out_lib_size, k=50)
+
+    def render(self):
+        plot.Diagnostics.pca_components(self.pca_fig, self.explained_variance_ratio, self.counts_after_pca)
+        plot.Diagnostics.phenograph_clustering(self.tsne_and_phenograph_fig, self.counts_filtered.sum(1), 
+                                               self.clustering_communities, self.counts_after_tsne)
+
+        self.mini_summary_d['seq_sat_rate'] = ((self.mini_summary_d['avg_reads_per_molc'] - 1.0) * 100.0
+                                              / self.mini_summary_d['avg_reads_per_molc'])
+
+        warning_d = dict()
+        if self.mini_summary_d['mt_rna_fraction'] >= 30:
+            warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
+                                                        % (self.mini_summary_d['mt_rna_fraction'])
+        else:
+            warning_d["High percentage of cell death"] = "No"
+        warning_d["Noisy first few principle components"] = "Yes" if (self.explained_variance_ratio[0]<=0.05) else "No"
+        if self.mini_summary_d['seq_sat_rate'] <= 5.00:
+            warning_d["Low sequencing saturation rate"] = ("Yes (%.2f%%)" % (self.mini_summary_d['seq_sat_rate'])) 
+        else:
+            warning_d["Low sequencing saturation rate"] = "No"
+
+        env = Environment(loader=PackageLoader('seqc.summary', 'templates'))
+        section_template = env.get_template('mini_summary_base.html')
+        rendered_section = section_template.render(output_prefix = self.output_prefix, warning_d = warning_d, 
+                                                   mini_summary_d = self.mini_summary_d, cellsize_fig = self.cellsize_fig,
+                                                   pca_fig = self.pca_fig, filter_fig = self.filter_fig,
+                                                   tsne_and_phenograph_fig = self.tsne_and_phenograph_fig)
+        with open(self.output_prefix + "_mini_summary.html", 'w') as f:
+            f.write(rendered_section)
+
+        HTML(self.output_prefix + "_mini_summary.html").write_pdf(self.output_prefix + "_mini_summary.pdf")
+
+        with open(self.output_prefix + "_mini_summary.json","w") as f:
+            json.dump(self.mini_summary_d, f)
+        return self.output_prefix + "_mini_summary.json", self.output_prefix + "_mini_summary.pdf"

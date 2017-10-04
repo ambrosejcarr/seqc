@@ -54,7 +54,6 @@ setup(
       'matplotlib',
       'tinydb',
       'tables',
-      #'pysam',
       'fastcluster',
       'statsmodels',
       'ecdsa',
@@ -62,6 +61,8 @@ setup(
       'multiprocessing_on_dill',
       'jinja2',
       'pycrypto',
+      'cairocffi>=0.8.0',
+      'weasyprint',
       'scikit_learn>=0.17'],
     scripts=['src/scripts/SEQC'],
     extras_require={

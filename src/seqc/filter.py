@@ -178,7 +178,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=Tr
     return is_invalid
 
 
-def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
+def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_mt_content=0.2,
                            plot=False, ax=None):
     """
     Sets any cell with a fraction of mitochondrial mRNA greater than max_mt_content to
@@ -192,6 +192,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
     :param bool plot: if True, plot a summary of the filter
     :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
       summary.
+    :param mini_summary_d: a dictionary to store output parameters
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     # identify % genes that are mitochondrial
@@ -228,6 +229,8 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
         ax.set_title(
             'MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
         seqc.plot.xtick_vertical(ax=ax)
+        
+        mini_summary_d['mt_rna_fraction'] = (np.sum(failing) *1.0 / len(failing)) * 100.0
 
     return is_invalid
 
@@ -293,7 +296,7 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
 
 
 def create_filtered_dense_count_matrix(
-        molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2, plot=False,
+        molecules: SparseFrame, reads: SparseFrame, mini_summary_d, max_mt_content=0.2, plot=False,
         figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True, filter_low_coverage: bool=True):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
@@ -309,6 +312,7 @@ def create_filtered_dense_count_matrix(
     :param max_mt_content: the maximum percentage of mitochondrial RNA that is
     :param plot: if True, plot filtering summaries.
     :param figname: if plot is True, name of the figure to save.
+    :param mini_summary_d: dictionary to store output parameters for the mini summary.
     :return: (pd.DataFrame, int, dict, dict)
     """
 
@@ -356,7 +360,6 @@ def create_filtered_dense_count_matrix(
     else:
         count_invalid = is_invalid
 
-
     # filter low coverage
     cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov,filter_low_coverage)
     cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
@@ -365,7 +368,7 @@ def create_filtered_dense_count_matrix(
     # filter high_mt_content if requested
     if filter_mitochondrial_rna:
         mt_invalid = high_mitochondrial_rna(
-            molecules_data, molecules_columns, cov_invalid, max_mt_content, plot, ax_mt)
+            molecules_data, molecules_columns, cov_invalid, mini_summary_d, max_mt_content, plot, ax_mt)
         cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
             mt_invalid, cov_invalid, molecules_data)
     else:
@@ -377,6 +380,10 @@ def create_filtered_dense_count_matrix(
         'low_gene_detection'] = additional_loss(
         gene_invalid, mt_invalid, molecules_data)
 
+    ms = np.ravel(molecules_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
+    rs = np.ravel(reads_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
+    mini_summary_d['avg_reads_per_molc'] = rs / ms
+
     # construct dense matrix
     dense = molecules_data.tocsr()[~gene_invalid, :].todense()
     nonzero_gene_count = np.ravel(np.array(dense.sum(axis=0) != 0))
@@ -385,6 +392,8 @@ def create_filtered_dense_count_matrix(
         dense,
         index=molecules.index[~gene_invalid],
         columns=molecules.columns[nonzero_gene_count])
+
+    mini_summary_d['avg_reads_per_cell'] = rs / len(dense.index)
 
     # describe cells
     cell_description = dense.sum(axis=1).describe()
