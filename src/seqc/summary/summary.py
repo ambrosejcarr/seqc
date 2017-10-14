@@ -415,7 +415,7 @@ class MiniSummary:
                                               / self.mini_summary_d['avg_reads_per_molc'])
 
         warning_d = dict()
-        if self.mini_summary_d['mt_rna_fraction'] >= 30:
+        if ('mt_rna_fraction' in self.mini_summary_d) and (self.mini_summary_d['mt_rna_fraction'] >= 30):
             warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
                                                         % (self.mini_summary_d['mt_rna_fraction'])
         else:
