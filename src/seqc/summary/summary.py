@@ -1,6 +1,7 @@
 import os
 import shutil
 import re
+import math
 import numpy as np
 import pandas as pd
 import json
@@ -338,7 +339,7 @@ class MiniSummary:
         self.filter_fig = filter_fig
         self.cellsize_fig = cellsize_fig
         self.pca_fig = output_prefix+"_pca.png"
-        self.tsne_and_phenograph_fig = output_prefix+"_phenograph.png" 
+        self.tsne_and_phenograph_fig = output_prefix+"_phenograph.png"
 
     def compute_summary_fields(self, read_array, count_mat):
         self.count_mat = pd.DataFrame(count_mat)
@@ -404,7 +405,16 @@ class MiniSummary:
         # Doing TSNE transformation
         tsne = TSNE(n_components=2)
         self.counts_after_tsne = tsne.fit_transform(self.counts_pca_regressed_out_lib_size)
-        self.clustering_communities, _, _ = phenograph.cluster(self.counts_pca_regressed_out_lib_size, k=50)
+        self.clustering_communities, _, _ = phenograph.cluster(self.counts_pca_regressed_out_lib_size, k=80)
+
+
+    def get_clustering_result(self):
+        return self.clustering_communities
+
+
+    def get_counts_filtered(self):
+        return self.counts_filtered
+
 
     def render(self):
         plot.Diagnostics.pca_components(self.pca_fig, self.explained_variance_ratio, self.counts_after_pca)
@@ -415,7 +425,7 @@ class MiniSummary:
                                               / self.mini_summary_d['avg_reads_per_molc'])
 
         warning_d = dict()
-        if self.mini_summary_d['mt_rna_fraction'] >= 30:
+        if ('mt_rna_fraction' in self.mini_summary_d) and self.mini_summary_d['mt_rna_fraction'] >= 30:
             warning_d["High percentage of cell death"] = "Yes (%.2f%%)" \
                                                         % (self.mini_summary_d['mt_rna_fraction'])
         else:
@@ -439,4 +449,5 @@ class MiniSummary:
 
         with open(self.output_prefix + "_mini_summary.json","w") as f:
             json.dump(self.mini_summary_d, f)
+
         return self.output_prefix + "_mini_summary.json", self.output_prefix + "_mini_summary.pdf"

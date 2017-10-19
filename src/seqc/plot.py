@@ -422,22 +422,22 @@ class Diagnostics:
 
         fig = FigureGrid(4, max_cols=2)
         ax_pca, ax_pca12, ax_pca13, ax_pca23 = iter(fig)
-        ax_pca.plot(variance_ratio[0:20]*100.0)
+        ax_pca.plot(variance_ratio[0:20]*100.0, c = '#1f77b4')
         ax_pca.set_xlabel('pca components')
         ax_pca.set_ylabel('explained variance')
         ax_pca.set_xlim([0,20.5])
 
-        ax_pca12.scatter(pca_comps[:, 0], pca_comps[:, 1], s=3)
+        ax_pca12.scatter(pca_comps[:, 0], pca_comps[:, 1], s=3, c = '#1f77b4')
         ax_pca12.set_xlabel("pca 1")
         ax_pca12.set_ylabel("pca 2")
         xtick_vertical(ax=ax_pca12)
 
-        ax_pca13.scatter(pca_comps[:, 0], pca_comps[:, 2], s=3)
+        ax_pca13.scatter(pca_comps[:, 0], pca_comps[:, 2], s=3, c = '#1f77b4')
         ax_pca13.set_xlabel("pca 1")
         ax_pca13.set_ylabel("pca 3")
         xtick_vertical(ax=ax_pca13)
 
-        ax_pca23.scatter(pca_comps[:, 1], pca_comps[:, 2], s=3)
+        ax_pca23.scatter(pca_comps[:, 1], pca_comps[:, 2], s=3, c = '#1f77b4')
         ax_pca23.set_xlabel("pca 2")
         ax_pca23.set_ylabel("pca 3")
         xtick_vertical(ax=ax_pca23)
@@ -456,7 +456,7 @@ class Diagnostics:
                                 c=cl, s=3, cmap=plt.cm.coolwarm, vmin = np.min(cl),
                                 vmax=np.percentile(cl, 98))
 
-        ax_tsne.set_title("UMI Counts (log_10)")
+        ax_tsne.set_title("UMI Counts (log10)")
         ax_tsne.set_xticks([])
         ax_tsne.set_yticks([])
         divider = make_axes_locatable(ax_tsne)
@@ -503,7 +503,7 @@ class Diagnostics:
         cell_size = data.sum(axis=1)
 
         plt.hist(np.log10(cell_size), bins=25, log=True)
-        ax.set_xlabel('log_10(cell size)')
+        ax.set_xlabel('log10(cell size)')
         ax.set_ylabel('frequency')
         despine(ax)
         xtick_vertical(ax)

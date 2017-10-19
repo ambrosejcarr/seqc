@@ -22,9 +22,12 @@ from botocore.exceptions import ClientError
 log.logging.getLogger('paramiko').setLevel(log.logging.CRITICAL)
 log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
+#log.logging.getLogger('boto3').setLevel(log.logging.DEBUG)
+#log.logging.getLogger('paramiko').setLevel(log.logging.DEBUG)
+
 
 # set default values for a few parameters
-IMAGE_ID = 'ami-e9b4a1ff'
+IMAGE_ID = 'ami-8927f1f3'
 
 
 def _get_ec2_configuration():
@@ -315,8 +318,6 @@ class AWSInstance(object):
                 'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
             log.notify("Sources are uploaded and decompressed, installing seqc.")
             try:
-                ssh.execute('sudo yum install cairo cairo-devel cairomm-devel libjpeg-turbo-devel ' + 
-                            'pango pango-devel pangomm pangomm-devel giflib-devel -y')
                 ssh.execute('sudo -H pip3 install -e software/seqc/')
             except ChildProcessError as e:
                 if 'pip install --upgrade pip' in str(e):

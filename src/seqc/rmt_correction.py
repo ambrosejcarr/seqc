@@ -6,7 +6,6 @@ from seqc.read_array import ReadArray
 import time
 import pandas as pd
 import multiprocessing as multi
-#from multiprocessing_on_dill import Manager
 from itertools import repeat
 import ctypes
 from contextlib import closing
@@ -66,6 +65,7 @@ def probability_for_convert_d_to_r(d_seq, r_seq, err_rate):
         r_seq >>= 3
     return p
 
+
 def in_drop(read_array, error_rate, alpha=0.05):
     """ Tag any RMT errors
 
@@ -76,8 +76,8 @@ def in_drop(read_array, error_rate, alpha=0.05):
 
     global ra
     global indices_grouped_by_cells
-        
-    ra=read_array
+
+    ra = read_array
     indices_grouped_by_cells = ra.group_indices_by_cell()
     _correct_errors(error_rate, alpha)
 
@@ -85,14 +85,14 @@ def in_drop(read_array, error_rate, alpha=0.05):
 # a method called by each process to correct RMT for each cell
 def _correct_errors_by_cell_group(err_rate, p_value, cell_index):
 
-    cell_group=indices_grouped_by_cells[cell_index]
+    cell_group = indices_grouped_by_cells[cell_index]
     # Breaks for each gene
     gene_inds = cell_group[np.argsort(ra.genes[cell_group])]
     breaks = np.where(np.diff(ra.genes[gene_inds]))[0] + 1
     splits = np.split(gene_inds, breaks)
     rmt_groups = {}
-    res=[]
-    
+    res = []
+
     for inds in splits:
         # RMT groups
         for ind in inds:
@@ -137,7 +137,6 @@ def _correct_errors_by_cell_group(err_rate, p_value, cell_index):
                     if (set(ref_positions)).issubset(donor_positions):
                         jaitin_corrected = True
                         jaitin_donor = donor_rmt
-                        #log.notify("got jaitin")
 
             # Probability that the RMT is an error
             p_val_err = gammainc(len(rmt_groups[rmt]), expected_errors)
@@ -154,19 +153,20 @@ def _correct_errors_by_cell_group(err_rate, p_value, cell_index):
 
     return res
 
+
 def _correct_errors(err_rate, p_value=0.05):
     #Calculate and correct errors in RMTs
-    with multi.Pool(processes=multi.cpu_count()) as p: 
+    with multi.Pool(processes=multi.cpu_count()) as p:
         p = multi.Pool(processes=multi.cpu_count())
-        results=p.starmap(_correct_errors_by_cell_group,zip(repeat(err_rate),repeat(p_value),range(len(indices_grouped_by_cells))))
+        results = p.starmap(_correct_errors_by_cell_group, 
+                          zip(repeat(err_rate), repeat(p_value), range(len(indices_grouped_by_cells))))
         p.close()
         p.join()
-        
+
         # iterate through the list of returned read indices and donor rmts 
         for i in range(len(results)):
-            res=results[i]
-            if len(res)>0:
-                #log.notify("got here")
-                for i in range(0,len(res),2):
-                    ra.data['rmt'][res[i]]=ra.data['rmt'][res[i+1]]
-                    ra.data['status'][res[i]]|= ra.filter_codes['rmt_error']
+            res = results[i]
+            if len(res) > 0:
+                for i in range(0, len(res), 2):
+                    ra.data['rmt'][res[i]] = ra.data['rmt'][res[i+1]]
+                    ra.data['status'][res[i]] |= ra.filter_codes['rmt_error']

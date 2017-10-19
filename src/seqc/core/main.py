@@ -17,7 +17,7 @@ def clean_up_security_groups():
         for inst in insts for sg in inst.security_groups])          # get security groups associated with instances
     unused_sgs = all_sgs - all_inst_sgs                             # get ones without instance association
     
-    if len(unused_sgs)>=300:
+    if len(unused_sgs) >= 300:
         print("Cleaning up the unused security groups:")
         client = boto3.client('ec2')
         for g in unused_sgs:
@@ -35,7 +35,7 @@ def main(argv):
     :param argv: output of sys.argv[1:]
     """
     arguments = parser.parse_args(argv)
-    if arguments.subparser_name=="demultiplex":
+    if arguments.subparser_name == "demultiplex":
         func = getattr(utils, arguments.subparser_name)
     else:
         func = getattr(core, arguments.subparser_name)

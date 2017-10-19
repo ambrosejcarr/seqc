@@ -1,0 +1,50 @@
+<!DOCTYPE html><html lang="en">
+<head>
+<title>{{output_prefix}} Mini Summary</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style> .pagebreak { page-break-before: always; } </style>
+</head>
+<body>
+<center><h2>{{output_prefix}} Mini Summary</h2></center>
+<h3>Overall Statistics</h3>
+<table>
+	<tr><td># Reads:</td><td>{{mini_summary_d['n_reads']}}</td></tr>
+	<tr><td>% of uniquely mapped reads:</td><td>{{'%.2f%%' % mini_summary_d['uniqmapped_pct']}}</td></tr>
+	<tr><td>% of multi-mapped reads:</td><td>{{'%.2f%%' % mini_summary_d['multimapped_pct']}}</td></tr>
+	<tr><td>% of unmapped reads:</td><td>{{'%.2f%%' % mini_summary_d['unmapped_pct']}}</td></tr>
+	<tr><td>% of filtered reads mapping to genome:</td><td>{{'%.2f%%' % mini_summary_d['genomic_read_pct']}}</td></tr>
+	<tr><td>Sequencing saturation rate:</td><td>{{'%.2f%%' % mini_summary_d['seq_sat_rate']}}</td></tr>
+	<tr><td>&nbsp</td></tr>
+	<tr><td># Cells:</td><td>{{'%d' % mini_summary_d['n_cells']}}</td></tr>
+	<tr><td>Median molecules per cell:</td><td>{{'%d' % mini_summary_d['med_molcs_per_cell']}}</td></tr>
+	<tr><td>Average reads per cell:</td><td>{{'%d' % mini_summary_d['avg_reads_per_cell']}}</td></tr>
+	<tr><td>Average reads per molecule:</td><td>{{'%.2f' % mini_summary_d['avg_reads_per_molc']}}</td></tr>
+	{% if 'mt_rna_fraction' in mini_summary_d %}
+		<tr><td>% of cells filtered by high mt-RNA content:</td><td>{{'%.2f%%' % mini_summary_d['mt_rna_fraction']}}</td></tr>
+	{% endif %}
+</table>
+
+<h3>Cell Size Distribution</h3>
+<center><img src="{{cellsize_fig}}" style="width:40%;height:40%;"></center>
+
+<div class="pagebreak"> </div>
+<h3>Filtering</h3>
+Indian red indicates cells that have been filtered<br>
+<center><img src="{{filter_fig}}" style="width:95%;height:95%;"></center>
+
+
+<div class="pagebreak"> </div>
+<h3>PCA Components</h3>
+<center><img src="{{pca_fig}}" style="width:95%;height:95%;"></center>
+
+<div class="pagebreak"> </div>
+<h3>Phenograph Clustering</h3>
+Library size has been regressed out of all PCA components. We ran Phenograph clustering algorithm on the dataset with revised PCA components and with 80 nearest neighbors.<br><br>
+<center><img src="{{tsne_and_phenograph_fig}}" style="width:99%;height:99%;"></center>
+
+<h3>Warnings</h3>
+<table>    
+    {% for w,m in warning_d.items() %}
+    	<tr><td>{{w}}:</td><td>{{m}}</td></tr>
+    {% endfor %}
+</table>
+</body>

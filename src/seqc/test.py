@@ -22,15 +22,15 @@ seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 # RSA_KEY = None
 
 # define some constants for testing
-BARCODE_FASTQ = 's3://seqc-pub/test/%s/barcode/'  # platform
-GENOMIC_FASTQ = 's3://seqc-pub/test/%s/genomic/'  # platform
-MERGED = 's3://seqc-pub/test/%s/%s_merged.fastq.gz'  # platform, platform
-SAMFILE = 's3://seqc-pub/test/%s/Aligned.out.bam'  # platform
-INDEX = 's3://seqc-pub/genomes/hg38_chr19/'
+BARCODE_FASTQ = 's3://seqc-public/test/%s/barcode/'  # platform
+GENOMIC_FASTQ = 's3://seqc-public/test/%s/genomic/'  # platform
+MERGED = 's3://seqc-public/test/%s/%s_merged.fastq.gz'  # platform, platform
+SAMFILE = 's3://seqc-public/test/%s/Aligned.out.bam'  # platform
+INDEX = 's3://seqc-public/genomes/hg38_chr19/'
 LOCAL_OUTPUT = os.environ['TMPDIR'] + 'seqc/%s/test'  # test_name
 REMOTE_OUTPUT = './test'
 UPLOAD = 's3://%s/seqc_test/%s/'  # bucket_name, test_folder
-PLATFORM_BARCODES = 's3://seqc-pub/barcodes/%s/flat/'  # platform
+PLATFORM_BARCODES = 's3://seqc-public/barcodes/%s/flat/'  # platform
 
 
 def makedirs(output):
@@ -133,7 +133,7 @@ class TestSEQC(unittest.TestCase):
             platform,
             '-o', REMOTE_OUTPUT,
             '-u', UPLOAD % (self.bucket, test_name),
-            '-i', 's3://seqc-pub/genomes/hg38_long_polya/',
+            '-i', 's3://seqc-public/genomes/hg38_long_polya/',
             '-e', self.email,
             '-a', SAMFILE % platform,
             '-k', self.rsa_key,

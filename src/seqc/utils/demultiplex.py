@@ -17,13 +17,13 @@ def demultiplex(args):
     
     def _read_sample_list_file(sample_index_file):
         sample_indexes = []
-        sample2outputprefix= dict()
+        sample2outputprefix = dict()
         file = open(sample_index_file, 'r')
         for line in file.readlines():
-            arr=re.split("[\t ,]+",line)
-            arr[-1]=arr[-1].rstrip()
+            arr = re.split("[\t ,]+", line)
+            arr[-1] = arr[-1].rstrip()
             sample_indexes.append(arr[0])
-            sample2outputprefix[arr[0]]=arr[1]
+            sample2outputprefix[arr[0]] = arr[1]
         file.close()
         return sample_indexes, sample2outputprefix
     
@@ -31,7 +31,7 @@ def demultiplex(args):
         indexes = pd.read_csv(index_file, header=None, index_col=0)
     
         # Mapping from indexes to samples 
-        indexes = pd.Series( np.repeat(indexes.index, indexes.shape[1]),
+        indexes = pd.Series(np.repeat(indexes.index, indexes.shape[1]),
             index = [DNA3Bit.encode(i.encode()) for i in np.ravel(indexes)])
     
         return indexes
@@ -71,9 +71,9 @@ def demultiplex(args):
         for sample in np.append(list(set(valid_indexes.values())), ['Undetermined']):
             sample_counters[sample] = deepcopy(counters)
             for r in ['R1', 'R2']:
-                filename = output_dir + "/"+ sample2outputprefix[sample] + "_" + sample + '_' + r + '.fastq'+".gz"
-                output_files.append(output_dir + "/"+ sample2outputprefix[sample] + "_" +sample + '_' + r + '.fastq'+".gz")
-                outputfile2sample[output_dir + "/"+ sample2outputprefix[sample] + "_" +  sample + '_' + r + '.fastq'+".gz"]=sample
+                filename = output_dir + "/" + sample2outputprefix[sample] + "_" + sample + '_' + r + '.fastq'+".gz"
+                output_files.append(output_dir + "/" + sample2outputprefix[sample] + "_" +sample + '_' + r + '.fastq'+".gz")
+                outputfile2sample[output_dir + "/" + sample2outputprefix[sample] + "_" +  sample + '_' + r + '.fastq'+".gz"] = sample
                 file_handles[filename] = gzip.open(filename, 'wb')
     
         # PolyN counter
@@ -84,7 +84,7 @@ def demultiplex(args):
         mdistd=dict()     #    save already computed minimum distance for already seen index  
     
         # Forward and reverse iterators
-        numr=0
+        numr = 0
         for f, r in zip(Reader(fq_files[0]), Reader(fq_files[1])):
     
             # Extract index
@@ -97,18 +97,18 @@ def demultiplex(args):
     
             # Hamming distance to all indexes
             if index in sampled:
-                sample=sampled[index]
-                mdist=mdistd[index]
+                sample = sampled[index]
+                mdist = mdistd[index]
             else:
                 dists = [hamming_dist_bin(index, i) for i in index_list]
-                mdist=np.min(dists)
-                if  mdist > max_ed:
+                mdist = np.min(dists)
+                if mdist > max_ed:
                     sample = 'Undetermined'
                 else:
                     sample = valid_indexes[index_list[np.argmin(dists)]]
                 
-                mdistd[index]=mdist
-                sampled[index]=sample
+                mdistd[index] = mdist
+                sampled[index] = sample
                             
             # Counting the indexes
             if sample == 'Undetermined':
@@ -125,7 +125,7 @@ def demultiplex(args):
             _write_record(f, file_handles[output_dir + "/" + sample2outputprefix[sample] + "_" + sample + '_R1.fastq'+".gz"])
             _write_record(r, file_handles[output_dir + "/" + sample2outputprefix[sample] + "_" + sample + '_R2.fastq'+".gz"])
             
-            numr=numr+1
+            numr = numr + 1
             #if numr>1000:
                 #break
             
@@ -133,7 +133,7 @@ def demultiplex(args):
         for k in file_handles.keys():
             file_handles[k].close()
     
-        return sample_counters,output_files,outputfile2sample
+        return sample_counters, output_files, outputfile2sample
     
     log.setup_logger(args.log_name)
 
@@ -169,24 +169,24 @@ def demultiplex(args):
         genomic_fastq = download.s3_data(args.genomic_fastq, output_dir+"/genomic_fastq/")
         barcode_fastq = download.s3_data(args.barcode_fastq, output_dir+"/barcode_fastq/")
         
-        sample_indexes,sample2outputprefix=_read_sample_list_file(sample_list_file)
+        sample_indexes, sample2outputprefix=_read_sample_list_file(sample_list_file)
         log.info("read sample list file")
         
-        output_files=[]
+        output_files = []
         log.info("starting demultiplexing")
         sample_counters, output_files, outputfile2sample=demultiplexSamples([barcode_fastq,genomic_fastq], index_map_file, sample_indexes, output_dir, sample2outputprefix)
         log.info("demultiplexing finished")
         
-        polyn=DNA3Bit.encode(b'NNNNNNNN')
+        polyn = DNA3Bit.encode(b'NNNNNNNN')
         log.info("SUMMARY REPORT:")
-        log.info("%25s\t%25s\t%25s" % ("SAMPLE_INDEX","#EXACT", "#CORRECTED"))
+        log.info("%25s\t%25s\t%25s" % ("SAMPLE_INDEX", "#EXACT", "#CORRECTED"))
         for s in sample2outputprefix:
-            if (s!='Undetermined') and (s!=polyn):
-                log.info("%25s\t%25s\t%25s" % (s,str(sample_counters[s]['CORRECT_INDEX']),str(sample_counters[s]['CORRECTED_INDEX'])))
-        log.info("%25s\t%25s" %("Undetermined",str(sample_counters['Undetermined']['INCORRECT_INDEX'])))
-        log.info("%25s\t%25s" %('NNNNNNNN',str(sample_counters[polyn])))
+            if (s != 'Undetermined') and (s != polyn):
+                log.info("%25s\t%25s\t%25s" % (s, str(sample_counters[s]['CORRECT_INDEX']), str(sample_counters[s]['CORRECTED_INDEX'])))
+        log.info("%25s\t%25s" % ("Undetermined", str(sample_counters['Undetermined']['INCORRECT_INDEX'])))
+        log.info("%25s\t%25s" % ('NNNNNNNN', str(sample_counters[polyn])))
         
-        upload_files=output_files
+        upload_files = output_files
         upload_files.append(args.log_name)
         upload_files.append('./nohup.log')
         
@@ -196,11 +196,11 @@ def demultiplex(args):
             # Upload the sample fastq files and log files            
             for item in upload_files:
                 if "R1.fastq.gz" in item:
-                    sampleIndex=outputfile2sample[item]
-                    bucket, key = io.S3.split_link(args.upload_prefix+sample2outputprefix[sampleIndex]+ "_" +sampleIndex+"/barcode_fastq/")
+                    sampleIndex = outputfile2sample[item]
+                    bucket, key = io.S3.split_link(args.upload_prefix + sample2outputprefix[sampleIndex]+ "_"  + sampleIndex + "/barcode_fastq/")
                 elif "R2.fastq.gz" in item:
-                    sampleIndex=outputfile2sample[item]
-                    bucket, key = io.S3.split_link(args.upload_prefix+sample2outputprefix[sampleIndex]+ "_" +sampleIndex+"/genomic_fastq/")
+                    sampleIndex = outputfile2sample[item]
+                    bucket, key = io.S3.split_link(args.upload_prefix + sample2outputprefix[sampleIndex]+ "_"  + sampleIndex + "/genomic_fastq/")
                 else:
                     bucket, key = io.S3.split_link(args.upload_prefix)
                     
