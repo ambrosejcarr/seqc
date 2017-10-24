@@ -372,7 +372,7 @@ class MiniSummary:
         self.mini_summary_d['n_cells'] = len(count_mat.index)
 
         # Filter low occurrence genes and median normalization
-        self.counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0) >= 10]
+        self.counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0) >= max(30,int(self.count_mat.shape[1]*0.1))]
         median_counts = np.median(self.counts_filtered.sum(1))
         counts_normalized = self.counts_filtered.divide(self.counts_filtered.sum(1),axis=0).multiply(median_counts)
 
