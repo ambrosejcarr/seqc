@@ -344,21 +344,27 @@ class MiniSummary:
     def compute_summary_fields(self, read_array, count_mat):
         self.count_mat = pd.DataFrame(count_mat)
         self.mini_summary_d['unmapped_pct'] = 0.0
-        with open(self.alignment_summary_file, "r") as f:
-            for line in f:
-                arr = re.split("[\|:\t ]+", line)
-                if "Number of input reads" in line:
-                    self.mini_summary_d['n_reads'] = int(arr[-1].strip())
-                elif "Uniquely mapped reads %" in line:
-                    self.mini_summary_d['uniqmapped_pct'] = float(arr[-1].strip().strip("%"))
-                elif "% of reads mapped to multiple loci" in line:
-                    self.mini_summary_d['multimapped_pct'] = float(arr[-1].strip().strip("%"))
-                elif "% of reads unmapped: too many mismatches" in line:
-                    self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
-                elif "% of reads unmapped: too short" in line:
-                    self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
-                elif "% of reads unmapped: other" in line:
-                    self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+        if os.path.isfile(self.alignment_summary_file):
+            with open(self.alignment_summary_file, "r") as f:
+                for line in f:
+                    arr = re.split("[\|:\t ]+", line)
+                    if "Number of input reads" in line:
+                        self.mini_summary_d['n_reads'] = int(arr[-1].strip())
+                    elif "Uniquely mapped reads %" in line:
+                        self.mini_summary_d['uniqmapped_pct'] = float(arr[-1].strip().strip("%"))
+                    elif "% of reads mapped to multiple loci" in line:
+                        self.mini_summary_d['multimapped_pct'] = float(arr[-1].strip().strip("%"))
+                    elif "% of reads unmapped: too many mismatches" in line:
+                        self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+                    elif "% of reads unmapped: too short" in line:
+                        self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+                    elif "% of reads unmapped: other" in line:
+                        self.mini_summary_d['unmapped_pct'] += float(arr[-1].strip().strip("%"))
+        else:
+            self.mini_summary_d['n_reads'] = 'N/A'
+            self.mini_summary_d['uniqmapped_pct'] = 'N/A'
+            self.mini_summary_d['multimapped_pct'] = 'N/A'
+            self.mini_summary_d['unmapped_pct'] = 'N/A'
 
         no_gene = np.sum(read_array.data['status'] & read_array.filter_codes['no_gene'] > 0)
         self.mini_summary_d['genomic_read_pct'] = no_gene / len(read_array.data) * 100
@@ -372,12 +378,12 @@ class MiniSummary:
         self.mini_summary_d['n_cells'] = len(count_mat.index)
 
         # Filter low occurrence genes and median normalization
-        self.counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0) >= max(30,int(self.count_mat.shape[1]*0.1))]
+        self.counts_filtered = self.count_mat.loc[:, (self.count_mat>0).sum(0) >= min(30,int(self.count_mat.shape[0]*0.2))]
         median_counts = np.median(self.counts_filtered.sum(1))
         counts_normalized = self.counts_filtered.divide(self.counts_filtered.sum(1),axis=0).multiply(median_counts)
 
         # Doing PCA transformation
-        pcaModel = PCA(n_components=20)
+        pcaModel = PCA(n_components=min(20, counts_normalized.shape[1]))
         counts_pca_reduced = pcaModel.fit_transform(counts_normalized.as_matrix())
 
         # taking at most 20 components or total variance is greater than 80%

@@ -57,6 +57,7 @@ class TestSEQC(unittest.TestCase):
         if self.bucket is None:
             self.bucket = input('please provide an amazon s3 bucket to upload test '
                                 'results: ')
+            self.bucket.rstrip('/')
         if self.rsa_key is None:
             self.rsa_key = input('please provide an RSA key with permission to create '
                                  'aws instances: ')
@@ -74,7 +75,7 @@ class TestSEQC(unittest.TestCase):
         argv = [
             'run',
             platform,
-            '-o', LOCAL_OUTPUT % test_name,
+            '-o', test_name,
             '-i', INDEX,
             '-b', BARCODE_FASTQ % platform,
             '-g', GENOMIC_FASTQ % platform,
@@ -133,7 +134,7 @@ class TestSEQC(unittest.TestCase):
             platform,
             '-o', REMOTE_OUTPUT,
             '-u', UPLOAD % (self.bucket, test_name),
-            '-i', 's3://seqc-public/genomes/hg38_long_polya/',
+            '-i', INDEX,
             '-e', self.email,
             '-a', SAMFILE % platform,
             '-k', self.rsa_key,

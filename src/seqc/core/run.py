@@ -228,10 +228,9 @@ def run(args) -> None:
         
         max_insert_size = args.max_insert_size
         if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
-            max_insert_size=10000000
-            log.notify("Full length transcripts are used for read mapping in 10x data.")
+            #max_insert_size=10000000
+            #log.notify("Full length transcripts are used for read mapping in 10x data.")
             args.filter_low_coverage = False
-            args.filter_low_gene_abundance = False
 
         log.args(args)
 
@@ -278,7 +277,7 @@ def run(args) -> None:
         if process_bamfile:
             upload_bamfile = args.upload_prefix if align else None
             
-            
+            log.notify('SEQC load from bam file '+str(args.min_poly_t)+' ')
             ra, manage_bamfile, = create_read_array(
                 args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
                 max_insert_size)
