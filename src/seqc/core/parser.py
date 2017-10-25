@@ -118,6 +118,10 @@ def parse_args(args):
     f.add_argument('--no-filter-low-coverage', action='store_false',
                    dest='filter_low_coverage',
                    help='Do not filter cells with low coverage')
+    f.set_defaults(filter_low_gene_abundance=True)
+    f.add_argument('--no-filter-low-gene-abundance', action='store_false',
+                   dest='filter_low_gene_abundance',
+                   help='Do not filter cells with low coverage')
     f.add_argument('--low-coverage-alpha', metavar='LA',
                    help='FDR rate for low coverage reads filter in mars-seq datasets. '
                         'Float between 0 and 1, default=0.25',

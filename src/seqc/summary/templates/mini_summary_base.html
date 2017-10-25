@@ -8,10 +8,17 @@
 <h3>Overall Statistics</h3>
 <table>
 	<tr><td># Reads:</td><td>{{mini_summary_d['n_reads']}}</td></tr>
-	<tr><td>% of uniquely mapped reads:</td><td>{{'%.2f%%' % mini_summary_d['uniqmapped_pct']}}</td></tr>
-	<tr><td>% of multi-mapped reads:</td><td>{{'%.2f%%' % mini_summary_d['multimapped_pct']}}</td></tr>
-	<tr><td>% of unmapped reads:</td><td>{{'%.2f%%' % mini_summary_d['unmapped_pct']}}</td></tr>
-	<tr><td>% of filtered reads mapping to genome:</td><td>{{'%.2f%%' % mini_summary_d['genomic_read_pct']}}</td></tr>
+	{% if mini_summary_d['uniqmapped_pct'] == 'N/A' %}
+		<tr><td>% of uniquely mapped reads:</td><td>N/A</td></tr>
+		<tr><td>% of multi-mapped reads:</td><td>N/A</td></tr>
+		<tr><td>% of unmapped reads:</td><td>N/A</td></tr>
+		<tr><td>% of filtered reads mapping to genome:</td><td>N/A</td></tr>
+	{% else %}
+		<tr><td>% of uniquely mapped reads:</td><td>{{'%.2f%%' % mini_summary_d['uniqmapped_pct']}}</td></tr>
+		<tr><td>% of multi-mapped reads:</td><td>{{'%.2f%%' % mini_summary_d['multimapped_pct']}}</td></tr>
+		<tr><td>% of unmapped reads:</td><td>{{'%.2f%%' % mini_summary_d['unmapped_pct']}}</td></tr>
+		<tr><td>% of filtered reads mapping to genome:</td><td>{{'%.2f%%' % mini_summary_d['genomic_read_pct']}}</td></tr>
+	{% endif %}
 	<tr><td>Sequencing saturation rate:</td><td>{{'%.2f%%' % mini_summary_d['seq_sat_rate']}}</td></tr>
 	<tr><td>&nbsp</td></tr>
 	<tr><td># Cells:</td><td>{{'%d' % mini_summary_d['n_cells']}}</td></tr>

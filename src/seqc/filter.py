@@ -159,7 +159,10 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=Tr
             ax.scatter(logms, ratio, s=3)
         ax.set_xlabel('log10(molecules)')
         ax.set_ylabel('reads / molecule')
-        ax.set_title('Coverage')
+        if filter_on:
+            ax.set_title('Coverage: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+        else:
+            ax.set_title('Coverage')
         xmin, xmax = np.min(logms), np.max(logms)
         ymax = np.max(ratio)
         ax.set_xlim((xmin, xmax))
@@ -179,7 +182,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=Tr
 
 
 def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_mt_content=0.2,
-                           plot=False, ax=None):
+                           plot=False, ax=None, filter_on=True):
     """
     Sets any cell with a fraction of mitochondrial mRNA greater than max_mt_content to
     invalid.
@@ -202,9 +205,12 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     ratios = mt_molecules / ms
 
-    failing = ratios > max_mt_content
-    is_invalid = is_invalid.copy()
-    is_invalid[np.where(~is_invalid)[0][failing]] = True
+    if filter_on:
+        failing = ratios > max_mt_content
+        is_invalid = is_invalid.copy()
+        is_invalid[np.where(~is_invalid)[0][failing]] = True
+    else:
+        is_invalid = is_invalid.copy()
 
     if plot and ax:
         if ms.shape[0] and ratios.shape[0]:
@@ -217,7 +223,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_
                 return is_invalid
         else:
             return is_invalid  # nothing else to do here
-        if np.sum(failing) != 0:
+        if filter_on and (np.sum(failing) != 0):
             ax.scatter(ms[failing], ratios[failing], c='indianred', s=3)  # failing cells
         xmax = np.max(ms)
         ymax = np.max(ratios)
@@ -225,17 +231,20 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_
         ax.set_ylim((0, ymax))
         ax.hlines(max_mt_content, *ax.get_xlim(), linestyle='--', colors='indianred')
         ax.set_xlabel('total molecules')
-        ax.set_ylabel('fraction mitochondrial\nmolecules')
-        ax.set_title(
-            'MT-RNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+        ax.set_ylabel('mtRNA fraction')
+        if filter_on:
+            ax.set_title(
+                'mtRNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+            mini_summary_d['mt_rna_fraction'] = (np.sum(failing) *1.0 / len(failing)) * 100.0
+        else:
+            ax.set_title('mtRNA Fraction')
+            mini_summary_d['mt_rna_fraction'] = 0.0
         seqc.plot.xtick_vertical(ax=ax)
         
-        mini_summary_d['mt_rna_fraction'] = (np.sum(failing) *1.0 / len(failing)) * 100.0
-
     return is_invalid
 
 
-def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
+def low_gene_abundance(molecules, is_invalid, plot=False, ax=None, filter_on=True):
     """
     Fits a linear model to the relationship between number of genes detected and number
     of molecules detected. Cells with a lower than expected number of detected genes
@@ -269,7 +278,8 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
     failing = residuals > .15
 
     is_invalid = is_invalid.copy()
-    is_invalid[np.where(~is_invalid)[0][failing]] = True
+    if filter_on:
+        is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     if plot and ax:
         m, b = regr.coef_, regr.intercept_
@@ -284,12 +294,16 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
         lx = np.linspace(xmin, xmax, 200)
         ly = m * lx + b
         ax.plot(lx, np.ravel(ly), linestyle='--', c='indianred')
-        ax.scatter(x[failing], y[failing], c='indianred', s=3)
+        if filter_on:
+            ax.scatter(x[failing], y[failing], c='indianred', s=3)
         ax.set_ylim((ymin, ymax))
         ax.set_xlim((xmin, xmax))
         ax.set_xlabel('molecules (cell)')
         ax.set_ylabel('genes (cell)')
-        ax.set_title('Low Complexity')
+        if filter_on:
+            ax.set_title('Low Complexity: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+        else:
+            ax.set_title('Low Complexity')
         seqc.plot.xtick_vertical(ax=ax)
 
     return is_invalid
@@ -297,7 +311,8 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
 
 def create_filtered_dense_count_matrix(
         molecules: SparseFrame, reads: SparseFrame, mini_summary_d, max_mt_content=0.2, plot=False,
-        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True, filter_low_coverage: bool=True):
+        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True, 
+        filter_low_coverage: bool=True, filter_low_gene_abundance: bool=True):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
     and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
@@ -352,6 +367,10 @@ def create_filtered_dense_count_matrix(
     else:
         fig, ax_count, ax_cov, ax_mt, ax_gene = [None] * 5  # dummy figure
 
+    ms = np.ravel(molecules_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
+    rs = np.ravel(reads_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
+    mini_summary_d['avg_reads_per_molc'] = rs / ms
+
     # filter low counts
     if filter_low_count:
         count_invalid = low_count(molecules_data, is_invalid, plot, ax_count)
@@ -361,28 +380,20 @@ def create_filtered_dense_count_matrix(
         count_invalid = is_invalid
 
     # filter low coverage
-    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov,filter_low_coverage)
-    cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
-        cov_invalid, count_invalid, molecules_data)
+    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov, filter_low_coverage)
+    cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(cov_invalid, count_invalid, molecules_data)
 
     # filter high_mt_content if requested
-    if filter_mitochondrial_rna:
-        mt_invalid = high_mitochondrial_rna(
-            molecules_data, molecules_columns, cov_invalid, mini_summary_d, max_mt_content, plot, ax_mt)
-        cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
-            mt_invalid, cov_invalid, molecules_data)
-    else:
-        mt_invalid = cov_invalid
+    mt_invalid = high_mitochondrial_rna(molecules_data, molecules_columns, cov_invalid, mini_summary_d, max_mt_content, 
+                                        plot, ax_mt, filter_mitochondrial_rna)
+    cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(mt_invalid, cov_invalid, molecules_data)
+
 
     # filter low gene abundance
-    gene_invalid = low_gene_abundance(molecules_data, mt_invalid, plot, ax_gene)
+    gene_invalid = low_gene_abundance(molecules_data, mt_invalid, plot, ax_gene, filter_low_gene_abundance)
     cells_lost['low_gene_detection'], molecules_lost[
         'low_gene_detection'] = additional_loss(
         gene_invalid, mt_invalid, molecules_data)
-
-    ms = np.ravel(molecules_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
-    rs = np.ravel(reads_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
-    mini_summary_d['avg_reads_per_molc'] = rs / ms
 
     # construct dense matrix
     dense = molecules_data.tocsr()[~gene_invalid, :].todense()

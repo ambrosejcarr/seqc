@@ -26,6 +26,7 @@ def run(args) -> None:
     import scipy.io
     from shutil import copyfile
     from seqc.summary.summary import MiniSummary
+    from seqc.stats.mast import run_mast
     import logging
     logger = logging.getLogger('weasyprint')
     logger.handlers = []  # Remove the default stderr handler
@@ -224,6 +225,13 @@ def run(args) -> None:
         else:
             log.notify('mutt was not found on this machine; an email will not be sent to '
                        'the user upon termination of SEQC run.')
+        
+        max_insert_size = args.max_insert_size
+        if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
+            #max_insert_size=10000000
+            #log.notify("Full length transcripts are used for read mapping in 10x data.")
+            args.filter_low_coverage = False
+
         log.args(args)
 
         output_dir, output_prefix = os.path.split(args.output_prefix)
@@ -241,10 +249,6 @@ def run(args) -> None:
 
         args = download_input(output_dir, args)
         
-        max_insert_size=args.max_insert_size
-        if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
-            max_insert_size=10000000
-            log.notify("Full length transcripts are used for read mapping in 10x data.")
         
 
         if merge:
@@ -273,7 +277,7 @@ def run(args) -> None:
         if process_bamfile:
             upload_bamfile = args.upload_prefix if align else None
             
-            
+            log.notify('SEQC load from bam file '+str(args.min_poly_t)+' ')
             ra, manage_bamfile, = create_read_array(
                 args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
                 max_insert_size)
@@ -345,13 +349,11 @@ def run(args) -> None:
             filter.create_filtered_dense_count_matrix(
                 sp_mols, sp_reads, mini_summary_d, plot=True, figname=cell_filter_figure, 
                 filter_low_count=platform.filter_low_count, 
-                filter_mitochondrial_rna=args.filter_mitochondrial_rna,filter_low_coverage=args.filter_low_coverage))
-        dense_csv = args.output_prefix + '_dense.csv'
-        sp_csv.to_csv(dense_csv)
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna, filter_low_coverage=args.filter_low_coverage,
+                filter_low_gene_abundance=args.filter_low_gene_abundance))
 
         # Output files
-        files = [dense_csv,
-                 cell_filter_figure,
+        files = [cell_filter_figure,
                  args.output_prefix + '.h5',
                  args.output_prefix + '_sparse_read_counts.mtx', 
                  args.output_prefix + '_sparse_molecule_counts.mtx',
@@ -386,11 +388,22 @@ def run(args) -> None:
         files += [summary_archive]
 
         # Create a mini summary section
-        alignment_summary_file=output_dir + '/' + args.output_prefix + '_alignment_summary.txt'
+        alignment_summary_file = output_dir + '/' + args.output_prefix + '_alignment_summary.txt'
         seqc_mini_summary = MiniSummary(args.output_prefix, mini_summary_d, alignment_summary_file, cell_filter_figure, cell_size_figure)
         seqc_mini_summary.compute_summary_fields(ra,sp_csv)
         seqc_mini_summary_json,seqc_mini_summary_pdf=seqc_mini_summary.render()
-        files+=[seqc_mini_summary_json, seqc_mini_summary_pdf]
+        files += [seqc_mini_summary_json, seqc_mini_summary_pdf]
+        
+        # Running MAST for differential analysis
+        # file storing the list of differentially expressed genes for each cluster
+        de_gene_list_file = run_mast(seqc_mini_summary.get_counts_filtered(), seqc_mini_summary.get_clustering_result(), args.output_prefix)   
+        files += [de_gene_list_file]
+        
+        # adding the cluster column and write down gene-cell count matrix
+        dense_csv = args.output_prefix + '_dense.csv'
+        sp_csv.insert(loc=0, column='CLUSTER', value=seqc_mini_summary.get_clustering_result())
+        sp_csv.to_csv(dense_csv)
+        files += [dense_csv]
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return
