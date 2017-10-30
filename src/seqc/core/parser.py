@@ -22,31 +22,7 @@ def parse_args(args):
     subparsers = meta.add_subparsers(dest='subparser_name')
 
     # subparser for running experiments
-    # can use to make prettier: formatter_class=partial(argparse.HelpFormatter, width=200)
-    dm = subparsers.add_parser('demultiplex', help='demultiplexer for 10x pooled samples')
-
-    dm.add_argument('platform',
-                   choices=['ten_x', 'ten_x_v2'],
-                   help='which platform are you merging annotations from?')
-    a = dm.add_argument_group('required arguments')
-    #a.add_argument('-o', '--output-prefix', metavar='O', required=True,
-                   #help='filename prefix for all seqc output. Should not be a directory.')
-    
-    a.add_argument('--index-map-file', metavar='FILE', required=True,
-                   help='A file containing mappings of indexes to sample names.')
-    
-    a.add_argument('--sample-list-file', metavar='FILE', required=True,
-                   help='A file the list of sample indexes and their corresponding output prefixes')
-
-    a.add_argument('-g', '--genomic-fastq', nargs='*', metavar='G', default=[],
-                   help='List of fastq file(s) containing genomic information, or an s3 '
-                        'link to a directory containing only genomic fastq file(s).')
-    
-    a.add_argument('-b', '--barcode-fastq', nargs='*', metavar='G', default=[],
-                   help='List of fastq file(s) containing genomic information, or an s3 '
-                        'link to a directory containing only genomic fastq file(s).')
-
-    
+    # can use to make prettier: formatter_class=partial(argparse.HelpFormatter, width=200)    
     p = subparsers.add_parser('run', help='initiate SEQC runs')
 
     # Platform choices
@@ -196,7 +172,7 @@ def parse_args(args):
              'protein_coding and lincRNA. In most cases, other biotypes are not expected '
              'to be captured by SEQC, and should be excluded')
 
-    for parser in [pindex, p, dm]:
+    for parser in [pindex, p]:
         r = parser.add_argument_group('Amazon Web Services arguments')
         r.set_defaults(remote=True)
         r.set_defaults(terminate=True)

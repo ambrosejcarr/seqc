@@ -35,7 +35,7 @@ setup(
     author_email='mail@ambrosejcarr.com',
     package_dir={'': 'src'},
     package_data={'': ['*.r', '*.R']},
-    packages=['seqc', 'seqc.utils', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
+    packages=['seqc', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
             'seqc.summary'],
     install_requires=[
       'numpy>=1.10.0',

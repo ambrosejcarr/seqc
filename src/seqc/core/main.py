@@ -4,7 +4,6 @@ import sys
 from seqc import core
 from seqc.core import parser, verify
 from seqc import ec2
-from seqc import utils
 import boto3
 
 def clean_up_security_groups():
@@ -35,10 +34,9 @@ def main(argv):
     :param argv: output of sys.argv[1:]
     """
     arguments = parser.parse_args(argv)
-    if arguments.subparser_name == "demultiplex":
-        func = getattr(utils, arguments.subparser_name)
-    else:
-        func = getattr(core, arguments.subparser_name)
+
+    func = getattr(core, arguments.subparser_name)
+    
     assert func is not None
     if arguments.remote:
         # todo improve how verification works; it's not really necessary, what is needed

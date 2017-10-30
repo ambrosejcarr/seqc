@@ -40,39 +40,35 @@ def estimate_required_volume_size(args):
     :return int: size of volume in gb
     """
     total=0.0
-    
-    if args.subparser_name=="demultiplex":
+
+    # using worst-case estimates to make sure we don't run out of space, 35 = genome index
+    total = (35 * 1e10) + sum(validate_and_return_size(f) for f in args.barcode_files)
+
+    # todo stopped here; remove aws dependency
+    if args.barcode_fastq and args.genomic_fastq:
         total += sum(validate_and_return_size(f) for f in args.barcode_fastq) * 14 + 9e10
         total += sum(validate_and_return_size(f) for f in args.genomic_fastq) * 14 + 9e10
-    else:
-        # using worst-case estimates to make sure we don't run out of space, 35 = genome index
-        total = (35 * 1e10) + sum(validate_and_return_size(f) for f in args.barcode_files)
-    
-        # todo stopped here; remove aws dependency
-        if args.barcode_fastq and args.genomic_fastq:
-            total += sum(validate_and_return_size(f) for f in args.barcode_fastq) * 14 + 9e10
-            total += sum(validate_and_return_size(f) for f in args.genomic_fastq) * 14 + 9e10
-            total += validate_and_return_size(args.index)
+        total += validate_and_return_size(args.index)
 
-        elif args.alignment_file:
-            total += (validate_and_return_size(args.alignment_file) * 2) + 4e10
-            total += validate_and_return_size(args.index)
-    
-        elif args.merged_fastq:
-            total += (validate_and_return_size(args.merged_fastq) * 13) + 9e10
-            total += validate_and_return_size(args.index)
-    
-        elif args.read_array:
-            total += validate_and_return_size(args.read_array)
-    
-        if args.basespace:
-            if not args.basespace_token or args.basespace_token == 'None':
-                raise ValueError(
-                    'If the --basespace argument is used, the basespace token must be '
-                    'specified in the seqc config file or passed as --basespace-token')
+    elif args.alignment_file:
+        total += (validate_and_return_size(args.alignment_file) * 2) + 4e10
+        total += validate_and_return_size(args.index)
 
-            io.BaseSpace.check_sample(args.basespace, args.basespace_token)
-            total += io.BaseSpace.check_size(args.basespace, args.basespace_token) * 14 + 9e10
+    elif args.merged_fastq:
+        total += (validate_and_return_size(args.merged_fastq) * 13) + 9e10
+        total += validate_and_return_size(args.index)
+
+    elif args.read_array:
+        total += validate_and_return_size(args.read_array)
+
+    if args.basespace:
+        if not args.basespace_token or args.basespace_token == 'None':
+            raise ValueError(
+                'If the --basespace argument is used, the basespace token must be '
+                'specified in the seqc config file or passed as --basespace-token')
+
+        io.BaseSpace.check_sample(args.basespace, args.basespace_token)
+        total += io.BaseSpace.check_size(args.basespace, args.basespace_token) * 14 + 9e10
 
     return ceil(total * 1e-9)
 
@@ -152,51 +148,6 @@ def run(args) -> float:
 
     if args.upload_prefix.startswith('s3://'):
         ec2.check_bucket(args.upload_prefix)
-
-    if args.volume_size is None:
-        setattr(args, 'volume_size', estimate_required_volume_size(args))
-
-    return args
-
-
-def demultiplex(args) -> float:
-    """
-    verify data input through the command line arguments, fixes minor issues, and
-    throws exceptions if invalid parameters are encountered
-
-    additionally, this function obtains a rough estimate of how much
-    volume storage is needed for a remote run.
-
-    :param Namespace args: Namespace object, output from ArgumentParser.parse_args()
-    :returns total: float, estimated Kb of Volume space needed to run SEQC remotely.
-    """
-
-    if args.rsa_key is None:
-        raise ValueError('-k/--rsa-key does not point to a valid file object. ')
-    if not os.path.isfile(args.rsa_key):
-        raise ValueError('-k/--rsa-key does not point to a valid file object. ')
-    
-    if not all((args.barcode_fastq, args.genomic_fastq)):
-            raise ValueError(
-                'both genomic or barcode fastq should be provided')
-
-    #if args.output_prefix.endswith('/'):
-        #raise ValueError('output_stem should not be a directory.')
-
-    # check platform name; raises ValueError if invalid
-    platform_name(args.platform)
-
-    # check to make sure that --email-status is passed with remote run
-    if args.remote and not args.email:
-        raise ValueError('Please supply the --email-status flag for a remote SEQC run.')
-    # if args.instance_type not in ['c3', 'c4', 'r3']:  # todo fix this instance check
-    #     raise ValueError('All AWS instance types must be either c3, c4, or r3.')
-    # if args.terminate not in ['True', 'true', 'False', 'false', 'on-success']:
-    #     raise ValueError('the --no-terminate flag must be either True, False, '
-    #                      'or on-success.')
-
-    if args.upload_prefix and not args.upload_prefix.startswith('s3://'):
-        raise ValueError('upload_prefix should be an s3 address beginning with s3://')
 
     if args.volume_size is None:
         setattr(args, 'volume_size', estimate_required_volume_size(args))
