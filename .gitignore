@@ -5,3 +5,7 @@
 testfiles*
 *.DS_Store*
 *seqc.log
+build/*
+dist/*
+.project
+.pydevproject

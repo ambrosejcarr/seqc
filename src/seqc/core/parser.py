@@ -1,8 +1,9 @@
 import os
 import argparse
 import sys
+import inspect
 from subprocess import Popen, PIPE
-from seqc import version
+from seqc import version, platforms
 
 
 def parse_args(args):
@@ -21,12 +22,14 @@ def parse_args(args):
     subparsers = meta.add_subparsers(dest='subparser_name')
 
     # subparser for running experiments
-    # can use to make prettier: formatter_class=partial(argparse.HelpFormatter, width=200)
+    # can use to make prettier: formatter_class=partial(argparse.HelpFormatter, width=200)    
     p = subparsers.add_parser('run', help='initiate SEQC runs')
 
+    # Platform choices
+    choices = [x[0] for x in inspect.getmembers(platforms, inspect.isclass) if
+           issubclass(x[1], platforms.AbstractPlatform)][1:]
     p.add_argument('platform',
-                   choices=['in_drop', 'drop_seq', 'mars1_seq', 'mars2_seq',
-                            'mars_germany', 'in_drop_v2', 'in_drop_v3', 'ten_x', 'ten_x_v2'],
+                   choices=choices,
                    help='which platform are you merging annotations from?')
 
     a = p.add_argument_group('required arguments')
@@ -87,6 +90,14 @@ def parse_args(args):
                    dest='filter_mitochondrial_rna',
                    help='Do not filter cells with greater than 20 percent mitochondrial '
                         'RNA ')
+    f.set_defaults(filter_low_coverage=True)
+    f.add_argument('--no-filter-low-coverage', action='store_false',
+                   dest='filter_low_coverage',
+                   help='Do not filter cells with low coverage')
+    f.set_defaults(filter_low_gene_abundance=True)
+    f.add_argument('--no-filter-low-gene-abundance', action='store_false',
+                   dest='filter_low_gene_abundance',
+                   help='Do not filter cells with low coverage')
     f.add_argument('--low-coverage-alpha', metavar='LA',
                    help='FDR rate for low coverage reads filter in mars-seq datasets. '
                         'Float between 0 and 1, default=0.25',

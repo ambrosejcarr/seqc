@@ -1,0 +1,5 @@
+include src/seqc/summary/*/*.css
+include src/seqc/summary/fonts/*
+include src/seqc/summary/*/*.py
+include src/seqc/summary/*/*.js
+include src/seqc/summary/*/*.html

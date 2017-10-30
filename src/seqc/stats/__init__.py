@@ -8,4 +8,5 @@ from .tree import Tree as tree
 from .pca import PCA as pca
 from .tsne import TSNE as tsne
 from .g_test import g_test
+from .mast import run_mast
 from .resampled_nonparametric import mannwhitneyu, kruskalwallis

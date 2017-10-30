@@ -91,6 +91,8 @@ class SparseFrame:
         :return SparseFrame: SparseFrame containing dictionary data
         """
 
+        # todo this throws an uninformative error in the case that there are no active
+        # reads in the ReadArray
         i, j = (np.array(v, dtype=int) for v in zip(*dictionary.keys()))
         data = np.fromiter(dictionary.values(), dtype=int)
 
