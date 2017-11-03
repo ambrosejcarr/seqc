@@ -39,8 +39,6 @@ def estimate_required_volume_size(args):
     :param args: namespace object containing filepaths or download links to input data
     :return int: size of volume in gb
     """
-    total=0.0
-
     # using worst-case estimates to make sure we don't run out of space, 35 = genome index
     total = (35 * 1e10) + sum(validate_and_return_size(f) for f in args.barcode_files)
 

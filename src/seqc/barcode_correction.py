@@ -5,13 +5,19 @@ from itertools import permutations
 import seqc.sequence.barcodes
 from seqc import log
 
-# todo document me
+
 def ten_x_barcode_correction(ra, platform, barcode_files, max_ed=2,
             default_error_rate=0.02):
-    """
+    '''
     Correct reads with incorrect barcodes according to the correct barcodes files.
-    Reads with barcodes that have too many errors are filtered out.
-    """
+    Reads with barcodes that have too many errors are filtered out.    
+    :param ra: seqc.read_array.ReadArray object
+    :param platform: the platform object
+    :param barcode_files: the list of the paths of barcode files
+    :param max_ed: maximum allowed Hamming distance from known cell barcodes 
+    :param default_error_rate: assumed sequencing error rate
+    :return:
+    '''
 
     # Read the barcodes into lists
     valid_barcodes = set()
@@ -53,12 +59,18 @@ def ten_x_barcode_correction(ra, platform, barcode_files, max_ed=2,
                 ra.data['cell'][inds] = fat_bc
 
 
-# todo document me
+
 def in_drop(ra, platform, barcode_files, max_ed=2,
             default_error_rate=0.02):
     """
     Correct reads with incorrect barcodes according to the correct barcodes files.
     Reads with barcodes that have too many errors are filtered out.
+    :param ra: seqc.read_array.ReadArray object
+    :param platform: the platform object
+    :param barcode_files: the list of the paths of barcode files
+    :param max_ed: maximum allowed Hamming distance from known cell barcodes 
+    :param default_error_rate: assumed sequencing error rate
+    :return:
     """
 
     # Read the barcodes into lists

@@ -7,6 +7,10 @@ from seqc import ec2
 import boto3
 
 def clean_up_security_groups():
+    '''
+    Cleanning all the unused security groups that were created/started using SEQC
+    when the number of unused ones is greater than 300 
+    '''
     ec2 = boto3.resource('ec2') 
     sgs = list(ec2.security_groups.all())
     insts = list(ec2.instances.all())
@@ -21,7 +25,7 @@ def clean_up_security_groups():
         client = boto3.client('ec2')
         for g in unused_sgs:
             all_inst_sgs = set([sg['GroupName'] for inst in insts for sg in inst.security_groups])      # since deleting ones takes a while, doublecheck whether 
-            if g.startswith("SEQC") and (g not in all_inst_sgs):                                        # the security group is still unused
+            if g.startswith("SEQC") and (g not in all_inst_sgs):    # only cleaning ones associated with SEQC                                        # the security group is still unused
                 client.delete_security_group(GroupName=g)
                 print(g+" deleted")
 

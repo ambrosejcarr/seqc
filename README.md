@@ -44,6 +44,10 @@ Once all dependencies have been installed, SEQC can be installed on any machine 
 
 Please note that to avoid passing the -k/--rsa-key command when you execute SEQC runs, you can also set the environment variable `AWS_RSA_KEY` to the path to your newly created key.
 
+### Testing SEQC:
+
+All the unit tests in class `TestSEQC` in `test.py` have been tested. Currently, only two platforms `ten_x_v2` and `in_drop_v2` have been tested. Old unit tests from these two platforms together with other platforms are stored at `s3://dp-lab-data/seqc-old-unit-test/`. 
+
 ### Running SEQC:
 
 After SEQC is installed, help can be listed:
