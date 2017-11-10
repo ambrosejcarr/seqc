@@ -4,7 +4,7 @@ from seqc.sequence.fastq import Reader
 from math import floor
 import numpy as np
 import pandas as pd
-from sklearn.mixture import GMM
+from sklearn.mixture import GaussianMixture
 from sklearn.linear_model import LinearRegression
 from seqc.exceptions import EmptyMatrixError
 from seqc.sparse_frame import SparseFrame
@@ -82,19 +82,21 @@ def low_count(molecules, is_invalid, plot=False, ax=None):
 
     if plot and ax:
         cms /= np.max(cms)  # normalize to one
-        ax.plot(np.arange(len(cms))[:inflection_pt], cms[:inflection_pt], c='royalblue')
+        ax.plot(np.arange(len(cms))[:inflection_pt], cms[:inflection_pt])
         ax.plot(np.arange(len(cms))[inflection_pt:], cms[inflection_pt:], c='indianred')
-        ax.hlines(cms[inflection_pt], *ax.get_xlim(), linestyle='--', colors='indianred')
-        ax.vlines(inflection_pt, *ax.get_ylim(), linestyle='--', colors='indianred')
+        ax.hlines(cms[inflection_pt], *ax.get_xlim(), linestyle='--')
+        ax.vlines(inflection_pt, *ax.get_ylim(), linestyle='--')
         ax.set_xticklabels([])
         ax.set_xlabel('putative cell')
         ax.set_ylabel('ECDF (Cell Size)')
         ax.set_title('Cell Size')
+        ax.set_ylim((0, 1))
+        ax.set_xlim((0, len(cms)))
 
     return is_invalid
 
 
-def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
+def low_coverage(molecules, reads, is_invalid, plot=False, ax=None, filter_on=True):
     """
     Fits a two-component gaussian mixture model to the data. If a component is found
     to fit a low-coverage fraction of the data, this fraction is set as invalid. Not
@@ -108,6 +110,7 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
     :param bool plot: if True, plot a summary of the filter
     :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
       summary.
+    :param filter_on: indicate whether low coverage filter is on
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
@@ -124,19 +127,27 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
 
     # fit two GMMs on one and two modes
     col_ratio = ratio[:, np.newaxis]
-    gmm1 = GMM(n_components=1)
-    gmm2 = GMM(n_components=2)
+    gmm1 = GaussianMixture(n_components=1)
+    gmm2 = GaussianMixture(n_components=2)
     gmm1.fit(col_ratio)
     gmm2.fit(col_ratio)
 
+    if filter_on:
     # check if adding a second component is necessary; if not, filter is pass-through
-    if gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95:
-        res = gmm2.fit_predict(col_ratio)
-        failing = np.where(res == np.argmin(gmm2.means_))[0]
+        filter_on = gmm2.bic(col_ratio) / gmm1.bic(col_ratio) < 0.95
+
+    if filter_on:
+        res = gmm2.predict(col_ratio)
+
+        # Molecule sum means
+        means = [np.mean(ms[res == 0]), np.mean(ms[res == 1])]
+        failing = np.where(res == np.argmin(means))[0]
 
         # set smaller mean as invalid
         is_invalid = is_invalid.copy()
         is_invalid[np.where(~is_invalid)[0][failing]] = True
+    else:
+        res, means = None, None
 
     if plot and ax:
         logms = np.log10(ms)
@@ -148,7 +159,10 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
             ax.scatter(logms, ratio, s=3)
         ax.set_xlabel('log10(molecules)')
         ax.set_ylabel('reads / molecule')
-        ax.set_title('Coverage')
+        if filter_on:
+            ax.set_title('Coverage: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+        else:
+            ax.set_title('Coverage')
         xmin, xmax = np.min(logms), np.max(logms)
         ymax = np.max(ratio)
         ax.set_xlim((xmin, xmax))
@@ -158,11 +172,17 @@ def low_coverage(molecules, reads, is_invalid, plot=False, ax=None):
         # plot 1d conditional densities of two-component model
         # todo figure out how to do this!!
 
+        # plot the discarded cells in red, like other filters
+        if filter_on:
+            ax.scatter(
+                logms[res == np.argmin(means)], ratio[res == np.argmin(means)],
+                s=4, c='indianred')
+
     return is_invalid
 
 
-def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
-                           plot=False, ax=None):
+def high_mitochondrial_rna(molecules, gene_ids, is_invalid, mini_summary_d, max_mt_content=0.2,
+                           plot=False, ax=None, filter_on=True):
     """
     Sets any cell with a fraction of mitochondrial mRNA greater than max_mt_content to
     invalid.
@@ -175,6 +195,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
     :param bool plot: if True, plot a summary of the filter
     :param ax: Must be passed if plot is True. Indicates the axis on which to plot the
       summary.
+    :param mini_summary_d: a dictionary to store output parameters
     :return: is_invalid, np.ndarray(dtype=bool), updated valid and invalid cells
     """
     # identify % genes that are mitochondrial
@@ -184,9 +205,12 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
     ms = np.ravel(molecules.tocsr()[~is_invalid, :].sum(axis=1))
     ratios = mt_molecules / ms
 
-    failing = ratios > max_mt_content
-    is_invalid = is_invalid.copy()
-    is_invalid[np.where(~is_invalid)[0][failing]] = True
+    if filter_on:
+        failing = ratios > max_mt_content
+        is_invalid = is_invalid.copy()
+        is_invalid[np.where(~is_invalid)[0][failing]] = True
+    else:
+        is_invalid = is_invalid.copy()
 
     if plot and ax:
         if ms.shape[0] and ratios.shape[0]:
@@ -199,7 +223,7 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
                 return is_invalid
         else:
             return is_invalid  # nothing else to do here
-        if np.sum(failing) != 0:
+        if filter_on and (np.sum(failing) != 0):
             ax.scatter(ms[failing], ratios[failing], c='indianred', s=3)  # failing cells
         xmax = np.max(ms)
         ymax = np.max(ratios)
@@ -207,14 +231,20 @@ def high_mitochondrial_rna(molecules, gene_ids, is_invalid, max_mt_content=0.2,
         ax.set_ylim((0, ymax))
         ax.hlines(max_mt_content, *ax.get_xlim(), linestyle='--', colors='indianred')
         ax.set_xlabel('total molecules')
-        ax.set_ylabel('fraction mitochondrial\nmolecules')
-        ax.set_title('MT-RNA Fraction')
+        ax.set_ylabel('mtRNA fraction')
+        if filter_on:
+            ax.set_title(
+                'mtRNA Fraction: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+            mini_summary_d['mt_rna_fraction'] = (np.sum(failing) *1.0 / len(failing)) * 100.0
+        else:
+            ax.set_title('mtRNA Fraction')
+            mini_summary_d['mt_rna_fraction'] = 0.0
         seqc.plot.xtick_vertical(ax=ax)
-
+        
     return is_invalid
 
 
-def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
+def low_gene_abundance(molecules, is_invalid, plot=False, ax=None, filter_on=True):
     """
     Fits a linear model to the relationship between number of genes detected and number
     of molecules detected. Cells with a lower than expected number of detected genes
@@ -248,7 +278,8 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
     failing = residuals > .15
 
     is_invalid = is_invalid.copy()
-    is_invalid[np.where(~is_invalid)[0][failing]] = True
+    if filter_on:
+        is_invalid[np.where(~is_invalid)[0][failing]] = True
 
     if plot and ax:
         m, b = regr.coef_, regr.intercept_
@@ -263,20 +294,25 @@ def low_gene_abundance(molecules, is_invalid, plot=False, ax=None):
         lx = np.linspace(xmin, xmax, 200)
         ly = m * lx + b
         ax.plot(lx, np.ravel(ly), linestyle='--', c='indianred')
-        ax.scatter(x[failing], y[failing], c='indianred', s=3)
+        if filter_on:
+            ax.scatter(x[failing], y[failing], c='indianred', s=3)
         ax.set_ylim((ymin, ymax))
         ax.set_xlim((xmin, xmax))
         ax.set_xlabel('molecules (cell)')
         ax.set_ylabel('genes (cell)')
-        ax.set_title('Low Complexity')
+        if filter_on:
+            ax.set_title('Low Complexity: {:.2}%'.format(np.sum(failing) / len(failing) * 100))
+        else:
+            ax.set_title('Low Complexity')
         seqc.plot.xtick_vertical(ax=ax)
 
     return is_invalid
 
 
 def create_filtered_dense_count_matrix(
-        molecules: SparseFrame, reads: SparseFrame, max_mt_content=0.2, plot=False,
-        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True):
+        molecules: SparseFrame, reads: SparseFrame, mini_summary_d, max_mt_content=0.2, plot=False,
+        figname=None, filter_mitochondrial_rna: bool=True, filter_low_count: bool=True, 
+        filter_low_coverage: bool=True, filter_low_gene_abundance: bool=True):
     """
     filter cells with low molecule counts, low read coverage, high mitochondrial content,
     and low gene detection. Returns a dense pd.DataFrame of filtered counts, the total
@@ -285,11 +321,13 @@ def create_filtered_dense_count_matrix(
 
     :param filter_mitochondrial_rna: if True, run the mitochondrial RNA filter.
     :param filter_low_count: if True, run the low count cell filter.
+    :param filter_low_coverage: if True, run the low coverage filter.
     :param molecules: SparseFrame
     :param reads: SparseFrame
     :param max_mt_content: the maximum percentage of mitochondrial RNA that is
     :param plot: if True, plot filtering summaries.
     :param figname: if plot is True, name of the figure to save.
+    :param mini_summary_d: dictionary to store output parameters for the mini summary.
     :return: (pd.DataFrame, int, dict, dict)
     """
 
@@ -329,6 +367,10 @@ def create_filtered_dense_count_matrix(
     else:
         fig, ax_count, ax_cov, ax_mt, ax_gene = [None] * 5  # dummy figure
 
+    ms = np.ravel(molecules_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
+    rs = np.ravel(reads_data.tocsr()[~is_invalid, :].sum(axis=1)).sum()
+    mini_summary_d['avg_reads_per_molc'] = rs / ms
+
     # filter low counts
     if filter_low_count:
         count_invalid = low_count(molecules_data, is_invalid, plot, ax_count)
@@ -337,23 +379,18 @@ def create_filtered_dense_count_matrix(
     else:
         count_invalid = is_invalid
 
-
     # filter low coverage
-    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov)
-    cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(
-        cov_invalid, count_invalid, molecules_data)
+    cov_invalid = low_coverage(molecules_data, reads_data, count_invalid, plot, ax_cov, filter_low_coverage)
+    cells_lost['low_coverage'], molecules_lost['low_coverage'] = additional_loss(cov_invalid, count_invalid, molecules_data)
 
     # filter high_mt_content if requested
-    if filter_mitochondrial_rna:
-        mt_invalid = high_mitochondrial_rna(
-            molecules_data, molecules_columns, cov_invalid, max_mt_content, plot, ax_mt)
-        cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(
-            mt_invalid, cov_invalid, molecules_data)
-    else:
-        mt_invalid = cov_invalid
+    mt_invalid = high_mitochondrial_rna(molecules_data, molecules_columns, cov_invalid, mini_summary_d, max_mt_content, 
+                                        plot, ax_mt, filter_mitochondrial_rna)
+    cells_lost['high_mt'], molecules_lost['high_mt'] = additional_loss(mt_invalid, cov_invalid, molecules_data)
+
 
     # filter low gene abundance
-    gene_invalid = low_gene_abundance(molecules_data, mt_invalid, plot, ax_gene)
+    gene_invalid = low_gene_abundance(molecules_data, mt_invalid, plot, ax_gene, filter_low_gene_abundance)
     cells_lost['low_gene_detection'], molecules_lost[
         'low_gene_detection'] = additional_loss(
         gene_invalid, mt_invalid, molecules_data)
@@ -367,11 +404,13 @@ def create_filtered_dense_count_matrix(
         index=molecules.index[~gene_invalid],
         columns=molecules.columns[nonzero_gene_count])
 
+    mini_summary_d['avg_reads_per_cell'] = rs / len(dense.index)
+
     # describe cells
     cell_description = dense.sum(axis=1).describe()
 
     if plot:
         fig.tight_layout()
-        fig.savefig(figname)
+        fig.savefig(figname, dpi=300, transparent=True)
 
     return dense, total_molecules, molecules_lost, cells_lost, cell_description

@@ -2,7 +2,7 @@ import os
 import shutil
 import inspect
 from math import ceil
-from seqc import io, platforms
+from seqc import io, platforms, ec2
 
 
 def filesize(filename):
@@ -39,7 +39,6 @@ def estimate_required_volume_size(args):
     :param args: namespace object containing filepaths or download links to input data
     :return int: size of volume in gb
     """
-
     # using worst-case estimates to make sure we don't run out of space, 35 = genome index
     total = (35 * 1e10) + sum(validate_and_return_size(f) for f in args.barcode_files)
 
@@ -59,6 +58,7 @@ def estimate_required_volume_size(args):
 
     elif args.read_array:
         total += validate_and_return_size(args.read_array)
+
     if args.basespace:
         if not args.basespace_token or args.basespace_token == 'None':
             raise ValueError(
@@ -143,6 +143,9 @@ def run(args) -> float:
 
     if args.upload_prefix and not args.upload_prefix.startswith('s3://'):
         raise ValueError('upload_prefix should be an s3 address beginning with s3://')
+
+    if args.upload_prefix.startswith('s3://'):
+        ec2.check_bucket(args.upload_prefix)
 
     if args.volume_size is None:
         setattr(args, 'volume_size', estimate_required_volume_size(args))

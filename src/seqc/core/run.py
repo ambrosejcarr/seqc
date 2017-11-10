@@ -1,4 +1,5 @@
 
+
 def run(args) -> None:
     """Run SEQC on the files provided in args, given specifications provided on the
     command line
@@ -15,7 +16,7 @@ def run(args) -> None:
     from seqc import log, ec2, platforms, io
     from seqc.sequence import fastq
     from seqc.alignment import star
-    from seqc.email import email_user
+    from seqc.email_ import email_user
     from seqc.read_array import ReadArray
     from seqc.core import verify, download
     from seqc import filter
@@ -23,6 +24,14 @@ def run(args) -> None:
     from seqc.summary.summary import Section, Summary
     import numpy as np
     import scipy.io
+    from shutil import copyfile
+    from seqc.summary.summary import MiniSummary
+    from seqc.stats.mast import run_mast
+    import logging
+    logger = logging.getLogger('weasyprint')
+    logger.handlers = []  # Remove the default stderr handler
+    logger.setLevel(100)
+    logger.addHandler(logging.FileHandler('weasyprint.log'))
 
     def determine_start_point(arguments) -> (bool, bool, bool):
         """
@@ -190,8 +199,9 @@ def run(args) -> None:
         # converting sam to bam and uploading to S3, else removing bamfile
         if aws_upload_key:
             log.info('Uploading bam file to S3.')
-            upload_bam = 'aws s3 mv {fname} {s3link}'.format(
-                fname=bamfile, s3link=aws_upload_key)
+            upload_bam = 'aws s3 mv {fname} {s3link}{prefix}_Aligned.out.bam'.format(
+                fname=bamfile, s3link=aws_upload_key, prefix=args.output_prefix)
+            print(upload_bam)
             upload_manager = io.ProcessManager(upload_bam)
             upload_manager.run_all()
         else:
@@ -215,6 +225,13 @@ def run(args) -> None:
         else:
             log.notify('mutt was not found on this machine; an email will not be sent to '
                        'the user upon termination of SEQC run.')
+        
+        max_insert_size = args.max_insert_size
+        if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
+            max_insert_size=10000
+            #log.notify("Full length transcripts are used for read mapping in 10x data.")
+            args.filter_low_coverage = False
+
         log.args(args)
 
         output_dir, output_prefix = os.path.split(args.output_prefix)
@@ -231,6 +248,8 @@ def run(args) -> None:
         merge, align, process_bamfile = determine_start_point(args)
 
         args = download_input(output_dir, args)
+        
+        
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
@@ -245,7 +264,7 @@ def run(args) -> None:
         if args.min_poly_t is None:
             args.min_poly_t = 0
             log.notify('Warning: SEQC started from step other than unmerged fastq with '
-                       'empty --min-poly-t parameter. Continuing with --min-poly-t=0.')
+                       'empty --min-poly-t parameter. Continuing with --min-poly-t 0.')
 
         if align:
             upload_merged = args.upload_prefix if merge else None
@@ -254,35 +273,54 @@ def run(args) -> None:
                 args.index, n_processes, upload_merged)
         else:
             manage_merged = None
-
+        
         if process_bamfile:
             upload_bamfile = args.upload_prefix if align else None
+            
             ra, manage_bamfile, = create_read_array(
                 args.alignment_file, args.index, upload_bamfile, args.min_poly_t,
-                args.max_insert_size)
+                max_insert_size)
+
         else:
             manage_bamfile = None
             ra = ReadArray.load(args.read_array)
 
         # create the first summary section here
         status_filters_section = Section.from_status_filters(ra, 'initial_filtering.html')
+        sections = [status_filters_section]
 
-        # Correct barcodes
-        log.info('Correcting barcodes and estimating error rates.')
-        error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
+        # Skip over the corrections if read array is specified by the user
+        if not args.read_array:
 
-        # Resolve multimapping
-        log.info('Resolving ambiguous alignments.')
-        mm_results = ra.resolve_ambiguous_alignments()
+            # Correct barcodes
+            log.info('Correcting barcodes and estimating error rates.')
+            error_rate = platform.apply_barcode_correction(ra, args.barcode_files)
 
-        # correct errors
-        log.info('Identifying RMT errors.')
-        platform.apply_rmt_correction(ra, error_rate)
+            # Resolve multimapping
+            log.info('Resolving ambiguous alignments.')
+            mm_results = ra.resolve_ambiguous_alignments()
 
-        # Apply low coverage filter
-        if platform.filter_lonely_triplets:
-            log.info('Filtering lonely triplet reads')
-            ra.filter_low_coverage(alpha=args.low_coverage_alpha)
+            # correct errors
+            log.info('Identifying RMT errors.')
+            platform.apply_rmt_correction(ra, error_rate)
+
+            # Apply low coverage filter
+            if platform.filter_lonely_triplets:
+                log.info('Filtering lonely triplet reads')
+                ra.filter_low_coverage(alpha=args.low_coverage_alpha)
+
+            log.info('Saving read array.')
+            ra.save(args.output_prefix + '.h5')
+
+            # Summary sections
+            # create the sections for the summary object
+            sections += [
+                Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
+                Section.from_rmt_correction(ra, 'rmt_correction.html'),
+                Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html')]
+
+        # create a dictionary to store output parameters
+        mini_summary_d=dict()    
 
         # filter non-cells
         log.info('Creating counts matrix.')
@@ -302,24 +340,19 @@ def run(args) -> None:
         np.savetxt(args.output_prefix + '_sparse_counts_genes.csv', df, 
             fmt='%s', delimiter=',')
 
-        log.info('Saving read array.')
-        ra.save(args.output_prefix + '.h5')
-
         log.info('Creating filtered counts matrix.')
-        cell_filter_figure = 'cell_filters.png'
+        cell_filter_figure = args.output_prefix +  '_cell_filters.png'
         
         # By pass low count filter for mars seq
         sp_csv, total_molecules, molecules_lost, cells_lost, cell_description = (
             filter.create_filtered_dense_count_matrix(
-                sp_mols, sp_reads, plot=True, figname=cell_filter_figure, 
+                sp_mols, sp_reads, mini_summary_d, plot=True, figname=cell_filter_figure, 
                 filter_low_count=platform.filter_low_count, 
-                filter_mitochondrial_rna=args.filter_mitochondrial_rna))
-        dense_csv = args.output_prefix + '_dense.csv'
-        sp_csv.to_csv(dense_csv)
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna, filter_low_coverage=args.filter_low_coverage,
+                filter_low_gene_abundance=args.filter_low_gene_abundance))
 
         # Output files
-        files = [dense_csv,
-                 cell_filter_figure,
+        files = [cell_filter_figure,
                  args.output_prefix + '.h5',
                  args.output_prefix + '_sparse_read_counts.mtx', 
                  args.output_prefix + '_sparse_molecule_counts.mtx',
@@ -328,35 +361,48 @@ def run(args) -> None:
 
         # Summary sections
         # create the sections for the summary object
-        sections = [
-            status_filters_section,
-            Section.from_cell_barcode_correction(ra, 'cell_barcode_correction.html'),
-            Section.from_rmt_correction(ra, 'rmt_correction.html'),
-            Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html'),
+        sections += [
             Section.from_cell_filtering(cell_filter_figure, 'cell_filtering.html'),
             Section.from_run_time(args.log_name, 'seqc_log.html')]
 
         # get alignment summary
         if os.path.isfile(output_dir + '/alignments/Log.final.out'):
             os.rename(output_dir + '/alignments/Log.final.out',
-                      output_dir + '/alignment_summary.txt')
+                      output_dir + '/' + args.output_prefix + '_alignment_summary.txt')
 
             # Upload files and summary sections
-            files += [output_dir + '/alignment_summary.txt']
+            files += [output_dir + '/' + args.output_prefix + '_alignment_summary.txt']
             sections.insert(0, Section.from_alignment_summary(
-                            output_dir + '/alignment_summary.txt', 'alignment_summary.html'))
+                            output_dir + '/' + args.output_prefix + '_alignment_summary.txt', 'alignment_summary.html'))
 
         cell_size_figure = 'cell_size_distribution.png'
         index_section = Section.from_final_matrix(
             sp_csv, cell_size_figure, 'cell_distribution.html')
-        seqc_summary = Summary(output_dir + '/summary', sections, index_section)
+        seqc_summary = Summary(output_dir + '/' + args.output_prefix +  '_summary', sections, index_section)
         seqc_summary.prepare_archive()
         seqc_summary.import_image(cell_filter_figure)
         seqc_summary.import_image(cell_size_figure)
         seqc_summary.render()
         summary_archive = seqc_summary.compress_archive()
-
         files += [summary_archive]
+
+        # Create a mini summary section
+        alignment_summary_file = output_dir + '/' + args.output_prefix + '_alignment_summary.txt'
+        seqc_mini_summary = MiniSummary(args.output_prefix, mini_summary_d, alignment_summary_file, cell_filter_figure, cell_size_figure)
+        seqc_mini_summary.compute_summary_fields(ra,sp_csv)
+        seqc_mini_summary_json,seqc_mini_summary_pdf=seqc_mini_summary.render()
+        files += [seqc_mini_summary_json, seqc_mini_summary_pdf]
+        
+        # Running MAST for differential analysis
+        # file storing the list of differentially expressed genes for each cluster
+        de_gene_list_file = run_mast(seqc_mini_summary.get_counts_filtered(), seqc_mini_summary.get_clustering_result(), args.output_prefix)   
+        files += [de_gene_list_file]
+        
+        # adding the cluster column and write down gene-cell count matrix
+        dense_csv = args.output_prefix + '_dense.csv'
+        sp_csv.insert(loc=0, column='CLUSTER', value=seqc_mini_summary.get_clustering_result())
+        sp_csv.to_csv(dense_csv)
+        files += [dense_csv]
 
         if args.upload_prefix:
             # Upload count matrices files, logs, and return
@@ -387,10 +433,13 @@ def run(args) -> None:
             bucket, key = io.S3.split_link(args.upload_prefix)
             for item in [args.log_name, './nohup.log']:
                 try:
-                    ec2.Retry(retries=5)(io.S3.upload_file)(item, bucket, key)
+                    # Make a copy of the file with the output prefix
+                    copyfile(item, args.output_prefix + '_' + item)
+                    print(args.output_prefix + '_' + item)
+                    ec2.Retry(retries=5)(io.S3.upload_file)(args.output_prefix + '_' + item, bucket, key)
                     item_name = item.split('/')[-1]
                     log.info('Successfully uploaded %s to the specified S3 location '
-                             '"%s%s".' % (item, args.upload_prefix, item_name))
+                             '"%s".' % (item, args.upload_prefix))
                 except FileNotFoundError:
                     log.notify('Item %s was not found! Continuing with upload...' % item)
 

@@ -157,8 +157,8 @@ class Reader(reader.Reader):
             data[i] = len(seq) - 1  # last character is a newline
             i += 1
         return np.mean(data), np.std(data), np.unique(data, return_counts=True)
-
-
+    
+    
 def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
     """
     General function to annotate genomic fastq with barcode information from reverse read.
@@ -189,3 +189,43 @@ def merge_paired(merge_function, fout, genomic, barcode=None) -> (str, int):
                 f.write(bytes(r))
 
     return fout
+
+
+def truncate(fastq_file, lengths):
+    """
+
+    :param str fastq_file: the input fastq file
+    :param [int] lengths: a list of integer lengths to truncate the input fastq file
+    :return:
+    """
+    # get sequence length of input file
+    r = Reader(fastq_file)
+    length = None
+    for record in r:
+        length = len(record.sequence)
+        break
+
+    print('sequence length in file is %d' % length)
+
+    # remove any lengths longer than sequence length of file
+    lengths = sorted([l for l in lengths if l < length])[::-1]  # largest to smallest
+
+    # open a bunch of files
+    files = []
+    for l in lengths:
+        name = fastq_file.replace('.gz', '').replace('.fastq', '') + '_%d_' % l + '.fastq'
+        files.append(open(name, 'wb'))
+
+    i = 0
+    indices = list(range(len(lengths)))
+    for record in r:
+        if i > 10e6:
+            break
+        for j in indices:
+            record.sequence = record.sequence[:-1][:lengths[j]] + b'\n'
+            record.quality = record.quality[:-1][:lengths[j]] + b'\n'
+            files[j].write(bytes(record))
+        i += 1
+
+    for f in files:
+        f.close()
