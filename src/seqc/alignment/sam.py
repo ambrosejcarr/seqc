@@ -68,7 +68,7 @@ class SamRecord:
     @property
     def optional_fields(self):
         flags_ = {}
-        for f in self._record[1:]:
+        for f in self._record[11:]:
             k, _, v = f.split(':')
             flags_[k] = int(v)
         return flags_
