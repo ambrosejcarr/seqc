@@ -30,6 +30,6 @@ COPY . .
 RUN pip3 install cython
 RUN pip3 install numpy
 RUN pip3 install bhtsne
-RUN python3 setup.py install 
+RUN pip3 install -e .
 
 CMD ["seqc"]
