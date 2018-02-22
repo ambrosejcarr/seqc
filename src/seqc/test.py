@@ -70,8 +70,6 @@ class TestSEQC(unittest.TestCase):
                     'pipeline errors.\n')
         test_name = 'test_no_aws_%s' % platform
         makedirs(LOCAL_OUTPUT % test_name)
-        if self.email is None:
-            self.email = input('please provide an email address for SEQC to mail results: ')
         argv = [
             'run',
             platform,

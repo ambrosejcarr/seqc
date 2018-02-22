@@ -3,7 +3,7 @@
 import sys
 from seqc import core
 from seqc.core import parser, verify
-from seqc import ec2
+# from seqc import ec2
 import boto3
 
 def clean_up_security_groups():
@@ -40,21 +40,10 @@ def main(argv):
     arguments = parser.parse_args(argv)
 
     func = getattr(core, arguments.subparser_name)
-    
+
+    # this code was modified to ALWAYS be local; it no longer allows the remote loop.
     assert func is not None
-    if arguments.remote:
-        # todo improve how verification works; it's not really necessary, what is needed
-        # is a method to determine volume size for remote.
-        verification_func = getattr(verify, arguments.subparser_name)
-        verified_args = verification_func(arguments)
-        remote_args = {
-            k: getattr(verified_args, k) for k in
-            ('rsa_key', 'instance_type', 'spot_bid', 'volume_size') if
-            getattr(verified_args, k)}
-        clean_up_security_groups()
-        ec2.AWSInstance(synchronous=False, **remote_args)(func)(verified_args)
-    else:
-        func(arguments)
+    func(arguments)
 
 
 if __name__ == '__main__':
