@@ -132,14 +132,23 @@
    "outputs": [],
    "source": [
     "# load counts \n",
-    "counts_dict = OrderedDict()\n",
-    "counts = pd.read_csv(DATA, index_col=[0, 1])        \n",
-    "\n",
-    "# convert to int32\n",
-    "counts = counts.astype(np.int32)      \n",
-    "\n",
+    "columns = pd.read_csv(DATA, nrows=1, header=None).as_matrix()\n",
+    "if columns[0][0] == 'sample_number':\n",
+    "    counts = pd.read_csv(DATA, index_col=[0, 1])\n",
+    "else:\n",
+    "    counts = pd.read_csv(DATA, index_col=0)\n",
+    "    counts.index.name = 'cell_id'\n",
+    "    counts['sample_number'] = 0\n",
+    "    counts.set_index('sample_number', append=True, inplace=True)\n",
+    "    counts = counts.reorder_levels(['sample_number', 'cell_id'])\n",
+    "    \n",
     "# sample id is stored in first metadata levels\n",
-    "n_samples = len(counts.index.levels[0])"
+    "n_samples = len(counts.index.levels[0])\n",
+    "\n",
+    "counts_dict = OrderedDict()\n",
+    "counts = counts.fillna(0)\n",
+    "# convert to int32\n",
+    "counts = counts.astype(np.int32)"
    ]
   },
   {
@@ -170,7 +179,9 @@
    "outputs": [],
    "source": [
     "# library size distribution\n",
-    "f, axes = plt.subplots(1, 4, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "f, axes = plt.subplots(1, n_samples, figsize=(4 * n_samples, 4), squeeze=True)\n",
+        "if n_samples == 1:\n",
+    "    axes = [axes]\n",
     "for (i, sample), ax in zip(counts.groupby(level=0, axis=0), axes):\n",
     "\n",
     "    # counts\n",
@@ -239,7 +250,9 @@
    "outputs": [],
    "source": [
     "# visualize library size distribution\n",
-    "f, axes = plt.subplots(1, 4, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "f, axes = plt.subplots(1, n_samples, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "if n_samples == 1:\n",
+    "    axes = [axes]\n",
     "for (i, sample), ax in zip(counts.groupby(level=0, axis=0), axes):\n",
     "\n",
     "    # counts\n",
