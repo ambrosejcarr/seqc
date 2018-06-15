@@ -83,7 +83,7 @@ class Notebook:
         if not notebook_filename:
             notebook_filename = self._output_stem + '.ipynb'
 
-        dir_ = tempfile.mkdtemp()
+        dir_ = os.getcwd()
         with open(notebook_filename) as f:
             nb = nbformat.read(f, as_version=4)
 
