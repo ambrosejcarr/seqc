@@ -532,7 +532,10 @@
    "outputs": [],
    "source": [
     "# select the number of components that explain 75% of variance in the dataset\n",
-    "selected_components = np.where(np.cumsum(pca_explore.explained_variance_ratio_) > 0.75)[0][0]"
+    "try:\n",
+    "    selected_components = np.where(np.cumsum(pca_explore.explained_variance_ratio_) > 0.75)[0][0]\n",
+    "except:\n",
+    "    selected_components = 300"
    ]
   },
   {
@@ -592,7 +595,7 @@
    "outputs": [],
    "source": [
     "# create diffusion operator\n",
-    "T = magic.MAGIC_core.compute_markov(pca_projections, k=30, ka=10)"
+    "T = magic.MAGIC.compute_markov(pca_projections, k=30, ka=10)"
    ]
   },
   {
@@ -741,7 +744,7 @@
    },
    "outputs": [],
    "source": [
-    "?sns.color_palette('hls', n_samples)"
+    "sns.color_palette('hls', n_samples)"
    ]
   },
   {
@@ -760,7 +763,9 @@
    "source": [
     "# color by batches/replicates\n",
     "color_set = pd.Series(list(sns.color_palette('hls', n_samples)))\n",
-    "f, axes = plt.subplots(1, 4, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "f, axes = plt.subplots(1, n_samples, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "if n_samples == 1:\n",
+    "    axes = [axes]\n",
     "for (i, sample), ax in zip(counts.groupby(level=0, axis=0), axes):\n",
     "    ax.scatter(tsne['x'], tsne['y'], s=5, edgecolors='none',\n",
     "           color='lightgrey')\n",
