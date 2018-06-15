@@ -29,6 +29,7 @@ def clean_up_security_groups():
                 client.delete_security_group(GroupName=g)
                 print(g+" deleted")
 
+
 def main(argv):
     """Check arguments, then call the appropriate sub-module
 
@@ -40,8 +41,12 @@ def main(argv):
     arguments = parser.parse_args(argv)
 
     func = getattr(core, arguments.subparser_name)
-    
     assert func is not None
+
+    # notebooks execute local
+    if arguments.subparser_name == 'notebook':
+        return func(arguments)
+
     if arguments.remote:
         # todo improve how verification works; it's not really necessary, what is needed
         # is a method to determine volume size for remote.

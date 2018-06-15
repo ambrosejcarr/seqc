@@ -3,3 +3,4 @@ include src/seqc/summary/fonts/*
 include src/seqc/summary/*/*.py
 include src/seqc/summary/*/*.js
 include src/seqc/summary/*/*.html
+include src/seqc/notebooks/*.json

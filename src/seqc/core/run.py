@@ -227,9 +227,9 @@ def run(args) -> None:
                        'the user upon termination of SEQC run.')
         
         max_insert_size = args.max_insert_size
-        if ((args.platform=="ten_x") or (args.platform=="ten_x_v2")):
-            max_insert_size=10000
-            #log.notify("Full length transcripts are used for read mapping in 10x data.")
+        if (args.platform == "ten_x") or (args.platform == "ten_x_v2"):
+            max_insert_size = 10000
+            log.notify("Full length transcripts are used for read mapping in 10x data.")
             args.filter_low_coverage = False
 
         log.args(args)
@@ -248,8 +248,6 @@ def run(args) -> None:
         merge, align, process_bamfile = determine_start_point(args)
 
         args = download_input(output_dir, args)
-        
-        
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
@@ -320,7 +318,7 @@ def run(args) -> None:
                 Section.from_resolve_multiple_alignments(mm_results, 'multialignment.html')]
 
         # create a dictionary to store output parameters
-        mini_summary_d=dict()    
+        mini_summary_d = dict()
 
         # filter non-cells
         log.info('Creating counts matrix.')
@@ -333,11 +331,13 @@ def run(args) -> None:
         scipy.io.mmwrite(args.output_prefix + '_sparse_molecule_counts.mtx', sp_mols.data)
         # Indices
         df = np.array([np.arange(sp_reads.shape[0]), sp_reads.index]).T
-        np.savetxt(args.output_prefix + '_sparse_counts_barcodes.csv', df, 
+        np.savetxt(
+            args.output_prefix + '_sparse_counts_barcodes.csv', df,
             fmt='%d', delimiter=',')
         # Columns
         df = np.array([np.arange(sp_reads.shape[1]), sp_reads.columns]).T
-        np.savetxt(args.output_prefix + '_sparse_counts_genes.csv', df, 
+        np.savetxt(
+            args.output_prefix + '_sparse_counts_genes.csv', df,
             fmt='%s', delimiter=',')
 
         log.info('Creating filtered counts matrix.')
@@ -348,7 +348,8 @@ def run(args) -> None:
             filter.create_filtered_dense_count_matrix(
                 sp_mols, sp_reads, mini_summary_d, plot=True, figname=cell_filter_figure, 
                 filter_low_count=platform.filter_low_count, 
-                filter_mitochondrial_rna=args.filter_mitochondrial_rna, filter_low_coverage=args.filter_low_coverage,
+                filter_mitochondrial_rna=args.filter_mitochondrial_rna,
+                filter_low_coverage=args.filter_low_coverage,
                 filter_low_gene_abundance=args.filter_low_gene_abundance))
 
         # Output files
@@ -372,13 +373,16 @@ def run(args) -> None:
 
             # Upload files and summary sections
             files += [output_dir + '/' + args.output_prefix + '_alignment_summary.txt']
-            sections.insert(0, Section.from_alignment_summary(
-                            output_dir + '/' + args.output_prefix + '_alignment_summary.txt', 'alignment_summary.html'))
+            sections.insert(
+                0, Section.from_alignment_summary(
+                    output_dir + '/' + args.output_prefix + '_alignment_summary.txt',
+                    'alignment_summary.html'))
 
         cell_size_figure = 'cell_size_distribution.png'
         index_section = Section.from_final_matrix(
             sp_csv, cell_size_figure, 'cell_distribution.html')
-        seqc_summary = Summary(output_dir + '/' + args.output_prefix +  '_summary', sections, index_section)
+        seqc_summary = Summary(
+            output_dir + '/' + args.output_prefix + '_summary', sections, index_section)
         seqc_summary.prepare_archive()
         seqc_summary.import_image(cell_filter_figure)
         seqc_summary.import_image(cell_size_figure)
@@ -388,14 +392,18 @@ def run(args) -> None:
 
         # Create a mini summary section
         alignment_summary_file = output_dir + '/' + args.output_prefix + '_alignment_summary.txt'
-        seqc_mini_summary = MiniSummary(args.output_prefix, mini_summary_d, alignment_summary_file, cell_filter_figure, cell_size_figure)
-        seqc_mini_summary.compute_summary_fields(ra,sp_csv)
-        seqc_mini_summary_json,seqc_mini_summary_pdf=seqc_mini_summary.render()
+        seqc_mini_summary = MiniSummary(
+            args.output_prefix, mini_summary_d, alignment_summary_file, cell_filter_figure,
+            cell_size_figure)
+        seqc_mini_summary.compute_summary_fields(ra, sp_csv)
+        seqc_mini_summary_json, seqc_mini_summary_pdf = seqc_mini_summary.render()
         files += [seqc_mini_summary_json, seqc_mini_summary_pdf]
         
         # Running MAST for differential analysis
         # file storing the list of differentially expressed genes for each cluster
-        de_gene_list_file = run_mast(seqc_mini_summary.get_counts_filtered(), seqc_mini_summary.get_clustering_result(), args.output_prefix)   
+        de_gene_list_file = run_mast(
+            seqc_mini_summary.get_counts_filtered(), seqc_mini_summary.get_clustering_result(),
+            args.output_prefix)
         files += [de_gene_list_file]
         
         # adding the cluster column and write down gene-cell count matrix
@@ -436,8 +444,8 @@ def run(args) -> None:
                     # Make a copy of the file with the output prefix
                     copyfile(item, args.output_prefix + '_' + item)
                     print(args.output_prefix + '_' + item)
-                    ec2.Retry(retries=5)(io.S3.upload_file)(args.output_prefix + '_' + item, bucket, key)
-                    item_name = item.split('/')[-1]
+                    ec2.Retry(retries=5)(io.S3.upload_file)(
+                        args.output_prefix + '_' + item, bucket, key)
                     log.info('Successfully uploaded %s to the specified S3 location '
                              '"%s".' % (item, args.upload_prefix))
                 except FileNotFoundError:

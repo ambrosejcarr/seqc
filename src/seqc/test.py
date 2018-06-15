@@ -17,8 +17,8 @@ logging.basicConfig()
 seqc_dir = '/'.join(seqc.__file__.split('/')[:-3]) + '/'
 
 # fill and uncomment these variables to avoid having to provide input to tests
-# TEST_BUCKET = None
-# EMAIL = None
+TEST_BUCKET = "seqc-public"  # None
+EMAIL = None
 # RSA_KEY = None
 
 # define some constants for testing
@@ -86,7 +86,7 @@ class TestSEQC(unittest.TestCase):
         os.remove('./seqc_log.txt')  # clean up the dummy log we made.
 
     # @params('in_drop', 'in_drop_v2', 'drop_seq', 'ten_x', 'mars_seq')
-    def test_remote_from_raw_fastq(self, platform='in_drop_v2'):
+    def test_remote_from_raw_fastq(self, platform='ten_x_v2'):
         test_name = 'test_remote_%s' % platform
         self.check_parameters()
         argv = [

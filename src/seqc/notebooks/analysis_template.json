@@ -1,0 +1,1021 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:50:47.942652Z",
+     "start_time": "2017-09-10T17:50:47.937092-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "## Notebook Setup\n",
+    "Below, the input files are entered as a list, with each file treated as a separate experiment. This field is filled automatically using Jinja2 templating. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:50:47.942652Z",
+     "start_time": "2017-09-10T17:50:47.937092-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "#  filled automatically with Jinja2\n",
+    "OUTPUT_STEM = '{{ output_stem }}'\n",
+    "DATA = '{{ data }}'"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "## Load Imports & Define Environment"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T22:07:23.848096Z",
+     "start_time": "2017-09-10T18:07:23.805769-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# scientific modules\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import pickle\n",
+    "from collections import OrderedDict\n",
+    "import bhtsne\n",
+    "\n",
+    "# plotting imports\n",
+    "import matplotlib\n",
+    "import seaborn as sns\n",
+    "import matplotlib.pyplot as plt\n",
+    "import matplotlib.gridspec as gridspec\n",
+    "\n",
+    "import magic\n",
+    "import warnings\n",
+    "\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T22:14:05.007465Z",
+     "start_time": "2017-09-10T18:14:04.983363-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# set some plotting parameters\n",
+    "matplotlib.rcParams['figure.figsize'] = [4, 4]\n",
+    "matplotlib.rcParams['figure.dpi'] = 100\n",
+    "warnings.filterwarnings(action=\"ignore\", module=\"matplotlib\", message=\"findfont\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "## Data preprocessing\n",
+    "### Load Data"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:27.448982Z",
+     "start_time": "2017-09-10T17:50:50.827755-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# load counts \n",
+    "columns = pd.read_csv(DATA, nrows=1, header=None).as_matrix()\n",
+    "if columns[0][0] == 'sample_number':\n",
+    "    counts = pd.read_csv(DATA, index_col=[0, 1])\n",
+    "else:\n",
+    "    counts = pd.read_csv(DATA, index_col=0)\n",
+    "    counts.index.name = 'cell_id'\n",
+    "    counts['sample_number'] = 0\n",
+    "    counts.set_index('sample_number', append=True, inplace=True)\n",
+    "    counts = counts.reorder_levels(['sample_number', 'cell_id'])\n",
+    "    \n",
+    "# sample id is stored in first metadata levels\n",
+    "n_samples = len(counts.index.levels[0])\n",
+    "\n",
+    "counts_dict = OrderedDict()\n",
+    "counts = counts.fillna(0)\n",
+    "# convert to int32\n",
+    "counts = counts.astype(np.int32)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "### Clean Up\n",
+    "\n",
+    "First, examine the sample library size distributions"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:30.153649Z",
+     "start_time": "2017-09-10T17:51:27.450988-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true,
+    "scrolled": false
+   },
+   "outputs": [],
+   "source": [
+    "# library size distribution\n",
+    "f, axes = plt.subplots(1, n_samples, figsize=(4 * n_samples, 4), squeeze=True)\n",
+        "if n_samples == 1:\n",
+    "    axes = [axes]\n",
+    "for (i, sample), ax in zip(counts.groupby(level=0, axis=0), axes):\n",
+    "\n",
+    "    # counts\n",
+    "    ms = np.log10(sample.sum(axis=1))\n",
+    "    \n",
+    "    # figure\n",
+    "    ax.hist(ms, 100)\n",
+    "    ax.set_title('sample %d' % i)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "Then, remove low-coverage cells"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:34.594922Z",
+     "start_time": "2017-09-10T17:51:30.155724-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true,
+    "scrolled": false
+   },
+   "outputs": [],
+   "source": [
+    "THRESHOLD = 3.75\n",
+    "\n",
+    "# cells passing the threshold\n",
+    "ms = counts.sum(axis = 1)\n",
+    "use_cells = ms.index[np.log10(ms) > THRESHOLD]\n",
+    "\n",
+    "# remove zero sum genes\n",
+    "use_genes = counts.columns[counts.loc[use_cells,:].sum() > 0]\n",
+    "\n",
+    "# update counts\n",
+    "counts = counts.loc[use_cells, use_genes]\n",
+    "\n",
+    "# log\n",
+    "for i, sample in counts.groupby(level=0, axis=0):\n",
+    "    print('sample %d shape:' % i, sample.shape)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:30.153649Z",
+     "start_time": "2017-09-10T17:51:27.450988-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true,
+    "scrolled": false
+   },
+   "outputs": [],
+   "source": [
+    "# visualize library size distribution\n",
+    "f, axes = plt.subplots(1, n_samples, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "if n_samples == 1:\n",
+    "    axes = [axes]\n",
+    "for (i, sample), ax in zip(counts.groupby(level=0, axis=0), axes):\n",
+    "\n",
+    "    # counts\n",
+    "    ms = np.log10(sample.sum(axis=1))\n",
+    "    \n",
+    "    # figure\n",
+    "    ax.hist(ms, 100)\n",
+    "    ax.set_title('sample %d' % i)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:36.096561Z",
+     "start_time": "2017-09-10T17:51:36.060048-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# all_cells = list()\n",
+    "# all_genes = list()\n",
+    "# for sample in counts_dict.keys():\n",
+    "#     counts = counts_dict[sample]\n",
+    "    \n",
+    "#     # update rownames\n",
+    "#     counts.index = ['{sample}_{bc}'.format(sample=sample, bc=i) for i in counts.index]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> Combine samples </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:44.322015Z",
+     "start_time": "2017-09-10T17:51:44.290359-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# all_cells = list()\n",
+    "# all_genes = list()\n",
+    "# for sample in DATA:\n",
+    "#     counts = counts_dict[sample]\n",
+    "    \n",
+    "#     # update rownames\n",
+    "#     all_cells = all_cells + list(counts.index)\n",
+    "    \n",
+    "#     # gene name union\n",
+    "#     all_genes = list(set(counts.columns).union(all_genes))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:48.974611Z",
+     "start_time": "2017-09-10T17:51:44.536984-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# counts = pd.DataFrame(np.zeros([len(all_cells), len(all_genes)]),\n",
+    "#             index=all_cells, columns=all_genes)\n",
+    "# for sample in DATA:\n",
+    "#     counts.loc[counts_dict[sample].index, counts_dict[sample].columns] = counts_dict[sample]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:48.999513Z",
+     "start_time": "2017-09-10T17:51:48.976416-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "counts.shape"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h2> PCA + tSNE for initial structure </h2>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> Gene selection </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:51:57.939546Z",
+     "start_time": "2017-09-10T17:51:56.482629-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "ms = counts.sum(axis=1)\n",
+    "norm_df = counts.div(ms, axis=0).mul(np.median(ms), axis=0)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:52:01.820626Z",
+     "start_time": "2017-09-10T17:51:57.941406-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "gene_counts = (counts > 0).sum()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:52:02.044421Z",
+     "start_time": "2017-09-10T17:52:01.822675-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "f, ax = plt.subplots()\n",
+    "sns.distplot(np.log10(gene_counts), ax=ax)\n",
+    "ax.set_xlabel('log10 cells per gene')\n",
+    "ax.set_ylabel('number genes');"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:52:06.918971Z",
+     "start_time": "2017-09-10T17:52:06.893729-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "use_genes = gene_counts.index[gene_counts > 10]\n",
+    "print('fraction genes retained:', len(use_genes) / len(gene_counts))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:52:09.074133Z",
+     "start_time": "2017-09-10T17:52:07.435946-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# create the dataframe \n",
+    "data_df = np.log2(norm_df.loc[:, use_genes] + 0.1)\n",
+    "print('pre-processed data shape:', data_df.shape)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> PCA of the data</h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:52:09.121008Z",
+     "start_time": "2017-09-10T17:52:09.101163-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "from sklearn.decomposition import PCA"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:42:12.362735Z",
+     "start_time": "2017-09-10T17:41:54.451187-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# PCA\n",
+    "pca_explore = PCA(n_components=min(1000, data_df.shape[1]), svd_solver='randomized')\n",
+    "pca_explore.fit(data_df.values)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:42:12.390319Z",
+     "start_time": "2017-09-10T17:42:12.364823-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# select the number of components that explain 75% of variance in the dataset\n",
+    "try:\n",
+    "    selected_components = np.where(np.cumsum(pca_explore.explained_variance_ratio_) > 0.75)[0][0]\n",
+    "except:\n",
+    "    selected_components = 300"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:52:19.237583Z",
+     "start_time": "2017-09-10T17:52:10.624155-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "pca = PCA(n_components=selected_components, svd_solver='randomized')\n",
+    "pca_projections = pd.DataFrame(pca.fit_transform(data_df),\n",
+    "                index=data_df.index)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "pca_projections.shape"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> Diffusion maps </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T21:55:08.666490Z",
+     "start_time": "2017-09-10T17:54:53.084573-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# create diffusion operator\n",
+    "T = magic.MAGIC.compute_markov(pca_projections, k=30, ka=10)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T22:00:33.724124Z",
+     "start_time": "2017-09-10T18:00:33.598534-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# diffusion components\n",
+    "\n",
+    "# eigen value decomposition\n",
+    "from scipy.sparse.linalg import eigs\n",
+    "from numpy.linalg import norm\n",
+    "eig_vals, eig_vecs = eigs(T, 20, tol=1e-4, maxiter=1000)\n",
+    "\n",
+    "# sorted order\n",
+    "eig_vecs = np.real(eig_vecs); eig_vals = np.real(eig_vals)\n",
+    "inds = np.argsort(eig_vals)[::-1]\n",
+    "eig_vals = eig_vals[inds]; eig_vecs = eig_vecs[:, inds]\n",
+    "\n",
+    "# normalize the eigen vectors\n",
+    "for i in range(eig_vecs.shape[1]):\n",
+    "    eig_vecs[:, i] = eig_vecs[:, i] / norm(eig_vecs[:, i])\n",
+    "\n",
+    "# convert to data frame\n",
+    "eig_vecs = pd.DataFrame(eig_vecs, index=data_df.index)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h4> Imputed data </h4>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T22:02:11.983322Z",
+     "start_time": "2017-09-10T18:02:02.594638-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# MAGIC imputation\n",
+    "T_steps = T ** 3\n",
+    "imputed_data = pd.DataFrame(np.dot(T_steps.todense(), data_df.values), \n",
+    "                index=data_df.index, columns=data_df.columns)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> tSNE </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# multiscale space for tSNE\n",
+    "no_eigs = np.argsort(eig_vals[:(len(eig_vals)-1)] - eig_vals[1:])[-1] + 1\n",
+    "\n",
+    "# multiscale space\n",
+    "use_eigs = list(range(1, no_eigs))\n",
+    "data = eig_vecs.values[:, use_eigs] * (eig_vals[use_eigs] / (1-eig_vals[use_eigs]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T22:10:16.177337Z",
+     "start_time": "2017-09-10T18:08:55.609896-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# tSNE\n",
+    "from seqc.stats.tsne import TSNE\n",
+    "tsne = pd.DataFrame(bhtsne.tsne(data, perplexity=min(150, data.shape[0] / 5)), \n",
+    "            index=data_df.index, columns=['x', 'y'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-10T22:14:13.949437Z",
+     "start_time": "2017-09-10T18:14:12.226167-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# molecule count\n",
+    "ms = counts.sum(axis=1)\n",
+    "plt.figure(figsize=[5, 4])\n",
+    "plt.scatter(tsne['x'], tsne['y'], s=5, edgecolors='none',\n",
+    "    cmap=matplotlib.cm.Spectral_r, c=np.log10(ms[tsne.index]))\n",
+    "plt.colorbar()\n",
+    "ax =    plt.gca()\n",
+    "ax.set_axis_off()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "sns.color_palette('hls', n_samples)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-11T00:37:15.032455Z",
+     "start_time": "2017-09-10T20:37:14.132531-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# color by batches/replicates\n",
+    "color_set = pd.Series(list(sns.color_palette('hls', n_samples)))\n",
+    "f, axes = plt.subplots(1, n_samples, figsize=(4 * n_samples, 4), squeeze=True)\n",
+    "if n_samples == 1:\n",
+    "    axes = [axes]\n",
+    "for (i, sample), ax in zip(counts.groupby(level=0, axis=0), axes):\n",
+    "    ax.scatter(tsne['x'], tsne['y'], s=5, edgecolors='none',\n",
+    "           color='lightgrey')\n",
+    "    ax.scatter(tsne.loc[sample.index, 'x'], tsne.loc[sample.index, 'y'],\n",
+    "        s=5, edgecolors='none', color=color_set[i])\n",
+    "    ax.set_title(i)\n",
+    "    ax.set_axis_off()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> Phenograph for clustering </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-11T00:37:29.123369Z",
+     "start_time": "2017-09-10T20:37:29.101067-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "df = pca_projections"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-11T00:39:46.973324Z",
+     "start_time": "2017-09-10T20:39:41.268696-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "import phenograph\n",
+    "\n",
+    "# cluster and cluster centrolds\n",
+    "communities, graph, Q = phenograph.cluster(df)\n",
+    "communities = pd.Series(communities, index=data_df.index)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-11T00:43:13.828641Z",
+     "start_time": "2017-09-10T20:43:11.486570-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "# best prediction\n",
+    "\n",
+    "n_communities = len(set(communities))\n",
+    "n_rows = n_communities // 4 + (1 if n_communities % 4 else 0)\n",
+    "\n",
+    "fig = plt.figure(figsize=[4*4, n_rows*4])\n",
+    "for i, cluster in enumerate(set(communities)):\n",
+    "    cells = communities.index[communities == cluster]\n",
+    "    \n",
+    "    ax = fig.add_subplot(n_rows, 4, i+1)\n",
+    "    ax.scatter(tsne['x'], tsne['y'], \n",
+    "        s=3, edgecolors='none', color='lightgrey')        \n",
+    "    ax.scatter(tsne.loc[cells, 'x'], tsne.loc[cells,'y'], \n",
+    "        s=5, edgecolors='none')\n",
+    "\n",
+    "    # clean up\n",
+    "    ax.set_axis_off()\n",
+    "    ax.set_title(cluster)\n",
+    "    sns.despine()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h4> Cluster composition </h4>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "proportions = pd.DataFrame(\n",
+    "    index=pd.Index(set(communities), name='communities'), \n",
+    "    columns=sample.index.levels[0]\n",
+    ").fillna(0)\n",
+    "\n",
+    "for (sample_index, _), community in communities.iteritems():\n",
+    "    proportions.iloc[community, sample_index] += 1\n",
+    "proportions = proportions.div(proportions.sum(axis=0)).round(2)\n",
+    "proportions"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> Gene expression patterns </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-11T00:50:11.134629Z",
+     "start_time": "2017-09-10T20:50:11.098043-04:00"
+    },
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "def plot_genes(genes, title):\n",
+    "    # set up figure grid\n",
+    "    n = len(genes)\n",
+    "    max_cols = 5\n",
+    "    nrows = int(np.ceil(n / max_cols)); ncols = int(min((max_cols, n)))\n",
+    "    \n",
+    "    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4*nrows))\n",
+    "    for i, (ax, gene) in enumerate(zip(axes, genes)):\n",
+    "        ax.scatter(tsne.loc[:, 'x'], tsne.loc[:, 'y'], s=3,\n",
+    "                cmap=matplotlib.cm.Spectral_r, c=imputed_data.loc[tsne.index, gene])\n",
+    "        ax.set_title(gene)\n",
+    "        ax.set_axis_off()\n",
+    "    plt.suptitle(title)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "ExecuteTime": {
+     "end_time": "2017-09-11T00:50:13.535738Z",
+     "start_time": "2017-09-10T20:50:12.140885-04:00"
+    },
+    "collapsed": false,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "genes = ['FLOT1', 'PROM1', 'NCL']\n",
+    "plot_genes(data_df.columns.intersection(genes), 'TA')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "deletable": true,
+    "editable": true
+   },
+   "source": [
+    "<h3> Save results </h3>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true,
+    "deletable": true,
+    "editable": true
+   },
+   "outputs": [],
+   "source": [
+    "pickle.dump(tsne, open(OUTPUT_STEM + '_tsne.p', 'wb'))\n",
+    "pickle.dump(imputed_data, open(OUTPUT_STEM + '_imputed_data.p', 'wb'))\n",
+    "pickle.dump(communities, open(OUTPUT_STEM + '_communities.p', 'wb'))"
+   ]
+  }
+ ],
+ "metadata": {
+  "hide_input": false,
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.4"
+  },
+  "nav_menu": {},
+  "toc": {
+   "nav_menu": {},
+   "number_sections": true,
+   "sideBar": true,
+   "skip_h1_title": false,
+   "toc_cell": false,
+   "toc_position": {
+    "height": "799px",
+    "left": "0px",
+    "right": "1468px",
+    "top": "106px",
+    "width": "212px"
+   },
+   "toc_section_display": "block",
+   "toc_window_display": true
+  },
+  "toc_position": {
+   "height": "706px",
+   "left": "0px",
+   "right": "auto",
+   "top": "106px",
+   "width": "212px"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}

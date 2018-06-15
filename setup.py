@@ -1,16 +1,20 @@
 import os
 import sys
 import shutil
-from subprocess import call, check_output
+from subprocess import call
 from setuptools import setup
 from warnings import warn
 import py_compile
 
-# Replace py_compile.compile with a function that calls it with doraise=True so stop when there is a syntax error
+
+# Replace py_compile.compile with a function that calls it with doraise=True
+# so stop when there is a syntax error
 orig_py_compile = py_compile.compile
+
 
 def doraise_py_compile(file, cfile=None, dfile=None, doraise=False):
     orig_py_compile(file, cfile=cfile, dfile=dfile, doraise=True)
+
 
 py_compile.compile = doraise_py_compile
 
@@ -22,6 +26,7 @@ if sys.version_info.minor < 5:
 # install phenograph if pip3 is installed
 if shutil.which('pip3'):
     call(['pip3', 'install', 'git+https://github.com/jacoblevine/phenograph.git'])
+    call(['pip3', 'install', 'git+https://github.com/pkathail/magic.git'])
 
 # get version
 with open('src/seqc/version.py') as f:
@@ -36,7 +41,7 @@ setup(
     package_dir={'': 'src'},
     package_data={'': ['*.r', '*.R']},
     packages=['seqc', 'seqc.sequence', 'seqc.alignment', 'seqc.core', 'seqc.stats',
-            'seqc.summary'],
+              'seqc.summary', 'seqc.notebooks'],
     install_requires=[
       'numpy>=1.10.0',
       'bhtsne',
@@ -59,6 +64,7 @@ setup(
       'statsmodels',
       'ecdsa',
       'dill',
+      'jupyter',
       'multiprocessing_on_dill',
       'jinja2',
       'pycrypto',
@@ -78,15 +84,11 @@ if not shutil.which('STAR'):
 
 # get location of setup.py
 setup_dir = os.path.dirname(os.path.realpath(__file__))
-tools_dir = os.path.expanduser('~/.seqc/tools')
 seqc_dir = os.path.expanduser('~/.seqc/seqc')
 
 print('setup_dir: {}'.format(setup_dir))
-print('tools_dir: {}'.format(tools_dir))
 print('seqc_dir: {}'.format(seqc_dir))
 
-if os.path.isdir(tools_dir):
-    shutil.rmtree(tools_dir)
 if os.path.isdir(seqc_dir):
     shutil.rmtree(seqc_dir)
 
@@ -94,16 +96,13 @@ if os.path.isdir(seqc_dir):
 def ignore_test_and_tools(dir_, files):
     """Filter files to be moved by shutil.copytree. Ignore any hidden file and the
     test and tools directories, which are not needed by the remote instance.
-
     :param dir_: dummy variable, must be present to be passed to shutil.copytree()
     :param files: output of os.listdir(), files to be subjected to filtering
     :return list: list of files that should be filtered, and not copied.
     """
     return [f for f in files if (f == 'test' or f.startswith('.'))]
 
+
 # install tools and a local copy of seqc.
-shutil.copytree(setup_dir + '/tools/', tools_dir)
 shutil.copytree(setup_dir, seqc_dir, ignore=ignore_test_and_tools)  # copy seqc repository
 shutil.make_archive(base_name=seqc_dir, format='gztar', root_dir=seqc_dir)
-shutil.unpack_archive(tools_dir + '/mouse_gene_sets.tar.gz', tools_dir)
-shutil.unpack_archive(tools_dir + '/human_gene_sets.tar.gz', tools_dir)
