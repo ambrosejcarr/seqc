@@ -12,7 +12,7 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, barcodes_len, filter_lonely_triplets=False, filter_low_count=True, barcode_files=None):
+    def __init__(self, barcodes_len, filter_lonely_triplets=False, filter_low_count=True):
         """
         Ctor for the abstract class. barcodes_len is a list of barcodes lengths,
         check_barcodes is a flag signalling whether or not the barcodes are known apriori
@@ -23,7 +23,6 @@ class AbstractPlatform:
         self._barcodes_lengths = barcodes_len
         self._filter_lonely_triplets = filter_lonely_triplets
         self._filter_low_count = filter_low_count
-        self._barcode_files = barcode_files
 
     def factory(type):
         if type == "in_drop":
@@ -400,7 +399,6 @@ class in_drop_v5(AbstractPlatform):
 
     def __init__(self):
         AbstractPlatform.__init__(self, [-1, -1])
-        self.build_cb2_barcodes()
 
     @classmethod
     def check_spacer(cls, sequence):
@@ -449,7 +447,7 @@ class in_drop_v5(AbstractPlatform):
 
         return cb2, rmt, poly_t
 
-    def build_cb2_barcodes(self, max_ed=1):
+    def build_cb2_barcodes(self, barcode_files, max_ed=1):
         """
         build a set of valid and invalid barcodes used to determine
         length of cb2 in self.check_cb2
@@ -460,7 +458,7 @@ class in_drop_v5(AbstractPlatform):
 
         # Build set of all potential correct and incorrect cb2
         potential_barcodes = set()
-        cb2_file = self._barcode_files[1]
+        cb2_file = barcode_files[1]
         with open(cb2_file, 'r') as f:
             valid_barcodes = set([line.strip() for line in f.readlines()])
         # This will work for any number of allowable mismatches
