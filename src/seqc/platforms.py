@@ -12,16 +12,18 @@ class AbstractPlatform:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, barcodes_len, filter_lonely_triplets=False, filter_low_count=True):
+    def __init__(self, barcodes_len, filter_lonely_triplets=False, filter_low_count=True, barcode_files=None):
         """
-        Ctor for the abstract class. barcodes_len is a list of barcodes lengths, 
+        Ctor for the abstract class. barcodes_len is a list of barcodes lengths,
         check_barcodes is a flag signalling whether or not the barcodes are known apriori
         and so can be filtered and corrected. correct_errors_func points to the correct
-        function for error correction
+        function for error correction. barcode_files is a list of valid barcodes files
+
         """
         self._barcodes_lengths = barcodes_len
         self._filter_lonely_triplets = filter_lonely_triplets
         self._filter_low_count = filter_low_count
+        self._barcode_files = barcode_files
 
     def factory(type):
         if type == "in_drop":
@@ -32,6 +34,8 @@ class AbstractPlatform:
             return in_drop_v3()
         if type == "in_drop_v4":
             return in_drop_v4()
+        if type == "in_drop_v5":
+            return in_drop_v5()
         if type == "drop_seq":
             return drop_seq()
         if type == "mars1_seq":
@@ -44,14 +48,14 @@ class AbstractPlatform:
             return ten_x()
         if type == "ten_x_v2":
             return ten_x_v2()
-    
+
     @property
     def num_barcodes(self):
         """
         return the number of barcodes used by this platform
         """
         return len(self._barcodes_lengths)
-            
+
     @property
     def filter_lonely_triplets(self):
         return self._filter_lonely_triplets
@@ -87,7 +91,7 @@ class AbstractPlatform:
         class to be used for estimating the min_poly_t value at each SEQC run.
         """
         pass
-    
+
     @abstractmethod
     def extract_barcodes(self, seq):
         """
@@ -123,7 +127,7 @@ class in_drop(AbstractPlatform):
 
     def __init__(self):
         AbstractPlatform.__init__(self, [-1, 8])
-        
+
     @classmethod
     def check_spacer(cls, sequence):
         """a fast, in-drop-v1 specific command to find a spacer sequence and cb length
@@ -193,7 +197,7 @@ class in_drop(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
         error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=1)
         return error_rate
@@ -204,7 +208,7 @@ class in_drop(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         rmt_correction.in_drop(ra, error_rate)
 
@@ -213,7 +217,7 @@ class in_drop_v2(AbstractPlatform):
 
     def __init__(self):
         AbstractPlatform.__init__(self, [-1, 8])
-        
+
     @classmethod
     def check_spacer(cls, sequence):
         """a fast, in-drop-v2 specific command to find a spacer sequence and cb length
@@ -283,7 +287,7 @@ class in_drop_v2(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
         error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=2)
         return error_rate
@@ -294,13 +298,13 @@ class in_drop_v2(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         rmt_correction.in_drop(ra, error_rate)
 
 
 class in_drop_v3(AbstractPlatform):
-    
+
     def __init__(self):
         AbstractPlatform.__init__(self, [-1, 8])
 
@@ -392,6 +396,138 @@ class in_drop_v4(AbstractPlatform):
         rmt_correction.in_drop(ra, error_rate)
 
 
+class in_drop_v5(AbstractPlatform):
+
+    def __init__(self):
+        AbstractPlatform.__init__(self, [-1, -1])
+        self.build_cb2_barcodes()
+
+    @classmethod
+    def check_spacer(cls, sequence):
+        """a fast, in-drop-v5 specific command to find a spacer sequence and cb1 length
+
+        :param sequence: fastq sequence data
+        :returns: (cb1, rest), where rest includes cb2, rmt, poly_t
+        """
+        assert ~sequence.endswith(b'\n')
+        identifier = sequence[24:28]
+        if identifier == b'CGCC':
+            cb1 = sequence[:8]
+            rest = sequence[30:]
+        elif identifier == b'ACGC':
+            cb1 = sequence[:9]
+            rest = sequence[31:]
+        elif identifier == b'GACG':
+            cb1 = sequence[:10]
+            rest = sequence[32:]
+        elif identifier == b'TGAC':
+            cb1 = sequence[:11]
+            rest = sequence[33:]
+        else:
+            return b'', b''
+
+        return cb1, rest
+
+    def check_cb2(self, rest):
+        """a fast, in-drop-v5 specific command to find determine len of cb2
+
+        :param rest: sequence remaining after spacer returned by check_spacer
+        :returns: (cb2, rmt, poly_t)
+        """
+
+        # Check for cb2 length
+        if rest[:8] in self.potential_barcodes:
+            cb2 = rest[:8]
+            rmt = rest[8:16]
+            poly_t = rest[16:]
+        elif rest[:9] in self.potential_barcodes:
+            cb2 = rest[:9]
+            rmt = rest[9:17]
+            poly_t = rest[17:]
+        else:
+            return b'', b'', b''
+
+        return cb2, rmt, poly_t
+
+    def build_cb2_barcodes(self, max_ed=1):
+        """
+        build a set of valid and invalid barcodes used to determine
+        length of cb2 in self.check_cb2
+
+        :param max_ed: number of allowable mutations
+        :sets: set of potential barcodes.
+        """
+
+        # Build set of all potential correct and incorrect cb2
+        potential_barcodes = set()
+        cb2_file = self._barcode_files[1]
+        with open(cb2_file, 'r') as f:
+            valid_barcodes = set([line.strip() for line in f.readlines()])
+        # This will work for any number of allowable mismatches
+        for bc in valid_barcodes:
+            potential_barcodes.add(bc)
+            for inds in itertools.combinations(range(len(bc)), max_ed):
+                invalid_bc = [[nt] for nt in bc]
+                for ind in inds:
+                    valid_nt = bc[ind]
+                    invalid_bc[ind] = [nt for nt in ['A', 'C', 'G', 'T'] if nt != valid_nt]
+                for mut in itertools.product(*invalid_bc)
+                    potential_barcodes.add(''.join(mut))
+        potential_barcodes = set([pb.encode() for pb in potential_barcodes])
+
+        self.potential_barcodes = potential_barcodes
+
+    def primer_length(self):
+        """The appropriate value is used to approximate the min_poly_t for each platform.
+        :return: appropriate primer length for in_drop_v2
+        """
+        return 28
+
+    def merge_function(self, g, b):
+        """
+        merge forward and reverse in-drop v2 reads, annotating the reverse read
+        (containing genomic information) with the cell barcode, rmt, and number of poly_t.
+        Pool is left empty.
+
+        :param g: genomic fastq sequence data
+        :param b: barcode fastq sequence data
+        :return: annotated genomic sequence.
+        """
+        cb1, rest = self.check_spacer(b.sequence[:-1])
+        if not cb1:
+             cell, rmt, poly_t = b'', b'', b''
+        else:
+            cb2, rmt, poly_t = self.check_cb2(rest)
+            if not cb2:
+                cell = b''
+            else:
+                cell = cb1 + cb2
+
+        g.add_annotation((b'', cell, rmt, poly_t))
+        return g
+
+    def apply_barcode_correction(self, ra, barcode_files):
+        """
+        Apply barcode correction and return error rate
+
+        :param ra: Read array
+        :param barcode_files: Valid barcodes files
+        :returns: Error rate table
+
+        """
+        error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=1)
+        return error_rate
+
+    def apply_rmt_correction(self, ra, error_rate):
+        """
+        Apply RMT correction
+
+        :param ra: Read array
+        :param error_rate: Error rate table from apply_barcode_correction
+
+        """
+        rmt_correction.in_drop(ra, error_rate)
+
 
 class drop_seq(AbstractPlatform):
 
@@ -427,7 +563,7 @@ class drop_seq(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
         barcode_correction.drop_seq(ra)
         return None
@@ -438,7 +574,7 @@ class drop_seq(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         log.info('Drop-seq barcodes do not support RMT correction')
 
@@ -447,7 +583,7 @@ class mars1_seq(AbstractPlatform):
 
     def __init__(self):
         AbstractPlatform.__init__(self, [4, 8], True, False)
-        
+
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for mars1_seq.
@@ -479,9 +615,9 @@ class mars1_seq(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
-        # todo: verify max edit distance 
+        # todo: verify max edit distance
         error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
         return error_rate
 
@@ -491,7 +627,7 @@ class mars1_seq(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         log.info('Mars-seq barcodes do not support RMT correction')
 
@@ -500,7 +636,7 @@ class mars2_seq(AbstractPlatform):
 
     def __init__(self):
         AbstractPlatform.__init__(self, [4, 8], True, False)
-        
+
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for mars2_seq.
@@ -532,9 +668,9 @@ class mars2_seq(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
-        # todo: verify max edit distance 
+        # todo: verify max edit distance
         error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
         return error_rate
 
@@ -544,7 +680,7 @@ class mars2_seq(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         log.info('Mars-seq barcodes do not support RMT correction')
 
@@ -575,9 +711,9 @@ class mars_germany(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
-        # todo: verify max edit distance 
+        # todo: verify max edit distance
         error_rate = barcode_correction.in_drop(ra, self, barcode_files, max_ed=0)
         return error_rate
 
@@ -587,7 +723,7 @@ class mars_germany(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         log.info('Mars-seq barcodes do not support RMT correction')
 
@@ -597,7 +733,7 @@ class ten_x(AbstractPlatform):
 
     def __init__(self):
         AbstractPlatform.__init__(self, [14])
-        
+
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
         :return: appropriate primer length for 10X
@@ -670,9 +806,9 @@ class ten_x_v2(AbstractPlatform):
         :param ra: Read array
         :param barcode_files: Valid barcodes files
         :returns: Error rate table
-        
+
         """
-        # todo: verify max edit distance 
+        # todo: verify max edit distance
         error_rate = barcode_correction.ten_x_barcode_correction(ra, self, barcode_files, max_ed=0)
         return error_rate
 
@@ -682,6 +818,6 @@ class ten_x_v2(AbstractPlatform):
 
         :param ra: Read array
         :param error_rate: Error rate table from apply_barcode_correction
-        
+
         """
         rmt_correction.in_drop(ra, error_rate=0.02)
