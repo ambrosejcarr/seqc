@@ -398,8 +398,9 @@ class in_drop_v4(AbstractPlatform):
 
 class in_drop_v5(AbstractPlatform):
 
-    def __init__(self):
+    def __init__(self, potential_barcodes=None):
         AbstractPlatform.__init__(self, [-1, -1])
+        self.potential_barcodes = potential_barcodes
 
     @classmethod
     def check_spacer(cls, sequence):
@@ -448,7 +449,8 @@ class in_drop_v5(AbstractPlatform):
 
         return cb2, rmt, poly_t
 
-    def build_cb2_barcodes(self, barcode_files, max_ed=1):
+    @classmethod
+    def build_cb2_barcodes(cls, barcode_files, max_ed=1):
         """
         build a set of valid and invalid barcodes used to determine
         length of cb2 in self.check_cb2
@@ -474,7 +476,7 @@ class in_drop_v5(AbstractPlatform):
                     potential_barcodes.add(''.join(mut))
         potential_barcodes = set([pb.encode() for pb in potential_barcodes])
 
-        self.potential_barcodes = potential_barcodes
+        return cls(potential_barcodes=potential_barcodes)
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
