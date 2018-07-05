@@ -243,16 +243,15 @@ def run(args) -> None:
         platform_name = verify.platform_name(args.platform)
         platform = platforms.AbstractPlatform.factory(platform_name)  # returns platform
 
-        if args.platform == "in_drop_v5":
-            platform = platform.build_cb2_barcodes(args.barcode_files)
-            log.notify("Built cb2 barcode hash for v5 barcodes.")
-
-
         n_processes = multiprocessing.cpu_count() - 1  # get number of processors
 
         merge, align, process_bamfile = determine_start_point(args)
 
         args = download_input(output_dir, args)
+
+        if args.platform == "in_drop_v5":
+            platform = platform.build_cb2_barcodes(args.barcode_files)
+            log.notify("Built cb2 barcode hash for v5 barcodes.")
 
         if merge:
             if args.min_poly_t is None:  # estimate min_poly_t if it was not provided
