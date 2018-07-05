@@ -4,6 +4,7 @@ from seqc import barcode_correction
 import regex as re
 from seqc.sequence.encodings import DNA3Bit
 from seqc import log
+import itertools
 
 # todo REMOVE POOL FROM ALL THESE CLASSES
 
@@ -469,7 +470,7 @@ class in_drop_v5(AbstractPlatform):
                 for ind in inds:
                     valid_nt = bc[ind]
                     invalid_bc[ind] = [nt for nt in ['A', 'C', 'G', 'T'] if nt != valid_nt]
-                for mut in itertools.product(*invalid_bc)
+                for mut in itertools.product(*invalid_bc):
                     potential_barcodes.add(''.join(mut))
         potential_barcodes = set([pb.encode() for pb in potential_barcodes])
 
