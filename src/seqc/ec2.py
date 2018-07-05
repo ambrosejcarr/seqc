@@ -23,7 +23,7 @@ log.logging.getLogger('paramiko').setLevel(log.logging.CRITICAL)
 log.logging.getLogger('boto3').setLevel(log.logging.CRITICAL)
 
 # set default values for a few parameters
-IMAGE_ID = 'ami-26fc345b'
+IMAGE_ID = 'ami-8927f1f3'
 
 
 def _get_ec2_configuration():
@@ -306,32 +306,27 @@ class AWSInstance(object):
             self.mount_volume(ssh)
             log.notify('setting aws credentials.')
             self.set_credentials(ssh)
+            log.notify('uploading local SEQC installation to remote instance.')
+            seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
+            ssh.execute('mkdir -p software/seqc')
+            ssh.put_file(seqc_distribution, 'software/seqc.tar.gz')
+            ssh.execute(
+                'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
+            log.notify("Sources are uploaded and decompressed, installing seqc.")
+            try:
+                ssh.execute('sudo -H pip3 install -e software/seqc/')
+            except ChildProcessError as e:
+                if 'pip install --upgrade pip' in str(e):
+                    pass
+                else:
+                    raise
 
             try:  # test the installation
                 ssh.execute('SEQC -h')
-                log.notify('SEQC found preinstalled.')
             except:
-                log.notify('uploading local SEQC installation to remote instance.')
-                seqc_distribution = os.path.expanduser('~/.seqc/seqc.tar.gz')
-                ssh.execute('mkdir -p software/seqc')
-                ssh.put_file(seqc_distribution, 'software/seqc.tar.gz')
-                ssh.execute(
-                    'tar -m -xvf software/seqc.tar.gz -C software/seqc --strip-components 1')
-                log.notify("Sources are uploaded and decompressed, installing seqc.")
-                try:
-                    ssh.execute('sudo -H pip3 install -e software/seqc/')
-                except ChildProcessError as e:
-                    if 'pip install --upgrade pip' in str(e):
-                        pass
-                    else:
-                        raise
-
-                try:  # test the installation
-                    ssh.execute('SEQC -h')
-                except:
-                    log.notify('SEQC installation failed.')
-                    log.exception()
-                    raise
+                log.notify('SEQC installation failed.')
+                log.exception()
+                raise
             log.notify('SEQC setup complete.')
             log.notify('instance login: %s' % ssh.login_command())
 
