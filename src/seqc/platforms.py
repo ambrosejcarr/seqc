@@ -525,8 +525,8 @@ class in_drop_v5(AbstractPlatform):
             # First assume it is length 8 through self._barcodes_lengths, then
             # if it isn't in potentials, assume 9.
             if potent_cb2 not in self.potential_encoded_bcs:
-                potent_cb2 = seq & ((1 << 9 * DNA3Bit.bits_per_base()) - 1)
-
+                    potent_cb2 = seq & ((1 << 9 * DNA3Bit.bits_per_base()) - 1)
+                    bc_len = 9
             res.insert(0, seq & ((1 << bc_len * DNA3Bit.bits_per_base()) - 1))
             seq >>= bc_len * DNA3Bit.bits_per_base()
 
