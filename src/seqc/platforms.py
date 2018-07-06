@@ -5,6 +5,7 @@ import regex as re
 from seqc.sequence.encodings import DNA3Bit
 from seqc import log
 import itertools
+from seqc.sequence.encodings import DNA3Bit
 
 # todo REMOVE POOL FROM ALL THESE CLASSES
 
@@ -399,8 +400,10 @@ class in_drop_v4(AbstractPlatform):
 class in_drop_v5(AbstractPlatform):
 
     def __init__(self, potential_barcodes=None):
-        AbstractPlatform.__init__(self, [-1, -1])
+        AbstractPlatform.__init__(self, [-1, 8])
         self.potential_barcodes = potential_barcodes
+        if self.potential_barcodes is not None:
+            self.potential_encoded_bcs = set(DNA3Bit.encode(pb) for pb in self.potential_barcodes)
 
     @classmethod
     def check_spacer(cls, sequence):
@@ -455,8 +458,9 @@ class in_drop_v5(AbstractPlatform):
         build a set of valid and invalid barcodes used to determine
         length of cb2 in self.check_cb2
 
-        :param max_ed: number of allowable mutations
-        :sets: set of potential barcodes.
+        :param barcode_files: Valid barcodes files
+        :param max_ed: number of allowable mismatches
+        :returns: new class with potential barcodes set
         """
 
         # Build set of all potential correct and incorrect cb2
@@ -471,7 +475,7 @@ class in_drop_v5(AbstractPlatform):
                 invalid_bc = [[nt] for nt in bc]
                 for ind in inds:
                     valid_nt = bc[ind]
-                    invalid_bc[ind] = [nt for nt in ['A', 'C', 'G', 'T'] if nt != valid_nt]
+                    invalid_bc[ind] = [nt for nt in ['A', 'C', 'G', 'T', 'N'] if nt != valid_nt]
                 for mut in itertools.product(*invalid_bc):
                     potential_barcodes.add(''.join(mut))
         potential_barcodes = set([pb.encode() for pb in potential_barcodes])
@@ -480,7 +484,7 @@ class in_drop_v5(AbstractPlatform):
 
     def primer_length(self):
         """The appropriate value is used to approximate the min_poly_t for each platform.
-        :return: appropriate primer length for in_drop_v2
+        :return: appropriate primer length for in_drop_v5
         """
         return 28
 
@@ -506,6 +510,27 @@ class in_drop_v5(AbstractPlatform):
 
         g.add_annotation((b'', cell, rmt, poly_t))
         return g
+
+    def extract_barcodes(self, seq):
+        """
+        Return a list of barcodes from the sequence. A bit hacky right now.
+        Specific to v5 platform.
+        """
+        res = []
+        for bc_len in reversed(self._barcodes_lengths):
+            if bc_len == -1:  # Return the rest of the MSb's
+                res.insert(0, seq)
+                return res
+            potent_cb2 = seq & ((1 << bc_len * DNA3Bit.bits_per_base()) - 1)
+            # First assume it is length 8 through self._barcodes_lengths, then
+            # if it isn't in potentials, assume 9.
+            if potent_cb2 not in self.potential_encoded_bcs:
+                potent_cb2 = seq & ((1 << 9 * DNA3Bit.bits_per_base()) - 1)
+
+            res.insert(0, seq & ((1 << bc_len * DNA3Bit.bits_per_base()) - 1))
+            seq >>= bc_len * DNA3Bit.bits_per_base()
+
+        return res
 
     def apply_barcode_correction(self, ra, barcode_files):
         """
