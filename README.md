@@ -1,4 +1,8 @@
-## SEquence Quality Control (SEQC -- /sek-si:/)
+# SEquence Quality Control (SEQC -- /sek-si:/)
+
+**NOTE:** This repository is no longer actively maintained. If you want to get the latest update or have any inquiries, please refer to https://github.com/dpeerlab/seqc instead.
+
+----
 
 ## Overview:
 
